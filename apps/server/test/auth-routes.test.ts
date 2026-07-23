@@ -7,7 +7,6 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import { and, eq, inArray } from 'drizzle-orm';
-import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -46,8 +45,8 @@ describeDb('аутентификация', () => {
   const suffix = randomUUID();
 
   beforeAll(async () => {
+    // Миграции уже накачены в test/global-setup.ts
     ({ db, pool } = createDb(databaseUrl as string));
-    await migrate(db, { migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)) });
     app = buildApp({ db, auth: authConfig });
     await app.ready();
   });
