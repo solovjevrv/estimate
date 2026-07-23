@@ -13,6 +13,7 @@ async function main(): Promise<void> {
       closeDb: async () => {
         await pool.end();
       },
+      auth: config.auth,
     },
     { logger: true },
   );

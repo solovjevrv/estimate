@@ -26,7 +26,13 @@ services:
     environment:
       PORT: 3000
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      WEB_ORIGIN: https://pokerplan.solovyovdev.ru:3000
+      WEB_ORIGIN: ${WEB_ORIGIN:-https://pokerplan.solovyovdev.ru:3000}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://pokerplan.solovyovdev.ru:3000}
+      JWT_SECRET: ${JWT_SECRET:?}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-}
+      YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-}
     depends_on:
       postgres:
         condition: service_healthy

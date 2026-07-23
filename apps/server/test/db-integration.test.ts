@@ -39,10 +39,8 @@ describeDb('интеграция с PostgreSQL', () => {
   const roundId = randomUUID();
 
   beforeAll(async () => {
+    // Миграции уже накачены в test/global-setup.ts
     ({ db, pool } = createDb(databaseUrl as string));
-    await migrate(db, {
-      migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)),
-    });
     await db.insert(schema.rooms).values({ id: roomId, name: 'Тестовая комната' });
     await db.insert(schema.rounds).values({ id: roundId, roomId, seq: 1, deckType: 'fibonacci' });
   });

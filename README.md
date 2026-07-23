@@ -22,6 +22,25 @@
 - Node.js ≥ 24
 - pnpm ≥ 11
 
+## Аутентификация
+
+Вход — через OAuth Google и Яндекса, сессия хранится в паре JWT (access + refresh)
+в httpOnly-куках. Провайдер включается сам, как только в окружении появляются его
+`*_CLIENT_ID` и `*_CLIENT_SECRET`; без ключей соответствующий роут просто не заводится.
+
+Настройка нового окружения:
+
+1. Сгенерировать секрет подписи: `openssl rand -base64 48` → `JWT_SECRET` (минимум 32 символа).
+2. Завести OAuth-приложения и прописать redirect URI — ровно `<PUBLIC_ORIGIN>/api/auth/<провайдер>/callback`:
+   - Google (console.cloud.google.com → Credentials → OAuth client ID, тип Web application), scope `openid`, `email`, `profile`;
+   - Яндекс (oauth.yandex.ru → Веб-сервисы), доступы: email, имя пользователя, аватар.
+3. Положить `JWT_SECRET`, `PUBLIC_ORIGIN`, `WEB_ORIGIN` и ключи провайдеров в `.env`
+   (локально — корень репозитория, на сервере — рядом с `docker-compose.prod.yml`).
+   Без `JWT_SECRET` прод-стек не поднимется.
+
+Эндпоинты: `GET /api/auth/providers`, `GET /api/auth/<провайдер>` (старт входа),
+`GET /api/auth/<провайдер>/callback`, `GET /api/me`, `POST /api/auth/refresh`, `POST /api/auth/logout`.
+
 ## Продакшен
 
 - Деплой автоматический: push в `main` → GitHub Actions → `scripts/deploy.sh` на VPS.

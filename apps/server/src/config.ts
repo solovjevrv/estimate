@@ -1,12 +1,33 @@
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
+import { AUTH_PROVIDERS, type AuthProvider } from '@poker/shared';
+
+export interface OAuthCredentials {
+  clientId: string;
+  clientSecret: string;
+}
+
+export interface AuthConfig {
+  /** Секрет для подписи JWT сессии */
+  jwtSecret: string;
+  /** Внешний адрес самого сервера — из него собирается redirect_uri для OAuth */
+  publicOrigin: string;
+  /** Куда вернуть браузер после успешного входа */
+  webOrigin: string;
+  /** Ставить ли флаг Secure на cookie сессии (выключается только для http-локалки) */
+  cookieSecure: boolean;
+  /** Провайдеры, для которых заведены client_id/secret; остальные просто выключены */
+  providers: Partial<Record<AuthProvider, OAuthCredentials>>;
+}
+
 export interface Config {
   port: number;
   host: string;
   databaseUrl: string;
   /** Origin дев-фронта для CORS Socket.io; в проде фронт same-origin через nginx */
   webOrigin: string;
+  auth: AuthConfig;
 }
 
 /**
@@ -26,6 +47,45 @@ function loadDotenv(): void {
   }
 }
 
+/** Минимальная длина секрета: 32 символа случайной строки (openssl rand -base64 48) */
+const MIN_JWT_SECRET_LENGTH = 32;
+
+function loadAuthConfig(webOrigin: string, port: number): AuthConfig {
+  const jwtSecret = process.env.JWT_SECRET;
+  if (!jwtSecret || jwtSecret.length < MIN_JWT_SECRET_LENGTH) {
+    throw new Error(
+      `JWT_SECRET не задан или короче ${MIN_JWT_SECRET_LENGTH} символов (сгенерируйте: openssl rand -base64 48)`,
+    );
+  }
+
+  const publicOrigin = (process.env.PUBLIC_ORIGIN ?? `http://localhost:${port}`).replace(
+    /\/+$/,
+    '',
+  );
+
+  const providers: Partial<Record<AuthProvider, OAuthCredentials>> = {};
+  for (const provider of AUTH_PROVIDERS) {
+    const prefix = provider.toUpperCase();
+    const clientId = process.env[`${prefix}_CLIENT_ID`];
+    const clientSecret = process.env[`${prefix}_CLIENT_SECRET`];
+    if (clientId && clientSecret) {
+      providers[provider] = { clientId, clientSecret };
+    } else if (clientId || clientSecret) {
+      throw new Error(`Для провайдера ${provider} задан только один из CLIENT_ID/CLIENT_SECRET`);
+    }
+  }
+
+  return {
+    jwtSecret,
+    publicOrigin,
+    webOrigin,
+    cookieSecure: process.env.COOKIE_SECURE
+      ? process.env.COOKIE_SECURE === 'true'
+      : publicOrigin.startsWith('https://'),
+    providers,
+  };
+}
+
 export function loadConfig(): Config {
   loadDotenv();
 
@@ -39,10 +99,13 @@ export function loadConfig(): Config {
     throw new Error('DATABASE_URL не задан');
   }
 
+  const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
+
   return {
     port,
     host: process.env.HOST ?? '0.0.0.0',
     databaseUrl,
-    webOrigin: process.env.WEB_ORIGIN ?? 'http://localhost:5173',
+    webOrigin,
+    auth: loadAuthConfig(webOrigin, port),
   };
 }
