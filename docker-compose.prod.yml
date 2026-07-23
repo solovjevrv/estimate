@@ -24,6 +24,7 @@ services:
     image: poker-server
     restart: unless-stopped
     environment:
+      NODE_ENV: production
       PORT: 3000
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       WEB_ORIGIN: ${WEB_ORIGIN:-https://pokerplan.solovyovdev.ru:3000}

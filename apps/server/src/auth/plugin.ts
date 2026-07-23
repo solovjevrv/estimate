@@ -6,6 +6,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 
 import type { AuthConfig } from '../config';
+import { DOCS_TAGS, errorResponse } from '../http/docs.plugin';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -37,6 +38,18 @@ function namespaceOf(provider: AuthProvider): 'googleOauth2' | 'yandexOauth2' {
   return `${provider}Oauth2`;
 }
 
+/** Публичный профиль в ответах — описан один раз и переиспользуется схемами */
+const userResponse = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    provider: { type: 'string' },
+    email: { type: 'string' },
+    name: { type: 'string' },
+    avatarUrl: { type: ['string', 'null'] },
+  },
+} as const;
+
 /** Таймаут запроса к token endpoint провайдера, мс */
 const TOKEN_REQUEST_TIMEOUT_MS = 5_000;
 
@@ -60,10 +73,76 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
   app.decorate('authenticate', authenticator.handle);
   app.decorate('tokens', tokens);
 
-  app.get('/api/auth/providers', controller.listProviders);
-  app.get('/api/me', { preHandler: authenticator.handle }, controller.me);
-  app.post('/api/auth/refresh', controller.refresh);
-  app.post('/api/auth/logout', controller.logout);
+  app.get(
+    '/api/auth/providers',
+    {
+      schema: {
+        tags: [DOCS_TAGS.auth],
+        summary: 'Доступные способы входа',
+        description: 'Провайдер попадает в список, если для него заданы ключи в окружении.',
+        response: {
+          200: {
+            description: 'Список включённых провайдеров',
+            type: 'object',
+            properties: {
+              providers: { type: 'array', items: { type: 'string', enum: [...AUTH_PROVIDERS] } },
+            },
+          },
+        },
+      },
+    },
+    controller.listProviders,
+  );
+
+  app.get(
+    '/api/me',
+    {
+      preHandler: authenticator.handle,
+      schema: {
+        tags: [DOCS_TAGS.auth],
+        summary: 'Профиль текущего пользователя',
+        security: [{ session: [] }],
+        response: {
+          200: { description: 'Профиль', type: 'object', properties: { user: userResponse } },
+          401: { description: 'Сессии нет или она истекла', ...errorResponse },
+        },
+      },
+    },
+    controller.me,
+  );
+
+  app.post(
+    '/api/auth/refresh',
+    {
+      schema: {
+        tags: [DOCS_TAGS.auth],
+        summary: 'Продлить сессию',
+        description: 'Обменивает refresh-куку на новую пару токенов и обновляет обе куки.',
+        response: {
+          200: {
+            description: 'Сессия продлена',
+            type: 'object',
+            properties: { user: userResponse },
+          },
+          401: { description: 'Refresh-кука недействительна', ...errorResponse },
+        },
+      },
+    },
+    controller.refresh,
+  );
+
+  app.post(
+    '/api/auth/logout',
+    {
+      schema: {
+        tags: [DOCS_TAGS.auth],
+        summary: 'Выйти',
+        description: 'Гасит куки сессии в браузере.',
+        response: { 204: { description: 'Куки сброшены', type: 'null' } },
+      },
+    },
+    controller.logout,
+  );
 
   for (const name of enabledProviders) {
     const credentials = config.providers[name];
@@ -82,6 +161,13 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
       // Должен в точности совпадать с redirect URI, прописанным в кабинете провайдера
       callbackUri: `${config.publicOrigin}/api/auth/${name}/callback`,
       startRedirectPath: `/api/auth/${name}`,
+      tags: [DOCS_TAGS.auth],
+      schema: {
+        tags: [DOCS_TAGS.auth],
+        summary: `Начать вход через ${name === 'google' ? 'Google' : 'Яндекс'}`,
+        description: 'Редирект на экран согласия провайдера.',
+        response: { 302: { description: 'Редирект к провайдеру', type: 'null' } },
+      },
       pkce: 'S256',
       cookie: { path: '/', httpOnly: true, sameSite: 'lax', secure: config.cookieSecure },
     });
@@ -90,7 +176,20 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
     if (!namespace) {
       throw new Error(`Провайдер ${name} не инициализирован`);
     }
-    app.get(`/api/auth/${name}/callback`, controller.createCallbackHandler(provider, namespace));
+    app.get(
+      `/api/auth/${name}/callback`,
+      {
+        schema: {
+          tags: [DOCS_TAGS.auth],
+          summary: `Возврат от ${name === 'google' ? 'Google' : 'Яндекса'}`,
+          description:
+            'Обменивает код на токен, заводит или обновляет пользователя, ' +
+            'выставляет куки сессии и возвращает браузер на фронт.',
+          response: { 302: { description: 'Редирект на фронт', type: 'null' } },
+        },
+      },
+      controller.createCallbackHandler(provider, namespace),
+    );
   }
 }
 

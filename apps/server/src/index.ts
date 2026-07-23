@@ -14,6 +14,7 @@ async function main(): Promise<void> {
         await pool.end();
       },
       auth: config.auth,
+      docsEnabled: config.docsEnabled,
     },
     { logger: true },
   );

@@ -1,10 +1,11 @@
-import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 
 import { authPlugin } from './auth';
 import type { AuthConfig } from './config';
 import type { Db } from './db';
+import { docsPlugin } from './http/docs.plugin';
 import { ErrorHandler } from './http/error-handler';
+import { healthPlugin } from './http/health.plugin';
 import { teamsPlugin } from './teams';
 
 declare module 'fastify' {
@@ -19,6 +20,8 @@ export interface AppDeps {
   closeDb?: () => Promise<void>;
   /** Без настроек аутентификации приложение поднимается без роутов /api/auth/* и /api/teams */
   auth?: AuthConfig;
+  /** Документация OpenAPI: включена везде, кроме продакшена */
+  docsEnabled?: boolean;
 }
 
 export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): FastifyInstance {
@@ -35,6 +38,14 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
   app.decorate('db', deps.db);
   new ErrorHandler().register(app);
 
+  // Swagger видит только роуты, зарегистрированные после него,
+  // поэтому документация подключается первой
+  if (deps.docsEnabled) {
+    void app.register(docsPlugin);
+  }
+
+  void app.register(healthPlugin);
+
   if (deps.auth) {
     void app.register(authPlugin, { auth: deps.auth });
     // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией
@@ -46,16 +57,6 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
       await deps.closeDb?.();
     });
   }
-
-  app.get('/health', async (_req, reply) => {
-    try {
-      await app.db.execute(sql`select 1`);
-    } catch (err) {
-      app.log.error(err, 'БД недоступна');
-      return reply.code(503).send({ status: 'degraded', db: 'down', uptime: process.uptime() });
-    }
-    return { status: 'ok', db: 'ok', uptime: process.uptime() };
-  });
 
   return app;
 }
