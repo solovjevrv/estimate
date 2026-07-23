@@ -4,3 +4,5 @@ packages:
 
 allowBuilds:
   esbuild: true
+  # Ставит правильную сборку под Vue 3 — тянется как зависимость Nuxt UI
+  vue-demi: true
