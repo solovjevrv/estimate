@@ -17,6 +17,7 @@ describe('профили OAuth-провайдеров', () => {
     const fetchMock = mockFetch({
       sub: '1234567890',
       email: 'user@gmail.com',
+      email_verified: true,
       name: 'Иван Иванов',
       picture: 'https://lh3.googleusercontent.com/a/photo',
     });
@@ -34,11 +35,32 @@ describe('профили OAuth-провайдеров', () => {
   });
 
   it('Google: без имени подставляет email, без картинки — null', async () => {
-    mockFetch({ sub: '42', email: 'user@gmail.com' });
+    mockFetch({ sub: '42', email: 'user@gmail.com', email_verified: true });
 
     const profile = await PROVIDER_DEFINITIONS.google.fetchProfile('token');
 
     expect(profile.name).toBe('user@gmail.com');
+    expect(profile.avatarUrl).toBeNull();
+  });
+
+  it('Google: неподтверждённый email отклоняется', async () => {
+    mockFetch({ sub: '42', email: 'user@gmail.com', email_verified: false });
+
+    await expect(PROVIDER_DEFINITIONS.google.fetchProfile('token')).rejects.toThrow(
+      /не подтверждён/,
+    );
+  });
+
+  it('аватар не по https не сохраняется', async () => {
+    mockFetch({
+      sub: '42',
+      email: 'user@gmail.com',
+      email_verified: true,
+      picture: 'javascript:alert(1)',
+    });
+
+    const profile = await PROVIDER_DEFINITIONS.google.fetchProfile('token');
+
     expect(profile.avatarUrl).toBeNull();
   });
 

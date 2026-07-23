@@ -6,10 +6,10 @@
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 import type { FastifyInstance } from 'fastify';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app';
 import { ACCESS_COOKIE, REFRESH_COOKIE, signSession, upsertOAuthUser } from '../src/auth';
@@ -139,6 +139,21 @@ describeDb('аутентификация', () => {
       expect(res.statusCode).toBe(401);
     });
 
+    it('при ошибке БД не отдаёт наружу текст запроса', async () => {
+      // sub не UUID — запрос к БД падает, ответ должен остаться обезличенным
+      const { access } = signSession(app.jwt, 'не-uuid');
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/me',
+        headers: { cookie: cookieHeader(ACCESS_COOKIE, access) },
+      });
+
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: 'internal', message: 'Внутренняя ошибка сервера' });
+      expect(res.body).not.toMatch(/select|users/i);
+    });
+
     it('для удалённого пользователя отвечает 401 и гасит куки', async () => {
       const user = await createUser({ providerId: `deleted-${suffix}` });
       const { access } = signSession(app.jwt, user.id);
@@ -227,5 +242,96 @@ describeDb('аутентификация', () => {
     const res = await app.inject({ method: 'GET', url: '/api/auth/yandex' });
 
     expect(res.statusCode).toBe(404);
+  });
+
+  describe('GET /api/auth/google/callback', () => {
+    afterEach(() => {
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    });
+
+    it('заводит пользователя, ставит куки сессии и возвращает на фронт', async () => {
+      const providerId = `callback-${suffix}`;
+      const oauth = app.googleOauth2;
+      if (!oauth) throw new Error('провайдер google не зарегистрирован');
+      vi.spyOn(oauth, 'getAccessTokenFromAuthorizationCodeFlow').mockResolvedValue({
+        token: { access_token: 'provider-token' },
+      } as never);
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => ({
+          ok: true,
+          status: 200,
+          json: async () => ({
+            sub: providerId,
+            email: `${providerId}@example.com`,
+            email_verified: true,
+            name: 'Из Колбэка',
+            picture: 'https://example.com/a.png',
+          }),
+        })),
+      );
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/auth/google/callback?code=code-1&state=state-1',
+      });
+
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/');
+      expect(res.cookies.find((c) => c.name === ACCESS_COOKIE)?.value).toBeTruthy();
+      expect(res.cookies.find((c) => c.name === REFRESH_COOKIE)?.value).toBeTruthy();
+
+      const [saved] = await db
+        .select()
+        .from(schema.users)
+        .where(and(eq(schema.users.provider, 'google'), eq(schema.users.providerId, providerId)));
+      expect(saved?.name).toBe('Из Колбэка');
+      if (saved) createdUserIds.push(saved.id);
+    });
+
+    it('при невалидном state сессия не выдаётся', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/auth/google/callback?code=code-1&state=подделка',
+      });
+
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login?error=oauth');
+      expect(res.cookies.find((c) => c.name === ACCESS_COOKIE)).toBeUndefined();
+    });
+
+    it('отказ пользователя на экране провайдера не выдаёт сессию', async () => {
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/auth/google/callback?error=access_denied',
+      });
+
+      expect(res.statusCode).toBe(302);
+      expect(res.headers.location).toBe('http://localhost:5173/login?error=oauth');
+      expect(res.cookies.find((c) => c.name === ACCESS_COOKIE)).toBeUndefined();
+    });
+  });
+
+  it('на https куки сессии уходят с флагом Secure', async () => {
+    const secureApp = buildApp({ db, auth: { ...authConfig, cookieSecure: true } });
+    await secureApp.ready();
+    try {
+      const user = await createUser({ providerId: `secure-${suffix}` });
+      const { refresh } = signSession(secureApp.jwt, user.id);
+
+      const res = await secureApp.inject({
+        method: 'POST',
+        url: '/api/auth/refresh',
+        headers: { cookie: cookieHeader(REFRESH_COOKIE, refresh) },
+      });
+
+      const access = res.cookies.find((c) => c.name === ACCESS_COOKIE);
+      expect(access?.secure).toBe(true);
+      expect(access?.path).toBe('/');
+      expect(res.headers['cache-control']).toBe('no-store');
+    } finally {
+      await secureApp.close();
+    }
   });
 });

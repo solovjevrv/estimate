@@ -34,7 +34,13 @@ export function attachSocketIo(app: FastifyInstance, corsOrigin: string): PokerS
 
   // Подключение гостей не запрещаем: вход в комнату по ссылке без входа — штатный сценарий
   io.use((socket, next) => {
-    socket.data.userId = readUserIdFromCookieHeader(app, socket.handshake.headers.cookie);
+    try {
+      socket.data.userId = readUserIdFromCookieHeader(app, socket.handshake.headers.cookie);
+    } catch (err) {
+      // Разбор куки сломался — подключаем как гостя, а не роняем соединение
+      app.log.warn({ err, socketId: socket.id }, 'Socket.io: не удалось разобрать куку сессии');
+      socket.data.userId = null;
+    }
     next();
   });
 

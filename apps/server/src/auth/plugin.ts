@@ -20,10 +20,11 @@ import { findUserById, upsertOAuthUser } from './users';
 
 declare module 'fastify' {
   interface FastifyInstance {
-    /** Настройки аутентификации (нужны сокет-мидлварам и роутам) */
-    authConfig: AuthConfig;
-    /** preHandler: пускает дальше только с валидной access-кукой */
-    authenticate: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
+    /**
+     * preHandler: пускает дальше только с валидной access-кукой.
+     * Опционален: приложение можно собрать и без настроек аутентификации.
+     */
+    authenticate?: (req: FastifyRequest, reply: FastifyReply) => Promise<void>;
     googleOauth2?: OAuth2Namespace;
     yandexOauth2?: OAuth2Namespace;
   }
@@ -38,21 +39,30 @@ function namespaceOf(provider: AuthProvider): 'googleOauth2' | 'yandexOauth2' {
   return `${provider}Oauth2`;
 }
 
+/** Таймаут запроса к token endpoint провайдера, мс */
+const TOKEN_REQUEST_TIMEOUT_MS = 5_000;
+
 async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Promise<void> {
   const config = opts.auth;
 
   await app.register(fastifyCookie);
   await app.register(fastifyJwt, { secret: config.jwtSecret });
 
-  app.decorate('authConfig', config);
-
-  app.decorate('authenticate', async (req: FastifyRequest, reply: FastifyReply) => {
+  const authenticate = async (req: FastifyRequest, reply: FastifyReply): Promise<void> => {
     const token = req.cookies[ACCESS_COOKIE];
     const userId = token ? verifySessionToken(app.jwt, token, 'access') : null;
     if (!userId) {
       return reply.code(401).send({ error: 'unauthorized', message: 'Требуется вход' });
     }
     req.user = { sub: userId, typ: 'access' };
+  };
+  app.decorate('authenticate', authenticate);
+
+  // Ответы про сессию не должны оседать в кэшах браузера и прокси
+  app.addHook('onSend', async (req, reply) => {
+    if (req.url.startsWith('/api/auth/') || req.url === '/api/me') {
+      reply.header('cache-control', 'no-store');
+    }
   });
 
   const enabledProviders = AUTH_PROVIDERS.filter((provider) => config.providers[provider]);
@@ -62,19 +72,15 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
 
   app.get('/api/auth/providers', async () => ({ providers: enabledProviders }));
 
-  app.get(
-    '/api/me',
-    { preHandler: (req, reply) => app.authenticate(req, reply) },
-    async (req, reply) => {
-      const user = await findUserById(app.db, req.user.sub);
-      if (!user) {
-        // Пользователя удалили, а кука осталась — гасим сессию
-        clearSessionCookies(reply, config.cookieSecure);
-        return reply.code(401).send({ error: 'unauthorized', message: 'Требуется вход' });
-      }
-      return { user };
-    },
-  );
+  app.get('/api/me', { preHandler: authenticate }, async (req, reply) => {
+    const user = await findUserById(app.db, req.user.sub);
+    if (!user) {
+      // Пользователя удалили, а кука осталась — гасим сессию
+      clearSessionCookies(reply, config.cookieSecure);
+      return reply.code(401).send({ error: 'unauthorized', message: 'Требуется вход' });
+    }
+    return { user };
+  });
 
   app.post('/api/auth/refresh', async (req, reply) => {
     const token = req.cookies[REFRESH_COOKIE];
@@ -84,7 +90,8 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
       clearSessionCookies(reply, config.cookieSecure);
       return reply.code(401).send({ error: 'unauthorized', message: 'Сессия истекла' });
     }
-    // Ротация: на каждый refresh выдаём новую пару токенов
+    // Выдаём новую пару токенов. Отзыва старого refresh пока нет: он остаётся
+    // валидным до конца TTL (список сессий в БД — задача 7.6)
     setSessionCookies(reply, signSession(app.jwt, user.id), config.cookieSecure);
     return { user };
   });
@@ -105,6 +112,8 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
       credentials: {
         client: { id: credentials.clientId, secret: credentials.clientSecret },
         auth: definition.configuration,
+        // Зависший token endpoint не должен держать обработчик бесконечно
+        http: { timeout: TOKEN_REQUEST_TIMEOUT_MS },
       },
       // Должен в точности совпадать с redirect URI, прописанным в кабинете провайдера
       callbackUri: `${config.publicOrigin}/api/auth/${provider}/callback`,
@@ -114,6 +123,13 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
     });
 
     app.get(`/api/auth/${provider}/callback`, async (req, reply) => {
+      // Пользователь мог просто нажать «Отмена» на экране провайдера — это не ошибка сервера
+      const providerError = (req.query as { error?: string } | undefined)?.error;
+      if (providerError) {
+        req.log.warn({ provider, providerError }, 'OAuth: провайдер отказал во входе');
+        return reply.redirect(`${config.webOrigin}/login?error=oauth`);
+      }
+
       try {
         const oauth = app[namespaceOf(provider)];
         if (!oauth) {

@@ -31,8 +31,12 @@ async function connectAndReadUserId(
   port: number,
   cookie?: string,
 ): Promise<string | null> {
-  const connected = new Promise<string | null>((resolve) => {
-    app.io.once('connection', (socket) => resolve(socket.data.userId));
+  const connected = new Promise<string | null>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('сокет не подключился за 3 секунды')), 3_000);
+    app.io.once('connection', (socket) => {
+      clearTimeout(timer);
+      resolve(socket.data.userId);
+    });
   });
   const client = createClient(`http://127.0.0.1:${port}`, {
     transports: ['websocket'],

@@ -1,5 +1,9 @@
 import { sql } from 'drizzle-orm';
-import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
+import Fastify, {
+  type FastifyError,
+  type FastifyInstance,
+  type FastifyServerOptions,
+} from 'fastify';
 
 import { authPlugin } from './auth';
 import type { AuthConfig } from './config';
@@ -26,6 +30,18 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
   if (deps.auth) {
     void app.register(authPlugin, { auth: deps.auth });
   }
+
+  // Наружу не должно уезжать ничего внутреннего: текст SQL, параметры запроса,
+  // адрес БД. Клиент получает обезличенный ответ, подробности остаются в логах.
+  app.setErrorHandler((err: FastifyError, req, reply) => {
+    const status = err.statusCode ?? 500;
+    if (status >= 500) {
+      req.log.error({ err }, 'Необработанная ошибка запроса');
+      return reply.code(status).send({ error: 'internal', message: 'Внутренняя ошибка сервера' });
+    }
+    req.log.warn({ err }, 'Запрос отклонён');
+    return reply.code(status).send({ error: err.code ?? 'bad_request', message: err.message });
+  });
   if (deps.closeDb) {
     app.addHook('onClose', async () => {
       await deps.closeDb?.();

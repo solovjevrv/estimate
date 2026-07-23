@@ -51,6 +51,16 @@ function optionalString(data: Record<string, unknown>, field: string): string | 
   return typeof value === 'string' && value.length > 0 ? value : undefined;
 }
 
+/** Ссылку на аватар показываем в UI, поэтому принимаем только https */
+function safeAvatarUrl(value: string | undefined): string | null {
+  if (!value) return null;
+  try {
+    return new URL(value).protocol === 'https:' ? value : null;
+  } catch {
+    return null;
+  }
+}
+
 export const PROVIDER_DEFINITIONS: Record<AuthProvider, ProviderDefinition> = {
   google: {
     configuration: fastifyOauth2.GOOGLE_CONFIGURATION,
@@ -62,11 +72,15 @@ export const PROVIDER_DEFINITIONS: Record<AuthProvider, ProviderDefinition> = {
         `Bearer ${accessToken}`,
       );
       const email = requireString('google', data, 'email');
+      // Неподтверждённой почте доверять нельзя: дальше по ней зовут в команды
+      if (data.email_verified !== true) {
+        throw new Error('Google: email не подтверждён');
+      }
       return {
         providerId: requireString('google', data, 'sub'),
         email,
         name: optionalString(data, 'name') ?? email,
-        avatarUrl: optionalString(data, 'picture') ?? null,
+        avatarUrl: safeAvatarUrl(optionalString(data, 'picture')),
       };
     },
   },
@@ -87,7 +101,7 @@ export const PROVIDER_DEFINITIONS: Record<AuthProvider, ProviderDefinition> = {
         name: optionalString(data, 'real_name') ?? optionalString(data, 'display_name') ?? email,
         avatarUrl:
           avatarId && data.is_avatar_empty !== true
-            ? `https://avatars.yandex.net/get-yapic/${avatarId}/islands-200`
+            ? `https://avatars.yandex.net/get-yapic/${encodeURIComponent(avatarId)}/islands-200`
             : null,
       };
     },
