@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+apps/web/auto-imports.d.ts
+apps/web/components.d.ts
 pnpm-lock.yaml
 claude.md
 CLAUDE.md
