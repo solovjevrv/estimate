@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { FIBONACCI_DECK, SCALE_0_5_DECK, WS_EVENTS } from '../src/index';
+import { FIBONACCI_DECK, SCALE_0_5_DECK, TEAM_ROLES, WS_EVENTS, hasTeamRole } from '../src/index';
 
 describe('контракты WS-событий', () => {
   it('содержат все события из скоупа Epic 2', () => {
@@ -13,6 +13,30 @@ describe('контракты WS-событий', () => {
         'update_links',
       ]),
     );
+  });
+});
+
+describe('ролевая модель команды', () => {
+  it('роли перечислены от старшей к младшей', () => {
+    expect(TEAM_ROLES).toEqual(['owner', 'admin', 'member', 'guest']);
+  });
+
+  it('старшая роль подходит там, где требуется младшая', () => {
+    expect(hasTeamRole('owner', 'admin')).toBe(true);
+    expect(hasTeamRole('admin', 'member')).toBe(true);
+    expect(hasTeamRole('member', 'guest')).toBe(true);
+  });
+
+  it('младшая роль не подходит там, где требуется старшая', () => {
+    expect(hasTeamRole('admin', 'owner')).toBe(false);
+    expect(hasTeamRole('member', 'admin')).toBe(false);
+    expect(hasTeamRole('guest', 'member')).toBe(false);
+  });
+
+  it('роль всегда достаточна сама для себя', () => {
+    for (const role of TEAM_ROLES) {
+      expect(hasTeamRole(role, role)).toBe(true);
+    }
   });
 });
 
