@@ -36,5 +36,12 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
+          set -o pipefail
           ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=10 \
-            "$SSH_USER@$SSH_HOST" 'bash -s' < scripts/deploy.sh
+            "$SSH_USER@$SSH_HOST" 'bash -s' < scripts/deploy.sh | tee deploy.log
+          # Скрипт идёт по stdin: если его кто-то дочитает за нас, bash выйдет с нулём
+          # на середине. Верим только явной отметке из последней строки скрипта
+          if ! grep -q 'Деплой успешен' deploy.log; then
+            echo 'ОШИБКА: скрипт деплоя не дошёл до конца'
+            exit 1
+          fi
