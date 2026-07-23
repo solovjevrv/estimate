@@ -11,7 +11,7 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app';
-import { ACCESS_COOKIE, REFRESH_COOKIE, signSession, upsertOAuthUser } from '../src/auth';
+import { ACCESS_COOKIE, REFRESH_COOKIE, TokenService, UsersRepository } from '../src/auth';
 import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
 
@@ -32,6 +32,11 @@ const authConfig: AuthConfig = {
   // Ключи ненастоящие: до сети дело не доходит, проверяется только редирект на провайдера
   providers: { google: { clientId: 'test-client-id', clientSecret: 'test-client-secret' } },
 };
+
+/** Пара токенов для указанного экземпляра приложения */
+function issue(instance: FastifyInstance, userId: string): { access: string; refresh: string } {
+  return new TokenService(instance.jwt, false).issue(userId);
+}
 
 function cookieHeader(name: string, value: string): string {
   return `${name}=${encodeURIComponent(value)}`;
@@ -63,7 +68,7 @@ describeDb('аутентификация', () => {
   });
 
   async function createUser(overrides: Partial<{ providerId: string; email: string }> = {}) {
-    const user = await upsertOAuthUser(db, 'google', {
+    const user = await new UsersRepository(db).upsertFromOAuth('google', {
       providerId: overrides.providerId ?? `google-${suffix}`,
       email: overrides.email ?? `user-${suffix}@example.com`,
       name: 'Тестовый Пользователь',
@@ -77,7 +82,7 @@ describeDb('аутентификация', () => {
     it('создаёт пользователя при первом входе и обновляет профиль при повторном', async () => {
       const first = await createUser();
 
-      const second = await upsertOAuthUser(db, 'google', {
+      const second = await new UsersRepository(db).upsertFromOAuth('google', {
         providerId: `google-${suffix}`,
         email: `user-${suffix}@example.com`,
         name: 'Новое Имя',
@@ -92,7 +97,7 @@ describeDb('аутентификация', () => {
     it('одинаковый email у разных провайдеров даёт разных пользователей', async () => {
       const email = `same-${suffix}@example.com`;
       const google = await createUser({ providerId: `g-${suffix}`, email });
-      const yandex = await upsertOAuthUser(db, 'yandex', {
+      const yandex = await new UsersRepository(db).upsertFromOAuth('yandex', {
         providerId: `y-${suffix}`,
         email,
         name: 'Тот же человек',
@@ -113,7 +118,7 @@ describeDb('аутентификация', () => {
 
     it('с access-кукой отдаёт профиль', async () => {
       const user = await createUser({ providerId: `me-${suffix}` });
-      const { access } = signSession(app.jwt, user.id);
+      const { access } = issue(app, user.id);
 
       const res = await app.inject({
         method: 'GET',
@@ -127,7 +132,7 @@ describeDb('аутентификация', () => {
 
     it('refresh-токен не подходит для доступа к API', async () => {
       const user = await createUser({ providerId: `wrong-type-${suffix}` });
-      const { refresh } = signSession(app.jwt, user.id);
+      const { refresh } = issue(app, user.id);
 
       const res = await app.inject({
         method: 'GET',
@@ -140,7 +145,7 @@ describeDb('аутентификация', () => {
 
     it('при ошибке БД не отдаёт наружу текст запроса', async () => {
       // sub не UUID — запрос к БД падает, ответ должен остаться обезличенным
-      const { access } = signSession(app.jwt, 'не-uuid');
+      const { access } = issue(app, 'не-uuid');
 
       const res = await app.inject({
         method: 'GET',
@@ -155,7 +160,7 @@ describeDb('аутентификация', () => {
 
     it('для удалённого пользователя отвечает 401 и гасит куки', async () => {
       const user = await createUser({ providerId: `deleted-${suffix}` });
-      const { access } = signSession(app.jwt, user.id);
+      const { access } = issue(app, user.id);
       await db.delete(schema.users).where(eq(schema.users.id, user.id));
 
       const res = await app.inject({
@@ -172,7 +177,7 @@ describeDb('аутентификация', () => {
   describe('POST /api/auth/refresh', () => {
     it('выдаёт новую пару токенов по refresh-куке', async () => {
       const user = await createUser({ providerId: `refresh-${suffix}` });
-      const { refresh } = signSession(app.jwt, user.id);
+      const { refresh } = issue(app, user.id);
 
       const res = await app.inject({
         method: 'POST',
@@ -197,7 +202,7 @@ describeDb('аутентификация', () => {
 
     it('access-токен вместо refresh отклоняется', async () => {
       const user = await createUser({ providerId: `refresh-wrong-${suffix}` });
-      const { access } = signSession(app.jwt, user.id);
+      const { access } = issue(app, user.id);
 
       const res = await app.inject({
         method: 'POST',
@@ -317,7 +322,7 @@ describeDb('аутентификация', () => {
     await secureApp.ready();
     try {
       const user = await createUser({ providerId: `secure-${suffix}` });
-      const { refresh } = signSession(secureApp.jwt, user.id);
+      const { refresh } = issue(secureApp, user.id);
 
       const res = await secureApp.inject({
         method: 'POST',

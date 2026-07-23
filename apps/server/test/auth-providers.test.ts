@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { PROVIDER_DEFINITIONS } from '../src/auth';
+import { OAUTH_PROVIDERS } from '../src/auth';
 
 function mockFetch(body: unknown, ok = true, status = 200): ReturnType<typeof vi.fn> {
   const fetchMock = vi.fn(async () => ({ ok, status, json: async () => body }));
@@ -22,7 +22,7 @@ describe('профили OAuth-провайдеров', () => {
       picture: 'https://lh3.googleusercontent.com/a/photo',
     });
 
-    const profile = await PROVIDER_DEFINITIONS.google.fetchProfile('token-abc');
+    const profile = await OAUTH_PROVIDERS.google.fetchProfile('token-abc');
 
     expect(profile).toEqual({
       providerId: '1234567890',
@@ -37,7 +37,7 @@ describe('профили OAuth-провайдеров', () => {
   it('Google: без имени подставляет email, без картинки — null', async () => {
     mockFetch({ sub: '42', email: 'user@gmail.com', email_verified: true });
 
-    const profile = await PROVIDER_DEFINITIONS.google.fetchProfile('token');
+    const profile = await OAUTH_PROVIDERS.google.fetchProfile('token');
 
     expect(profile.name).toBe('user@gmail.com');
     expect(profile.avatarUrl).toBeNull();
@@ -46,9 +46,7 @@ describe('профили OAuth-провайдеров', () => {
   it('Google: неподтверждённый email отклоняется', async () => {
     mockFetch({ sub: '42', email: 'user@gmail.com', email_verified: false });
 
-    await expect(PROVIDER_DEFINITIONS.google.fetchProfile('token')).rejects.toThrow(
-      /не подтверждён/,
-    );
+    await expect(OAUTH_PROVIDERS.google.fetchProfile('token')).rejects.toThrow(/не подтверждён/);
   });
 
   it('аватар не по https не сохраняется', async () => {
@@ -59,7 +57,7 @@ describe('профили OAuth-провайдеров', () => {
       picture: 'javascript:alert(1)',
     });
 
-    const profile = await PROVIDER_DEFINITIONS.google.fetchProfile('token');
+    const profile = await OAUTH_PROVIDERS.google.fetchProfile('token');
 
     expect(profile.avatarUrl).toBeNull();
   });
@@ -73,7 +71,7 @@ describe('профили OAuth-провайдеров', () => {
       is_avatar_empty: false,
     });
 
-    const profile = await PROVIDER_DEFINITIONS.yandex.fetchProfile('token-xyz');
+    const profile = await OAUTH_PROVIDERS.yandex.fetchProfile('token-xyz');
 
     expect(profile).toEqual({
       providerId: '987',
@@ -94,7 +92,7 @@ describe('профили OAuth-провайдеров', () => {
       is_avatar_empty: true,
     });
 
-    const profile = await PROVIDER_DEFINITIONS.yandex.fetchProfile('token');
+    const profile = await OAUTH_PROVIDERS.yandex.fetchProfile('token');
 
     expect(profile.avatarUrl).toBeNull();
     expect(profile.name).toBe('Пётр');
@@ -103,12 +101,12 @@ describe('профили OAuth-провайдеров', () => {
   it('ошибка провайдера превращается в исключение', async () => {
     mockFetch({}, false, 401);
 
-    await expect(PROVIDER_DEFINITIONS.google.fetchProfile('bad')).rejects.toThrow(/401/);
+    await expect(OAUTH_PROVIDERS.google.fetchProfile('bad')).rejects.toThrow(/401/);
   });
 
   it('профиль без обязательных полей отклоняется', async () => {
     mockFetch({ sub: '1' });
 
-    await expect(PROVIDER_DEFINITIONS.google.fetchProfile('token')).rejects.toThrow(/email/);
+    await expect(OAUTH_PROVIDERS.google.fetchProfile('token')).rejects.toThrow(/email/);
   });
 });

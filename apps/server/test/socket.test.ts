@@ -5,10 +5,10 @@ import { io as createClient } from 'socket.io-client';
 import { describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app';
-import { ACCESS_COOKIE, signSession } from '../src/auth';
+import { ACCESS_COOKIE, TokenService } from '../src/auth';
 import type { AuthConfig } from '../src/config';
 import type { Db } from '../src/db';
-import { attachSocketIo } from '../src/socket';
+import { SocketGateway } from '../src/socket';
 
 const authConfig: AuthConfig = {
   jwtSecret: 'секрет-для-тестов-длиннее-тридцати-двух-символов',
@@ -20,7 +20,7 @@ const authConfig: AuthConfig = {
 
 async function startApp(auth?: AuthConfig): Promise<{ app: FastifyInstance; port: number }> {
   const app = buildApp({ db: { execute: vi.fn() } as unknown as Db, auth });
-  attachSocketIo(app, '*');
+  new SocketGateway('*').attach(app);
   await app.listen({ port: 0, host: '127.0.0.1' });
   return { app, port: (app.server.address() as AddressInfo).port };
 }
@@ -70,7 +70,7 @@ describe('Socket.io', () => {
   it('опознаёт пользователя по access-куке', async () => {
     const { app, port } = await startApp(authConfig);
     try {
-      const { access } = signSession(app.jwt, 'user-42');
+      const { access } = new TokenService(app.jwt, false).issue('user-42');
 
       const userId = await connectAndReadUserId(app, port, `${ACCESS_COOKIE}=${access}`);
 

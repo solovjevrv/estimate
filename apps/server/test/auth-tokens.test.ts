@@ -1,18 +1,25 @@
 import fastifyJwt from '@fastify/jwt';
-import Fastify from 'fastify';
+import Fastify, { type FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { signSession, verifySessionToken } from '../src/auth';
+import { TokenService } from '../src/auth';
 
 const SECRET = 'секрет-для-тестов-длиннее-тридцати-двух-символов';
 
-describe('токены сессии', () => {
-  let app: ReturnType<typeof Fastify>;
+async function jwtApp(secret: string): Promise<FastifyInstance> {
+  const app = Fastify();
+  await app.register(fastifyJwt, { secret });
+  await app.ready();
+  return app;
+}
+
+describe('TokenService', () => {
+  let app: FastifyInstance;
+  let tokens: TokenService;
 
   beforeAll(async () => {
-    app = Fastify();
-    await app.register(fastifyJwt, { secret: SECRET });
-    await app.ready();
+    app = await jwtApp(SECRET);
+    tokens = new TokenService(app.jwt, false);
   });
 
   afterAll(async () => {
@@ -20,26 +27,24 @@ describe('токены сессии', () => {
   });
 
   it('access-токен проверяется и отдаёт id пользователя', () => {
-    const { access } = signSession(app.jwt, 'user-1');
+    const { access } = tokens.issue('user-1');
 
-    expect(verifySessionToken(app.jwt, access, 'access')).toBe('user-1');
+    expect(tokens.verify(access, 'access')).toBe('user-1');
   });
 
   it('access-токен не принимается вместо refresh (и наоборот)', () => {
-    const { access, refresh } = signSession(app.jwt, 'user-1');
+    const { access, refresh } = tokens.issue('user-1');
 
-    expect(verifySessionToken(app.jwt, access, 'refresh')).toBeNull();
-    expect(verifySessionToken(app.jwt, refresh, 'access')).toBeNull();
+    expect(tokens.verify(access, 'refresh')).toBeNull();
+    expect(tokens.verify(refresh, 'access')).toBeNull();
   });
 
   it('токен с чужой подписью отклоняется', async () => {
-    const other = Fastify();
-    await other.register(fastifyJwt, { secret: `${SECRET}-другой` });
-    await other.ready();
+    const other = await jwtApp(`${SECRET}-другой`);
     try {
-      const { access } = signSession(other.jwt, 'user-1');
+      const { access } = new TokenService(other.jwt, false).issue('user-1');
 
-      expect(verifySessionToken(app.jwt, access, 'access')).toBeNull();
+      expect(tokens.verify(access, 'access')).toBeNull();
     } finally {
       await other.close();
     }
@@ -48,10 +53,18 @@ describe('токены сессии', () => {
   it('истёкший токен отклоняется', () => {
     const expired = app.jwt.sign({ sub: 'user-1', typ: 'access' }, { expiresIn: -1 });
 
-    expect(verifySessionToken(app.jwt, expired, 'access')).toBeNull();
+    expect(tokens.verify(expired, 'access')).toBeNull();
   });
 
   it('мусор вместо токена отклоняется без исключения', () => {
-    expect(verifySessionToken(app.jwt, 'не-токен', 'access')).toBeNull();
+    expect(tokens.verify('не-токен', 'access')).toBeNull();
+  });
+
+  it('читает пользователя из заголовка Cookie и не верит подделке', () => {
+    const { access } = tokens.issue('user-7');
+
+    expect(tokens.readUserIdFromCookieHeader(`pp_access=${access}`)).toBe('user-7');
+    expect(tokens.readUserIdFromCookieHeader('pp_access=forged.jwt.value')).toBeNull();
+    expect(tokens.readUserIdFromCookieHeader(undefined)).toBeNull();
   });
 });
