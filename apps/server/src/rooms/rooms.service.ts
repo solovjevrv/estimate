@@ -5,6 +5,7 @@ import {
   type Room,
   type RoomRole,
   type RoomState,
+  type RevealCardsPayload,
   type Round,
   type RoundResult,
   type DeckType,
@@ -250,7 +251,7 @@ export class RoomsService {
     identity: ParticipantIdentity,
     payload: SubmitVotePayload,
   ): Promise<void> {
-    const value = payload?.value as number;
+    const value = payload.value;
 
     await this.inRoom(roomId, async (repo) => {
       const round = await repo.findCurrentRound(roomId);
@@ -259,7 +260,7 @@ export class RoomsService {
       }
       // Клиент говорит, за какой раунд голосует: пока оценка ждала очереди,
       // скрам-мастер мог начать следующую задачу
-      if (payload?.roundId != null && payload.roundId !== round.id) {
+      if (payload.roundId != null && payload.roundId !== round.id) {
         throw new ConflictError('Раунд уже сменился, посмотрите новую задачу');
       }
       if (round.status !== 'voting') {
@@ -276,11 +277,16 @@ export class RoomsService {
       } catch (err) {
         this.rethrowVoteFailure(err);
       }
+      await repo.bumpRevision(roomId);
     });
   }
 
   /** Вскрытие карт: считаем средний балл и фиксируем его в раунде */
-  async revealCards(roomId: string, identity: ParticipantIdentity): Promise<RoundResult> {
+  async revealCards(
+    roomId: string,
+    identity: ParticipantIdentity,
+    payload: RevealCardsPayload = {},
+  ): Promise<RoundResult> {
     return this.inRoom(roomId, async (repo, room, teams) => {
       await this.assertScrumMaster(
         room,
@@ -291,6 +297,11 @@ export class RoomsService {
       const round = await repo.findCurrentRound(roomId);
       if (!round) {
         throw new ConflictError('В комнате ещё нет раунда');
+      }
+      // Пока команда ждала очереди, скрам-мастер мог начать следующую задачу —
+      // её карты вскрывать рано
+      if (payload.roundId != null && payload.roundId !== round.id) {
+        throw new ConflictError('Раунд уже сменился, вскрывать нужно новую задачу');
       }
 
       const votes = await repo.listVotes(round.id);
@@ -304,6 +315,7 @@ export class RoomsService {
 
       const result = this.summarize(votes);
       await repo.markRevealed(round.id, result.average);
+      await repo.bumpRevision(roomId);
       return result;
     });
   }
@@ -335,13 +347,15 @@ export class RoomsService {
         return current;
       }
 
-      return repo.insertRound({
+      const started = await repo.insertRound({
         roomId,
         seq: (current?.seq ?? 0) + 1,
         deckType,
         jiraUrl,
         confluenceUrl,
       });
+      await repo.bumpRevision(roomId);
+      return started;
     });
   }
 
@@ -376,6 +390,7 @@ export class RoomsService {
       if (!updated) {
         throw new ConflictError('Ссылки уже изменил другой участник, проверьте новые значения');
       }
+      await repo.bumpRevision(roomId);
       return updated;
     });
   }
@@ -402,9 +417,7 @@ export class RoomsService {
       if (room.status === 'closed') {
         throw new ConflictError('Комната закрыта');
       }
-      const result = await action(repo, room, new TeamsRepository(tx));
-      await repo.bumpRevision(roomId);
-      return result;
+      return action(repo, room, new TeamsRepository(tx));
     });
   }
 
@@ -431,7 +444,7 @@ export class RoomsService {
     room: Room,
     identity: ParticipantIdentity,
     message: string,
-    teams: TeamsRepository = this.teams,
+    teams: TeamsRepository,
   ): Promise<void> {
     if ((await this.resolveRole(room, identity.userId, teams)) !== 'scrum_master') {
       throw new ForbiddenError(message);

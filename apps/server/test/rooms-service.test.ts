@@ -289,6 +289,20 @@ describe('RoomsService: права на управление раундом', ()
     expect(insertRound).not.toHaveBeenCalled();
   });
 
+  it('вскрытие чужой задачи отклоняется', async () => {
+    const markRevealed = vi.fn(async () => ROUND);
+    const service = serviceWith({
+      ...tableRepo,
+      listVotes: async () => [{ participantId: 'user-voter', name: 'Кто-то', value: 3 }],
+      markRevealed,
+    });
+
+    await expect(
+      service.revealCards(ROOM.id, MASTER, { roundId: randomUUID() }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(markRevealed).not.toHaveBeenCalled();
+  });
+
   it('первый раунд начинается с fromRoundId: null', async () => {
     const insertRound = vi.fn(async () => ROUND);
     const service = serviceWith({
@@ -423,7 +437,7 @@ describe('RoomsService: ссылки на задачу', () => {
 
     await service.updateLinks(ROOM.id, {
       jiraUrl: 'https://jira.example.com/TASK-1',
-      version: null as unknown as number,
+      version: null,
     });
 
     expect(updateRoundLinks).toHaveBeenCalledWith(

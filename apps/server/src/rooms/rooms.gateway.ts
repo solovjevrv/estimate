@@ -3,6 +3,7 @@ import {
   WS_SERVER_EVENTS,
   type JoinRoomPayload,
   type JoinRoomResult,
+  type RevealCardsPayload,
   type Round,
   type RoundResult,
   type StartRoundPayload,
@@ -34,6 +35,9 @@ const NO_OP_ACK: Ack<unknown> = () => {};
  * присылает только намерение, роль и состояние берутся с сервера.
  */
 export class RoomsGateway {
+  /** Незавершённые рассылки по комнатам: по одной очереди на комнату */
+  private readonly broadcasts = new Map<string, Promise<void>>();
+
   constructor(
     private readonly service: RoomsService,
     private readonly presence = new RoomPresence(),
@@ -57,10 +61,10 @@ export class RoomsGateway {
       });
 
       socket.on(WS_EVENTS.REVEAL_CARDS, (...args: unknown[]) => {
-        const { ack } = this.readArgs<never>(args);
+        const { payload, ack } = this.readArgs<RevealCardsPayload>(args);
         this.run<RoundResult>(socket, log, ack, async () => {
           const { roomId, identity } = this.requireSeat(socket);
-          const result = await this.service.revealCards(roomId, identity);
+          const result = await this.service.revealCards(roomId, identity, payload ?? {});
           await this.broadcastState(io, roomId);
           return result;
         });
@@ -148,9 +152,29 @@ export class RoomsGateway {
     return { roomId, identity };
   }
 
+  /**
+   * Рассылки одной комнаты идут строго друг за другом. Иначе два снимка,
+   * собранные одновременно, могут уйти в обратном порядке — и ушедший участник
+   * останется на экране до следующего действия за столом.
+   */
   private async broadcastState(io: PokerServer, roomId: string): Promise<void> {
-    const state = await this.service.getState(roomId, this.presence.list(roomId));
-    io.to(roomId).emit(WS_SERVER_EVENTS.ROOM_STATE, state);
+    const previous = this.broadcasts.get(roomId) ?? Promise.resolve();
+    const send = previous.then(async () => {
+      const state = await this.service.getState(roomId, this.presence.list(roomId));
+      io.to(roomId).emit(WS_SERVER_EVENTS.ROOM_STATE, state);
+    });
+    // В очереди ждёт завершение рассылки: сбой одной не должен обрывать следующие
+    const tail = send.catch(() => {});
+    this.broadcasts.set(roomId, tail);
+
+    try {
+      await send;
+    } finally {
+      // Очередь опустела — убираем за собой, чтобы карта не росла с числом комнат
+      if (this.broadcasts.get(roomId) === tail) {
+        this.broadcasts.delete(roomId);
+      }
+    }
   }
 
   /** Подтверждение и полезная нагрузка могут прийти в любом сочетании — разбираем аккуратно */

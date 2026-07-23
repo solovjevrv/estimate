@@ -761,6 +761,25 @@ describeDb('комнаты', () => {
       expect(afterVote).toBeGreaterThan(afterRound);
     });
 
+    it('холостые действия не двигают номер изменения', async () => {
+      const owner = await newUser('race-noop-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+      const started = await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+
+      const before = (await service.getState(roomId, [])).room.revision;
+      await service.updateLinks(roomId, {});
+      await service.startNewRound(roomId, master, {
+        deckType: 'fibonacci',
+        fromRoundId: randomUUID(),
+      });
+      const after = (await service.getState(roomId, [])).room.revision;
+
+      expect(after).toBe(before);
+      // Повторный старт вернул текущий раунд, а не создал новый
+      expect((await service.getState(roomId, [])).round?.id).toBe(started.id);
+    });
+
     it('правка без версии остаётся прежней: побеждает последний', async () => {
       const owner = await newUser('race-links-legacy-owner');
       const roomId = await newRoom(owner);
