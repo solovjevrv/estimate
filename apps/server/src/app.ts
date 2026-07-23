@@ -1,9 +1,9 @@
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
+import fp from 'fastify-plugin';
 
 import { authPlugin } from './auth';
 import type { AuthConfig } from './config';
 import type { Db } from './db';
-import { docsPlugin } from './http/docs.plugin';
 import { ErrorHandler } from './http/error-handler';
 import { healthPlugin } from './http/health.plugin';
 import { teamsPlugin } from './teams';
@@ -38,10 +38,24 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
   app.decorate('db', deps.db);
   new ErrorHandler().register(app);
 
-  // Swagger видит только роуты, зарегистрированные после него,
-  // поэтому документация подключается первой
+  // Swagger видит только роуты, зарегистрированные после него, поэтому
+  // документация подключается первой. Импорт динамический: на проде она
+  // выключена, и страница Scalar (почти 4 МБ) не должна попадать в память.
   if (deps.docsEnabled) {
-    void app.register(docsPlugin);
+    void app.register(
+      fp(
+        async (instance) => {
+          try {
+            const { docsPlugin } = await import('./http/docs.plugin');
+            await instance.register(docsPlugin);
+          } catch (err) {
+            // В прод-образе пакетов документации нет — это не повод падать
+            instance.log.warn({ err }, 'Документация API недоступна в этой сборке');
+          }
+        },
+        { name: 'poker-docs-loader' },
+      ),
+    );
   }
 
   void app.register(healthPlugin);

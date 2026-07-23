@@ -2,7 +2,7 @@ import { TEAM_ROLES } from '@poker/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
-import { DOCS_TAGS, errorResponse } from '../http/docs.plugin';
+import { DOCS_TAGS, errorResponse } from '../http/openapi';
 
 import type {
   InviteParams,
@@ -181,6 +181,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
             properties: { team: teamResponse },
           },
           400: { description: 'Название пустое или слишком длинное', ...errorResponse },
+          401: { description: 'Требуется вход', ...errorResponse },
           403: { description: 'Недостаточно прав', ...errorResponse },
           404: { description: 'Команда не найдена', ...errorResponse },
         },
@@ -202,6 +203,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         params: teamIdParams,
         response: {
           204: { description: 'Команда удалена', type: 'null' },
+          401: { description: 'Требуется вход', ...errorResponse },
           403: { description: 'Недостаточно прав', ...errorResponse },
           404: { description: 'Команда не найдена', ...errorResponse },
         },
@@ -258,6 +260,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
               actorRole: { type: 'string' },
             },
           },
+          401: { description: 'Требуется вход', ...errorResponse },
           403: { description: 'Недостаточно прав', ...errorResponse },
           404: { description: 'Команда или участник не найдены', ...errorResponse },
           409: { description: 'Единственный владелец не может понизить себя', ...errorResponse },
@@ -280,6 +283,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         params: memberParams,
         response: {
           204: { description: 'Участник исключён', type: 'null' },
+          401: { description: 'Требуется вход', ...errorResponse },
           403: { description: 'Недостаточно прав', ...errorResponse },
           404: { description: 'Команда или участник не найдены', ...errorResponse },
           409: { description: 'Владелец не может выйти, не передав команду', ...errorResponse },
@@ -305,6 +309,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
             type: 'object',
             properties: { inviteCode: { type: 'string' } },
           },
+          401: { description: 'Требуется вход', ...errorResponse },
           403: { description: 'Недостаточно прав', ...errorResponse },
           404: { description: 'Команда не найдена', ...errorResponse },
         },

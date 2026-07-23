@@ -5,25 +5,7 @@ import fp from 'fastify-plugin';
 
 import { ACCESS_COOKIE } from '../auth';
 
-/** Путь, по которому открывается интерактивная документация */
-export const DOCS_PATH = '/api/docs';
-/** Путь к самой спецификации OpenAPI */
-export const OPENAPI_PATH = '/api/openapi.json';
-
-export const DOCS_TAGS = {
-  service: 'Служебные',
-  auth: 'Аутентификация',
-  teams: 'Команды',
-} as const;
-
-/** Общий формат ошибки: на него ссылаются схемы ответов */
-export const errorResponse = {
-  type: 'object',
-  properties: {
-    error: { type: 'string', description: 'Машиночитаемый код ошибки' },
-    message: { type: 'string', description: 'Сообщение для пользователя' },
-  },
-} as const;
+import { DOCS_PATH, DOCS_TAGS, OPENAPI_PATH } from './openapi';
 
 async function docsPluginImpl(app: FastifyInstance): Promise<void> {
   await app.register(fastifySwagger, {
@@ -49,6 +31,12 @@ async function docsPluginImpl(app: FastifyInstance): Promise<void> {
             name: ACCESS_COOKIE,
             description: 'Access-токен сессии, выставляется после входа через OAuth',
           },
+          refresh: {
+            type: 'apiKey',
+            in: 'cookie',
+            name: 'pp_refresh',
+            description: 'Refresh-токен, используется только эндпоинтом продления сессии',
+          },
         },
       },
     },
@@ -63,7 +51,7 @@ async function docsPluginImpl(app: FastifyInstance): Promise<void> {
 }
 
 /**
- * Документация API. Включается только вне продакшена: на проде карта
- * эндпоинтов наружу не отдаётся.
+ * Документация API. Модуль подключается динамически: на проде документация
+ * выключена, и тяжёлая страница Scalar не должна попадать в память процесса.
  */
 export const docsPlugin = fp(docsPluginImpl, { name: 'poker-docs' });

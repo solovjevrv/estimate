@@ -2,7 +2,7 @@ import { sql } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
-import { DOCS_TAGS } from './docs.plugin';
+import { DOCS_TAGS } from './openapi';
 
 const healthResponse = {
   type: 'object',

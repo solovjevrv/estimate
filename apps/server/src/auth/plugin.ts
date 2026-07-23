@@ -6,7 +6,7 @@ import type { FastifyInstance, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 
 import type { AuthConfig } from '../config';
-import { DOCS_TAGS, errorResponse } from '../http/docs.plugin';
+import { DOCS_TAGS, errorResponse } from '../http/openapi';
 
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -118,6 +118,7 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
         tags: [DOCS_TAGS.auth],
         summary: 'Продлить сессию',
         description: 'Обменивает refresh-куку на новую пару токенов и обновляет обе куки.',
+        security: [{ refresh: [] }],
         response: {
           200: {
             description: 'Сессия продлена',
