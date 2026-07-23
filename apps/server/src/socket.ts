@@ -33,8 +33,9 @@ export function attachSocketIo(app: FastifyInstance, corsOrigin: string): Server
   });
 
   app.decorate('io', io);
-  app.addHook('onClose', async () => {
-    // Всегда резолвим: http-сервер к этому моменту может быть уже закрыт Fastify
+  // preClose: закрываем io до остановки http-сервера, чтобы клиенты получили
+  // корректный disconnect-пакет, а не обрыв TCP
+  app.addHook('preClose', async () => {
     await new Promise<void>((resolve) => {
       void io.close(() => resolve());
     });

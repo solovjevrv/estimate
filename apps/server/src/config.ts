@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+
 export interface Config {
   port: number;
   host: string;
@@ -6,14 +9,25 @@ export interface Config {
   webOrigin: string;
 }
 
-export function loadConfig(): Config {
-  // Локальная разработка: переменные из .env в корне монорепы.
-  // Уже заданные переменные окружения имеют приоритет (loadEnvFile их не перезаписывает).
-  try {
-    process.loadEnvFile('../../.env');
-  } catch {
-    // .env отсутствует (контейнер, CI) — переменные приходят из окружения
+/**
+ * Локальная разработка: ищем .env вверх от cwd (корень монорепы или apps/server).
+ * В контейнере/CI файла нет — переменные приходят из окружения.
+ * Уже заданные переменные имеют приоритет: loadEnvFile их не перезаписывает.
+ */
+function loadDotenv(): void {
+  let dir = process.cwd();
+  for (let i = 0; i < 3; i++) {
+    const candidate = join(dir, '.env');
+    if (existsSync(candidate)) {
+      process.loadEnvFile(candidate);
+      return;
+    }
+    dir = dirname(dir);
   }
+}
+
+export function loadConfig(): Config {
+  loadDotenv();
 
   const port = Number(process.env.PORT ?? 3000);
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {

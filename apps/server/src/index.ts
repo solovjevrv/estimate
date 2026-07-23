@@ -23,7 +23,13 @@ async function main(): Promise<void> {
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.once(signal, () => {
       app.log.info({ signal }, 'Останавливаю сервер');
-      void app.close().finally(() => process.exit(0));
+      void app.close().then(
+        () => process.exit(0),
+        (err) => {
+          app.log.error(err, 'Ошибка при остановке');
+          process.exit(1);
+        },
+      );
     });
   }
 

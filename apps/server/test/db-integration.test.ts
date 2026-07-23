@@ -33,11 +33,13 @@ async function expectDbError(promise: Promise<unknown>, pattern: RegExp): Promis
 }
 
 describeDb('интеграция с PostgreSQL', () => {
-  const { db, pool } = createDb(databaseUrl ?? '');
+  let db: ReturnType<typeof createDb>['db'];
+  let pool: ReturnType<typeof createDb>['pool'];
   const roomId = randomUUID();
   const roundId = randomUUID();
 
   beforeAll(async () => {
+    ({ db, pool } = createDb(databaseUrl as string));
     await migrate(db, {
       migrationsFolder: fileURLToPath(new URL('../drizzle', import.meta.url)),
     });
@@ -46,8 +48,11 @@ describeDb('интеграция с PostgreSQL', () => {
   });
 
   afterAll(async () => {
-    await db.delete(schema.rooms).where(eq(schema.rooms.id, roomId));
-    await pool.end();
+    try {
+      await db?.delete(schema.rooms).where(eq(schema.rooms.id, roomId));
+    } finally {
+      await pool?.end();
+    }
   });
 
   it('миграции идемпотентны (повторный прогон не падает)', async () => {
