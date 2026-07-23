@@ -43,16 +43,33 @@ services:
     image: poker-web
     restart: unless-stopped
     ports:
+      - '80:80'
       - '3000:3000'
+    volumes:
+      - letsencrypt:/etc/letsencrypt:ro
+      - certbot_www:/var/www/certbot:ro
     depends_on:
       server:
         condition: service_healthy
+    # Периодический reload, чтобы nginx подхватывал продлённые сертификаты
+    command: /bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g "daemon off;"'
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/health >/dev/null || exit 1']
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:80/health >/dev/null || exit 1']
       interval: 10s
       timeout: 3s
       retries: 6
       start_period: 5s
 
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot_www:/var/www/certbot
+    # Продление по webroot дважды в сутки; первый выпуск делается отдельной командой (см. README)
+    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
+
 volumes:
   postgres_data:
+  letsencrypt:
+  certbot_www:
