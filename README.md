@@ -22,6 +22,21 @@
 - Node.js ≥ 24
 - pnpm ≥ 11
 
+## Продакшен
+
+- Деплой автоматический: push в `main` → GitHub Actions → `scripts/deploy.sh` на VPS.
+- Приложение: <https://pokerplan.solovyovdev.ru:3000> (TLS на 3000, порт 80 — редирект и ACME).
+- Первый выпуск сертификата Let's Encrypt (разово, на сервере, порт 80 должен быть свободен):
+
+```bash
+docker compose -f docker-compose.prod.yml create certbot
+docker compose -f docker-compose.prod.yml run --rm -p 80:80 \
+  --entrypoint "certbot certonly --standalone -d pokerplan.solovyovdev.ru \
+  --email <email> --agree-tos --no-eff-email" certbot
+```
+
+- Продление автоматическое: сервис `certbot` проверяет сертификат дважды в сутки, nginx перечитывает его при периодическом reload.
+
 ## Команды
 
 ```bash

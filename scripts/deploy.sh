@@ -31,7 +31,7 @@ fi
 echo "== Проверяю состояние контейнеров =="
 $COMPOSE ps -a
 bad=0
-for svc in postgres server web; do
+for svc in postgres server web certbot; do
   cid=$($COMPOSE ps -aq "$svc" | head -1)
   status=$(docker inspect -f '{{.State.Status}}' "$cid")
   health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid")
@@ -47,7 +47,7 @@ if [ "$bad" = "1" ]; then
   exit 1
 fi
 
-if ! curl -fsS http://localhost:3000/health >/dev/null; then
+if ! curl -fsS http://localhost/health >/dev/null; then
   echo "ОШИБКА: healthcheck через nginx не прошёл"
   $COMPOSE logs --tail 80 server web
   exit 1
@@ -59,4 +59,4 @@ docker image prune -f >/dev/null
 echo "== Последние логи сервера =="
 $COMPOSE logs --tail 20 server
 
-echo "Деплой успешен: http://localhost:3000/health отвечает"
+echo "Деплой успешен: /health через nginx отвечает"
