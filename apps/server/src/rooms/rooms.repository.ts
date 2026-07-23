@@ -1,5 +1,6 @@
 import type { DeckType, Room, Round } from '@poker/shared';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 
 import type { Db } from '../db';
 import { schema } from '../db';
@@ -64,10 +65,18 @@ export class RoomsRepository {
   async closeRoom(roomId: string): Promise<Room | null> {
     const [row] = await this.db
       .update(schema.rooms)
-      .set({ status: 'closed' })
+      .set({ status: 'closed', revision: sql`${schema.rooms.revision} + 1` })
       .where(eq(schema.rooms.id, roomId))
       .returning();
     return row ? this.toRoom(row) : null;
+  }
+
+  /** Отмечает, что за столом что-то изменилось: по этому номеру клиент отбрасывает отставшие рассылки */
+  async bumpRevision(roomId: string): Promise<void> {
+    await this.db
+      .update(schema.rooms)
+      .set({ revision: sql`${schema.rooms.revision} + 1` })
+      .where(eq(schema.rooms.id, roomId));
   }
 
   /** Последний по счёту раунд комнаты — он же текущий */
@@ -107,8 +116,8 @@ export class RoomsRepository {
     links: { jiraUrl?: string | null; confluenceUrl?: string | null },
     expectedVersion?: number,
   ): Promise<Round | null> {
-    const patch: Partial<typeof schema.rounds.$inferInsert> = {
-      linksVersion: sql`${schema.rounds.linksVersion} + 1` as unknown as number,
+    const patch: PgUpdateSetSource<typeof schema.rounds> = {
+      linksVersion: sql`${schema.rounds.linksVersion} + 1`,
     };
     if (links.jiraUrl !== undefined) patch.jiraUrl = links.jiraUrl;
     if (links.confluenceUrl !== undefined) patch.confluenceUrl = links.confluenceUrl;
@@ -116,10 +125,7 @@ export class RoomsRepository {
     const condition =
       expectedVersion === undefined
         ? eq(schema.rounds.id, roundId)
-        : and(
-            eq(schema.rounds.id, roundId),
-            eq(schema.rounds.linksVersion, expectedVersion),
-          );
+        : and(eq(schema.rounds.id, roundId), eq(schema.rounds.linksVersion, expectedVersion));
 
     const [row] = await this.db.update(schema.rounds).set(patch).where(condition).returning();
     return row ? this.toRound(row) : null;
@@ -220,6 +226,7 @@ export class RoomsRepository {
       creatorId: row.creatorId,
       name: row.name,
       status: row.status,
+      revision: row.revision,
       createdAt: row.createdAt.toISOString(),
     };
   }

@@ -9,6 +9,7 @@ import {
   type RoundResult,
   type DeckType,
   type StartRoundPayload,
+  type SubmitVotePayload,
   type UpdateLinksPayload,
   DECK_TYPES,
   hasTeamRole,
@@ -134,7 +135,11 @@ export class RoomsService {
    * Роль в комнате: создатель — скрам-мастер, а для командных комнат
    * им же считаются владелец и администратор команды.
    */
-  async resolveRole(room: Room, userId: string | null): Promise<RoomRole> {
+  async resolveRole(
+    room: Room,
+    userId: string | null,
+    teams: TeamsRepository = this.teams,
+  ): Promise<RoomRole> {
     if (!userId) {
       return 'voter';
     }
@@ -142,7 +147,7 @@ export class RoomsService {
       return 'scrum_master';
     }
     if (room.teamId) {
-      const membership = await this.teams.findMembership(room.teamId, userId);
+      const membership = await teams.findMembership(room.teamId, userId);
       if (membership && hasTeamRole(membership.role, 'admin')) {
         return 'scrum_master';
       }
@@ -195,11 +200,28 @@ export class RoomsService {
     };
   }
 
-  /** Снимок комнаты: текущий раунд, кто за столом и кто уже проголосовал */
+  /**
+   * Снимок комнаты: текущий раунд, кто за столом и кто уже проголосовал.
+   * Читается одним снимком базы, иначе между запросами успевает пройти вскрытие
+   * карт и участники получат рваную картину: раунд ещё открыт, а голоса финальные.
+   */
   async getState(roomId: string, participants: ParticipantIdentity[]): Promise<RoomState> {
-    const room = await this.getRoom(roomId);
-    const round = await this.repository.findCurrentRound(roomId);
-    const votes = round ? await this.repository.listVotes(round.id) : [];
+    const { room, round, votes } = await this.db.transaction(
+      async (tx) => {
+        const repo = new RoomsRepository(tx);
+        const found = await repo.findRoom(roomId);
+        if (!found) {
+          throw new NotFoundError('Комната не найдена');
+        }
+        const current = await repo.findCurrentRound(roomId);
+        return {
+          room: found,
+          round: current,
+          votes: current ? await repo.listVotes(current.id) : [],
+        };
+      },
+      { isolationLevel: 'repeatable read', accessMode: 'read only' },
+    );
     const voted = new Set(votes.map((vote) => vote.participantId));
 
     return {
@@ -223,11 +245,22 @@ export class RoomsService {
    * смена раунда: иначе голос успевал лечь между подсчётом среднего и его
    * записью — в раунде оставалось одно число, а участники видели другое.
    */
-  async submitVote(roomId: string, identity: ParticipantIdentity, value: number): Promise<void> {
+  async submitVote(
+    roomId: string,
+    identity: ParticipantIdentity,
+    payload: SubmitVotePayload,
+  ): Promise<void> {
+    const value = payload?.value as number;
+
     await this.inRoom(roomId, async (repo) => {
       const round = await repo.findCurrentRound(roomId);
       if (!round) {
         throw new ConflictError('В комнате ещё нет раунда');
+      }
+      // Клиент говорит, за какой раунд голосует: пока оценка ждала очереди,
+      // скрам-мастер мог начать следующую задачу
+      if (payload?.roundId != null && payload.roundId !== round.id) {
+        throw new ConflictError('Раунд уже сменился, посмотрите новую задачу');
       }
       if (round.status !== 'voting') {
         throw new ConflictError('Карты уже вскрыты, дождитесь нового раунда');
@@ -248,8 +281,13 @@ export class RoomsService {
 
   /** Вскрытие карт: считаем средний балл и фиксируем его в раунде */
   async revealCards(roomId: string, identity: ParticipantIdentity): Promise<RoundResult> {
-    return this.inRoom(roomId, async (repo, room) => {
-      await this.assertScrumMaster(room, identity, 'Вскрыть карты может только скрам-мастер');
+    return this.inRoom(roomId, async (repo, room, teams) => {
+      await this.assertScrumMaster(
+        room,
+        identity,
+        'Вскрыть карты может только скрам-мастер',
+        teams,
+      );
       const round = await repo.findCurrentRound(roomId);
       if (!round) {
         throw new ConflictError('В комнате ещё нет раунда');
@@ -259,14 +297,13 @@ export class RoomsService {
       if (votes.length === 0) {
         throw new ConflictError('Никто ещё не проголосовал');
       }
-      const result = this.summarize(votes);
-
-      if (round.status === 'voting') {
-        await repo.markRevealed(round.id, result.average);
-      } else {
-        // Карты вскрыли, пока запрос ждал блокировки: показываем то, что уже зафиксировано
+      // Карты могли вскрыть, пока запрос ждал блокировки — тогда показываем зафиксированное
+      if (round.status !== 'voting') {
         return this.summarize(votes, round.average);
       }
+
+      const result = this.summarize(votes);
+      await repo.markRevealed(round.id, result.average);
       return result;
     });
   }
@@ -280,8 +317,13 @@ export class RoomsService {
     const jiraUrl = this.normalizeLink(payload.jiraUrl);
     const confluenceUrl = this.normalizeLink(payload.confluenceUrl);
 
-    return this.inRoom(roomId, async (repo, room) => {
-      await this.assertScrumMaster(room, identity, 'Начать новый раунд может только скрам-мастер');
+    return this.inRoom(roomId, async (repo, room, teams) => {
+      await this.assertScrumMaster(
+        room,
+        identity,
+        'Начать новый раунд может только скрам-мастер',
+        teams,
+      );
 
       const current = await repo.findCurrentRound(roomId);
       // Клиент говорит, какой раунд он видел текущим. Если стол уже ушёл вперёд,
@@ -316,12 +358,21 @@ export class RoomsService {
       if (!round) {
         throw new ConflictError('В комнате ещё нет раунда');
       }
+      // Правка относится к конкретной задаче: ссылки прошлого раунда не должны попасть в новый
+      if (links.roundId != null && links.roundId !== round.id) {
+        throw new ConflictError('Раунд уже сменился, ссылки относятся к прошлой задаче');
+      }
       // Версию присылает клиент: если её нет, правка идёт по-старому — побеждает последний
-      if (links.version !== undefined && links.version !== round.linksVersion) {
+      const version = links.version ?? undefined;
+      if (version !== undefined && version !== round.linksVersion) {
         throw new ConflictError('Ссылки уже изменил другой участник, проверьте новые значения');
       }
+      // Править нечего — версию не трогаем, иначе чужие правки начнут отбиваться конфликтом
+      if (Object.keys(patch).length === 0) {
+        return round;
+      }
 
-      const updated = await repo.updateRoundLinks(round.id, patch, links.version);
+      const updated = await repo.updateRoundLinks(round.id, patch, version);
       if (!updated) {
         throw new ConflictError('Ссылки уже изменил другой участник, проверьте новые значения');
       }
@@ -333,10 +384,14 @@ export class RoomsService {
    * Действие над столом под блокировкой комнаты. Все изменения раундов и
    * голосов идут через неё, поэтому выполняются строго по очереди — так снята
    * гонка между голосованием, вскрытием карт и сменой раунда.
+   *
+   * Репозиторий команд тоже берётся от транзакции: иначе действие, уже
+   * державшее соединение пула, просило бы из него второе — и при полном пуле
+   * стол вставал бы намертво.
    */
   private async inRoom<T>(
     roomId: string,
-    action: (repo: RoomsRepository, room: Room) => Promise<T>,
+    action: (repo: RoomsRepository, room: Room, teams: TeamsRepository) => Promise<T>,
   ): Promise<T> {
     return this.db.transaction(async (tx) => {
       const repo = new RoomsRepository(tx);
@@ -347,7 +402,9 @@ export class RoomsService {
       if (room.status === 'closed') {
         throw new ConflictError('Комната закрыта');
       }
-      return action(repo, room);
+      const result = await action(repo, room, new TeamsRepository(tx));
+      await repo.bumpRevision(roomId);
+      return result;
     });
   }
 
@@ -359,9 +416,9 @@ export class RoomsService {
     if (isForeignKeyViolation(err, VOTE_USER_FK)) {
       throw new ForbiddenError('Аккаунт не найден, войдите заново');
     }
-    // Два голоса одного участника разошлись по времени — клиент может повторить
+    // Страховка: голос того же участника в тот же раунд уже есть
     if (isUniqueViolation(err)) {
-      throw new ConflictError('Голос уже учтён, попробуйте ещё раз');
+      throw new ConflictError('Не удалось учесть оценку, попробуйте ещё раз');
     }
     throw err;
   }
@@ -374,8 +431,9 @@ export class RoomsService {
     room: Room,
     identity: ParticipantIdentity,
     message: string,
+    teams: TeamsRepository = this.teams,
   ): Promise<void> {
-    if ((await this.resolveRole(room, identity.userId)) !== 'scrum_master') {
+    if ((await this.resolveRole(room, identity.userId, teams)) !== 'scrum_master') {
       throw new ForbiddenError(message);
     }
   }

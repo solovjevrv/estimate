@@ -3,6 +3,7 @@ import {
   WS_SERVER_EVENTS,
   type JoinRoomPayload,
   type JoinRoomResult,
+  type Round,
   type RoundResult,
   type StartRoundPayload,
   type SubmitVotePayload,
@@ -49,7 +50,7 @@ export class RoomsGateway {
         const { payload, ack } = this.readArgs<SubmitVotePayload>(args);
         this.run(socket, log, ack, async () => {
           const { roomId, identity } = this.requireSeat(socket);
-          await this.service.submitVote(roomId, identity, payload?.value as number);
+          await this.service.submitVote(roomId, identity, payload ?? ({} as SubmitVotePayload));
           await this.broadcastState(io, roomId);
           return null;
         });
@@ -67,11 +68,16 @@ export class RoomsGateway {
 
       socket.on(WS_EVENTS.START_NEW_ROUND, (...args: unknown[]) => {
         const { payload, ack } = this.readArgs<StartRoundPayload>(args);
-        this.run(socket, log, ack, async () => {
+        this.run<Round>(socket, log, ack, async () => {
           const { roomId, identity } = this.requireSeat(socket);
-          await this.service.startNewRound(roomId, identity, payload as StartRoundPayload);
+          // Возвращаем раунд: если стол уже ушёл вперёд, это будет текущий, а не новый
+          const round = await this.service.startNewRound(
+            roomId,
+            identity,
+            payload as StartRoundPayload,
+          );
           await this.broadcastState(io, roomId);
-          return null;
+          return round;
         });
       });
 

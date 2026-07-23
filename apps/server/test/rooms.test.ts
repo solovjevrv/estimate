@@ -558,6 +558,48 @@ describeDb('комнаты', () => {
       expect(stale).toMatchObject({ ok: false, error: 'conflict' });
     });
 
+    it('оценка за прошлую задачу отбивается с конфликтом', async () => {
+      const owner = await newUser('late-vote-ws-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+
+      const first = await emit<Round>(master, WS_EVENTS.START_NEW_ROUND, {
+        deckType: 'fibonacci',
+      });
+      const firstRoundId = first.ok ? first.data.id : '';
+      await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 5, roundId: firstRoundId });
+      await emit(master, WS_EVENTS.REVEAL_CARDS);
+      await emit(master, WS_EVENTS.START_NEW_ROUND, {
+        deckType: 'fibonacci',
+        fromRoundId: firstRoundId,
+      });
+
+      const late = await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 8, roundId: firstRoundId });
+
+      expect(late).toMatchObject({ ok: false, error: 'conflict' });
+    });
+
+    it('повторный старт раунда возвращает текущий, а не создаёт новый', async () => {
+      const owner = await newUser('idempotent-start-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+
+      const first = await emit<Round>(master, WS_EVENTS.START_NEW_ROUND, {
+        deckType: 'fibonacci',
+      });
+      const fromRoundId = first.ok ? first.data.id : '';
+      const again = await emit<Round>(master, WS_EVENTS.START_NEW_ROUND, {
+        deckType: 'fibonacci',
+        fromRoundId: null,
+      });
+
+      // Клиент считал, что раунда ещё нет, — сервер вернул уже начатый
+      expect(again.ok && again.data.id).toBe(fromRoundId);
+      expect(again.ok && again.data.seq).toBe(1);
+    });
+
     it('уход участника виден остальным', async () => {
       const owner = await newUser('leave-owner');
       const roomId = await newRoom(owner);
@@ -615,11 +657,11 @@ describeDb('комнаты', () => {
       // Одна попытка может и разойтись с гонкой — повторяем несколько раз
       for (let attempt = 0; attempt < 5; attempt += 1) {
         await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
-        await service.submitVote(roomId, master, 1);
+        await service.submitVote(roomId, master, { value: 1 });
 
         // Голоса летят одновременно со вскрытием: часть успеет, часть получит отказ
         await Promise.allSettled([
-          ...guests.map((guest) => service.submitVote(roomId, guest, 8)),
+          ...guests.map((guest) => service.submitVote(roomId, guest, { value: 8 })),
           service.revealCards(roomId, master),
         ]);
 
@@ -651,10 +693,7 @@ describeDb('комнаты', () => {
       ]);
 
       expect(left.id).toBe(right.id);
-      const rounds = await db
-        .select()
-        .from(schema.rounds)
-        .where(eq(schema.rounds.roomId, roomId));
+      const rounds = await db.select().from(schema.rounds).where(eq(schema.rounds.roomId, roomId));
       expect(rounds).toHaveLength(2);
     });
 
@@ -683,6 +722,43 @@ describeDb('комнаты', () => {
       expect((saved[0] as PromiseFulfilledResult<Round>).value.linksVersion).toBe(
         started.linksVersion + 1,
       );
+    });
+
+    it('опоздавший голос не попадает в следующую задачу', async () => {
+      const owner = await newUser('race-late-vote-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+      const guest = asGuest('Опоздавшая');
+      const first = await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(roomId, master, { value: 5 });
+      await service.revealCards(roomId, master);
+      await service.startNewRound(roomId, master, {
+        deckType: 'fibonacci',
+        fromRoundId: first.id,
+      });
+
+      // Гость нажал карту, ещё видя прошлую задачу
+      await expect(
+        service.submitVote(roomId, guest, { value: 13, roundId: first.id }),
+      ).rejects.toBeInstanceOf(ConflictError);
+
+      const { participants } = await service.getState(roomId, [guest]);
+      expect(participants[0]?.hasVoted).toBe(false);
+    });
+
+    it('номер изменения комнаты растёт с каждым действием', async () => {
+      const owner = await newUser('race-revision-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+
+      const start = (await service.getState(roomId, [])).room.revision;
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      const afterRound = (await service.getState(roomId, [])).room.revision;
+      await service.submitVote(roomId, master, { value: 3 });
+      const afterVote = (await service.getState(roomId, [])).room.revision;
+
+      expect(afterRound).toBeGreaterThan(start);
+      expect(afterVote).toBeGreaterThan(afterRound);
     });
 
     it('правка без версии остаётся прежней: побеждает последний', async () => {

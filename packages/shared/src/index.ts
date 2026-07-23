@@ -98,6 +98,12 @@ export interface Room {
   creatorId: string | null;
   name: string;
   status: RoomStatus;
+  /**
+   * Номер изменения стола: растёт при каждом действии. Рассылки идут
+   * параллельно и могут обогнать друг друга — по нему клиент отличает
+   * свежий снимок от отставшего.
+   */
+  revision: number;
   createdAt: string;
 }
 
@@ -175,6 +181,11 @@ export interface JoinRoomResult {
 
 export interface SubmitVotePayload {
   value: number;
+  /**
+   * Раунд, за который голосуют. Если стол успел уйти вперёд, оценка не попадёт
+   * в чужую задачу — участник получит отказ.
+   */
+  roundId?: string;
 }
 
 export interface StartRoundPayload {
@@ -192,6 +203,8 @@ export interface StartRoundPayload {
 export interface UpdateLinksPayload {
   jiraUrl?: string | null;
   confluenceUrl?: string | null;
+  /** Раунд, к которому относится правка: ссылки прошлой задачи не должны попасть в новую */
+  roundId?: string;
   /**
    * Версия ссылок, которую видел клиент. Если за это время их поменял кто-то
    * другой, правка отклоняется — иначе чужой текст молча затрётся.

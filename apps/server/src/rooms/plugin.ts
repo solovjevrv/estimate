@@ -31,6 +31,7 @@ const roomResponse = {
     creatorId: { type: ['string', 'null'] },
     name: { type: 'string' },
     status: { type: 'string' },
+    revision: { type: 'integer' },
     createdAt: { type: 'string' },
   },
 } as const;
