@@ -1,4 +1,4 @@
-import { TEAM_NAME_MAX_LENGTH, TEAM_ROLES } from '@poker/shared';
+import { TEAM_ROLES } from '@poker/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
@@ -10,7 +10,6 @@ import type {
   TeamIdParams,
 } from './teams.controller';
 import { TeamsController } from './teams.controller';
-import { TeamsRepository } from './teams.repository';
 import { TeamsService } from './teams.service';
 
 const uuid = { type: 'string', format: 'uuid' } as const;
@@ -33,8 +32,9 @@ const nameBody = {
   type: 'object',
   required: ['name'],
   properties: {
-    // Длину с учётом пробелов по краям проверяет сервис после нормализации
-    name: { type: 'string', minLength: 1, maxLength: TEAM_NAME_MAX_LENGTH + 2 },
+    // Здесь только защита от гигантских тел; настоящий предел длины
+    // проверяет сервис уже после обрезки пробелов
+    name: { type: 'string', minLength: 1, maxLength: 1000 },
   },
 } as const;
 
@@ -83,7 +83,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
     throw new Error('Роуты команд требуют плагина аутентификации');
   }
 
-  const controller = new TeamsController(new TeamsService(app.db, new TeamsRepository(app.db)));
+  const controller = new TeamsController(TeamsService.forDatabase(app.db));
 
   app.post<{ Body: NameBody }>(
     '/api/teams',

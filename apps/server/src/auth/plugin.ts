@@ -60,13 +60,6 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
   app.decorate('authenticate', authenticator.handle);
   app.decorate('tokens', tokens);
 
-  // Ответы про сессию не должны оседать в кэшах браузера и прокси
-  app.addHook('onSend', async (req, reply) => {
-    if (req.url.startsWith('/api/auth/') || req.url === '/api/me') {
-      reply.header('cache-control', 'no-store');
-    }
-  });
-
   app.get('/api/auth/providers', controller.listProviders);
   app.get('/api/me', { preHandler: authenticator.handle }, controller.me);
   app.post('/api/auth/refresh', controller.refresh);

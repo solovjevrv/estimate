@@ -159,15 +159,6 @@ export class TeamsRepository {
       .where(and(eq(schema.teamMembers.teamId, teamId), eq(schema.teamMembers.userId, userId)));
   }
 
-  async userExists(userId: string): Promise<boolean> {
-    const [row] = await this.db
-      .select({ id: schema.users.id })
-      .from(schema.users)
-      .where(eq(schema.users.id, userId))
-      .limit(1);
-    return Boolean(row);
-  }
-
   private toTeam(row: typeof schema.teams.$inferSelect): Team {
     return { id: row.id, name: row.name, createdAt: row.createdAt.toISOString() };
   }

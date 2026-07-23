@@ -7,6 +7,19 @@ interface ErrorResponse {
   message: string;
 }
 
+/** Наружу отдаём собственные коды: внутренние FST_ERR_* клиенту ничего не говорят */
+const CODE_BY_STATUS: Record<number, string> = {
+  400: 'bad_request',
+  401: 'unauthorized',
+  403: 'forbidden',
+  404: 'not_found',
+  405: 'method_not_allowed',
+  409: 'conflict',
+  413: 'payload_too_large',
+  415: 'unsupported_media_type',
+  429: 'too_many_requests',
+};
+
 /**
  * Единая точка превращения исключений в HTTP-ответы.
  * Наружу уходят только осмысленные сообщения: текст SQL, параметры запроса
@@ -15,6 +28,9 @@ interface ErrorResponse {
 export class ErrorHandler {
   register(app: FastifyInstance): void {
     app.setErrorHandler((err, req, reply) => this.handle(err, req, reply));
+    app.setNotFoundHandler((req, reply) =>
+      this.send(reply, 404, { error: 'not_found', message: `Маршрут ${req.url} не найден` }),
+    );
   }
 
   private handle(err: unknown, req: FastifyRequest, reply: FastifyReply): FastifyReply {
@@ -33,7 +49,7 @@ export class ErrorHandler {
     if (status < 500) {
       req.log.warn({ err }, 'Запрос отклонён');
       return this.send(reply, status, {
-        error: fastifyError.code ?? 'bad_request',
+        error: CODE_BY_STATUS[status] ?? 'bad_request',
         message: fastifyError.message,
       });
     }

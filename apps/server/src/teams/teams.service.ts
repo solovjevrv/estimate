@@ -8,7 +8,7 @@ import {
   hasTeamRole,
 } from '@poker/shared';
 
-import type { Db } from '../db';
+import { type Db, isForeignKeyViolation, isUniqueViolation } from '../db';
 import {
   ConflictError,
   ForbiddenError,
@@ -27,6 +27,13 @@ export interface TeamOverview {
   inviteCode?: string;
 }
 
+/** Внешние ключи team_members — по ним отличаем удалённую команду от удалённого аккаунта */
+const TEAM_FK = 'team_members_team_id_teams_id_fk';
+const USER_FK = 'team_members_user_id_users_id_fk';
+
+/** Сколько раз пробуем выпустить неповторяющийся код приглашения */
+const MAX_INVITE_ATTEMPTS = 3;
+
 export interface RoleChangeResult {
   member: Membership;
   /** Роль вызывающего после операции: при передаче владения он становится админом */
@@ -39,10 +46,16 @@ export interface RoleChangeResult {
  * одновременные запросы не могут оставить команду без владельца или с двумя.
  */
 export class TeamsService {
+  /** Репозиторий должен работать с тем же соединением, что и транзакции сервиса */
   constructor(
     private readonly db: Db,
     private readonly repository: TeamsRepository,
   ) {}
+
+  /** Обычный способ собрать сервис: репозиторий на том же соединении */
+  static forDatabase(db: Db): TeamsService {
+    return new TeamsService(db, new TeamsRepository(db));
+  }
 
   async create(actorId: string, rawName: string): Promise<TeamWithRole> {
     const name = this.normalizeName(rawName);
@@ -108,11 +121,21 @@ export class TeamsService {
 
   async rotateInviteCode(actorId: string, teamId: string): Promise<string> {
     return this.inTransaction(teamId, actorId, 'admin', async (repo) => {
-      const code = await repo.updateInviteCode(teamId, TeamsRepository.generateInviteCode());
-      if (!code) {
-        throw new NotFoundError('Команда не найдена');
+      // Совпадение кодов почти невероятно, но новая попытка дешевле ошибки у пользователя
+      for (let attempt = 0; attempt < MAX_INVITE_ATTEMPTS; attempt++) {
+        try {
+          const code = await repo.updateInviteCode(teamId, TeamsRepository.generateInviteCode());
+          if (!code) {
+            throw new NotFoundError('Команда не найдена');
+          }
+          return code;
+        } catch (err) {
+          if (!isUniqueViolation(err) || attempt === MAX_INVITE_ATTEMPTS - 1) {
+            throw err;
+          }
+        }
       }
-      return code;
+      throw new Error('Не удалось выпустить код приглашения');
     });
   }
 
@@ -141,7 +164,7 @@ export class TeamsService {
       }
 
       if (role === 'owner') {
-        await repo.updateMemberRole(teamId, actorId, 'admin');
+        await this.applyRole(repo, teamId, actorId, 'admin');
         await this.applyRole(repo, teamId, targetUserId, 'owner');
         return { member: { teamId, userId: targetUserId, role }, actorRole: 'admin' };
       }
@@ -165,10 +188,9 @@ export class TeamsService {
         if (actor.role === 'owner' && owners === 1) {
           throw new ConflictError('Передайте владение или удалите команду');
         }
-      } else if (!hasTeamRole(actor.role, 'admin')) {
-        throw new ForbiddenError('Исключать участников могут владелец и администратор');
-      } else if (actor.role === 'admin' && hasTeamRole(target.role, 'admin')) {
-        throw new ForbiddenError('Администратор не может исключить владельца или администратора');
+      } else if (actor.role !== 'owner') {
+        // Составом команды управляет владелец: администратор только приглашает
+        throw new ForbiddenError('Исключать участников может только владелец');
       }
 
       await repo.deleteMember(teamId, targetUserId);
@@ -188,12 +210,21 @@ export class TeamsService {
     if (!team) {
       throw new NotFoundError('Приглашение не найдено');
     }
-    // Аккаунт могли удалить, а кука осталась — без этой проверки упрёмся в внешний ключ
-    if (!(await this.repository.userExists(actorId))) {
-      throw new UnauthorizedError();
+
+    try {
+      await this.repository.insertMemberIfAbsent(team.id, actorId, 'member');
+    } catch (err) {
+      // Пока шли к вставке, команду могли удалить, а аккаунт — закрыть:
+      // внешние ключи ловят оба случая, и это не ошибка сервера
+      if (isForeignKeyViolation(err, TEAM_FK)) {
+        throw new NotFoundError('Приглашение не найдено');
+      }
+      if (isForeignKeyViolation(err, USER_FK)) {
+        throw new UnauthorizedError();
+      }
+      throw err;
     }
 
-    await this.repository.insertMemberIfAbsent(team.id, actorId, 'member');
     const membership = await this.repository.findMembership(team.id, actorId);
     return { ...team, role: membership?.role ?? 'member' };
   }

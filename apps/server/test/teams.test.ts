@@ -523,6 +523,26 @@ describeDb('API команд', () => {
   });
 
   describe('одновременные запросы', () => {
+    it('база не даёт завести второго владельца даже в обход API', async () => {
+      const owner = await newUser('index-owner');
+      const rival = await newUser('index-rival');
+      await newTeam(owner, [[rival, 'member']]);
+
+      const err = await db
+        .update(schema.teamMembers)
+        .set({ role: 'owner' })
+        .where(eq(schema.teamMembers.userId, rival.id))
+        .then(
+          () => null,
+          (e: unknown) => e,
+        );
+
+      expect(err, 'уникальный индекс владельца не сработал').not.toBeNull();
+      expect(String((err as { cause?: unknown }).cause ?? err)).toMatch(
+        /team_members_single_owner_idx/,
+      );
+    });
+
     /** Сколько владельцев у команды сейчас */
     async function ownerCount(teamId: string): Promise<number> {
       const members = await repository.listMembers(teamId);
@@ -535,7 +555,7 @@ describeDb('API команд', () => {
         const heir = await newUser(`race-heir-${attempt}`);
         const teamId = await newTeam(owner, [[heir, 'member']]);
 
-        await Promise.allSettled([
+        const [transfer, leave] = await Promise.all([
           app.inject({
             method: 'PATCH',
             url: `/api/teams/${teamId}/members/${heir.id}`,
@@ -549,6 +569,12 @@ describeDb('API команд', () => {
           }),
         ]);
 
+        // Успеть должен ровно один сценарий: либо передача, либо выход
+        expect([transfer.statusCode, leave.statusCode].sort()).toEqual(
+          expect.arrayContaining([expect.any(Number)]),
+        );
+        expect(transfer.statusCode).toBeLessThan(500);
+        expect(leave.statusCode).toBeLessThan(500);
         expect(await ownerCount(teamId), 'команда без владельца или с двумя').toBe(1);
       }
     });
@@ -563,7 +589,7 @@ describeDb('API команд', () => {
           [second, 'member'],
         ]);
 
-        await Promise.allSettled([
+        const results = await Promise.all([
           app.inject({
             method: 'PATCH',
             url: `/api/teams/${teamId}/members/${first.id}`,
@@ -578,42 +604,50 @@ describeDb('API команд', () => {
           }),
         ]);
 
+        // Одна передача проходит, вторая упирается в уже потерянные права
+        expect(results.map((res) => res.statusCode).sort()).toEqual([200, 403]);
         expect(await ownerCount(teamId), 'у команды оказалось два владельца').toBe(1);
       }
     });
   });
 
   describe('исключение и выход', () => {
-    it('администратор исключает участника, но не владельца и не другого админа', async () => {
+    it('исключает участников только владелец: администратору отказано', async () => {
       const owner = await newUser('kick-owner');
       const admin = await newUser('kick-admin');
-      const admin2 = await newUser('kick-admin2');
       const member = await newUser('kick-member');
       const teamId = await newTeam(owner, [
         [admin, 'admin'],
-        [admin2, 'admin'],
         [member, 'member'],
       ]);
 
-      const kickOwner = await app.inject({
-        method: 'DELETE',
-        url: `/api/teams/${teamId}/members/${owner.id}`,
-        headers: as(admin),
-      });
-      const kickAdmin = await app.inject({
-        method: 'DELETE',
-        url: `/api/teams/${teamId}/members/${admin2.id}`,
-        headers: as(admin),
-      });
-      const kickMember = await app.inject({
+      const byAdmin = await app.inject({
         method: 'DELETE',
         url: `/api/teams/${teamId}/members/${member.id}`,
         headers: as(admin),
       });
+      const byOwner = await app.inject({
+        method: 'DELETE',
+        url: `/api/teams/${teamId}/members/${member.id}`,
+        headers: as(owner),
+      });
 
-      expect(kickOwner.statusCode).toBe(403);
-      expect(kickAdmin.statusCode).toBe(403);
-      expect(kickMember.statusCode).toBe(204);
+      expect(byAdmin.statusCode).toBe(403);
+      expect(byOwner.statusCode).toBe(204);
+    });
+
+    it('гость может выйти из команды сам', async () => {
+      const owner = await newUser('guest-leave-owner');
+      const guest = await newUser('guest-leave');
+      const teamId = await newTeam(owner, [[guest, 'guest']]);
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/teams/${teamId}/members/${guest.id}`,
+        headers: as(guest),
+      });
+
+      expect(res.statusCode).toBe(204);
     });
 
     it('участник не может исключить другого участника, но может выйти сам', async () => {

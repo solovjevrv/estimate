@@ -21,3 +21,4 @@ export function createDb(connectionString: string): { db: Db; pool: Pool } {
 }
 
 export { schema };
+export { isForeignKeyViolation, isUniqueViolation } from './errors';

@@ -22,7 +22,15 @@ export interface AppDeps {
 }
 
 export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): FastifyInstance {
-  const app = Fastify(opts);
+  // coerceTypes выключен, чтобы число в поле-строке не превращалось молча в строку
+  const app = Fastify({ ajv: { customOptions: { coerceTypes: false } }, ...opts });
+
+  // Ответы API касаются сессии и состава команд — их нельзя держать в кэшах
+  app.addHook('onSend', async (req, reply) => {
+    if (req.url.startsWith('/api/')) {
+      reply.header('cache-control', 'no-store');
+    }
+  });
 
   app.decorate('db', deps.db);
   new ErrorHandler().register(app);
