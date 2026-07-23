@@ -26,7 +26,7 @@
 
 - Деплой автоматический: push в `main` → GitHub Actions → `scripts/deploy.sh` на VPS.
 - Приложение: <https://pokerplan.solovyovdev.ru:3000> (TLS на 3000, порт 80 — редирект и ACME).
-- Первый выпуск сертификата Let's Encrypt (разово, на сервере, порт 80 должен быть свободен):
+- Первый выпуск сертификата Let's Encrypt — **строго до первого запуска стека** (без сертификата nginx не стартует). Порт 80 должен быть свободен; если web уже запущен — сначала `docker compose -f docker-compose.prod.yml stop web`:
 
 ```bash
 docker compose -f docker-compose.prod.yml create certbot

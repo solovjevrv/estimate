@@ -53,6 +53,14 @@ if ! curl -fsS http://localhost/health >/dev/null; then
   exit 1
 fi
 
+# Проверка TLS без -k: ловит в том числе просроченный/битый сертификат
+if ! curl -fsS --resolve pokerplan.solovyovdev.ru:3000:127.0.0.1 \
+  https://pokerplan.solovyovdev.ru:3000/health >/dev/null; then
+  echo "ОШИБКА: HTTPS-эндпоинт не прошёл проверку (сертификат?)"
+  $COMPOSE logs --tail 40 web certbot
+  exit 1
+fi
+
 # Старые образы чистим только после успешных проверок — сохраняем путь отката
 docker image prune -f >/dev/null
 
