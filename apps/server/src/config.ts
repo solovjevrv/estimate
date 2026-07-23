@@ -27,6 +27,8 @@ export interface Config {
   databaseUrl: string;
   /** Origin дев-фронта для CORS Socket.io; в проде фронт same-origin через nginx */
   webOrigin: string;
+  /** Документация API: на проде карта эндпоинтов наружу не отдаётся */
+  docsEnabled: boolean;
   auth: AuthConfig;
 }
 
@@ -100,12 +102,15 @@ export function loadConfig(): Config {
   }
 
   const webOrigin = process.env.WEB_ORIGIN ?? 'http://localhost:5173';
+  const isProduction = process.env.NODE_ENV === 'production';
 
   return {
     port,
     host: process.env.HOST ?? '0.0.0.0',
     databaseUrl,
     webOrigin,
+    // По умолчанию документация есть везде, кроме продакшена; флагом можно переопределить
+    docsEnabled: process.env.DOCS_ENABLED ? process.env.DOCS_ENABLED === 'true' : !isProduction,
     auth: loadAuthConfig(webOrigin, port),
   };
 }

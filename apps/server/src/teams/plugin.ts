@@ -2,6 +2,8 @@ import { TEAM_ROLES } from '@poker/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
+import { DOCS_TAGS, errorResponse } from '../http/openapi';
+
 import type {
   InviteParams,
   MemberParams,
@@ -90,9 +92,19 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
     {
       preHandler: authenticate,
       schema: {
+        tags: [DOCS_TAGS.teams],
+        summary: 'Создать команду',
+        description: 'Создатель сразу становится владельцем.',
+        security: [{ session: [] }],
         body: nameBody,
         response: {
-          201: { type: 'object', properties: { team: teamWithRoleResponse } },
+          201: {
+            description: 'Команда создана',
+            type: 'object',
+            properties: { team: teamWithRoleResponse },
+          },
+          400: { description: 'Название пустое или слишком длинное', ...errorResponse },
+          401: { description: 'Требуется вход', ...errorResponse },
         },
       },
     },
@@ -104,11 +116,17 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
     {
       preHandler: authenticate,
       schema: {
+        tags: [DOCS_TAGS.teams],
+        summary: 'Мои команды',
+        description: 'Команды, в которых состоит текущий пользователь, вместе с его ролью.',
+        security: [{ session: [] }],
         response: {
           200: {
+            description: 'Список команд',
             type: 'object',
             properties: { teams: { type: 'array', items: teamWithRoleResponse } },
           },
+          401: { description: 'Требуется вход', ...errorResponse },
         },
       },
     },
@@ -120,9 +138,15 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
     {
       preHandler: authenticate,
       schema: {
+        tags: [DOCS_TAGS.teams],
+        summary: 'Карточка команды',
+        description:
+          'Состав, роль текущего пользователя и код приглашения (только для админа и владельца). Посторонним отвечаем 404.',
+        security: [{ session: [] }],
         params: teamIdParams,
         response: {
           200: {
+            description: 'Команда и её состав',
             type: 'object',
             properties: {
               team: teamResponse,
@@ -131,6 +155,8 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
               inviteCode: { type: 'string' },
             },
           },
+          401: { description: 'Требуется вход', ...errorResponse },
+          404: { description: 'Команда не найдена или вы не в ней', ...errorResponse },
         },
       },
     },
@@ -142,9 +168,23 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
     {
       preHandler: authenticate,
       schema: {
+        tags: [DOCS_TAGS.teams],
+        summary: 'Переименовать команду',
+        description: 'Доступно только владельцу.',
+        security: [{ session: [] }],
         params: teamIdParams,
         body: nameBody,
-        response: { 200: { type: 'object', properties: { team: teamResponse } } },
+        response: {
+          200: {
+            description: 'Команда обновлена',
+            type: 'object',
+            properties: { team: teamResponse },
+          },
+          400: { description: 'Название пустое или слишком длинное', ...errorResponse },
+          401: { description: 'Требуется вход', ...errorResponse },
+          403: { description: 'Недостаточно прав', ...errorResponse },
+          404: { description: 'Команда не найдена', ...errorResponse },
+        },
       },
     },
     controller.rename,
@@ -152,7 +192,23 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
 
   app.delete<{ Params: TeamIdParams }>(
     '/api/teams/:id',
-    { preHandler: authenticate, schema: { params: teamIdParams } },
+    {
+      preHandler: authenticate,
+      schema: {
+        tags: [DOCS_TAGS.teams],
+        summary: 'Удалить команду',
+        description:
+          'Доступно только владельцу. Комнаты команды сохраняются и остаются без команды.',
+        security: [{ session: [] }],
+        params: teamIdParams,
+        response: {
+          204: { description: 'Команда удалена', type: 'null' },
+          401: { description: 'Требуется вход', ...errorResponse },
+          403: { description: 'Недостаточно прав', ...errorResponse },
+          404: { description: 'Команда не найдена', ...errorResponse },
+        },
+      },
+    },
     controller.remove,
   );
 
@@ -160,7 +216,18 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
     '/api/teams/:id/members',
     {
       preHandler: authenticate,
-      schema: { params: teamIdParams, response: { 200: membersResponse } },
+      schema: {
+        tags: [DOCS_TAGS.teams],
+        summary: 'Состав команды',
+        description: 'Гостю команды адреса участников не показываются.',
+        security: [{ session: [] }],
+        params: teamIdParams,
+        response: {
+          200: { description: 'Участники', ...membersResponse },
+          401: { description: 'Требуется вход', ...errorResponse },
+          404: { description: 'Команда не найдена или вы не в ней', ...errorResponse },
+        },
+      },
     },
     controller.members,
   );
@@ -170,10 +237,16 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
     {
       preHandler: authenticate,
       schema: {
+        tags: [DOCS_TAGS.teams],
+        summary: 'Изменить роль участника',
+        description:
+          'Доступно только владельцу. Назначение роли owner передаёт владение: прежний владелец становится администратором.',
+        security: [{ session: [] }],
         params: memberParams,
         body: roleBody,
         response: {
           200: {
+            description: 'Роль изменена',
             type: 'object',
             properties: {
               member: {
@@ -187,6 +260,10 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
               actorRole: { type: 'string' },
             },
           },
+          401: { description: 'Требуется вход', ...errorResponse },
+          403: { description: 'Недостаточно прав', ...errorResponse },
+          404: { description: 'Команда или участник не найдены', ...errorResponse },
+          409: { description: 'Единственный владелец не может понизить себя', ...errorResponse },
         },
       },
     },
@@ -195,7 +272,24 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
 
   app.delete<{ Params: MemberParams }>(
     '/api/teams/:id/members/:userId',
-    { preHandler: authenticate, schema: { params: memberParams } },
+    {
+      preHandler: authenticate,
+      schema: {
+        tags: [DOCS_TAGS.teams],
+        summary: 'Исключить участника или выйти',
+        description:
+          'Исключать может только владелец, выйти самому — любой участник. Единственному владельцу нужно сначала передать владение.',
+        security: [{ session: [] }],
+        params: memberParams,
+        response: {
+          204: { description: 'Участник исключён', type: 'null' },
+          401: { description: 'Требуется вход', ...errorResponse },
+          403: { description: 'Недостаточно прав', ...errorResponse },
+          404: { description: 'Команда или участник не найдены', ...errorResponse },
+          409: { description: 'Владелец не может выйти, не передав команду', ...errorResponse },
+        },
+      },
+    },
     controller.removeMember,
   );
 
@@ -204,8 +298,21 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
     {
       preHandler: authenticate,
       schema: {
+        tags: [DOCS_TAGS.teams],
+        summary: 'Перевыпустить код приглашения',
+        description: 'Доступно администратору и владельцу. Старая ссылка перестаёт работать.',
+        security: [{ session: [] }],
         params: teamIdParams,
-        response: { 200: { type: 'object', properties: { inviteCode: { type: 'string' } } } },
+        response: {
+          200: {
+            description: 'Новый код',
+            type: 'object',
+            properties: { inviteCode: { type: 'string' } },
+          },
+          401: { description: 'Требуется вход', ...errorResponse },
+          403: { description: 'Недостаточно прав', ...errorResponse },
+          404: { description: 'Команда не найдена', ...errorResponse },
+        },
       },
     },
     controller.rotateInvite,
@@ -217,9 +324,13 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
     '/api/invites/:code',
     {
       schema: {
+        tags: [DOCS_TAGS.teams],
+        summary: 'Предпросмотр приглашения',
+        description: 'Открыт без входа: по ссылке видно, в какую команду зовут.',
         params: inviteParams,
         response: {
           200: {
+            description: 'Команда по коду приглашения',
             type: 'object',
             properties: {
               team: {
@@ -228,6 +339,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
               },
             },
           },
+          404: { description: 'Приглашение не найдено', ...errorResponse },
         },
       },
     },
@@ -239,9 +351,19 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
     {
       preHandler: authenticate,
       schema: {
+        tags: [DOCS_TAGS.teams],
+        summary: 'Вступить по приглашению',
+        description: 'Идемпотентно: повторный переход не меняет уже выданную роль.',
+        security: [{ session: [] }],
         params: inviteParams,
         response: {
-          200: { type: 'object', properties: { team: teamResponse, role: { type: 'string' } } },
+          200: {
+            description: 'Вы в команде',
+            type: 'object',
+            properties: { team: teamResponse, role: { type: 'string' } },
+          },
+          401: { description: 'Требуется вход', ...errorResponse },
+          404: { description: 'Приглашение не найдено', ...errorResponse },
         },
       },
     },
