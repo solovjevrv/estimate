@@ -1,6 +1,8 @@
 import { sql } from 'drizzle-orm';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 
+import { authPlugin } from './auth';
+import type { AuthConfig } from './config';
 import type { Db } from './db';
 
 declare module 'fastify' {
@@ -13,12 +15,17 @@ export interface AppDeps {
   db: Db;
   /** Закрытие ресурсов БД при остановке сервера */
   closeDb?: () => Promise<void>;
+  /** Без настроек аутентификации приложение поднимается без роутов /api/auth/* */
+  auth?: AuthConfig;
 }
 
 export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): FastifyInstance {
   const app = Fastify(opts);
 
   app.decorate('db', deps.db);
+  if (deps.auth) {
+    void app.register(authPlugin, { auth: deps.auth });
+  }
   if (deps.closeDb) {
     app.addHook('onClose', async () => {
       await deps.closeDb?.();

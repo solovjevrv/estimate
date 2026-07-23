@@ -13,6 +13,20 @@ export const WS_EVENTS = {
 
 export type WsEvent = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
 
+/** OAuth-провайдеры, через которых можно войти */
+export type AuthProvider = 'google' | 'yandex';
+
+export const AUTH_PROVIDERS: readonly AuthProvider[] = ['google', 'yandex'];
+
+/** Публичный профиль авторизованного пользователя (отдаётся фронту) */
+export interface AuthUser {
+  id: string;
+  provider: AuthProvider;
+  email: string;
+  name: string;
+  avatarUrl: string | null;
+}
+
 /** Роли участника внутри команды */
 export type TeamRole = 'owner' | 'admin' | 'member' | 'guest';
 
