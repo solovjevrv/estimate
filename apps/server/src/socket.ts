@@ -1,6 +1,8 @@
 import type { FastifyInstance } from 'fastify';
 import { Server } from 'socket.io';
 
+import { RoomsGateway, RoomsService } from './rooms';
+
 /** Данные, которые сервер держит на каждом подключении */
 export interface SocketData {
   /** id авторизованного пользователя или null — тогда это гость */
@@ -37,6 +39,8 @@ export class SocketGateway {
       socket.data.userId = this.identify(app, socket.handshake.headers.cookie);
       next();
     });
+
+    new RoomsGateway(RoomsService.forDatabase(app.db)).register(io, app.log);
 
     io.on('connection', (socket) => {
       app.log.info({ socketId: socket.id, userId: socket.data.userId }, 'Socket.io: подключение');

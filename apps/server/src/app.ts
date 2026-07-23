@@ -6,6 +6,7 @@ import type { AuthConfig } from './config';
 import type { Db } from './db';
 import { ErrorHandler } from './http/error-handler';
 import { healthPlugin } from './http/health.plugin';
+import { roomsPlugin } from './rooms';
 import { teamsPlugin } from './teams';
 
 declare module 'fastify' {
@@ -64,6 +65,7 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
     void app.register(authPlugin, { auth: deps.auth });
     // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией
     void app.register(teamsPlugin);
+    void app.register(roomsPlugin);
   }
 
   if (deps.closeDb) {

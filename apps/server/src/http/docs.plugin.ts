@@ -22,6 +22,7 @@ async function docsPluginImpl(app: FastifyInstance): Promise<void> {
         { name: DOCS_TAGS.service, description: 'Состояние сервиса' },
         { name: DOCS_TAGS.auth, description: 'Вход через OAuth и сессия' },
         { name: DOCS_TAGS.teams, description: 'Команды, роли и приглашения' },
+        { name: DOCS_TAGS.rooms, description: 'Комнаты и раунды оценки' },
       ],
       components: {
         securitySchemes: {
