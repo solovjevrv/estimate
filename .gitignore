@@ -1,0 +1,36 @@
+# Зависимости
+node_modules/
+
+# Сборка и артефакты
+dist/
+build/
+coverage/
+*.tsbuildinfo
+.vite/
+.eslintcache
+
+# Тесты
+playwright-report/
+test-results/
+
+# Окружение и секреты
+.env
+.env.*
+!.env.example
+credentials.md
+
+# Локальные файлы агента (в репозиторий не попадают)
+claude.md
+CLAUDE.md
+PROGRESS.md
+.claude/
+
+# Логи
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# ОС и IDE
+.DS_Store
+.idea/
+.vscode/
