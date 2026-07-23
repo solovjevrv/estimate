@@ -2,8 +2,10 @@ import type { RoomRole } from '@poker/shared';
 
 /** Кто сидит за столом с точки зрения сервера */
 export interface ParticipantIdentity {
-  /** id пользователя либо сессионный id гостя */
+  /** Публичный идентификатор за столом: id пользователя либо id гостя */
   participantId: string;
+  /** id пользователя или null для гостя — по нему перепроверяются права */
+  userId: string | null;
   name: string;
   avatarUrl: string | null;
   isGuest: boolean;

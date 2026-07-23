@@ -2,6 +2,7 @@ import { ROOM_NAME_MAX_LENGTH } from '@poker/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
+import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
 
 import type { CreateRoomBody, RoomIdParams, TeamIdParams } from './rooms.controller';
@@ -39,13 +40,18 @@ const roomsResponse = {
   properties: { rooms: { type: 'array', items: roomResponse } },
 } as const;
 
-async function roomsPluginImpl(app: FastifyInstance): Promise<void> {
+export interface RoomsPluginOptions {
+  auth: AuthConfig;
+}
+
+async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): Promise<void> {
   const authenticate = app.authenticate;
   if (!authenticate) {
     throw new Error('Роуты комнат требуют плагина аутентификации');
   }
 
-  const controller = new RoomsController(RoomsService.forDatabase(app.db));
+  // Секрет тот же, что и у сессии: гостевые токены выдаёт только сервер
+  const controller = new RoomsController(RoomsService.forDatabase(app.db, opts.auth.jwtSecret));
 
   app.post<{ Body: CreateRoomBody }>(
     '/api/rooms',

@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 
-import type { AuthUser, RoomState, WsAck } from '@poker/shared';
+import type { AuthUser, JoinRoomResult, RoomState, WsAck } from '@poker/shared';
 import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
 import { inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -118,23 +118,27 @@ describeDb('комнаты', () => {
     });
   }
 
-  async function joinRoom(client: Socket, roomId: string, guestName?: string): Promise<RoomState> {
-    const ack = await emit<{ state: RoomState; guestSessionId: string | null }>(
-      client,
-      WS_EVENTS.JOIN_ROOM,
-      { roomId, ...(guestName ? { guestName } : {}) },
-    );
+  async function join(
+    client: Socket,
+    roomId: string,
+    extra: { guestName?: string; guestToken?: string } = {},
+  ): Promise<JoinRoomResult> {
+    const ack = await emit<JoinRoomResult>(client, WS_EVENTS.JOIN_ROOM, { roomId, ...extra });
     if (!ack.ok) {
       throw new Error(`не удалось войти в комнату: ${ack.message}`);
     }
-    return ack.data.state;
+    return ack.data;
+  }
+
+  async function joinRoom(client: Socket, roomId: string, guestName?: string): Promise<RoomState> {
+    return (await join(client, roomId, guestName ? { guestName } : {})).state;
   }
 
   beforeAll(async () => {
     ({ db, pool } = createDb(databaseUrl as string));
     teamsService = TeamsService.forDatabase(db);
     app = buildApp({ db, auth: authConfig });
-    new SocketGateway('*').attach(app);
+    new SocketGateway({ corsOrigin: '*', guestSecret: authConfig.jwtSecret }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
     port = (app.server.address() as AddressInfo).port;
   });
@@ -232,6 +236,25 @@ describeDb('комнаты', () => {
       expect(byStranger.statusCode).toBe(403);
       expect(byOwner.statusCode).toBe(200);
       expect(byOwner.json()).toMatchObject({ room: { status: 'closed' } });
+    });
+
+    it('список своих комнат показывает только комнаты без команды', async () => {
+      const owner = await newUser('mine-owner');
+      const team = await teamsService.create(owner.id, `Команда ${randomUUID().slice(0, 8)}`);
+      teamIds.push(team.id);
+      const personal = await newRoom(owner, 'Личная комната');
+      const teamRoom = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(owner),
+        payload: { name: 'Командная комната', teamId: team.id },
+      });
+      roomIds.push((teamRoom.json() as { room: { id: string } }).room.id);
+
+      const res = await app.inject({ method: 'GET', url: '/api/rooms', headers: as(owner) });
+
+      const rooms = (res.json() as { rooms: Array<{ id: string }> }).rooms;
+      expect(rooms.map((room) => room.id)).toEqual([personal]);
     });
 
     it('несуществующая комната даёт 404', async () => {
@@ -381,6 +404,129 @@ describeDb('комнаты', () => {
       const ack = await emit(master, WS_EVENTS.REVEAL_CARDS);
 
       expect(ack).toMatchObject({ ok: false, error: 'conflict' });
+    });
+
+    it('гость возвращается по своему токену и сохраняет голос', async () => {
+      const owner = await newUser('reconnect-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      const first = await join(guest, roomId, { guestName: 'Гостья' });
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+      await emit(guest, WS_EVENTS.SUBMIT_VOTE, { value: 5 });
+
+      guest.close();
+      const returning = connect();
+      const second = await join(returning, roomId, {
+        guestName: 'Гостья',
+        guestToken: first.guestToken as string,
+      });
+
+      expect(second.participantId).toBe(first.participantId);
+      const self = second.state.participants.find(
+        (participant) => participant.participantId === first.participantId,
+      );
+      expect(self?.hasVoted).toBe(true);
+    });
+
+    it('чужой идентификатор без токена не даёт занять место участника', async () => {
+      const owner = await newUser('spoof-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const victim = connect();
+      await joinRoom(master, roomId);
+      const victimJoin = await join(victim, roomId, { guestName: 'Жертва' });
+
+      // Идентификатор участника публичен — он приходит всем в составе комнаты
+      const attacker = connect();
+      const attackerJoin = await join(attacker, roomId, {
+        guestName: 'Злодей',
+        guestToken: victimJoin.participantId,
+      });
+
+      expect(attackerJoin.participantId).not.toBe(victimJoin.participantId);
+    });
+
+    it('вход во вторую комнату отписывает от первой', async () => {
+      const owner = await newUser('two-rooms-owner');
+      const first = await newRoom(owner, 'Первая');
+      const second = await newRoom(owner, 'Вторая');
+      const master = connect(owner);
+      const watcher = connect();
+      await joinRoom(master, first);
+      await joinRoom(watcher, first, 'Наблюдатель');
+      await joinRoom(watcher, second, 'Наблюдатель');
+
+      // Рассылка первой комнаты до наблюдателя больше не доходит
+      const leaked = nextState(watcher).then(
+        () => 'пришло',
+        () => 'не пришло',
+      );
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+
+      expect(await leaked).toBe('не пришло');
+    });
+
+    it('вскрыть карты в закрытой комнате нельзя', async () => {
+      const owner = await newUser('reveal-closed-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+      await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 3 });
+      await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/close`, headers: as(owner) });
+
+      const ack = await emit(master, WS_EVENTS.REVEAL_CARDS);
+
+      expect(ack).toMatchObject({ ok: false, error: 'conflict' });
+    });
+
+    it('повторное вскрытие не меняет результат', async () => {
+      const owner = await newUser('double-reveal-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+      await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 8 });
+
+      const first = await emit<{ average: number }>(master, WS_EVENTS.REVEAL_CARDS);
+      const second = await emit<{ average: number }>(master, WS_EVENTS.REVEAL_CARDS);
+
+      expect(first.ok && second.ok).toBe(true);
+      expect(second.ok && second.data.average).toBe(8);
+    });
+
+    it('битые данные события отклоняются, а не роняют сервер', async () => {
+      const owner = await newUser('garbage-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+
+      const badDeck = await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'колода' });
+      const badRoom = await emit(master, WS_EVENTS.JOIN_ROOM, { roomId: 'не-uuid' });
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+      const hugeVote = await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 2 ** 40 });
+
+      expect(badDeck).toMatchObject({ ok: false, error: 'bad_request' });
+      expect(badRoom).toMatchObject({ ok: false, error: 'bad_request' });
+      expect(hugeVote).toMatchObject({ ok: false, error: 'bad_request' });
+
+      // Сервер жив: обычное событие после мусора отрабатывает
+      expect((await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 5 })).ok).toBe(true);
+    });
+
+    it('подтверждение не-функцией не роняет процесс', async () => {
+      const owner = await newUser('bad-ack-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+
+      // Вместо колбэка — объект: сервер не должен на этом упасть
+      master.emit(WS_EVENTS.JOIN_ROOM, { roomId }, {});
+      await new Promise((resolve) => setTimeout(resolve, 200));
+
+      const alive = await emit(connect(owner), WS_EVENTS.JOIN_ROOM, { roomId });
+      expect(alive.ok).toBe(true);
     });
 
     it('уход участника виден остальным', async () => {

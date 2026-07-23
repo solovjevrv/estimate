@@ -65,7 +65,7 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
     void app.register(authPlugin, { auth: deps.auth });
     // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией
     void app.register(teamsPlugin);
-    void app.register(roomsPlugin);
+    void app.register(roomsPlugin, { auth: deps.auth });
   }
 
   if (deps.closeDb) {

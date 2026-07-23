@@ -22,17 +22,21 @@ declare module 'fastify' {
   }
 }
 
-/**
- * Socket.io поверх HTTP-сервера Fastify.
- * Игровые события (join_room и т.д.) добавляются в задаче 2.4.
- */
+export interface SocketGatewayOptions {
+  /** Origin дев-фронта для CORS */
+  corsOrigin: string;
+  /** Секрет подписи гостевых токенов — тот же, что и у сессии */
+  guestSecret: string;
+}
+
+/** Socket.io поверх HTTP-сервера Fastify вместе с событиями игрового стола */
 export class SocketGateway {
-  constructor(private readonly corsOrigin: string) {}
+  constructor(private readonly options: SocketGatewayOptions) {}
 
   attach(app: FastifyInstance): PokerServer {
     const io: PokerServer = new Server(app.server, {
       // credentials нужен, чтобы браузер слал cookie сессии на дев-фронт (другой origin)
-      cors: { origin: this.corsOrigin, credentials: true },
+      cors: { origin: this.options.corsOrigin, credentials: true },
     });
 
     io.use((socket, next) => {
@@ -40,7 +44,10 @@ export class SocketGateway {
       next();
     });
 
-    new RoomsGateway(RoomsService.forDatabase(app.db)).register(io, app.log);
+    new RoomsGateway(RoomsService.forDatabase(app.db, this.options.guestSecret)).register(
+      io,
+      app.log,
+    );
 
     io.on('connection', (socket) => {
       app.log.info({ socketId: socket.id, userId: socket.data.userId }, 'Socket.io: подключение');

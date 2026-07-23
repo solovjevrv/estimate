@@ -1,19 +1,22 @@
 /**
  * Юнит-тесты правил комнаты без БД: репозитории подменены заглушками.
  */
+import { randomUUID } from 'node:crypto';
+
 import type { Room, Round } from '@poker/shared';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { UsersRepository } from '../src/auth';
 import type { Db } from '../src/db';
 import { ConflictError, ForbiddenError, ValidationError } from '../src/errors';
 import type { ParticipantIdentity } from '../src/rooms';
-import { RoomsService } from '../src/rooms';
-import type { RoomsRepository } from '../src/rooms/rooms.repository';
+import { GuestSessions, RoomsService } from '../src/rooms';
+import { RoomsRepository } from '../src/rooms/rooms.repository';
 import type { TeamsRepository } from '../src/teams';
 
+// Идентификаторы приходят по сокету и проверяются на формат — берём настоящие uuid
 const ROOM: Room = {
-  id: 'room-1',
+  id: randomUUID(),
   teamId: null,
   creatorId: 'user-owner',
   name: 'Комната',
@@ -22,26 +25,33 @@ const ROOM: Room = {
 };
 
 const ROUND: Round = {
-  id: 'round-1',
+  id: randomUUID(),
   roomId: ROOM.id,
   seq: 1,
   deckType: 'fibonacci',
   jiraUrl: null,
   confluenceUrl: null,
   status: 'voting',
+  average: null,
   createdAt: new Date().toISOString(),
   revealedAt: null,
 };
 
 const VOTER: ParticipantIdentity = {
   participantId: 'user-voter',
+  userId: 'user-voter',
   name: 'Голосующий',
   avatarUrl: null,
   isGuest: false,
   role: 'voter',
 };
 
-const MASTER: ParticipantIdentity = { ...VOTER, participantId: 'user-owner', role: 'scrum_master' };
+const MASTER: ParticipantIdentity = {
+  ...VOTER,
+  participantId: 'user-owner',
+  userId: 'user-owner',
+  role: 'scrum_master',
+};
 
 function serviceWith(
   rooms: Partial<RoomsRepository> = {},
@@ -53,6 +63,7 @@ function serviceWith(
     rooms as RoomsRepository,
     teams as TeamsRepository,
     users as UsersRepository,
+    new GuestSessions('секрет-гостевых-сессий-для-тестов'),
   );
 }
 
@@ -136,8 +147,29 @@ describe('RoomsService: голосование', () => {
 });
 
 describe('RoomsService: права на управление раундом', () => {
+  /** Сервис с транзакцией-заглушкой: внутри неё репозиторий создаётся сам */
+  function serviceInTransaction(): RoomsService {
+    vi.spyOn(RoomsRepository.prototype, 'lockRoom').mockResolvedValue(ROOM);
+    vi.spyOn(RoomsRepository.prototype, 'findCurrentRound').mockResolvedValue(ROUND);
+    vi.spyOn(RoomsRepository.prototype, 'listVotes').mockResolvedValue([]);
+    const db = {
+      transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
+    } as unknown as Db;
+    return new RoomsService(
+      db,
+      new RoomsRepository(db),
+      {} as TeamsRepository,
+      {} as UsersRepository,
+      new GuestSessions('секрет-гостевых-сессий-для-тестов'),
+    );
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it('голосующий не может вскрыть карты и начать раунд', async () => {
-    const service = serviceWith();
+    const service = serviceInTransaction();
 
     await expect(service.revealCards(ROOM.id, VOTER)).rejects.toBeInstanceOf(ForbiddenError);
     await expect(
@@ -145,12 +177,38 @@ describe('RoomsService: права на управление раундом', ()
     ).rejects.toBeInstanceOf(ForbiddenError);
   });
 
-  it('скрам-мастер проходит проверку прав', async () => {
-    // Дальше проверки прав дело доходит до транзакции — её здесь нет,
-    // поэтому падение будет уже не про права
-    const service = serviceWith();
+  it('скрам-мастеру отказывают уже не по правам, а по существу', async () => {
+    const service = serviceInTransaction();
 
-    await expect(service.revealCards(ROOM.id, MASTER)).rejects.not.toBeInstanceOf(ForbiddenError);
+    // Голосов нет — вскрывать нечего, но проверку прав создатель комнаты прошёл
+    await expect(service.revealCards(ROOM.id, MASTER)).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('роль перечитывается на действии: бывший админ команды теряет права', async () => {
+    const teamRoom: Room = { ...ROOM, teamId: randomUUID(), creatorId: randomUUID() };
+    vi.spyOn(RoomsRepository.prototype, 'lockRoom').mockResolvedValue(teamRoom);
+    vi.spyOn(RoomsRepository.prototype, 'findCurrentRound').mockResolvedValue(ROUND);
+    const db = {
+      transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
+    } as unknown as Db;
+    const service = new RoomsService(
+      db,
+      new RoomsRepository(db),
+      // На момент действия участник уже понижен до рядового
+      {
+        findMembership: vi.fn(async () => ({ teamId: 'team', userId: 'u', role: 'member' })),
+      } as unknown as TeamsRepository,
+      {} as UsersRepository,
+      new GuestSessions('секрет'),
+    );
+
+    await expect(
+      service.startNewRound(
+        teamRoom.id,
+        { ...MASTER, role: 'scrum_master' },
+        { deckType: 'fibonacci' },
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenError);
   });
 });
 
@@ -170,7 +228,7 @@ describe('RoomsService: вход за стол', () => {
       roomId: ROOM.id,
       userId: null,
       guestName: '  Гость  ',
-      guestSessionId: 'guest-42',
+      guestToken: new GuestSessions('секрет-гостевых-сессий-для-тестов').issue('guest-42'),
     });
 
     expect(identity).toMatchObject({

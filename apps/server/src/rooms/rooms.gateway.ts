@@ -3,6 +3,7 @@ import {
   WS_SERVER_EVENTS,
   type JoinRoomPayload,
   type JoinRoomResult,
+  type RoundResult,
   type StartRoundPayload,
   type SubmitVotePayload,
   type UpdateLinksPayload,
@@ -19,6 +20,14 @@ import type { RoomsService } from './rooms.service';
 
 type Ack<T> = (response: WsAck<T>) => void;
 
+/** Клиент может прислать что угодно: и без подтверждения, и вместо полезной нагрузки */
+interface EventArgs<P> {
+  payload: P | undefined;
+  ack: Ack<unknown>;
+}
+
+const NO_OP_ACK: Ack<unknown> = () => {};
+
 /**
  * Игровые события комнаты. Права проверяются на каждом событии: клиент
  * присылает только намерение, роль и состояние берутся с сервера.
@@ -31,39 +40,44 @@ export class RoomsGateway {
 
   register(io: PokerServer, log: FastifyBaseLogger): void {
     io.on('connection', (socket) => {
-      socket.on(WS_EVENTS.JOIN_ROOM, (payload: JoinRoomPayload, ack?: Ack<JoinRoomResult>) => {
-        void this.handle(socket, log, ack, () => this.join(io, socket, payload));
+      socket.on(WS_EVENTS.JOIN_ROOM, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<JoinRoomPayload>(args);
+        this.run(socket, log, ack, () => this.join(socket, payload));
       });
 
-      socket.on(WS_EVENTS.SUBMIT_VOTE, (payload: SubmitVotePayload, ack?: Ack<null>) => {
-        void this.handle(socket, log, ack, async () => {
+      socket.on(WS_EVENTS.SUBMIT_VOTE, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<SubmitVotePayload>(args);
+        this.run(socket, log, ack, async () => {
           const { roomId, identity } = this.requireSeat(socket);
-          await this.service.submitVote(roomId, identity, payload?.value);
+          await this.service.submitVote(roomId, identity, payload?.value as number);
           await this.broadcastState(io, roomId);
           return null;
         });
       });
 
-      socket.on(WS_EVENTS.REVEAL_CARDS, (ack?: Ack<null>) => {
-        void this.handle(socket, log, ack, async () => {
+      socket.on(WS_EVENTS.REVEAL_CARDS, (...args: unknown[]) => {
+        const { ack } = this.readArgs<never>(args);
+        this.run<RoundResult>(socket, log, ack, async () => {
           const { roomId, identity } = this.requireSeat(socket);
-          await this.service.revealCards(roomId, identity);
+          const result = await this.service.revealCards(roomId, identity);
+          await this.broadcastState(io, roomId);
+          return result;
+        });
+      });
+
+      socket.on(WS_EVENTS.START_NEW_ROUND, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<StartRoundPayload>(args);
+        this.run(socket, log, ack, async () => {
+          const { roomId, identity } = this.requireSeat(socket);
+          await this.service.startNewRound(roomId, identity, payload as StartRoundPayload);
           await this.broadcastState(io, roomId);
           return null;
         });
       });
 
-      socket.on(WS_EVENTS.START_NEW_ROUND, (payload: StartRoundPayload, ack?: Ack<null>) => {
-        void this.handle(socket, log, ack, async () => {
-          const { roomId, identity } = this.requireSeat(socket);
-          await this.service.startNewRound(roomId, identity, payload);
-          await this.broadcastState(io, roomId);
-          return null;
-        });
-      });
-
-      socket.on(WS_EVENTS.UPDATE_LINKS, (payload: UpdateLinksPayload, ack?: Ack<null>) => {
-        void this.handle(socket, log, ack, async () => {
+      socket.on(WS_EVENTS.UPDATE_LINKS, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<UpdateLinksPayload>(args);
+        this.run(socket, log, ack, async () => {
           const { roomId } = this.requireSeat(socket);
           // Ссылки на задачу правит любой участник — так решено в Epic 5
           await this.service.updateLinks(roomId, payload ?? {});
@@ -75,7 +89,7 @@ export class RoomsGateway {
       socket.on('disconnect', () => {
         const roomId = this.presence.leave(socket.id);
         if (roomId) {
-          void this.broadcastState(io, roomId).catch((err: unknown) => {
+          this.broadcastState(io, roomId).catch((err: unknown) => {
             log.warn({ err, roomId }, 'Не удалось разослать состояние после выхода участника');
           });
         }
@@ -84,33 +98,38 @@ export class RoomsGateway {
   }
 
   private async join(
-    io: PokerServer,
     socket: Socket,
-    payload: JoinRoomPayload,
+    payload: JoinRoomPayload | undefined,
   ): Promise<JoinRoomResult> {
     if (!payload?.roomId) {
       throw new ValidationError('Не указана комната');
     }
 
-    const { identity } = await this.service.prepareJoin({
+    const { identity, guestToken } = await this.service.prepareJoin({
       roomId: payload.roomId,
       userId: socket.data.userId,
       guestName: payload.guestName,
-      guestSessionId: payload.guestSessionId,
+      guestToken: payload.guestToken,
     });
+
+    // Из прошлой комнаты выходим полностью, иначе сокет продолжит получать её рассылки
+    const previousRoom = this.presence.roomOf(socket.id);
+    if (previousRoom && previousRoom !== payload.roomId) {
+      await socket.leave(previousRoom);
+    }
 
     await socket.join(payload.roomId);
     this.presence.join(payload.roomId, socket.id, identity);
+
+    if (previousRoom && previousRoom !== payload.roomId) {
+      await this.broadcastState(socket.nsp as unknown as PokerServer, previousRoom);
+    }
 
     const state = await this.service.getState(payload.roomId, this.presence.list(payload.roomId));
     // Остальным за столом сразу показываем нового участника
     socket.to(payload.roomId).emit(WS_SERVER_EVENTS.ROOM_STATE, state);
 
-    return {
-      state,
-      guestSessionId: identity.isGuest ? identity.participantId : null,
-      participantId: identity.participantId,
-    };
+    return { state, guestToken, participantId: identity.participantId };
   }
 
   /** Действовать может только тот, кто уже сидит за столом */
@@ -128,27 +147,48 @@ export class RoomsGateway {
     io.to(roomId).emit(WS_SERVER_EVENTS.ROOM_STATE, state);
   }
 
+  /** Подтверждение и полезная нагрузка могут прийти в любом сочетании — разбираем аккуратно */
+  private readArgs<P>(args: unknown[]): EventArgs<P> {
+    const ack = args.find((arg): arg is Ack<unknown> => typeof arg === 'function') ?? NO_OP_ACK;
+    const payload = args.find((arg) => typeof arg === 'object' && arg !== null) as P | undefined;
+    return { payload, ack };
+  }
+
   /**
-   * Общая обвязка обработчиков: ошибки уходят в ack тем же форматом,
-   * что и в REST, а подробности остаются в логах.
+   * Обработчик события: ошибки уходят в подтверждение тем же форматом, что и в
+   * REST, подробности остаются в логах. Ни один отказ не должен всплыть наружу —
+   * необработанный отказ уронил бы процесс вместе со всеми комнатами.
    */
-  private async handle<T>(
+  private run<T>(
     socket: Socket,
     log: FastifyBaseLogger,
-    ack: Ack<T> | undefined,
+    ack: Ack<unknown>,
     action: () => Promise<T>,
-  ): Promise<void> {
+  ): void {
+    void action().then(
+      (data) => this.reply(log, ack, { ok: true, data }),
+      (err: unknown) => {
+        if (err instanceof AppError) {
+          log.info({ socketId: socket.id, err: err.message }, 'Событие комнаты отклонено');
+          this.reply(log, ack, { ok: false, error: err.code, message: err.message });
+          return;
+        }
+        log.error({ socketId: socket.id, err }, 'Ошибка обработки события комнаты');
+        this.reply(log, ack, {
+          ok: false,
+          error: 'internal',
+          message: 'Внутренняя ошибка сервера',
+        });
+      },
+    );
+  }
+
+  /** Подтверждение присылает клиент, поэтому его вызов тоже может бросить */
+  private reply(log: FastifyBaseLogger, ack: Ack<unknown>, response: WsAck<unknown>): void {
     try {
-      const data = await action();
-      ack?.({ ok: true, data });
+      ack(response);
     } catch (err) {
-      if (err instanceof AppError) {
-        log.info({ socketId: socket.id, err: err.message }, 'Событие комнаты отклонено');
-        ack?.({ ok: false, error: err.code, message: err.message });
-        return;
-      }
-      log.error({ socketId: socket.id, err }, 'Ошибка обработки события комнаты');
-      ack?.({ ok: false, error: 'internal', message: 'Внутренняя ошибка сервера' });
+      log.warn({ err }, 'Не удалось отправить подтверждение события');
     }
   }
 }

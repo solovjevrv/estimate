@@ -19,7 +19,17 @@ async function main(): Promise<void> {
     { logger: true },
   );
 
-  new SocketGateway(config.webOrigin).attach(app);
+  new SocketGateway({ corsOrigin: config.webOrigin, guestSecret: config.auth.jwtSecret }).attach(
+    app,
+  );
+
+  // Одна неудачная операция не должна уносить процесс вместе со всеми комнатами
+  process.on('unhandledRejection', (reason) => {
+    app.log.error({ err: reason }, 'Необработанный отказ промиса');
+  });
+  process.on('uncaughtException', (err) => {
+    app.log.error({ err }, 'Необработанное исключение');
+  });
 
   // При остановке контейнера (SIGTERM) дожидаемся закрытия Fastify и его onClose-хуков
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {

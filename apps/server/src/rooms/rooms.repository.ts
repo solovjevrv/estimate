@@ -144,7 +144,8 @@ export class RoomsRepository {
       .orderBy(schema.votes.createdAt);
 
     return rows.map((row) => ({
-      participantId: row.userId ?? (row.guestSessionId as string),
+      // CHECK-констрейнт гарантирует, что заполнено ровно одно из двух полей
+      participantId: row.userId ?? row.guestSessionId ?? 'unknown',
       name: row.userName ?? row.guestName,
       value: row.value,
     }));
@@ -221,6 +222,7 @@ export class RoomsRepository {
       jiraUrl: row.jiraUrl,
       confluenceUrl: row.confluenceUrl,
       status: row.status,
+      average: row.average === null ? null : Number(row.average),
       createdAt: row.createdAt.toISOString(),
       revealedAt: row.revealedAt?.toISOString() ?? null,
     };

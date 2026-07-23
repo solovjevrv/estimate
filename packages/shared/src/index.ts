@@ -81,6 +81,8 @@ export type RoomRole = 'scrum_master' | 'voter';
 /** Типы колод для оценки */
 export type DeckType = 'fibonacci' | 'scale_0_5';
 
+export const DECK_TYPES: readonly DeckType[] = ['fibonacci', 'scale_0_5'];
+
 export const FIBONACCI_DECK: readonly number[] = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
 
 export const SCALE_0_5_DECK: readonly number[] = [0, 1, 2, 3, 4, 5];
@@ -108,6 +110,8 @@ export interface Round {
   jiraUrl: string | null;
   confluenceUrl: string | null;
   status: RoundStatus;
+  /** Средний балл, зафиксированный при вскрытии карт */
+  average: number | null;
   createdAt: string;
   revealedAt: string | null;
 }
@@ -152,14 +156,18 @@ export interface JoinRoomPayload {
   roomId: string;
   /** Имя гостя на один сеанс; авторизованным не нужно */
   guestName?: string;
-  /** Сессия гостя из прошлого захода — чтобы не потерять свой голос при переподключении */
-  guestSessionId?: string;
+  /**
+   * Подписанный токен гостя из прошлого захода — чтобы не потерять свой голос
+   * при переподключении. Хранить как секрет: идентификатор участника публичен,
+   * а токен подтверждает личность.
+   */
+  guestToken?: string;
 }
 
 export interface JoinRoomResult {
   state: RoomState;
-  /** Возвращается гостю: сохранить и присылать при переподключении */
-  guestSessionId: string | null;
+  /** Возвращается гостю: сохранить и прислать при переподключении */
+  guestToken: string | null;
   participantId: string;
 }
 
