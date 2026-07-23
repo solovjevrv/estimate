@@ -109,6 +109,8 @@ export interface Round {
   deckType: DeckType;
   jiraUrl: string | null;
   confluenceUrl: string | null;
+  /** Версия ссылок: растёт с каждой правкой, по ней ловятся одновременные правки */
+  linksVersion: number;
   status: RoundStatus;
   /** Средний балл, зафиксированный при вскрытии карт */
   average: number | null;
@@ -179,11 +181,22 @@ export interface StartRoundPayload {
   deckType: DeckType;
   jiraUrl?: string | null;
   confluenceUrl?: string | null;
+  /**
+   * Раунд, который клиент видел текущим (null — если раунда ещё не было).
+   * Если стол уже ушёл вперёд, сервер вернёт текущий раунд вместо нового:
+   * так двойной клик и два скрам-мастера не создадут лишних раундов.
+   */
+  fromRoundId?: string | null;
 }
 
 export interface UpdateLinksPayload {
   jiraUrl?: string | null;
   confluenceUrl?: string | null;
+  /**
+   * Версия ссылок, которую видел клиент. Если за это время их поменял кто-то
+   * другой, правка отклоняется — иначе чужой текст молча затрётся.
+   */
+  version?: number;
 }
 
 /** Ответ на событие: либо данные, либо ошибка с тем же кодом, что и в REST */

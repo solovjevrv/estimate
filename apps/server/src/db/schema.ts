@@ -95,6 +95,8 @@ export const rounds = pgTable(
     deckType: deckTypeEnum('deck_type').notNull(),
     jiraUrl: text('jira_url'),
     confluenceUrl: text('confluence_url'),
+    /** Версия ссылок для оптимистичной блокировки: растёт с каждой правкой */
+    linksVersion: integer('links_version').notNull().default(1),
     status: roundStatusEnum('status').notNull().default('voting'),
     /** Средний балл, вычисляется при вскрытии карт */
     average: numeric('average', { precision: 8, scale: 2 }),

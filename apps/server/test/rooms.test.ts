@@ -6,9 +6,9 @@ import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 
-import type { AuthUser, JoinRoomResult, RoomState, WsAck } from '@poker/shared';
+import type { AuthUser, JoinRoomResult, Round, RoomState, WsAck } from '@poker/shared';
 import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { type Socket, io as createClient } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -17,6 +17,9 @@ import { buildApp } from '../src/app';
 import { ACCESS_COOKIE, TokenService, UsersRepository } from '../src/auth';
 import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
+import { ConflictError } from '../src/errors';
+import type { ParticipantIdentity } from '../src/rooms';
+import { RoomsService } from '../src/rooms';
 import { SocketGateway } from '../src/socket';
 import { TeamsRepository, TeamsService } from '../src/teams';
 
@@ -529,6 +532,32 @@ describeDb('комнаты', () => {
       expect(alive.ok).toBe(true);
     });
 
+    it('правка ссылок поверх чужой отклоняется по версии', async () => {
+      const owner = await newUser('links-version-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      await joinRoom(guest, roomId, 'Гость');
+
+      const started = nextState(master);
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+      const version = (await started).round?.linksVersion as number;
+
+      // Оба видели одну и ту же версию ссылок, но правит их первый
+      const first = await emit(guest, WS_EVENTS.UPDATE_LINKS, {
+        jiraUrl: 'https://jira.example.com/GUEST',
+        version,
+      });
+      const stale = await emit(master, WS_EVENTS.UPDATE_LINKS, {
+        jiraUrl: 'https://jira.example.com/MASTER',
+        version,
+      });
+
+      expect(first.ok).toBe(true);
+      expect(stale).toMatchObject({ ok: false, error: 'conflict' });
+    });
+
     it('уход участника виден остальным', async () => {
       const owner = await newUser('leave-owner');
       const roomId = await newRoom(owner);
@@ -541,6 +570,132 @@ describeDb('комнаты', () => {
       guest.close();
 
       expect((await masterSeesLeave).participants).toHaveLength(1);
+    });
+  });
+
+  /**
+   * Одновременные действия за столом. Сервис зовём напрямую: так события
+   * уходят в базу параллельно, без очереди одного сокета.
+   */
+  describe('одновременные действия', () => {
+    let service: RoomsService;
+
+    function asMaster(user: AuthUser): ParticipantIdentity {
+      return {
+        participantId: user.id,
+        userId: user.id,
+        name: user.name,
+        avatarUrl: null,
+        isGuest: false,
+        role: 'scrum_master',
+      };
+    }
+
+    function asGuest(name: string): ParticipantIdentity {
+      return {
+        participantId: randomUUID(),
+        userId: null,
+        name,
+        avatarUrl: null,
+        isGuest: true,
+        role: 'voter',
+      };
+    }
+
+    beforeAll(() => {
+      service = RoomsService.forDatabase(db, authConfig.jwtSecret);
+    });
+
+    it('голоса в момент вскрытия не расходятся с зафиксированным средним', async () => {
+      const owner = await newUser('race-reveal-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+      const guests = ['Аня', 'Борис', 'Вера', 'Глеб', 'Дина'].map(asGuest);
+
+      // Одна попытка может и разойтись с гонкой — повторяем несколько раз
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+        await service.submitVote(roomId, master, 1);
+
+        // Голоса летят одновременно со вскрытием: часть успеет, часть получит отказ
+        await Promise.allSettled([
+          ...guests.map((guest) => service.submitVote(roomId, guest, 8)),
+          service.revealCards(roomId, master),
+        ]);
+
+        const { result } = await service.getState(roomId, []);
+        expect(result).not.toBeNull();
+        const values = (result?.votes ?? []).map((vote) => vote.value);
+        const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+        // Среднее в раунде посчитано ровно по тем оценкам, которые показаны участникам
+        expect(result?.average).toBe(Math.round(mean * 100) / 100);
+      }
+    });
+
+    it('двойной старт раунда не плодит лишние раунды', async () => {
+      const owner = await newUser('race-round-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+      const first = await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+
+      // Оба запроса отталкиваются от одного и того же раунда — это один и тот же клик
+      const [left, right] = await Promise.all([
+        service.startNewRound(roomId, master, {
+          deckType: 'fibonacci',
+          fromRoundId: first.id,
+        }),
+        service.startNewRound(roomId, master, {
+          deckType: 'fibonacci',
+          fromRoundId: first.id,
+        }),
+      ]);
+
+      expect(left.id).toBe(right.id);
+      const rounds = await db
+        .select()
+        .from(schema.rounds)
+        .where(eq(schema.rounds.roomId, roomId));
+      expect(rounds).toHaveLength(2);
+    });
+
+    it('одновременная правка ссылок: побеждает один, второй узнаёт о конфликте', async () => {
+      const owner = await newUser('race-links-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+      const started = await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+
+      const attempts = await Promise.allSettled([
+        service.updateLinks(roomId, {
+          jiraUrl: 'https://jira.example.com/LEFT',
+          version: started.linksVersion,
+        }),
+        service.updateLinks(roomId, {
+          jiraUrl: 'https://jira.example.com/RIGHT',
+          version: started.linksVersion,
+        }),
+      ]);
+
+      const saved = attempts.filter((attempt) => attempt.status === 'fulfilled');
+      const rejected = attempts.filter((attempt) => attempt.status === 'rejected');
+      expect(saved).toHaveLength(1);
+      expect(rejected[0]?.reason).toBeInstanceOf(ConflictError);
+      // Версия выросла ровно на одну правку — чужой текст не затёрт вторым разом
+      expect((saved[0] as PromiseFulfilledResult<Round>).value.linksVersion).toBe(
+        started.linksVersion + 1,
+      );
+    });
+
+    it('правка без версии остаётся прежней: побеждает последний', async () => {
+      const owner = await newUser('race-links-legacy-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+
+      const updated = await service.updateLinks(roomId, {
+        jiraUrl: 'https://jira.example.com/LEGACY',
+      });
+
+      expect(updated.jiraUrl).toBe('https://jira.example.com/LEGACY');
     });
   });
 });

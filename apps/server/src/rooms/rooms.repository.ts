@@ -98,19 +98,30 @@ export class RoomsRepository {
     return this.toRound(row);
   }
 
+  /**
+   * Правит ссылки и поднимает их версию. Если передана ожидаемая версия,
+   * запись пройдёт только пока ссылки никто не менял — иначе вернётся null.
+   */
   async updateRoundLinks(
     roundId: string,
     links: { jiraUrl?: string | null; confluenceUrl?: string | null },
+    expectedVersion?: number,
   ): Promise<Round | null> {
-    const patch: Partial<typeof schema.rounds.$inferInsert> = {};
+    const patch: Partial<typeof schema.rounds.$inferInsert> = {
+      linksVersion: sql`${schema.rounds.linksVersion} + 1` as unknown as number,
+    };
     if (links.jiraUrl !== undefined) patch.jiraUrl = links.jiraUrl;
     if (links.confluenceUrl !== undefined) patch.confluenceUrl = links.confluenceUrl;
 
-    const [row] = await this.db
-      .update(schema.rounds)
-      .set(patch)
-      .where(eq(schema.rounds.id, roundId))
-      .returning();
+    const condition =
+      expectedVersion === undefined
+        ? eq(schema.rounds.id, roundId)
+        : and(
+            eq(schema.rounds.id, roundId),
+            eq(schema.rounds.linksVersion, expectedVersion),
+          );
+
+    const [row] = await this.db.update(schema.rounds).set(patch).where(condition).returning();
     return row ? this.toRound(row) : null;
   }
 
@@ -221,6 +232,7 @@ export class RoomsRepository {
       deckType: row.deckType,
       jiraUrl: row.jiraUrl,
       confluenceUrl: row.confluenceUrl,
+      linksVersion: row.linksVersion,
       status: row.status,
       average: row.average === null ? null : Number(row.average),
       createdAt: row.createdAt.toISOString(),
