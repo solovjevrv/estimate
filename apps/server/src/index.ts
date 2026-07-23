@@ -1,25 +1,40 @@
 import { buildApp } from './app';
+import { loadConfig } from './config';
+import { createDb } from './db';
+import { attachSocketIo } from './socket';
 
 async function main(): Promise<void> {
-  const port = Number(process.env.PORT ?? 3000);
-  const host = process.env.HOST ?? '0.0.0.0';
+  const config = loadConfig();
+  const { db, pool } = createDb(config.databaseUrl);
 
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error(`Некорректное значение PORT: "${process.env.PORT}"`);
-  }
+  const app = buildApp(
+    {
+      db,
+      closeDb: async () => {
+        await pool.end();
+      },
+    },
+    { logger: true },
+  );
 
-  const app = buildApp({ logger: true });
+  attachSocketIo(app, config.webOrigin);
 
   // При остановке контейнера (SIGTERM) дожидаемся закрытия Fastify и его onClose-хуков
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.once(signal, () => {
       app.log.info({ signal }, 'Останавливаю сервер');
-      void app.close().finally(() => process.exit(0));
+      void app.close().then(
+        () => process.exit(0),
+        (err) => {
+          app.log.error(err, 'Ошибка при остановке');
+          process.exit(1);
+        },
+      );
     });
   }
 
   try {
-    await app.listen({ port, host });
+    await app.listen({ port: config.port, host: config.host });
   } catch (err) {
     app.log.error(err);
     process.exit(1);
