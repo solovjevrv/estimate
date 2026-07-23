@@ -18,7 +18,9 @@ $COMPOSE build web
 
 echo "== Применяю миграции БД =="
 $COMPOSE up -d --wait postgres
-$COMPOSE run --rm --no-deps server node dist/db/migrate.cjs
+# Скрипт приходит по SSH через stdin, а docker compose run его читает и съедает
+# остаток файла: без /dev/null деплой молча обрывался сразу после миграций
+$COMPOSE run --rm --no-deps -T server node dist/db/migrate.cjs </dev/null
 
 echo "== Обновляю сервисы =="
 if ! $COMPOSE up -d --wait; then
