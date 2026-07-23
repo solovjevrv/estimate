@@ -8,6 +8,7 @@ import Fastify, {
 import { authPlugin } from './auth';
 import type { AuthConfig } from './config';
 import type { Db } from './db';
+import { teamsPlugin } from './teams';
 
 declare module 'fastify' {
   interface FastifyInstance {
@@ -29,6 +30,8 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
   app.decorate('db', deps.db);
   if (deps.auth) {
     void app.register(authPlugin, { auth: deps.auth });
+    // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией
+    void app.register(teamsPlugin);
   }
 
   // Наружу не должно уезжать ничего внутреннего: текст SQL, параметры запроса,
