@@ -1,0 +1,1 @@
+ALTER TABLE "rounds" ADD COLUMN "links_version" integer DEFAULT 1 NOT NULL;

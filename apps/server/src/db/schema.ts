@@ -78,6 +78,8 @@ export const rooms = pgTable(
     creatorId: uuid('creator_id').references(() => users.id, { onDelete: 'set null' }),
     name: text('name').notNull(),
     status: roomStatusEnum('status').notNull().default('active'),
+    /** Номер изменения стола: растёт при каждом действии, по нему клиент отбрасывает отставшие рассылки */
+    revision: integer('revision').notNull().default(0),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('rooms_team_id_idx').on(t.teamId)],
@@ -95,6 +97,8 @@ export const rounds = pgTable(
     deckType: deckTypeEnum('deck_type').notNull(),
     jiraUrl: text('jira_url'),
     confluenceUrl: text('confluence_url'),
+    /** Версия ссылок для оптимистичной блокировки: растёт с каждой правкой */
+    linksVersion: integer('links_version').notNull().default(1),
     status: roundStatusEnum('status').notNull().default('voting'),
     /** Средний балл, вычисляется при вскрытии карт */
     average: numeric('average', { precision: 8, scale: 2 }),

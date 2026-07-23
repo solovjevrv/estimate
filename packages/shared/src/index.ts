@@ -98,6 +98,12 @@ export interface Room {
   creatorId: string | null;
   name: string;
   status: RoomStatus;
+  /**
+   * Номер изменения стола: растёт при каждом действии. Рассылки идут
+   * параллельно и могут обогнать друг друга — по нему клиент отличает
+   * свежий снимок от отставшего.
+   */
+  revision: number;
   createdAt: string;
 }
 
@@ -109,6 +115,8 @@ export interface Round {
   deckType: DeckType;
   jiraUrl: string | null;
   confluenceUrl: string | null;
+  /** Версия ссылок: растёт с каждой правкой, по ней ловятся одновременные правки */
+  linksVersion: number;
   status: RoundStatus;
   /** Средний балл, зафиксированный при вскрытии карт */
   average: number | null;
@@ -173,17 +181,47 @@ export interface JoinRoomResult {
 
 export interface SubmitVotePayload {
   value: number;
+  /**
+   * Раунд, за который голосуют. Если стол успел уйти вперёд, оценка не попадёт
+   * в чужую задачу — участник получит отказ. Без поля проверки нет.
+   */
+  roundId?: string | null;
+}
+
+export interface RevealCardsPayload {
+  /**
+   * Раунд, карты которого вскрывают. Пока команда ждала очереди, скрам-мастер
+   * мог начать следующую задачу — её карты вскрывать рано. Без поля проверки нет.
+   */
+  roundId?: string | null;
 }
 
 export interface StartRoundPayload {
   deckType: DeckType;
   jiraUrl?: string | null;
   confluenceUrl?: string | null;
+  /**
+   * Раунд, который клиент видел текущим (null — если раунда ещё не было).
+   * Если стол уже ушёл вперёд, сервер вернёт текущий раунд вместо нового:
+   * так двойной клик и два скрам-мастера не создадут лишних раундов.
+   */
+  fromRoundId?: string | null;
 }
 
 export interface UpdateLinksPayload {
   jiraUrl?: string | null;
   confluenceUrl?: string | null;
+  /**
+   * Раунд, к которому относится правка: ссылки прошлой задачи не должны попасть
+   * в новую. Без поля проверки нет.
+   */
+  roundId?: string | null;
+  /**
+   * Версия ссылок, которую видел клиент. Если за это время их поменял кто-то
+   * другой, правка отклоняется — иначе чужой текст молча затрётся.
+   * Без поля (или с null) версия не проверяется: побеждает последний.
+   */
+  version?: number | null;
 }
 
 /** Ответ на событие: либо данные, либо ошибка с тем же кодом, что и в REST */

@@ -12,6 +12,9 @@ export type Db = NodePgDatabase<typeof schema>;
 export function createDb(connectionString: string): { db: Db; pool: Pool } {
   const pool = new Pool({
     connectionString,
+    // Действие за столом берёт соединение дважды: запись под блокировкой и снимок
+    // для рассылки. С запасом на комнату из десятка участников
+    max: 30,
     // Не ждать вечно при «тихом» падении сети: health должен отвечать 503, а не висеть
     connectionTimeoutMillis: 5_000,
     query_timeout: 10_000,

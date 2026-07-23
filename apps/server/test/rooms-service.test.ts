@@ -12,7 +12,9 @@ import { ConflictError, ForbiddenError, ValidationError } from '../src/errors';
 import type { ParticipantIdentity } from '../src/rooms';
 import { GuestSessions, RoomsService } from '../src/rooms';
 import { RoomsRepository } from '../src/rooms/rooms.repository';
-import type { TeamsRepository } from '../src/teams';
+import { TeamsRepository } from '../src/teams';
+
+const GUEST_SECRET = 'секрет-гостевых-сессий-для-тестов';
 
 // Идентификаторы приходят по сокету и проверяются на формат — берём настоящие uuid
 const ROOM: Room = {
@@ -21,6 +23,7 @@ const ROOM: Room = {
   creatorId: 'user-owner',
   name: 'Комната',
   status: 'active',
+  revision: 0,
   createdAt: new Date().toISOString(),
 };
 
@@ -31,6 +34,7 @@ const ROUND: Round = {
   deckType: 'fibonacci',
   jiraUrl: null,
   confluenceUrl: null,
+  linksVersion: 1,
   status: 'voting',
   average: null,
   createdAt: new Date().toISOString(),
@@ -53,19 +57,42 @@ const MASTER: ParticipantIdentity = {
   role: 'scrum_master',
 };
 
+/**
+ * Сервис с подменённым доступом к базе. Действия за столом идут в транзакции и
+ * заводят репозиторий сами, поэтому методы подменяются на прототипе.
+ */
 function serviceWith(
   rooms: Partial<RoomsRepository> = {},
   teams: Partial<TeamsRepository> = {},
   users: Partial<UsersRepository> = {},
 ): RoomsService {
+  const db = {
+    transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
+  } as unknown as Db;
+
+  // Действие за столом отмечается в комнате — в юнит-тестах базы нет
+  vi.spyOn(RoomsRepository.prototype, 'bumpRevision').mockResolvedValue();
+  for (const [method, implementation] of Object.entries(rooms)) {
+    const spy = vi.spyOn(RoomsRepository.prototype, method as keyof RoomsRepository);
+    spy.mockImplementation(implementation as never);
+  }
+  for (const [method, implementation] of Object.entries(teams)) {
+    const spy = vi.spyOn(TeamsRepository.prototype, method as keyof TeamsRepository);
+    spy.mockImplementation(implementation as never);
+  }
+
   return new RoomsService(
-    {} as Db,
-    rooms as RoomsRepository,
+    db,
+    new RoomsRepository(db),
     teams as TeamsRepository,
     users as UsersRepository,
-    new GuestSessions('секрет-гостевых-сессий-для-тестов'),
+    new GuestSessions(GUEST_SECRET),
   );
 }
+
+afterEach(() => {
+  vi.restoreAllMocks();
+});
 
 describe('RoomsService: роль в комнате', () => {
   it('создатель комнаты — скрам-мастер, остальные голосуют', async () => {
@@ -96,24 +123,29 @@ describe('RoomsService: роль в комнате', () => {
 
 describe('RoomsService: голосование', () => {
   const votingRepo: Partial<RoomsRepository> = {
-    findRoom: vi.fn(async () => ROOM),
-    findCurrentRound: vi.fn(async () => ROUND),
-    upsertUserVote: vi.fn(async () => {}),
-    upsertGuestVote: vi.fn(async () => {}),
+    findRoom: async () => ROOM,
+    lockRoom: async () => ROOM,
+    findCurrentRound: async () => ROUND,
+    upsertUserVote: async () => {},
+    upsertGuestVote: async () => {},
   };
 
   it('дробная и отрицательная оценки отклоняются', async () => {
     const service = serviceWith(votingRepo);
 
-    await expect(service.submitVote(ROOM.id, VOTER, 2.5)).rejects.toBeInstanceOf(ValidationError);
-    await expect(service.submitVote(ROOM.id, VOTER, -1)).rejects.toBeInstanceOf(ValidationError);
+    await expect(service.submitVote(ROOM.id, VOTER, { value: 2.5 })).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+    await expect(service.submitVote(ROOM.id, VOTER, { value: -1 })).rejects.toBeInstanceOf(
+      ValidationError,
+    );
   });
 
   it('у колоды Фибоначчи можно поставить своё число', async () => {
     const upsertUserVote = vi.fn(async () => {});
     const service = serviceWith({ ...votingRepo, upsertUserVote });
 
-    await service.submitVote(ROOM.id, VOTER, 40);
+    await service.submitVote(ROOM.id, VOTER, { value: 40 });
 
     expect(upsertUserVote).toHaveBeenCalledWith(ROUND.id, VOTER.participantId, 40);
   });
@@ -121,55 +153,86 @@ describe('RoomsService: голосование', () => {
   it('у шкалы 0–5 значения выше пяти отклоняются', async () => {
     const service = serviceWith({
       ...votingRepo,
-      findCurrentRound: vi.fn(async () => ({ ...ROUND, deckType: 'scale_0_5' as const })),
+      findCurrentRound: async () => ({ ...ROUND, deckType: 'scale_0_5' as const }),
     });
 
-    await expect(service.submitVote(ROOM.id, VOTER, 8)).rejects.toBeInstanceOf(ValidationError);
+    await expect(service.submitVote(ROOM.id, VOTER, { value: 8 })).rejects.toBeInstanceOf(
+      ValidationError,
+    );
   });
 
   it('после вскрытия карт голосовать нельзя', async () => {
     const service = serviceWith({
       ...votingRepo,
-      findCurrentRound: vi.fn(async () => ({ ...ROUND, status: 'revealed' as const })),
+      findCurrentRound: async () => ({ ...ROUND, status: 'revealed' as const }),
     });
 
-    await expect(service.submitVote(ROOM.id, VOTER, 3)).rejects.toBeInstanceOf(ConflictError);
+    await expect(service.submitVote(ROOM.id, VOTER, { value: 3 })).rejects.toBeInstanceOf(
+      ConflictError,
+    );
   });
 
   it('в закрытой комнате голосовать нельзя', async () => {
     const service = serviceWith({
       ...votingRepo,
-      findRoom: vi.fn(async () => ({ ...ROOM, status: 'closed' as const })),
+      lockRoom: async () => ({ ...ROOM, status: 'closed' as const }),
     });
 
-    await expect(service.submitVote(ROOM.id, VOTER, 3)).rejects.toBeInstanceOf(ConflictError);
+    await expect(service.submitVote(ROOM.id, VOTER, { value: 3 })).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+  });
+
+  it('исчезнувший раунд объясняется участнику, а не падает пятисоткой', async () => {
+    const service = serviceWith({
+      ...votingRepo,
+      upsertUserVote: async () => {
+        throw Object.assign(new Error('insert or update on table "votes" violates foreign key'), {
+          cause: { code: '23503', constraint: 'votes_round_id_rounds_id_fk' },
+        });
+      },
+    });
+
+    await expect(service.submitVote(ROOM.id, VOTER, { value: 3 })).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+  });
+
+  it('оценка за прошлый раунд не попадает в новую задачу', async () => {
+    const upsertUserVote = vi.fn(async () => {});
+    const service = serviceWith({ ...votingRepo, upsertUserVote });
+
+    await expect(
+      service.submitVote(ROOM.id, VOTER, { value: 3, roundId: randomUUID() }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(upsertUserVote).not.toHaveBeenCalled();
+  });
+
+  it('голос удалённого аккаунта отклоняется с просьбой войти заново', async () => {
+    const service = serviceWith({
+      ...votingRepo,
+      upsertUserVote: async () => {
+        throw Object.assign(new Error('insert or update on table "votes" violates foreign key'), {
+          cause: { code: '23503', constraint: 'votes_user_id_users_id_fk' },
+        });
+      },
+    });
+
+    await expect(service.submitVote(ROOM.id, VOTER, { value: 3 })).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
   });
 });
 
 describe('RoomsService: права на управление раундом', () => {
-  /** Сервис с транзакцией-заглушкой: внутри неё репозиторий создаётся сам */
-  function serviceInTransaction(): RoomsService {
-    vi.spyOn(RoomsRepository.prototype, 'lockRoom').mockResolvedValue(ROOM);
-    vi.spyOn(RoomsRepository.prototype, 'findCurrentRound').mockResolvedValue(ROUND);
-    vi.spyOn(RoomsRepository.prototype, 'listVotes').mockResolvedValue([]);
-    const db = {
-      transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
-    } as unknown as Db;
-    return new RoomsService(
-      db,
-      new RoomsRepository(db),
-      {} as TeamsRepository,
-      {} as UsersRepository,
-      new GuestSessions('секрет-гостевых-сессий-для-тестов'),
-    );
-  }
-
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
+  const tableRepo: Partial<RoomsRepository> = {
+    lockRoom: async () => ROOM,
+    findCurrentRound: async () => ROUND,
+    listVotes: async () => [],
+  };
 
   it('голосующий не может вскрыть карты и начать раунд', async () => {
-    const service = serviceInTransaction();
+    const service = serviceWith(tableRepo);
 
     await expect(service.revealCards(ROOM.id, VOTER)).rejects.toBeInstanceOf(ForbiddenError);
     await expect(
@@ -178,7 +241,7 @@ describe('RoomsService: права на управление раундом', ()
   });
 
   it('скрам-мастеру отказывают уже не по правам, а по существу', async () => {
-    const service = serviceInTransaction();
+    const service = serviceWith(tableRepo);
 
     // Голосов нет — вскрывать нечего, но проверку прав создатель комнаты прошёл
     await expect(service.revealCards(ROOM.id, MASTER)).rejects.toBeInstanceOf(ConflictError);
@@ -186,20 +249,16 @@ describe('RoomsService: права на управление раундом', ()
 
   it('роль перечитывается на действии: бывший админ команды теряет права', async () => {
     const teamRoom: Room = { ...ROOM, teamId: randomUUID(), creatorId: randomUUID() };
-    vi.spyOn(RoomsRepository.prototype, 'lockRoom').mockResolvedValue(teamRoom);
-    vi.spyOn(RoomsRepository.prototype, 'findCurrentRound').mockResolvedValue(ROUND);
-    const db = {
-      transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
-    } as unknown as Db;
-    const service = new RoomsService(
-      db,
-      new RoomsRepository(db),
+    const service = serviceWith(
+      { ...tableRepo, lockRoom: async () => teamRoom },
       // На момент действия участник уже понижен до рядового
       {
-        findMembership: vi.fn(async () => ({ teamId: 'team', userId: 'u', role: 'member' })),
-      } as unknown as TeamsRepository,
-      {} as UsersRepository,
-      new GuestSessions('секрет'),
+        findMembership: vi.fn(async () => ({
+          teamId: 'team',
+          userId: 'u',
+          role: 'member' as const,
+        })),
+      },
     );
 
     await expect(
@@ -210,11 +269,69 @@ describe('RoomsService: права на управление раундом', ()
       ),
     ).rejects.toBeInstanceOf(ForbiddenError);
   });
+
+  it('повторный старт того же раунда не плодит новые: стол уже ушёл вперёд', async () => {
+    const started: Round = { ...ROUND, id: randomUUID(), seq: 2 };
+    const insertRound = vi.fn(async () => started);
+    const service = serviceWith({
+      ...tableRepo,
+      // Пока запрос ждал очереди, раунд уже сменили
+      findCurrentRound: async () => started,
+      insertRound,
+    });
+
+    const round = await service.startNewRound(ROOM.id, MASTER, {
+      deckType: 'fibonacci',
+      fromRoundId: ROUND.id,
+    });
+
+    expect(round.id).toBe(started.id);
+    expect(insertRound).not.toHaveBeenCalled();
+  });
+
+  it('вскрытие чужой задачи отклоняется', async () => {
+    const markRevealed = vi.fn(async () => ROUND);
+    const service = serviceWith({
+      ...tableRepo,
+      listVotes: async () => [{ participantId: 'user-voter', name: 'Кто-то', value: 3 }],
+      markRevealed,
+    });
+
+    await expect(
+      service.revealCards(ROOM.id, MASTER, { roundId: randomUUID() }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(markRevealed).not.toHaveBeenCalled();
+  });
+
+  it('первый раунд начинается с fromRoundId: null', async () => {
+    const insertRound = vi.fn(async () => ROUND);
+    const service = serviceWith({
+      ...tableRepo,
+      findCurrentRound: async () => null,
+      insertRound,
+    });
+
+    await service.startNewRound(ROOM.id, MASTER, { deckType: 'fibonacci', fromRoundId: null });
+
+    expect(insertRound).toHaveBeenCalledWith(expect.objectContaining({ seq: 1 }));
+  });
+
+  it('старт с актуального раунда создаёт следующий', async () => {
+    const insertRound = vi.fn(async () => ({ ...ROUND, id: randomUUID(), seq: 2 }));
+    const service = serviceWith({ ...tableRepo, insertRound });
+
+    await service.startNewRound(ROOM.id, MASTER, {
+      deckType: 'fibonacci',
+      fromRoundId: ROUND.id,
+    });
+
+    expect(insertRound).toHaveBeenCalledWith(expect.objectContaining({ seq: 2 }));
+  });
 });
 
 describe('RoomsService: вход за стол', () => {
   it('гость без имени за стол не садится', async () => {
-    const service = serviceWith({ findRoom: vi.fn(async () => ROOM) });
+    const service = serviceWith({ findRoom: async () => ROOM });
 
     await expect(
       service.prepareJoin({ roomId: ROOM.id, userId: null, guestName: '   ' }),
@@ -222,13 +339,13 @@ describe('RoomsService: вход за стол', () => {
   });
 
   it('гость возвращается со своим сессионным id', async () => {
-    const service = serviceWith({ findRoom: vi.fn(async () => ROOM) });
+    const service = serviceWith({ findRoom: async () => ROOM });
 
     const { identity } = await service.prepareJoin({
       roomId: ROOM.id,
       userId: null,
       guestName: '  Гость  ',
-      guestToken: new GuestSessions('секрет-гостевых-сессий-для-тестов').issue('guest-42'),
+      guestToken: new GuestSessions(GUEST_SECRET).issue('guest-42'),
     });
 
     expect(identity).toMatchObject({
@@ -240,7 +357,7 @@ describe('RoomsService: вход за стол', () => {
   });
 
   it('новому гостю выдаётся сессионный id', async () => {
-    const service = serviceWith({ findRoom: vi.fn(async () => ROOM) });
+    const service = serviceWith({ findRoom: async () => ROOM });
 
     const { identity } = await service.prepareJoin({
       roomId: ROOM.id,
@@ -253,7 +370,7 @@ describe('RoomsService: вход за стол', () => {
 
   it('пользователь с удалённым аккаунтом за стол не попадает', async () => {
     const service = serviceWith(
-      { findRoom: vi.fn(async () => ROOM) },
+      { findRoom: async () => ROOM },
       {},
       { findById: vi.fn(async () => null) },
     );
@@ -266,9 +383,10 @@ describe('RoomsService: вход за стол', () => {
 
 describe('RoomsService: ссылки на задачу', () => {
   const repo: Partial<RoomsRepository> = {
-    findRoom: vi.fn(async () => ROOM),
-    findCurrentRound: vi.fn(async () => ROUND),
-    updateRoundLinks: vi.fn(async (_id: string, links) => ({ ...ROUND, ...links })),
+    findRoom: async () => ROOM,
+    lockRoom: async () => ROOM,
+    findCurrentRound: async () => ROUND,
+    updateRoundLinks: async (_id, links) => ({ ...ROUND, ...links }),
   };
 
   it('ссылка без схемы отклоняется', async () => {
@@ -280,22 +398,91 @@ describe('RoomsService: ссылки на задачу', () => {
   });
 
   it('пустая строка убирает ссылку', async () => {
-    const updateRoundLinks = vi.fn(async (_id: string, links) => ({ ...ROUND, ...links }));
+    const updateRoundLinks = vi.fn(async (_id: string, links: object) => ({ ...ROUND, ...links }));
     const service = serviceWith({ ...repo, updateRoundLinks });
 
     await service.updateLinks(ROOM.id, { jiraUrl: '  ' });
 
-    expect(updateRoundLinks).toHaveBeenCalledWith(ROUND.id, { jiraUrl: null });
+    expect(updateRoundLinks).toHaveBeenCalledWith(ROUND.id, { jiraUrl: null }, undefined);
   });
 
   it('корректная ссылка сохраняется', async () => {
-    const updateRoundLinks = vi.fn(async (_id: string, links) => ({ ...ROUND, ...links }));
-    const service = serviceWith({ ...repo, updateRoundLinks });
+    const service = serviceWith(repo);
 
     const round = await service.updateLinks(ROOM.id, {
       confluenceUrl: 'https://confluence.example.com/page',
     });
 
     expect(round.confluenceUrl).toBe('https://confluence.example.com/page');
+  });
+
+  it('правка поверх чужой отклоняется: версия ссылок устарела', async () => {
+    const updateRoundLinks = vi.fn(async () => ROUND);
+    const service = serviceWith({
+      ...repo,
+      // Пока участник печатал, ссылки уже поменяли
+      findCurrentRound: async () => ({ ...ROUND, linksVersion: 5 }),
+      updateRoundLinks,
+    });
+
+    await expect(
+      service.updateLinks(ROOM.id, { jiraUrl: 'https://jira.example.com/TASK-9', version: 4 }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(updateRoundLinks).not.toHaveBeenCalled();
+  });
+
+  it('версия null означает «версию не проверять», а не вечный конфликт', async () => {
+    const updateRoundLinks = vi.fn(async (_id: string, links: object) => ({ ...ROUND, ...links }));
+    const service = serviceWith({ ...repo, updateRoundLinks });
+
+    await service.updateLinks(ROOM.id, {
+      jiraUrl: 'https://jira.example.com/TASK-1',
+      version: null,
+    });
+
+    expect(updateRoundLinks).toHaveBeenCalledWith(
+      ROUND.id,
+      { jiraUrl: 'https://jira.example.com/TASK-1' },
+      undefined,
+    );
+  });
+
+  it('правка чужого раунда отклоняется целиком', async () => {
+    const updateRoundLinks = vi.fn(async () => ROUND);
+    const service = serviceWith({ ...repo, updateRoundLinks });
+
+    await expect(
+      service.updateLinks(ROOM.id, {
+        jiraUrl: 'https://jira.example.com/OLD',
+        roundId: randomUUID(),
+      }),
+    ).rejects.toBeInstanceOf(ConflictError);
+    expect(updateRoundLinks).not.toHaveBeenCalled();
+  });
+
+  it('пустая правка не поднимает версию: чужие правки не должны отбиваться', async () => {
+    const updateRoundLinks = vi.fn(async () => ROUND);
+    const service = serviceWith({ ...repo, updateRoundLinks });
+
+    const round = await service.updateLinks(ROOM.id, {});
+
+    expect(round.linksVersion).toBe(ROUND.linksVersion);
+    expect(updateRoundLinks).not.toHaveBeenCalled();
+  });
+
+  it('правка с актуальной версией доходит до базы вместе с ней', async () => {
+    const updateRoundLinks = vi.fn(async (_id: string, links: object) => ({ ...ROUND, ...links }));
+    const service = serviceWith({ ...repo, updateRoundLinks });
+
+    await service.updateLinks(ROOM.id, {
+      jiraUrl: 'https://jira.example.com/TASK-9',
+      version: ROUND.linksVersion,
+    });
+
+    expect(updateRoundLinks).toHaveBeenCalledWith(
+      ROUND.id,
+      { jiraUrl: 'https://jira.example.com/TASK-9' },
+      ROUND.linksVersion,
+    );
   });
 });
