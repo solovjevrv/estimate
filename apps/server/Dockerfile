@@ -2,10 +2,14 @@
 FROM node:24-alpine AS build
 WORKDIR /app
 RUN npm install -g pnpm@11.16.0
-COPY package.json pnpm-lock.yaml pnpm-workspace.yaml tsconfig.base.json ./
+# Сначала только манифесты — слой pnpm install переживает правки исходников
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/server/package.json apps/server/
+COPY packages/shared/package.json packages/shared/
+RUN pnpm install --frozen-lockfile --filter @poker/server
+COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY apps/server apps/server
-RUN pnpm install --frozen-lockfile --filter @poker/server
 RUN pnpm --filter @poker/server build
 
 FROM node:24-alpine

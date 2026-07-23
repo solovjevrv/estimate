@@ -12,9 +12,9 @@ async function main(): Promise<void> {
 
   // При остановке контейнера (SIGTERM) дожидаемся закрытия Fastify и его onClose-хуков
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
-    process.on(signal, () => {
+    process.once(signal, () => {
       app.log.info({ signal }, 'Останавливаю сервер');
-      void app.close().then(() => process.exit(0));
+      void app.close().finally(() => process.exit(0));
     });
   }
 
