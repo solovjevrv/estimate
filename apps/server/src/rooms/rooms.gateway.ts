@@ -3,6 +3,7 @@ import {
   WS_SERVER_EVENTS,
   type JoinRoomPayload,
   type JoinRoomResult,
+  type RoomState,
   type RevealCardsPayload,
   type Round,
   type RoundResult,
@@ -47,7 +48,7 @@ export class RoomsGateway {
     io.on('connection', (socket) => {
       socket.on(WS_EVENTS.JOIN_ROOM, (...args: unknown[]) => {
         const { payload, ack } = this.readArgs<JoinRoomPayload>(args);
-        this.run(socket, log, ack, () => this.join(socket, payload));
+        this.run(socket, log, ack, () => this.join(io, socket, payload));
       });
 
       socket.on(WS_EVENTS.SUBMIT_VOTE, (...args: unknown[]) => {
@@ -108,6 +109,7 @@ export class RoomsGateway {
   }
 
   private async join(
+    io: PokerServer,
     socket: Socket,
     payload: JoinRoomPayload | undefined,
   ): Promise<JoinRoomResult> {
@@ -132,12 +134,12 @@ export class RoomsGateway {
     this.presence.join(payload.roomId, socket.id, identity);
 
     if (previousRoom && previousRoom !== payload.roomId) {
-      await this.broadcastState(socket.nsp as unknown as PokerServer, previousRoom);
+      await this.broadcastState(io, previousRoom);
     }
 
-    const state = await this.service.getState(payload.roomId, this.presence.list(payload.roomId));
-    // Остальным за столом сразу показываем нового участника
-    socket.to(payload.roomId).emit(WS_SERVER_EVENTS.ROOM_STATE, state);
+    // Нового участника показываем всем той же рассылкой, что и остальные события:
+    // отдельный снимок мимо очереди мог бы уйти после более свежего
+    const state = await this.broadcastState(io, payload.roomId);
 
     return { state, guestToken, participantId: identity.participantId };
   }
@@ -157,18 +159,22 @@ export class RoomsGateway {
    * собранные одновременно, могут уйти в обратном порядке — и ушедший участник
    * останется на экране до следующего действия за столом.
    */
-  private async broadcastState(io: PokerServer, roomId: string): Promise<void> {
+  private async broadcastState(io: PokerServer, roomId: string): Promise<RoomState> {
     const previous = this.broadcasts.get(roomId) ?? Promise.resolve();
     const send = previous.then(async () => {
       const state = await this.service.getState(roomId, this.presence.list(roomId));
       io.to(roomId).emit(WS_SERVER_EVENTS.ROOM_STATE, state);
+      return state;
     });
     // В очереди ждёт завершение рассылки: сбой одной не должен обрывать следующие
-    const tail = send.catch(() => {});
+    const tail = send.then(
+      () => {},
+      () => {},
+    );
     this.broadcasts.set(roomId, tail);
 
     try {
-      await send;
+      return await send;
     } finally {
       // Очередь опустела — убираем за собой, чтобы карта не росла с числом комнат
       if (this.broadcasts.get(roomId) === tail) {
