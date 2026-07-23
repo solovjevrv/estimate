@@ -20,7 +20,7 @@ const authConfig: AuthConfig = {
 
 async function startApp(auth?: AuthConfig): Promise<{ app: FastifyInstance; port: number }> {
   const app = buildApp({ db: { execute: vi.fn() } as unknown as Db, auth });
-  new SocketGateway('*').attach(app);
+  new SocketGateway({ corsOrigin: '*', guestSecret: authConfig.jwtSecret }).attach(app);
   await app.listen({ port: 0, host: '127.0.0.1' });
   return { app, port: (app.server.address() as AddressInfo).port };
 }
