@@ -1,6 +1,7 @@
 import { sql } from 'drizzle-orm';
 import {
   check,
+  index,
   integer,
   numeric,
   pgEnum,
@@ -59,17 +60,22 @@ export const teamMembers = pgTable(
   (t) => [primaryKey({ columns: [t.teamId, t.userId] })],
 );
 
-/** team_id nullable: комната может существовать и без команды (личная/публичная). */
-export const rooms = pgTable('rooms', {
-  id: uuid('id').primaryKey().defaultRandom(),
-  teamId: uuid('team_id').references(() => teams.id, { onDelete: 'set null' }),
-  creatorId: uuid('creator_id')
-    .notNull()
-    .references(() => users.id),
-  name: text('name').notNull(),
-  status: roomStatusEnum('status').notNull().default('active'),
-  createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-});
+/**
+ * team_id nullable: комната может существовать и без команды (личная/публичная).
+ * creator_id nullable: при удалении аккаунта создателя комната сохраняется.
+ */
+export const rooms = pgTable(
+  'rooms',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'set null' }),
+    creatorId: uuid('creator_id').references(() => users.id, { onDelete: 'set null' }),
+    name: text('name').notNull(),
+    status: roomStatusEnum('status').notNull().default('active'),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('rooms_team_id_idx').on(t.teamId)],
+);
 
 export const rounds = pgTable(
   'rounds',
@@ -112,6 +118,7 @@ export const votes = pgTable(
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
+    index('votes_round_id_idx').on(t.roundId),
     uniqueIndex('votes_round_user_idx')
       .on(t.roundId, t.userId)
       .where(sql`user_id is not null`),
@@ -120,5 +127,6 @@ export const votes = pgTable(
       .where(sql`guest_session_id is not null`),
     check('votes_identity_check', sql`(user_id is not null) <> (guest_session_id is not null)`),
     check('votes_guest_name_check', sql`guest_session_id is null or guest_name is not null`),
+    check('votes_value_check', sql`value >= 0`),
   ],
 );

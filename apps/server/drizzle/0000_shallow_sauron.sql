@@ -6,7 +6,7 @@ CREATE TYPE "public"."team_role" AS ENUM('owner', 'admin', 'member', 'guest');--
 CREATE TABLE "rooms" (
 	"id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
 	"team_id" uuid,
-	"creator_id" uuid NOT NULL,
+	"creator_id" uuid,
 	"name" text NOT NULL,
 	"status" "room_status" DEFAULT 'active' NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL
@@ -60,17 +60,20 @@ CREATE TABLE "votes" (
 	"value" integer NOT NULL,
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "votes_identity_check" CHECK ((user_id is not null) <> (guest_session_id is not null)),
-	CONSTRAINT "votes_guest_name_check" CHECK (guest_session_id is null or guest_name is not null)
+	CONSTRAINT "votes_guest_name_check" CHECK (guest_session_id is null or guest_name is not null),
+	CONSTRAINT "votes_value_check" CHECK (value >= 0)
 );
 --> statement-breakpoint
 ALTER TABLE "rooms" ADD CONSTRAINT "rooms_team_id_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
-ALTER TABLE "rooms" ADD CONSTRAINT "rooms_creator_id_users_id_fk" FOREIGN KEY ("creator_id") REFERENCES "public"."users"("id") ON DELETE no action ON UPDATE no action;--> statement-breakpoint
+ALTER TABLE "rooms" ADD CONSTRAINT "rooms_creator_id_users_id_fk" FOREIGN KEY ("creator_id") REFERENCES "public"."users"("id") ON DELETE set null ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "rounds" ADD CONSTRAINT "rounds_room_id_rooms_id_fk" FOREIGN KEY ("room_id") REFERENCES "public"."rooms"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "team_members" ADD CONSTRAINT "team_members_team_id_teams_id_fk" FOREIGN KEY ("team_id") REFERENCES "public"."teams"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "team_members" ADD CONSTRAINT "team_members_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "votes" ADD CONSTRAINT "votes_round_id_rounds_id_fk" FOREIGN KEY ("round_id") REFERENCES "public"."rounds"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
 ALTER TABLE "votes" ADD CONSTRAINT "votes_user_id_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."users"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint
+CREATE INDEX "rooms_team_id_idx" ON "rooms" USING btree ("team_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "rounds_room_id_seq_idx" ON "rounds" USING btree ("room_id","seq");--> statement-breakpoint
 CREATE UNIQUE INDEX "users_provider_provider_id_idx" ON "users" USING btree ("provider","provider_id");--> statement-breakpoint
+CREATE INDEX "votes_round_id_idx" ON "votes" USING btree ("round_id");--> statement-breakpoint
 CREATE UNIQUE INDEX "votes_round_user_idx" ON "votes" USING btree ("round_id","user_id") WHERE user_id is not null;--> statement-breakpoint
 CREATE UNIQUE INDEX "votes_round_guest_idx" ON "votes" USING btree ("round_id","guest_session_id") WHERE guest_session_id is not null;

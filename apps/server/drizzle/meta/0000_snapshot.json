@@ -1,5 +1,5 @@
 {
-  "id": "0f623732-bd5c-43e2-88ee-a1163bc664f2",
+  "id": "b05b5cba-3b0e-4a7f-aea7-917269db0f61",
   "prevId": "00000000-0000-0000-0000-000000000000",
   "version": "7",
   "dialect": "postgresql",
@@ -25,7 +25,7 @@
           "name": "creator_id",
           "type": "uuid",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "name": {
           "name": "name",
@@ -49,7 +49,23 @@
           "default": "now()"
         }
       },
-      "indexes": {},
+      "indexes": {
+        "rooms_team_id_idx": {
+          "name": "rooms_team_id_idx",
+          "columns": [
+            {
+              "expression": "team_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
       "foreignKeys": {
         "rooms_team_id_teams_id_fk": {
           "name": "rooms_team_id_teams_id_fk",
@@ -66,7 +82,7 @@
           "tableTo": "users",
           "columnsFrom": ["creator_id"],
           "columnsTo": ["id"],
-          "onDelete": "no action",
+          "onDelete": "set null",
           "onUpdate": "no action"
         }
       },
@@ -425,6 +441,21 @@
         }
       },
       "indexes": {
+        "votes_round_id_idx": {
+          "name": "votes_round_id_idx",
+          "columns": [
+            {
+              "expression": "round_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "votes_round_user_idx": {
           "name": "votes_round_user_idx",
           "columns": [
@@ -501,6 +532,10 @@
         "votes_guest_name_check": {
           "name": "votes_guest_name_check",
           "value": "guest_session_id is null or guest_name is not null"
+        },
+        "votes_value_check": {
+          "name": "votes_value_check",
+          "value": "value >= 0"
         }
       },
       "isRLSEnabled": false
