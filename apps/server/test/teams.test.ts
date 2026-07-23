@@ -6,15 +6,15 @@ import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
 import type { AuthUser } from '@poker/shared';
-import { inArray } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../src/app';
-import { ACCESS_COOKIE, signSession, upsertOAuthUser } from '../src/auth';
+import { ACCESS_COOKIE, TokenService, UsersRepository } from '../src/auth';
 import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
-import { addMemberIfAbsent, createTeam, setMemberRole } from '../src/teams';
+import { TeamsRepository, TeamsService } from '../src/teams';
 
 try {
   process.loadEnvFile(fileURLToPath(new URL('../../../.env', import.meta.url)));
@@ -37,17 +37,20 @@ describeDb('API команд', () => {
   let db: ReturnType<typeof createDb>['db'];
   let pool: ReturnType<typeof createDb>['pool'];
   let app: FastifyInstance;
+  let repository: TeamsRepository;
+  let service: TeamsService;
   const userIds: string[] = [];
   const teamIds: string[] = [];
+  const roomIds: string[] = [];
 
   /** Заголовок с access-кукой указанного пользователя */
   function as(user: AuthUser): { cookie: string } {
-    return { cookie: `${ACCESS_COOKIE}=${signSession(app.jwt, user.id).access}` };
+    return { cookie: `${ACCESS_COOKIE}=${new TokenService(app.jwt, false).issue(user.id).access}` };
   }
 
   async function newUser(label: string): Promise<AuthUser> {
     const id = randomUUID();
-    const user = await upsertOAuthUser(db, 'google', {
+    const user = await new UsersRepository(db).upsertFromOAuth('google', {
       providerId: `${label}-${id}`,
       email: `${label}-${id}@example.com`,
       name: `Пользователь ${label}`,
@@ -62,16 +65,18 @@ describeDb('API команд', () => {
     owner: AuthUser,
     members: Array<[AuthUser, 'admin' | 'member' | 'guest']> = [],
   ): Promise<string> {
-    const team = await createTeam(db, `Команда ${randomUUID().slice(0, 8)}`, owner.id);
+    const team = await service.create(owner.id, `Команда ${randomUUID().slice(0, 8)}`);
     teamIds.push(team.id);
     for (const [user, role] of members) {
-      await addMemberIfAbsent(db, team.id, user.id, role);
+      await repository.insertMemberIfAbsent(team.id, user.id, role);
     }
     return team.id;
   }
 
   beforeAll(async () => {
     ({ db, pool } = createDb(databaseUrl as string));
+    repository = new TeamsRepository(db);
+    service = new TeamsService(db, repository);
     app = buildApp({ db, auth: authConfig });
     await app.ready();
   });
@@ -79,6 +84,9 @@ describeDb('API команд', () => {
   afterAll(async () => {
     try {
       await app?.close();
+      if (roomIds.length > 0) {
+        await db.delete(schema.rooms).where(inArray(schema.rooms.id, roomIds));
+      }
       if (teamIds.length > 0) {
         await db.delete(schema.teams).where(inArray(schema.teams.id, teamIds));
       }
@@ -181,6 +189,44 @@ describeDb('API команд', () => {
       expect((byMember.json() as { inviteCode?: string }).inviteCode).toBeUndefined();
     });
 
+    it('гость видит состав без адресов и не может звать в команду', async () => {
+      const owner = await newUser('guest-owner');
+      const guest = await newUser('guest-viewer');
+      const teamId = await newTeam(owner, [[guest, 'guest']]);
+
+      const view = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${teamId}`,
+        headers: as(guest),
+      });
+      const rotate = await app.inject({
+        method: 'POST',
+        url: `/api/teams/${teamId}/invite/rotate`,
+        headers: as(guest),
+      });
+
+      expect(view.statusCode).toBe(200);
+      const members = (view.json() as { members: Array<{ email?: string }> }).members;
+      expect(members).toHaveLength(2);
+      expect(members.every((member) => member.email === undefined)).toBe(true);
+      expect(rotate.statusCode).toBe(403);
+    });
+
+    it('участник видит адреса коллег', async () => {
+      const owner = await newUser('email-owner');
+      const member = await newUser('email-member');
+      const teamId = await newTeam(owner, [[member, 'member']]);
+
+      const view = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${teamId}/members`,
+        headers: as(member),
+      });
+
+      const members = (view.json() as { members: Array<{ email?: string }> }).members;
+      expect(members.every((entry) => typeof entry.email === 'string')).toBe(true);
+    });
+
     it('посторонний получает 404, а не 403 — существование команды не раскрывается', async () => {
       const owner = await newUser('secret-owner');
       const stranger = await newUser('stranger');
@@ -246,6 +292,26 @@ describeDb('API команд', () => {
       });
       expect(after.statusCode).toBe(404);
     });
+
+    it('комнаты команды переживают её удаление и остаются без команды', async () => {
+      const owner = await newUser('rooms-owner');
+      const teamId = await newTeam(owner);
+      const roomId = randomUUID();
+      roomIds.push(roomId);
+      await db
+        .insert(schema.rooms)
+        .values({ id: roomId, teamId, creatorId: owner.id, name: 'Комната команды' });
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/teams/${teamId}`,
+        headers: as(owner),
+      });
+      expect(res.statusCode).toBe(204);
+
+      const [room] = await db.select().from(schema.rooms).where(eq(schema.rooms.id, roomId));
+      expect(room?.teamId).toBeNull();
+    });
   });
 
   describe('приглашения', () => {
@@ -288,7 +354,7 @@ describeDb('API команд', () => {
       expect(first.json()).toMatchObject({ role: 'member' });
 
       // Повысили роль — повторный переход по ссылке не должен её сбросить
-      await setMemberRole(db, teamId, guest.id, 'admin', owner.id);
+      await service.changeMemberRole(owner.id, teamId, guest.id, 'admin');
       const second = await app.inject({
         method: 'POST',
         url: `/api/invites/${code}/join`,
@@ -328,6 +394,23 @@ describeDb('API команд', () => {
       expect(old.statusCode).toBe(404);
     });
 
+    it('вступление с кукой удалённого пользователя отклоняется, а не ломает сервер', async () => {
+      const owner = await newUser('ghost-owner');
+      const ghost = await newUser('ghost');
+      const teamId = await newTeam(owner);
+      const code = await inviteCodeOf(teamId, owner);
+      const headers = as(ghost);
+      await db.delete(schema.users).where(eq(schema.users.id, ghost.id));
+
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/invites/${code}/join`,
+        headers,
+      });
+
+      expect(res.statusCode).toBe(401);
+    });
+
     it('несуществующий код приглашения даёт 404', async () => {
       const res = await app.inject({ method: 'GET', url: '/api/invites/abcdefghijkl' });
 
@@ -361,6 +444,29 @@ describeDb('API команд', () => {
       });
       expect(byOwner.statusCode).toBe(200);
       expect(byOwner.json()).toMatchObject({ member: { role: 'guest' } });
+    });
+
+    it('прежний владелец после передачи теряет права на настройки', async () => {
+      const owner = await newUser('ex-owner');
+      const heir = await newUser('ex-heir');
+      const teamId = await newTeam(owner, [[heir, 'member']]);
+
+      const transfer = await app.inject({
+        method: 'PATCH',
+        url: `/api/teams/${teamId}/members/${heir.id}`,
+        headers: as(owner),
+        payload: { role: 'owner' },
+      });
+      expect(transfer.json()).toMatchObject({ actorRole: 'admin' });
+
+      const rename = await app.inject({
+        method: 'PATCH',
+        url: `/api/teams/${teamId}`,
+        headers: as(owner),
+        payload: { name: 'Обратно моё' },
+      });
+
+      expect(rename.statusCode).toBe(403);
     });
 
     it('передача владения делает прежнего владельца администратором', async () => {
@@ -413,6 +519,67 @@ describeDb('API команд', () => {
       });
 
       expect(res.statusCode).toBe(400);
+    });
+  });
+
+  describe('одновременные запросы', () => {
+    /** Сколько владельцев у команды сейчас */
+    async function ownerCount(teamId: string): Promise<number> {
+      const members = await repository.listMembers(teamId);
+      return members.filter((member) => member.role === 'owner').length;
+    }
+
+    it('передача владения и одновременный выход наследника оставляют ровно одного владельца', async () => {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const owner = await newUser(`race-owner-${attempt}`);
+        const heir = await newUser(`race-heir-${attempt}`);
+        const teamId = await newTeam(owner, [[heir, 'member']]);
+
+        await Promise.allSettled([
+          app.inject({
+            method: 'PATCH',
+            url: `/api/teams/${teamId}/members/${heir.id}`,
+            headers: as(owner),
+            payload: { role: 'owner' },
+          }),
+          app.inject({
+            method: 'DELETE',
+            url: `/api/teams/${teamId}/members/${heir.id}`,
+            headers: as(heir),
+          }),
+        ]);
+
+        expect(await ownerCount(teamId), 'команда без владельца или с двумя').toBe(1);
+      }
+    });
+
+    it('две одновременные передачи владения не создают второго владельца', async () => {
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const owner = await newUser(`race2-owner-${attempt}`);
+        const first = await newUser(`race2-first-${attempt}`);
+        const second = await newUser(`race2-second-${attempt}`);
+        const teamId = await newTeam(owner, [
+          [first, 'member'],
+          [second, 'member'],
+        ]);
+
+        await Promise.allSettled([
+          app.inject({
+            method: 'PATCH',
+            url: `/api/teams/${teamId}/members/${first.id}`,
+            headers: as(owner),
+            payload: { role: 'owner' },
+          }),
+          app.inject({
+            method: 'PATCH',
+            url: `/api/teams/${teamId}/members/${second.id}`,
+            headers: as(owner),
+            payload: { role: 'owner' },
+          }),
+        ]);
+
+        expect(await ownerCount(teamId), 'у команды оказалось два владельца').toBe(1);
+      }
     });
   });
 
@@ -492,6 +659,21 @@ describeDb('API команд', () => {
       });
 
       expect(res.statusCode).toBe(409);
+    });
+
+    it('смена роли того, кто не состоит в команде, даёт 404', async () => {
+      const owner = await newUser('role-missing-owner');
+      const stranger = await newUser('role-missing-stranger');
+      const teamId = await newTeam(owner);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/teams/${teamId}/members/${stranger.id}`,
+        headers: as(owner),
+        payload: { role: 'admin' },
+      });
+
+      expect(res.statusCode).toBe(404);
     });
 
     it('исключение того, кто не состоит в команде, даёт 404', async () => {

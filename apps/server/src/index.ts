@@ -1,7 +1,7 @@
 import { buildApp } from './app';
 import { loadConfig } from './config';
 import { createDb } from './db';
-import { attachSocketIo } from './socket';
+import { SocketGateway } from './socket';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -18,7 +18,7 @@ async function main(): Promise<void> {
     { logger: true },
   );
 
-  attachSocketIo(app, config.webOrigin);
+  new SocketGateway(config.webOrigin).attach(app);
 
   // При остановке контейнера (SIGTERM) дожидаемся закрытия Fastify и его onClose-хуков
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {

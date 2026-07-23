@@ -22,6 +22,19 @@
 - Node.js ≥ 24
 - pnpm ≥ 11
 
+## Устройство серверного кода
+
+Каждый модуль бэкенда собран из трёх слоёв:
+
+- **репозиторий** (`*.repository.ts`) — запросы к БД через Drizzle, ничего не знает про HTTP;
+- **сервис** (`*.service.ts`) — правила предметной области, права и транзакции; ошибки бросает
+  классами из `src/errors.ts` (`NotFoundError`, `ForbiddenError`, `ConflictError`, …);
+- **контроллер** (`*.controller.ts`) + плагин Fastify (`plugin.ts`) — разбор запроса, схемы
+  валидации и сериализации, вызов сервиса.
+
+Все исключения превращает в ответы единственный обработчик `src/http/error-handler.ts`:
+клиент получает `{ error, message }`, внутренние подробности остаются в логах.
+
 ## Аутентификация
 
 Вход — через OAuth Google и Яндекса, сессия хранится в паре JWT (access + refresh)
@@ -40,6 +53,18 @@
 
 Эндпоинты: `GET /api/auth/providers`, `GET /api/auth/<провайдер>` (старт входа),
 `GET /api/auth/<провайдер>/callback`, `GET /api/me`, `POST /api/auth/refresh`, `POST /api/auth/logout`.
+
+## Команды и роли
+
+Роли в команде: `owner` > `admin` > `member` > `guest`. Владелец у команды всегда ровно один —
+чтобы выйти или понизить себя, он сначала передаёт владение (прежний владелец становится
+администратором). Администратор приглашает и исключает участников, гость только смотрит.
+Чужие и несуществующие команды отвечают одинаково — `404`, чтобы идентификаторы нельзя было перебирать.
+
+Эндпоинты: `POST /api/teams`, `GET /api/teams`, `GET|PATCH|DELETE /api/teams/:id`,
+`GET /api/teams/:id/members`, `PATCH|DELETE /api/teams/:id/members/:userId`,
+`POST /api/teams/:id/invite/rotate`, `GET /api/invites/:code` (без входа),
+`POST /api/invites/:code/join`.
 
 ## Продакшен
 

@@ -1,19 +1,4 @@
-export { teamsPlugin } from './routes';
-export {
-  addMemberIfAbsent,
-  countOwners,
-  createTeam,
-  deleteTeam,
-  findInviteCode,
-  findMembership,
-  findTeam,
-  findTeamByInviteCode,
-  generateInviteCode,
-  listMembers,
-  listTeamsForUser,
-  removeMember,
-  renameTeam,
-  rotateInviteCode,
-  setMemberRole,
-  type Membership,
-} from './repository';
+export { teamsPlugin } from './plugin';
+export { TeamsController } from './teams.controller';
+export { TeamsRepository, type DbExecutor, type Membership } from './teams.repository';
+export { TeamsService, type RoleChangeResult, type TeamOverview } from './teams.service';

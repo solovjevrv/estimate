@@ -1,13 +1,10 @@
 import { sql } from 'drizzle-orm';
-import Fastify, {
-  type FastifyError,
-  type FastifyInstance,
-  type FastifyServerOptions,
-} from 'fastify';
+import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 
 import { authPlugin } from './auth';
 import type { AuthConfig } from './config';
 import type { Db } from './db';
+import { ErrorHandler } from './http/error-handler';
 import { teamsPlugin } from './teams';
 
 declare module 'fastify' {
@@ -20,7 +17,7 @@ export interface AppDeps {
   db: Db;
   /** Закрытие ресурсов БД при остановке сервера */
   closeDb?: () => Promise<void>;
-  /** Без настроек аутентификации приложение поднимается без роутов /api/auth/* */
+  /** Без настроек аутентификации приложение поднимается без роутов /api/auth/* и /api/teams */
   auth?: AuthConfig;
 }
 
@@ -28,23 +25,14 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
   const app = Fastify(opts);
 
   app.decorate('db', deps.db);
+  new ErrorHandler().register(app);
+
   if (deps.auth) {
     void app.register(authPlugin, { auth: deps.auth });
     // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией
     void app.register(teamsPlugin);
   }
 
-  // Наружу не должно уезжать ничего внутреннего: текст SQL, параметры запроса,
-  // адрес БД. Клиент получает обезличенный ответ, подробности остаются в логах.
-  app.setErrorHandler((err: FastifyError, req, reply) => {
-    const status = err.statusCode ?? 500;
-    if (status >= 500) {
-      req.log.error({ err }, 'Необработанная ошибка запроса');
-      return reply.code(status).send({ error: 'internal', message: 'Внутренняя ошибка сервера' });
-    }
-    req.log.warn({ err }, 'Запрос отклонён');
-    return reply.code(status).send({ error: err.code ?? 'bad_request', message: err.message });
-  });
   if (deps.closeDb) {
     app.addHook('onClose', async () => {
       await deps.closeDb?.();

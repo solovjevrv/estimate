@@ -56,7 +56,8 @@ export interface TeamWithRole extends Team {
 export interface TeamMember {
   userId: string;
   name: string;
-  email: string;
+  /** Гостям команды адреса участников не показываются */
+  email?: string;
   avatarUrl: string | null;
   role: TeamRole;
   joinedAt: string;

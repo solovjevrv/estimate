@@ -57,7 +57,13 @@ export const teamMembers = pgTable(
     role: teamRoleEnum('role').notNull().default('member'),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [primaryKey({ columns: [t.teamId, t.userId] })],
+  (t) => [
+    primaryKey({ columns: [t.teamId, t.userId] }),
+    // Владелец у команды ровно один: страховка на случай гонок при передаче владения
+    uniqueIndex('team_members_single_owner_idx')
+      .on(t.teamId)
+      .where(sql`role = 'owner'`),
+  ],
 );
 
 /**
