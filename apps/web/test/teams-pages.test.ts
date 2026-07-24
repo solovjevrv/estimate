@@ -371,6 +371,26 @@ describe('дашборд команды', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('В команде пока нет комнат'));
   });
 
+  it('переход между командами не показывает комнаты прежней', async () => {
+    const teamB: TeamWithRole = { ...teamA, id: 't2', name: 'Команда Б' };
+    const roomB: Room = { ...activeRoom, id: 'r9', name: 'Планёрка команды Б' };
+    const { wrapper, router } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1/rooms': () => json(200, { rooms: [activeRoom] }),
+        'GET /api/teams/t2': () => json(200, { team: teamB, role: 'owner', members: [owner] }),
+        'GET /api/teams/t2/rooms': () => json(200, { rooms: [roomB] }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Планирование спринта'));
+
+    await router.push('/teams/t2');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Планёрка команды Б'));
+    expect(wrapper.text()).not.toContain('Планирование спринта');
+  });
+
   it('ошибка загрузки комнат не прячет команду', async () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
