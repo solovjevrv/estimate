@@ -1,8 +1,11 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { AuthUser } from '@poker/shared';
+import { createPinia, setActivePinia } from 'pinia';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter, type Router } from 'vue-router';
 
-import { routes } from '../src/router';
+import { createAppRouter, routes } from '../src/router';
 import { applyPostLoginRedirect } from '../src/router/post-login';
+import { useSessionStore } from '../src/stores/session';
 
 const REDIRECT_KEY = 'poker:post-login-redirect';
 
@@ -11,6 +14,13 @@ async function readyRouter(): Promise<Router> {
   const router = createRouter({ history: createMemoryHistory(), routes });
   await router.push('/');
   return router;
+}
+
+function jsonResponse(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
 }
 
 describe('возврат на исходную страницу после входа', () => {
@@ -49,5 +59,49 @@ describe('возврат на исходную страницу после вх�
     await applyPostLoginRedirect(router, { isAuthenticated: true });
 
     expect(router.currentRoute.value.name).toBe('home');
+  });
+});
+
+describe('связка с настоящим гардом роутера', () => {
+  const user: AuthUser = {
+    id: 'u1',
+    provider: 'google',
+    email: 'user@example.com',
+    name: 'Иван',
+    avatarUrl: null,
+  };
+
+  beforeEach(() => {
+    sessionStorage.clear();
+    setActivePinia(createPinia());
+    // Профиль отдаётся с задержкой: проверяем, что редирект ждёт ответ, а не
+    // срабатывает раньше, чем гард узнал о входе.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (path: string) => {
+        if (path === '/api/me') {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+          return jsonResponse(200, { user });
+        }
+        return jsonResponse(401, { error: 'unauthorized', message: 'Нет сессии' });
+      }),
+    );
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    sessionStorage.clear();
+  });
+
+  it('после входа уводит на приватную цель через реальный гард', async () => {
+    sessionStorage.setItem(REDIRECT_KEY, '/teams');
+    // Сервер вернул на «/» — воспроизводим стартовый переход приложения
+    const router = createAppRouter(createMemoryHistory());
+    void router.push('/');
+
+    await applyPostLoginRedirect(router, useSessionStore());
+
+    // Цель требует авторизации: гард пропустил, потому что профиль уже загружен
+    expect(router.currentRoute.value.name).toBe('teams');
   });
 });
