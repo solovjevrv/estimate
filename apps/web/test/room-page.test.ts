@@ -1,5 +1,6 @@
 import ui from '@nuxt/ui/vue-plugin';
-import type { AuthUser, Participant, Room, RoomState } from '@poker/shared';
+import type { AuthUser, Participant, Room, RoomState, Round } from '@poker/shared';
+import { WS_SERVER_EVENTS } from '@poker/shared';
 import { mount } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -52,6 +53,23 @@ function participant(overrides: Partial<Participant> = {}): Participant {
     isGuest: false,
     role: 'voter',
     hasVoted: false,
+    ...overrides,
+  };
+}
+
+function round(overrides: Partial<Round> = {}): Round {
+  return {
+    id: 'rnd1',
+    roomId: 'r1',
+    seq: 1,
+    deckType: 'fibonacci',
+    jiraUrl: null,
+    confluenceUrl: null,
+    linksVersion: 1,
+    status: 'voting',
+    average: null,
+    createdAt: '2026-07-24T00:00:00.000Z',
+    revealedAt: null,
     ...overrides,
   };
 }
@@ -317,5 +335,87 @@ describe('вход в комнату', () => {
 
     expect(wrapper.text()).toContain('Ретро квартала');
     expect(wrapper.text()).not.toContain('Планирование спринта');
+  });
+});
+
+describe('стол участников', () => {
+  it('без раунда показывает список без статуса голосования', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунд ещё не начат'));
+    expect(wrapper.text()).toContain('Иван');
+    expect(wrapper.text()).toContain('(вы)');
+    expect(wrapper.text()).toContain('Мария');
+    expect(wrapper.text()).toContain('Гость');
+    expect(wrapper.text()).not.toContain('Проголосовал');
+    expect(wrapper.text()).not.toContain('Ожидаем');
+  });
+
+  it('с активным раундом показывает статус голосования каждого', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, hasVoted: false }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Проголосовал'));
+    expect(wrapper.text()).toContain('Ожидаем');
+    expect(wrapper.text()).not.toContain('Раунд ещё не начат');
+  });
+
+  it('участник, подключившийся позже, появляется в столе без перезахода', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Иван'));
+    expect(wrapper.text()).not.toContain('Мария');
+
+    // Рассылка сервера о новом участнике — стол обновляется без действий пользователя
+    socket.emitLocal(
+      WS_SERVER_EVENTS.ROOM_STATE,
+      roomState({
+        room: { ...room1, revision: room1.revision + 1 },
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true }),
+        ],
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
   });
 });

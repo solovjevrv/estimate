@@ -127,7 +127,12 @@ export default {
     roleVoter: 'Voter',
     connected: 'Connected',
     disconnected: 'Connection lost',
-    soon: 'The table will live here.',
+    participantsTitle: 'Participants',
+    noRoundYet: 'The round hasn’t started yet.',
+    you: '(you)',
+    guestBadge: 'Guest',
+    voted: 'Voted',
+    notVoted: 'Waiting',
   },
   notFound: {
     title: 'Page not found',

@@ -127,7 +127,12 @@ export default {
     roleVoter: 'Голосующий',
     connected: 'Подключено',
     disconnected: 'Обрыв соединения',
-    soon: 'Игровой стол появится здесь.',
+    participantsTitle: 'Участники',
+    noRoundYet: 'Раунд ещё не начат.',
+    you: '(вы)',
+    guestBadge: 'Гость',
+    voted: 'Проголосовал',
+    notVoted: 'Ожидаем',
   },
   notFound: {
     title: 'Страница не найдена',
