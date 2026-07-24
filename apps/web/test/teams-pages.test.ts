@@ -50,9 +50,7 @@ function makeFetch(authenticated: boolean, handlers: Handlers = {}) {
     if (handler) return Promise.resolve(handler());
     if (url === '/api/me') {
       return Promise.resolve(
-        authenticated
-          ? json(200, { user })
-          : json(401, { error: 'unauthorized', message: 'нет' }),
+        authenticated ? json(200, { user }) : json(401, { error: 'unauthorized', message: 'нет' }),
       );
     }
     if (url === '/api/auth/refresh') {
@@ -89,26 +87,35 @@ afterEach(() => {
 
 describe('страница команд', () => {
   it('показывает список команд с ролью', async () => {
-    const { wrapper } = await mountApp('/teams', makeFetch(true, {
-      'GET /api/teams': () => json(200, { teams: [teamA] }),
-    }));
+    const { wrapper } = await mountApp(
+      '/teams',
+      makeFetch(true, {
+        'GET /api/teams': () => json(200, { teams: [teamA] }),
+      }),
+    );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Команда А'));
     expect(wrapper.text()).toContain('Владелец');
   });
 
   it('показывает пустое состояние, когда команд нет', async () => {
-    const { wrapper } = await mountApp('/teams', makeFetch(true, {
-      'GET /api/teams': () => json(200, { teams: [] }),
-    }));
+    const { wrapper } = await mountApp(
+      '/teams',
+      makeFetch(true, {
+        'GET /api/teams': () => json(200, { teams: [] }),
+      }),
+    );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('У вас пока нет команд'));
   });
 
   it('открывает модалку создания команды', async () => {
-    const { wrapper } = await mountApp('/teams', makeFetch(true, {
-      'GET /api/teams': () => json(200, { teams: [] }),
-    }));
+    const { wrapper } = await mountApp(
+      '/teams',
+      makeFetch(true, {
+        'GET /api/teams': () => json(200, { teams: [] }),
+      }),
+    );
     await vi.waitFor(() => expect(wrapper.text()).toContain('У вас пока нет команд'));
 
     await byText(wrapper, 'button', 'Создать команду')!.trigger('click');
@@ -120,10 +127,13 @@ describe('страница команд', () => {
 
 describe('карточка команды', () => {
   it('показывает состав и блок приглашения владельцу', async () => {
-    const { wrapper } = await mountApp('/teams/t1', makeFetch(true, {
-      'GET /api/teams/t1': () =>
-        json(200, { team: teamA, role: 'owner', members: [owner], inviteCode: 'abcdef' }),
-    }));
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () =>
+          json(200, { team: teamA, role: 'owner', members: [owner], inviteCode: 'abcdef' }),
+      }),
+    );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
     expect(wrapper.text()).toContain('Иван');
@@ -134,18 +144,24 @@ describe('карточка команды', () => {
   });
 
   it('не показывает блок приглашения обычному участнику', async () => {
-    const { wrapper } = await mountApp('/teams/t1', makeFetch(true, {
-      'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [owner] }),
-    }));
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [owner] }),
+      }),
+    );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
     expect(wrapper.text()).not.toContain('Приглашение');
   });
 
   it('на чужую или несуществующую команду показывает «не найдено»', async () => {
-    const { wrapper } = await mountApp('/teams/t1', makeFetch(true, {
-      'GET /api/teams/t1': () => json(404, { error: 'not_found', message: 'нет' }),
-    }));
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(404, { error: 'not_found', message: 'нет' }),
+      }),
+    );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Команда не найдена'));
   });
@@ -154,10 +170,13 @@ describe('карточка команды', () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
 
-    const { wrapper } = await mountApp('/teams/t1', makeFetch(true, {
-      'GET /api/teams/t1': () =>
-        json(200, { team: teamA, role: 'owner', members: [owner], inviteCode: 'abcdef' }),
-    }));
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () =>
+          json(200, { team: teamA, role: 'owner', members: [owner], inviteCode: 'abcdef' }),
+      }),
+    );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Приглашение'));
 
     await byText(wrapper, 'button', 'Скопировать ссылку')!.trigger('click');
@@ -168,18 +187,24 @@ describe('карточка команды', () => {
 
 describe('страница приглашения', () => {
   it('гостю показывает команду и предлагает войти', async () => {
-    const { wrapper } = await mountApp('/invite/abcdef', makeFetch(false, {
-      'GET /api/invites/abcdef': () => json(200, { team: { id: 't1', name: 'Команда А' } }),
-    }));
+    const { wrapper } = await mountApp(
+      '/invite/abcdef',
+      makeFetch(false, {
+        'GET /api/invites/abcdef': () => json(200, { team: { id: 't1', name: 'Команда А' } }),
+      }),
+    );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Команда А'));
     expect(wrapper.text()).toContain('Войти и вступить');
   });
 
   it('гостя по кнопке уводит на вход с возвратом на приглашение', async () => {
-    const { wrapper, router } = await mountApp('/invite/abcdef', makeFetch(false, {
-      'GET /api/invites/abcdef': () => json(200, { team: { id: 't1', name: 'Команда А' } }),
-    }));
+    const { wrapper, router } = await mountApp(
+      '/invite/abcdef',
+      makeFetch(false, {
+        'GET /api/invites/abcdef': () => json(200, { team: { id: 't1', name: 'Команда А' } }),
+      }),
+    );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Войти и вступить'));
 
     await byText(wrapper, 'button', 'Войти и вступить')!.trigger('click');
@@ -189,11 +214,14 @@ describe('страница приглашения', () => {
   });
 
   it('вошедшего вступает в команду и ведёт на её страницу', async () => {
-    const { wrapper, router } = await mountApp('/invite/abcdef', makeFetch(true, {
-      'GET /api/invites/abcdef': () => json(200, { team: { id: 't1', name: 'Команда А' } }),
-      'POST /api/invites/abcdef/join': () => json(200, { team: teamA, role: 'member' }),
-      'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [owner] }),
-    }));
+    const { wrapper, router } = await mountApp(
+      '/invite/abcdef',
+      makeFetch(true, {
+        'GET /api/invites/abcdef': () => json(200, { team: { id: 't1', name: 'Команда А' } }),
+        'POST /api/invites/abcdef/join': () => json(200, { team: teamA, role: 'member' }),
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [owner] }),
+      }),
+    );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Вступить'));
 
     await byText(wrapper, 'button', 'Вступить')!.trigger('click');
@@ -203,9 +231,12 @@ describe('страница приглашения', () => {
   });
 
   it('на неверное приглашение показывает «не найдено»', async () => {
-    const { wrapper } = await mountApp('/invite/zzz', makeFetch(false, {
-      'GET /api/invites/zzz': () => json(404, { error: 'not_found', message: 'нет' }),
-    }));
+    const { wrapper } = await mountApp(
+      '/invite/zzz',
+      makeFetch(false, {
+        'GET /api/invites/zzz': () => json(404, { error: 'not_found', message: 'нет' }),
+      }),
+    );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Приглашение не найдено'));
   });

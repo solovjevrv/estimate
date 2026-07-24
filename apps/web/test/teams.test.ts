@@ -64,9 +64,7 @@ describe('стор команд', () => {
   });
 
   it('карточка команды: отсутствие кода приглашения превращается в null', async () => {
-    fetchMock.mockResolvedValue(
-      json(200, { team: teamA, role: 'member', members: [member] }),
-    );
+    fetchMock.mockResolvedValue(json(200, { team: teamA, role: 'member', members: [member] }));
     const teams = useTeamsStore();
 
     const overview = await teams.loadTeam('t1');

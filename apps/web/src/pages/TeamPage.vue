@@ -81,7 +81,12 @@ async function rotate(): Promise<void> {
     </RouterLink>
 
     <UAlert v-if="notFound" color="error" variant="subtle" :description="t('team.notFound')" />
-    <UAlert v-else-if="loadFailed" color="error" variant="subtle" :description="t('team.loadError')" />
+    <UAlert
+      v-else-if="loadFailed"
+      color="error"
+      variant="subtle"
+      :description="t('team.loadError')"
+    />
 
     <div v-else-if="loading" class="text-muted flex justify-center py-8">
       <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin" />
