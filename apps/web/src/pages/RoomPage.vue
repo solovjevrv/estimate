@@ -188,6 +188,9 @@ function retry(): void {
       <template v-else-if="phase === 'joined'">
         <p class="text-muted text-sm">
           {{ t('room.joinedAs', { name: session.user?.name ?? joinedGuestName }) }}
+          <UBadge :color="room.isScrumMaster ? 'primary' : 'neutral'" variant="subtle" class="ml-2">
+            {{ room.isScrumMaster ? t('room.roleScrumMaster') : t('room.roleVoter') }}
+          </UBadge>
           <UBadge :color="room.connected ? 'success' : 'error'" variant="subtle" class="ml-2">
             {{ room.connected ? t('room.connected') : t('room.disconnected') }}
           </UBadge>
