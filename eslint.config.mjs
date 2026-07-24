@@ -23,7 +23,6 @@ export default tseslint.config(
         // Композаблы Nuxt UI подставляются автоимпортом (см. auto-imports.d.ts),
         // поэтому в исходниках их не импортируют — объявляем как глобальные
         useToast: 'readonly',
-        useOverlay: 'readonly',
       },
     },
   },

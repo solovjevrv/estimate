@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import { ApiError } from '../lib/api';
@@ -25,7 +25,9 @@ const inviteUrl = computed(() =>
     : null,
 );
 
-onMounted(load);
+// immediate — грузим при заходе; watch — на случай перехода между командами,
+// когда vue-router переиспользует компонент и onMounted повторно не срабатывает
+watch(() => props.id, load, { immediate: true });
 
 async function load(): Promise<void> {
   loading.value = true;

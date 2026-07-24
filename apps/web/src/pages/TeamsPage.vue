@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { TEAM_NAME_MAX_LENGTH } from '@poker/shared';
-import { onMounted, reactive, ref } from 'vue';
+import { onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
@@ -19,6 +19,15 @@ const open = ref(false);
 const submitting = ref(false);
 const createFailed = ref(false);
 const state = reactive({ name: '' });
+
+// Закрыли модалку (отменой, Esc или после создания) — не оставляем внутри
+// прежнее имя и старую ошибку до следующего открытия
+watch(open, (isOpen) => {
+  if (!isOpen) {
+    state.name = '';
+    createFailed.value = false;
+  }
+});
 
 onMounted(async () => {
   try {
