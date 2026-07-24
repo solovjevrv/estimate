@@ -21,6 +21,7 @@ export default {
     lead: 'Sign in to create teams and keep your estimation history.',
     withGoogle: 'Continue with Google',
     withYandex: 'Continue with Yandex',
+    redirecting: 'Redirecting…',
     failed: 'Sign-in failed. Please try again.',
     noProviders: 'No sign-in methods are configured on the server.',
   },
