@@ -123,6 +123,8 @@ export default {
     joinError: 'Не удалось войти в комнату. Попробуйте ещё раз.',
     retry: 'Повторить',
     joinedAs: 'Вы вошли как «{name}»',
+    roleScrumMaster: 'Скрам-мастер',
+    roleVoter: 'Голосующий',
     connected: 'Подключено',
     disconnected: 'Обрыв соединения',
     soon: 'Игровой стол появится здесь.',

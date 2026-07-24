@@ -1,5 +1,5 @@
 import ui from '@nuxt/ui/vue-plugin';
-import type { AuthUser, Room, RoomState } from '@poker/shared';
+import type { AuthUser, Participant, Room, RoomState } from '@poker/shared';
 import { mount } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -40,6 +40,18 @@ function roomState(overrides: Partial<RoomState> = {}): RoomState {
     round: null,
     participants: [],
     result: null,
+    ...overrides,
+  };
+}
+
+function participant(overrides: Partial<Participant> = {}): Participant {
+  return {
+    participantId: 'u1',
+    name: 'Иван',
+    avatarUrl: null,
+    isGuest: false,
+    role: 'voter',
+    hasVoted: false,
     ...overrides,
   };
 }
@@ -167,6 +179,47 @@ describe('вход в комнату', () => {
     expect(wrapper.text()).not.toContain('Представьтесь');
     const join = socket.sent.find((s) => s.event === 'join_room');
     expect(join?.payload).toMatchObject({ roomId: 'r1' });
+  });
+
+  it('создателю комнаты показывает роль «Скрам-мастер»', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [participant({ participantId: 'u1', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Скрам-мастер'));
+    expect(wrapper.text()).not.toContain('Голосующий');
+  });
+
+  it('гостю показывает роль «Голосующий»', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: 'tok',
+      participantId: 'g1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await wrapper.find('input').setValue('Мария');
+    await wrapper.find('form').trigger('submit');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Голосующий'));
+    expect(wrapper.text()).not.toContain('Скрам-мастер');
   });
 
   it('на несуществующую комнату показывает «не найдено»', async () => {
