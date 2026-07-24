@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useToast } from '@nuxt/ui/composables';
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
