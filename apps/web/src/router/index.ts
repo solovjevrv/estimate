@@ -37,6 +37,21 @@ export const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true },
   },
   {
+    path: '/teams/:id',
+    name: 'team',
+    component: () => import('../pages/TeamPage.vue'),
+    props: true,
+    meta: { requiresAuth: true },
+  },
+  {
+    // Приглашение открывается и гостю: сначала показываем, куда зовут, а вход
+    // просим уже при попытке вступить
+    path: '/invite/:code',
+    name: 'invite',
+    component: () => import('../pages/InvitePage.vue'),
+    props: true,
+  },
+  {
     // Вход по прямой ссылке доступен и гостю — он представится именем на месте
     path: '/rooms/:id',
     name: 'room',
