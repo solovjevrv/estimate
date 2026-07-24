@@ -1,23 +1,39 @@
 <script setup lang="ts">
+import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { computed, ref, watch } from 'vue';
+import { TEAM_NAME_MAX_LENGTH, TEAM_ROLES, type TeamMember, type TeamRole } from '@poker/shared';
+import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 
 import { ApiError } from '../lib/api';
 import { roleBadgeColor } from '../lib/team-roles';
+import { useSessionStore } from '../stores/session';
 import { useTeamsStore } from '../stores/teams';
 
 const props = defineProps<{ id: string }>();
 
 const { t } = useI18n();
 const toast = useToast();
+const router = useRouter();
 const teams = useTeamsStore();
+const session = useSessionStore();
 
 const loading = ref(true);
 const notFound = ref(false);
 const loadFailed = ref(false);
 
 const overview = computed(() => teams.current);
+const currentUserId = computed(() => session.user?.id ?? null);
+/** Управлять составом (роли, исключение) может только владелец */
+const isOwner = computed(() => overview.value?.role === 'owner');
+
+/** Пока идёт запрос по конкретному участнику — блокируем его элементы управления */
+const busyUserId = ref<string | null>(null);
+
+const roleItems = computed(() =>
+  TEAM_ROLES.map((role) => ({ label: t(`role.${role}`), value: role })),
+);
 
 /** Код приходит только админу и владельцу — по нему и показываем блок приглашения */
 const inviteUrl = computed(() =>
@@ -73,6 +89,146 @@ async function rotate(): Promise<void> {
     rotating.value = false;
   }
 }
+
+// --- Смена роли и передача владения ---
+const transferTarget = ref<TeamMember | null>(null);
+const transferOpen = ref(false);
+
+/** Владельца назначаем только через подтверждение — это передача владения */
+async function onRoleChange(member: TeamMember, role: TeamRole): Promise<void> {
+  if (role === member.role) return;
+  if (role === 'owner') {
+    transferTarget.value = member;
+    transferOpen.value = true;
+    return;
+  }
+  await applyRole(member.userId, role);
+}
+
+async function applyRole(userId: string, role: TeamRole): Promise<void> {
+  busyUserId.value = userId;
+  try {
+    await teams.changeMemberRole(props.id, userId, role);
+    toast.add({ title: t('team.roleChanged'), color: 'success', icon: 'i-lucide-check' });
+  } catch {
+    toast.add({ title: t('team.roleChangeError'), color: 'error' });
+  } finally {
+    busyUserId.value = null;
+  }
+}
+
+async function confirmTransfer(): Promise<void> {
+  const target = transferTarget.value;
+  if (!target) return;
+  busyUserId.value = target.userId;
+  try {
+    await teams.changeMemberRole(props.id, target.userId, 'owner');
+    toast.add({ title: t('team.ownerTransferred'), color: 'success', icon: 'i-lucide-check' });
+    transferOpen.value = false;
+  } catch {
+    toast.add({ title: t('team.roleChangeError'), color: 'error' });
+  } finally {
+    busyUserId.value = null;
+  }
+}
+
+// --- Исключение участника ---
+const removeTarget = ref<TeamMember | null>(null);
+const removeOpen = ref(false);
+
+function askRemove(member: TeamMember): void {
+  removeTarget.value = member;
+  removeOpen.value = true;
+}
+
+async function confirmRemove(): Promise<void> {
+  const target = removeTarget.value;
+  if (!target) return;
+  busyUserId.value = target.userId;
+  try {
+    await teams.removeMember(props.id, target.userId);
+    toast.add({ title: t('team.removed'), color: 'success', icon: 'i-lucide-check' });
+    removeOpen.value = false;
+  } catch {
+    toast.add({ title: t('team.removeError'), color: 'error' });
+  } finally {
+    busyUserId.value = null;
+  }
+}
+
+// --- Собственный выход из команды ---
+const leaveOpen = ref(false);
+const leaving = ref(false);
+
+async function confirmLeave(): Promise<void> {
+  const userId = currentUserId.value;
+  if (!userId) return;
+  leaving.value = true;
+  try {
+    await teams.removeMember(props.id, userId);
+    toast.add({ title: t('team.left'), color: 'success', icon: 'i-lucide-check' });
+    leaveOpen.value = false;
+    await router.push({ name: 'teams' });
+  } catch (err) {
+    // Единственному владельцу бэкенд отвечает 409 — сначала передать владение
+    const key = err instanceof ApiError && err.status === 409 ? 'leaveLastOwner' : 'leaveError';
+    toast.add({ title: t(`team.${key}`), color: 'error' });
+  } finally {
+    leaving.value = false;
+  }
+}
+
+// --- Переименование ---
+const renameOpen = ref(false);
+const renaming = ref(false);
+const renameState = reactive({ name: '' });
+
+// Открыли — подставляем текущее имя; закрыли — очищаем, чтобы не мигало старое
+watch(renameOpen, (open) => {
+  renameState.name = open ? (overview.value?.team.name ?? '') : '';
+});
+
+function validateName(s: { name: string }): FormError[] {
+  const errors: FormError[] = [];
+  const name = s.name.trim();
+  if (!name) {
+    errors.push({ name: 'name', message: t('teams.nameRequired') });
+  } else if (name.length > TEAM_NAME_MAX_LENGTH) {
+    errors.push({ name: 'name', message: t('teams.nameTooLong', { max: TEAM_NAME_MAX_LENGTH }) });
+  }
+  return errors;
+}
+
+async function onRename(event: FormSubmitEvent<{ name: string }>): Promise<void> {
+  renaming.value = true;
+  try {
+    await teams.rename(props.id, event.data.name.trim());
+    toast.add({ title: t('team.renamed'), color: 'success', icon: 'i-lucide-check' });
+    renameOpen.value = false;
+  } catch {
+    toast.add({ title: t('team.renameError'), color: 'error' });
+  } finally {
+    renaming.value = false;
+  }
+}
+
+// --- Удаление команды ---
+const deleteOpen = ref(false);
+const deleting = ref(false);
+
+async function confirmDelete(): Promise<void> {
+  deleting.value = true;
+  try {
+    await teams.remove(props.id);
+    toast.add({ title: t('team.deleted'), color: 'success', icon: 'i-lucide-check' });
+    deleteOpen.value = false;
+    await router.push({ name: 'teams' });
+  } catch {
+    toast.add({ title: t('team.deleteError'), color: 'error' });
+  } finally {
+    deleting.value = false;
+  }
+}
 </script>
 
 <template>
@@ -113,9 +269,32 @@ async function rotate(): Promise<void> {
           >
             <UAvatar :src="member.avatarUrl ?? undefined" :alt="member.name" size="sm" />
             <span class="min-w-0 flex-1 truncate">{{ member.name }}</span>
-            <UBadge :color="roleBadgeColor(member.role)" variant="subtle">
+
+            <!-- Владелец меняет роли всем, кроме себя; себе показываем бейдж -->
+            <USelect
+              v-if="isOwner && member.userId !== currentUserId"
+              :model-value="member.role"
+              :items="roleItems"
+              value-key="value"
+              :aria-label="t('team.roleLabel')"
+              :disabled="busyUserId === member.userId"
+              class="w-40"
+              @update:model-value="onRoleChange(member, $event as TeamRole)"
+            />
+            <UBadge v-else :color="roleBadgeColor(member.role)" variant="subtle">
               {{ t(`role.${member.role}`) }}
             </UBadge>
+
+            <UButton
+              v-if="isOwner && member.userId !== currentUserId"
+              icon="i-lucide-user-minus"
+              color="error"
+              variant="ghost"
+              size="sm"
+              :aria-label="t('team.remove')"
+              :disabled="busyUserId === member.userId"
+              @click="askRemove(member)"
+            />
           </li>
         </ul>
       </UCard>
@@ -143,6 +322,40 @@ async function rotate(): Promise<void> {
           </UButton>
         </div>
       </UCard>
+
+      <UCard>
+        <template #header>
+          <h2 class="font-medium">{{ t('team.settingsTitle') }}</h2>
+        </template>
+        <div class="flex flex-wrap gap-2">
+          <UButton
+            v-if="isOwner"
+            icon="i-lucide-pencil"
+            color="neutral"
+            variant="subtle"
+            @click="renameOpen = true"
+          >
+            {{ t('team.rename') }}
+          </UButton>
+          <UButton
+            icon="i-lucide-log-out"
+            color="neutral"
+            variant="subtle"
+            @click="leaveOpen = true"
+          >
+            {{ t('team.leave') }}
+          </UButton>
+          <UButton
+            v-if="isOwner"
+            icon="i-lucide-trash-2"
+            color="error"
+            variant="subtle"
+            @click="deleteOpen = true"
+          >
+            {{ t('team.deleteTeam') }}
+          </UButton>
+        </div>
+      </UCard>
     </template>
 
     <UModal
@@ -155,6 +368,93 @@ async function rotate(): Promise<void> {
         <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
         <UButton color="error" :loading="rotating" @click="rotate">
           {{ t('team.rotateConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
+
+    <UModal
+      v-model:open="transferOpen"
+      :title="t('team.transferTitle')"
+      :description="t('team.transferText', { name: transferTarget?.name ?? '' })"
+      :ui="{ footer: 'justify-end' }"
+    >
+      <template #footer="{ close }">
+        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
+        <UButton
+          color="error"
+          :loading="busyUserId === transferTarget?.userId"
+          @click="confirmTransfer"
+        >
+          {{ t('team.transferConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
+
+    <UModal
+      v-model:open="removeOpen"
+      :title="t('team.removeConfirmTitle')"
+      :description="t('team.removeConfirmText', { name: removeTarget?.name ?? '' })"
+      :ui="{ footer: 'justify-end' }"
+    >
+      <template #footer="{ close }">
+        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
+        <UButton
+          color="error"
+          :loading="busyUserId === removeTarget?.userId"
+          @click="confirmRemove"
+        >
+          {{ t('team.removeConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
+
+    <UModal
+      v-model:open="leaveOpen"
+      :title="t('team.leaveConfirmTitle')"
+      :description="t('team.leaveConfirmText')"
+      :ui="{ footer: 'justify-end' }"
+    >
+      <template #footer="{ close }">
+        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
+        <UButton color="error" :loading="leaving" @click="confirmLeave">
+          {{ t('team.leaveConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="renameOpen" :title="t('team.renameTitle')">
+      <template #body>
+        <UForm :state="renameState" :validate="validateName" class="space-y-4" @submit="onRename">
+          <UFormField :label="t('teams.nameLabel')" name="name">
+            <UInput
+              v-model="renameState.name"
+              :placeholder="t('teams.namePlaceholder')"
+              :maxlength="TEAM_NAME_MAX_LENGTH"
+              autofocus
+              class="w-full"
+            />
+          </UFormField>
+
+          <div class="flex justify-end gap-2">
+            <UButton color="neutral" variant="ghost" @click="renameOpen = false">
+              {{ t('teams.cancel') }}
+            </UButton>
+            <UButton type="submit" :loading="renaming">{{ t('team.rename') }}</UButton>
+          </div>
+        </UForm>
+      </template>
+    </UModal>
+
+    <UModal
+      v-model:open="deleteOpen"
+      :title="t('team.deleteConfirmTitle')"
+      :description="t('team.deleteConfirmText')"
+      :ui="{ footer: 'justify-end' }"
+    >
+      <template #footer="{ close }">
+        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
+        <UButton color="error" :loading="deleting" @click="confirmDelete">
+          {{ t('team.deleteConfirm') }}
         </UButton>
       </template>
     </UModal>
