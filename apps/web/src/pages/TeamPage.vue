@@ -28,8 +28,21 @@ const currentUserId = computed(() => session.user?.id ?? null);
 /** Управлять составом (роли, исключение) может только владелец */
 const isOwner = computed(() => overview.value?.role === 'owner');
 
-/** Пока идёт запрос по конкретному участнику — блокируем его элементы управления */
-const busyUserId = ref<string | null>(null);
+/** Пока идёт запрос по участнику — блокируем его элементы управления. Набор, а
+ * не один id: операции по разным участникам могут идти внахлёст. */
+const busyUsers = ref<Set<string>>(new Set());
+
+function isBusy(userId: string): boolean {
+  return busyUsers.value.has(userId);
+}
+
+// Замена ссылки, а не мутация Set: так реактивность срабатывает без лишних хлопот
+function setBusy(userId: string, busy: boolean): void {
+  const next = new Set(busyUsers.value);
+  if (busy) next.add(userId);
+  else next.delete(userId);
+  busyUsers.value = next;
+}
 
 const roleItems = computed(() =>
   TEAM_ROLES.map((role) => ({ label: t(`role.${role}`), value: role })),
@@ -106,21 +119,21 @@ async function onRoleChange(member: TeamMember, role: TeamRole): Promise<void> {
 }
 
 async function applyRole(userId: string, role: TeamRole): Promise<void> {
-  busyUserId.value = userId;
+  setBusy(userId, true);
   try {
     await teams.changeMemberRole(props.id, userId, role);
     toast.add({ title: t('team.roleChanged'), color: 'success', icon: 'i-lucide-check' });
   } catch {
     toast.add({ title: t('team.roleChangeError'), color: 'error' });
   } finally {
-    busyUserId.value = null;
+    setBusy(userId, false);
   }
 }
 
 async function confirmTransfer(): Promise<void> {
   const target = transferTarget.value;
   if (!target) return;
-  busyUserId.value = target.userId;
+  setBusy(target.userId, true);
   try {
     await teams.changeMemberRole(props.id, target.userId, 'owner');
     toast.add({ title: t('team.ownerTransferred'), color: 'success', icon: 'i-lucide-check' });
@@ -128,7 +141,7 @@ async function confirmTransfer(): Promise<void> {
   } catch {
     toast.add({ title: t('team.roleChangeError'), color: 'error' });
   } finally {
-    busyUserId.value = null;
+    setBusy(target.userId, false);
   }
 }
 
@@ -144,7 +157,7 @@ function askRemove(member: TeamMember): void {
 async function confirmRemove(): Promise<void> {
   const target = removeTarget.value;
   if (!target) return;
-  busyUserId.value = target.userId;
+  setBusy(target.userId, true);
   try {
     await teams.removeMember(props.id, target.userId);
     toast.add({ title: t('team.removed'), color: 'success', icon: 'i-lucide-check' });
@@ -152,7 +165,7 @@ async function confirmRemove(): Promise<void> {
   } catch {
     toast.add({ title: t('team.removeError'), color: 'error' });
   } finally {
-    busyUserId.value = null;
+    setBusy(target.userId, false);
   }
 }
 
@@ -277,7 +290,7 @@ async function confirmDelete(): Promise<void> {
               :items="roleItems"
               value-key="value"
               :aria-label="t('team.roleLabel')"
-              :disabled="busyUserId === member.userId"
+              :disabled="isBusy(member.userId)"
               class="w-40"
               @update:model-value="onRoleChange(member, $event as TeamRole)"
             />
@@ -292,7 +305,7 @@ async function confirmDelete(): Promise<void> {
               variant="ghost"
               size="sm"
               :aria-label="t('team.remove')"
-              :disabled="busyUserId === member.userId"
+              :disabled="isBusy(member.userId)"
               @click="askRemove(member)"
             />
           </li>
@@ -337,7 +350,10 @@ async function confirmDelete(): Promise<void> {
           >
             {{ t('team.rename') }}
           </UButton>
+          <!-- Владелец в команде единственный: выйти он может только передав
+               владение или удалив команду, поэтому кнопку «Выйти» ему не показываем -->
           <UButton
+            v-if="!isOwner"
             icon="i-lucide-log-out"
             color="neutral"
             variant="subtle"
@@ -382,7 +398,7 @@ async function confirmDelete(): Promise<void> {
         <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
         <UButton
           color="error"
-          :loading="busyUserId === transferTarget?.userId"
+          :loading="transferTarget ? isBusy(transferTarget.userId) : false"
           @click="confirmTransfer"
         >
           {{ t('team.transferConfirm') }}
@@ -400,7 +416,7 @@ async function confirmDelete(): Promise<void> {
         <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
         <UButton
           color="error"
-          :loading="busyUserId === removeTarget?.userId"
+          :loading="removeTarget ? isBusy(removeTarget.userId) : false"
           @click="confirmRemove"
         >
           {{ t('team.removeConfirm') }}
