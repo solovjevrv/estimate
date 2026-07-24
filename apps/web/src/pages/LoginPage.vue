@@ -41,12 +41,16 @@ function startUrl(provider: AuthProvider): string {
 }
 
 /**
- * Перед уходом к провайдеру запоминаем цель перехода и помечаем кнопку. Клик по
- * ссылке всё равно сменит страницу, поэтому обратную связь нужно дать сразу.
+ * Перед уходом к провайдеру запоминаем цель перехода и помечаем кнопку.
+ *
+ * Переход на сервер инициируем сами, а не полагаемся на клик по ссылке: Nuxt UI
+ * в состоянии loading помечает кнопку disabled и убирает у неё href, поэтому
+ * штатная навигация по ссылке в этот момент уже не сработала бы.
  */
 function start(provider: AuthProvider): void {
   rememberRedirect(redirectTarget.value);
   pending.value = provider;
+  window.location.assign(startUrl(provider));
 }
 
 onMounted(() => {
@@ -78,6 +82,7 @@ onMounted(() => {
           v-for="provider in session.providers"
           :key="provider"
           :href="startUrl(provider)"
+          external
           :loading="pending === provider"
           :disabled="pending !== null"
           block
