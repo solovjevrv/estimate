@@ -1,5 +1,5 @@
 import ui from '@nuxt/ui/vue-plugin';
-import type { AuthUser, TeamMember, TeamWithRole } from '@poker/shared';
+import type { AuthUser, Room, TeamMember, TeamWithRole } from '@poker/shared';
 import { mount } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -320,6 +320,88 @@ describe('управление составом', () => {
     dialogButton('Переименовать')!.click();
 
     await vi.waitFor(() => expect(wrapper.find('h1').text()).toBe('Новое имя'));
+  });
+});
+
+const activeRoom: Room = {
+  id: 'r1',
+  teamId: 't1',
+  creatorId: 'u1',
+  name: 'Планирование спринта',
+  status: 'active',
+  revision: 0,
+  createdAt: '2026-07-24T00:00:00.000Z',
+};
+
+const closedRoom: Room = {
+  ...activeRoom,
+  id: 'r2',
+  name: 'Ретро квартала',
+  status: 'closed',
+  createdAt: '2026-07-20T00:00:00.000Z',
+};
+
+describe('дашборд команды', () => {
+  it('показывает активные и завершённые комнаты со ссылками', async () => {
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1/rooms': () => json(200, { rooms: [activeRoom, closedRoom] }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Планирование спринта'));
+    expect(wrapper.text()).toContain('Ретро квартала');
+    expect(wrapper.text()).toContain('Активные');
+    expect(wrapper.text()).toContain('Завершённые');
+    expect(wrapper.find('a[href="/rooms/r1"]').exists()).toBe(true);
+    expect(wrapper.find('a[href="/rooms/r2"]').exists()).toBe(true);
+  });
+
+  it('показывает пустое состояние, когда комнат нет', async () => {
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1/rooms': () => json(200, { rooms: [] }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('В команде пока нет комнат'));
+  });
+
+  it('переход между командами не показывает комнаты прежней', async () => {
+    const teamB: TeamWithRole = { ...teamA, id: 't2', name: 'Команда Б' };
+    const roomB: Room = { ...activeRoom, id: 'r9', name: 'Планёрка команды Б' };
+    const { wrapper, router } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1/rooms': () => json(200, { rooms: [activeRoom] }),
+        'GET /api/teams/t2': () => json(200, { team: teamB, role: 'owner', members: [owner] }),
+        'GET /api/teams/t2/rooms': () => json(200, { rooms: [roomB] }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Планирование спринта'));
+
+    await router.push('/teams/t2');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Планёрка команды Б'));
+    expect(wrapper.text()).not.toContain('Планирование спринта');
+  });
+
+  it('ошибка загрузки комнат не прячет команду', async () => {
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1/rooms': () => json(500, { error: 'internal', message: 'сбой' }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
+    expect(wrapper.text()).toContain('Не удалось загрузить комнаты команды');
   });
 });
 

@@ -9,19 +9,27 @@ import { useRouter } from 'vue-router';
 import { ApiError } from '../lib/api';
 import { roleBadgeColor } from '../lib/team-roles';
 import { useSessionStore } from '../stores/session';
+import { useTeamRoomsStore } from '../stores/team-rooms';
 import { useTeamsStore } from '../stores/teams';
 
 const props = defineProps<{ id: string }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 const toast = useToast();
 const router = useRouter();
 const teams = useTeamsStore();
+const teamRooms = useTeamRoomsStore();
 const session = useSessionStore();
 
 const loading = ref(true);
 const notFound = ref(false);
 const loadFailed = ref(false);
+/** Комнаты грузятся отдельно: их сбой не должен прятать саму команду */
+const roomsFailed = ref(false);
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleDateString(locale.value);
+}
 
 const overview = computed(() => teams.current);
 const currentUserId = computed(() => session.user?.id ?? null);
@@ -48,6 +56,25 @@ const roleItems = computed(() =>
   TEAM_ROLES.map((role) => ({ label: t(`role.${role}`), value: role })),
 );
 
+/** Дашборд комнат: активные и завершённые одним списком секций, чтобы не
+ * дублировать разметку строки. */
+const roomSections = computed(() => [
+  {
+    key: 'active',
+    title: t('team.roomsActive'),
+    badge: t('team.roomActive'),
+    color: 'success' as const,
+    rooms: teamRooms.active,
+  },
+  {
+    key: 'closed',
+    title: t('team.roomsClosed'),
+    badge: t('team.roomClosed'),
+    color: 'neutral' as const,
+    rooms: teamRooms.closed,
+  },
+]);
+
 /** Код приходит только админу и владельцу — по нему и показываем блок приглашения */
 const inviteUrl = computed(() =>
   overview.value?.inviteCode
@@ -63,8 +90,12 @@ async function load(): Promise<void> {
   loading.value = true;
   notFound.value = false;
   loadFailed.value = false;
+  roomsFailed.value = false;
+  teamRooms.reset();
   try {
     await teams.loadTeam(props.id);
+    // Дашборд команды: комнаты тянем следом, их ошибку ловим отдельно ниже
+    await loadRooms();
   } catch (err) {
     // Посторонним и на несуществующую команду сервер отвечает одинаково — 404
     if (err instanceof ApiError && err.status === 404) {
@@ -74,6 +105,14 @@ async function load(): Promise<void> {
     }
   } finally {
     loading.value = false;
+  }
+}
+
+async function loadRooms(): Promise<void> {
+  try {
+    await teamRooms.load(props.id);
+  } catch {
+    roomsFailed.value = true;
   }
 }
 
@@ -269,6 +308,41 @@ async function confirmDelete(): Promise<void> {
           {{ t(`role.${overview.role}`) }}
         </UBadge>
       </div>
+
+      <UCard>
+        <template #header>
+          <h2 class="font-medium">{{ t('team.roomsTitle') }}</h2>
+        </template>
+
+        <UAlert
+          v-if="roomsFailed"
+          color="error"
+          variant="subtle"
+          :description="t('team.roomsError')"
+        />
+        <p v-else-if="teamRooms.list.length === 0" class="text-muted text-sm">
+          {{ t('team.roomsEmpty') }}
+        </p>
+        <div v-else class="space-y-5">
+          <div v-for="section in roomSections" v-show="section.rooms.length" :key="section.key">
+            <h3 class="text-muted mb-2 text-xs font-medium tracking-wide uppercase">
+              {{ section.title }}
+            </h3>
+            <ul class="divide-default divide-y">
+              <li v-for="room in section.rooms" :key="room.id">
+                <RouterLink
+                  :to="{ name: 'room', params: { id: room.id } }"
+                  class="hover:bg-elevated/50 -mx-2 flex items-center gap-3 rounded px-2 py-3"
+                >
+                  <span class="min-w-0 flex-1 truncate">{{ room.name }}</span>
+                  <span class="text-muted text-xs">{{ formatDate(room.createdAt) }}</span>
+                  <UBadge :color="section.color" variant="subtle">{{ section.badge }}</UBadge>
+                </RouterLink>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </UCard>
 
       <UCard>
         <template #header>

@@ -46,6 +46,13 @@ export default {
     createError: 'Could not create the team. Please try again.',
   },
   team: {
+    roomsTitle: 'Rooms',
+    roomsActive: 'Active',
+    roomsClosed: 'Finished',
+    roomActive: 'Active',
+    roomClosed: 'Finished',
+    roomsEmpty: 'The team has no rooms yet.',
+    roomsError: 'Could not load the team rooms.',
     membersTitle: 'Members',
     inviteTitle: 'Invite',
     inviteHint: 'Share the link — people join the team through it.',

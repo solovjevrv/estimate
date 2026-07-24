@@ -46,6 +46,13 @@ export default {
     createError: 'Не удалось создать команду. Попробуйте ещё раз.',
   },
   team: {
+    roomsTitle: 'Комнаты',
+    roomsActive: 'Активные',
+    roomsClosed: 'Завершённые',
+    roomActive: 'Активна',
+    roomClosed: 'Завершена',
+    roomsEmpty: 'В команде пока нет комнат.',
+    roomsError: 'Не удалось загрузить комнаты команды.',
     membersTitle: 'Состав',
     inviteTitle: 'Приглашение',
     inviteHint: 'Отправьте ссылку — по ней присоединятся к команде.',
