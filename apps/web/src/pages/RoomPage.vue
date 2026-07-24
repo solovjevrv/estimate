@@ -195,8 +195,45 @@ function retry(): void {
             {{ room.connected ? t('room.connected') : t('room.disconnected') }}
           </UBadge>
         </p>
-        <!-- Игровой стол и участники — Epic 5 -->
-        <p class="text-muted">{{ t('room.soon') }}</p>
+
+        <UCard>
+          <template #header>
+            <h2 class="font-medium">{{ t('room.participantsTitle') }}</h2>
+          </template>
+
+          <p v-if="!room.round" class="text-muted mb-3 text-sm">{{ t('room.noRoundYet') }}</p>
+
+          <ul class="divide-default divide-y">
+            <li
+              v-for="p in room.participants"
+              :key="p.participantId"
+              class="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+            >
+              <UAvatar :src="p.avatarUrl ?? undefined" :alt="p.name" size="sm" />
+              <span class="min-w-0 flex-1 truncate">
+                {{ p.name }}
+                <span v-if="p.participantId === room.participantId" class="text-muted text-xs">
+                  {{ t('room.you') }}
+                </span>
+              </span>
+              <UBadge v-if="p.isGuest" color="neutral" variant="subtle">
+                {{ t('room.guestBadge') }}
+              </UBadge>
+              <UBadge :color="p.role === 'scrum_master' ? 'primary' : 'neutral'" variant="subtle">
+                {{ p.role === 'scrum_master' ? t('room.roleScrumMaster') : t('room.roleVoter') }}
+              </UBadge>
+              <UBadge
+                v-if="room.round"
+                :color="p.hasVoted ? 'success' : 'neutral'"
+                variant="subtle"
+              >
+                {{ p.hasVoted ? t('room.voted') : t('room.notVoted') }}
+              </UBadge>
+            </li>
+          </ul>
+        </UCard>
+
+        <!-- Карты, вскрытие и старт раунда — Epic 5 -->
       </template>
     </template>
   </section>
