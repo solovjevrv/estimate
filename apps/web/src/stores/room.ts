@@ -53,6 +53,13 @@ export const useRoomStore = defineStore('room', () => {
   let target: { roomId: string; guestName?: string } | null = null;
   /** Прошёл ли первый успешный вход — по нему отличаем реконнект от начального подключения */
   let established = false;
+  /**
+   * Растёт при каждом `join()`/`leave()`: `performJoin` сверяет его после ожидания
+   * ответа сервера и не применяет результат, если за это время успели выйти или
+   * запросить другой вход — иначе висящий вход мог бы подменить участника и стол
+   * уже после того, как пользователь ушёл из комнаты.
+   */
+  let joinToken = 0;
 
   const room = computed(() => state.value?.room ?? null);
   const round = computed<Round | null>(() => state.value?.round ?? null);
@@ -81,6 +88,7 @@ export const useRoomStore = defineStore('room', () => {
     const active = socket;
     const params = target;
     if (!active || !params) return;
+    const token = joinToken;
 
     const joined = await emitWithAck<typeof WS_EVENTS.JOIN_ROOM, JoinRoomResult>(
       active,
@@ -91,6 +99,9 @@ export const useRoomStore = defineStore('room', () => {
         guestToken: readGuestToken(params.roomId),
       },
     );
+
+    // Пока ждали ответ, вызвали leave() или новый join() — это уже не наш вход
+    if (token !== joinToken) return;
 
     writeGuestToken(params.roomId, joined.guestToken);
     participantId.value = joined.participantId;
@@ -107,6 +118,7 @@ export const useRoomStore = defineStore('room', () => {
       participantId.value = null;
     }
     target = { roomId, guestName };
+    joinToken++;
 
     socket ??= createSocket();
     const active = socket;
@@ -137,6 +149,7 @@ export const useRoomStore = defineStore('room', () => {
   }
 
   function leave(): void {
+    joinToken++;
     socket?.disconnect();
     socket = null;
     target = null;
