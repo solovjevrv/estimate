@@ -75,6 +75,28 @@ describe('гард роутера', () => {
     expect(router.currentRoute.value.name).toBe('home');
   });
 
+  it('пускает гостя на страницу приглашения по прямой ссылке', async () => {
+    serveProfile(fetchMock, false);
+    const router = createAppRouter(createMemoryHistory());
+
+    await router.push('/invite/abcdef');
+    await router.isReady();
+
+    expect(router.currentRoute.value.name).toBe('invite');
+    expect(router.currentRoute.value.params.code).toBe('abcdef');
+  });
+
+  it('уводит гостя со страницы команды на вход и запоминает адрес', async () => {
+    serveProfile(fetchMock, false);
+    const router = createAppRouter(createMemoryHistory());
+
+    await router.push('/teams/t1');
+    await router.isReady();
+
+    expect(router.currentRoute.value.name).toBe('login');
+    expect(router.currentRoute.value.query.redirect).toBe('/teams/t1');
+  });
+
   it('пускает гостя в комнату по прямой ссылке', async () => {
     serveProfile(fetchMock, false);
     const router = createAppRouter(createMemoryHistory());

@@ -17,7 +17,15 @@ export default tseslint.config(
   },
   {
     files: ['apps/web/**/*.{ts,vue}'],
-    languageOptions: { globals: globals.browser },
+    languageOptions: {
+      globals: {
+        ...globals.browser,
+        // Композаблы Nuxt UI подставляются автоимпортом (см. auto-imports.d.ts),
+        // поэтому в исходниках их не импортируют — объявляем как глобальные
+        useToast: 'readonly',
+        useOverlay: 'readonly',
+      },
+    },
   },
   {
     files: ['apps/server/**/*.ts'],
