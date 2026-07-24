@@ -197,4 +197,72 @@ describe('вход в комнату', () => {
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Вы вошли как «Иван»'));
   });
+
+  it('гостю после отказа входа «Повторить» возвращает к форме имени', async () => {
+    socket.nextError = { error: 'forbidden', message: 'нет доступа' };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await wrapper.find('input').setValue('Мария');
+    await wrapper.find('form').trigger('submit');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось войти в комнату'));
+
+    const retryButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Повторить');
+    await retryButton!.trigger('click');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+  });
+
+  it('после обрыва соединения бейдж показывает разрыв', async () => {
+    socket.next = { state: roomState(), guestToken: null, participantId: 'u1' };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Подключено'));
+
+    socket.disconnect();
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Обрыв соединения'));
+  });
+
+  it('быстрый переход между комнатами не показывает результат прежней', async () => {
+    let resolveRoom1: (() => void) | null = null;
+    const room1Pending = new Promise<Response>((resolve) => {
+      resolveRoom1 = () => resolve(json(200, { room: room1 }));
+    });
+    const room2: Room = { ...room1, id: 'r2', name: 'Ретро квартала' };
+    socket.next = { state: roomState({ room: room2 }), guestToken: null, participantId: 'u1' };
+
+    const fetchImpl = vi.fn((url: string) => {
+      if (url === '/api/rooms/r1') return room1Pending;
+      if (url === '/api/rooms/r2') return Promise.resolve(json(200, { room: room2 }));
+      if (url === '/api/me') return Promise.resolve(json(200, { user }));
+      if (url === '/api/auth/refresh') {
+        return Promise.resolve(json(401, { error: 'unauthorized', message: 'нет' }));
+      }
+      if (url === '/api/auth/providers') {
+        return Promise.resolve(json(200, { providers: ['google', 'yandex'] }));
+      }
+      return Promise.resolve(json(404, { error: 'not_found', message: 'нет' }));
+    });
+
+    const { wrapper, router } = await mountApp('/rooms/r1', fetchImpl);
+
+    // Комната r1 ещё грузится (её ответ не пришёл), а пользователь уже ушёл в r2
+    await router.push('/rooms/r2');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Вы вошли как «Иван»'));
+    expect(wrapper.text()).toContain('Ретро квартала');
+
+    // Отставший ответ по r1 приходит последним — он не должен подменить экран r2
+    resolveRoom1!();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(wrapper.text()).toContain('Ретро квартала');
+    expect(wrapper.text()).not.toContain('Планирование спринта');
+  });
 });

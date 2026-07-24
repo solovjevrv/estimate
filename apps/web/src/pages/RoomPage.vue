@@ -19,6 +19,17 @@ type Phase = 'loading' | 'notFound' | 'loadError' | 'naming' | 'joining' | 'join
 const phase = ref<Phase>('loading');
 const roomInfo = ref<Room | null>(null);
 const guestState = reactive({ name: readStoredGuestName() });
+/** Имя, с которым гость реально вошёл (обрезанное) — отдельно от поля формы */
+const joinedGuestName = ref('');
+
+/**
+ * Растёт при каждом `load()`/размонтировании: асинхронные продолжения (запрос
+ * комнаты, вход по WS) сверяют его перед тем, как менять `phase`/`roomInfo`.
+ * Без этого быстрый переход между комнатами мог бы показать одну комнату,
+ * а подключиться при этом к другой — та проверка, что пришла последней,
+ * побеждала бы независимо от того, к какой комнате она относится.
+ */
+let currentToken = 0;
 
 /** Гость называет имя один раз за вкладку — переживает перезагрузку, не переживает закрытие */
 function readStoredGuestName(): string {
@@ -40,19 +51,25 @@ function storeGuestName(name: string): void {
 watch(() => props.id, load, { immediate: true });
 
 onBeforeUnmount(() => {
+  currentToken++;
   room.leave();
 });
 
 async function load(): Promise<void> {
+  const token = ++currentToken;
   phase.value = 'loading';
   room.leave();
+  let loadedRoom: Room;
   try {
     const res = await api.get<{ room: Room }>(`/api/rooms/${encodeURIComponent(props.id)}`);
-    roomInfo.value = res.room;
+    loadedRoom = res.room;
   } catch (err) {
+    if (token !== currentToken) return; // уже перешли дальше — этот ответ не наш
     phase.value = err instanceof ApiError && err.status === 404 ? 'notFound' : 'loadError';
     return;
   }
+  if (token !== currentToken) return;
+  roomInfo.value = loadedRoom;
 
   if (session.isAuthenticated) {
     await joinAsSelf();
@@ -62,11 +79,14 @@ async function load(): Promise<void> {
 }
 
 async function joinAsSelf(): Promise<void> {
+  const token = currentToken;
   phase.value = 'joining';
   try {
     await room.join(props.id);
+    if (token !== currentToken) return;
     phase.value = 'joined';
   } catch {
+    if (token !== currentToken) return;
     phase.value = 'joinError';
   }
 }
@@ -83,13 +103,17 @@ function validateName(s: { name: string }): FormError[] {
 }
 
 async function onJoinAsGuest(event: FormSubmitEvent<{ name: string }>): Promise<void> {
+  const token = currentToken;
   const name = event.data.name.trim();
   storeGuestName(name);
+  joinedGuestName.value = name;
   phase.value = 'joining';
   try {
     await room.join(props.id, name);
+    if (token !== currentToken) return;
     phase.value = 'joined';
   } catch {
+    if (token !== currentToken) return;
     phase.value = 'joinError';
   }
 }
@@ -163,7 +187,7 @@ function retry(): void {
 
       <template v-else-if="phase === 'joined'">
         <p class="text-muted text-sm">
-          {{ t('room.joinedAs', { name: session.user?.name ?? guestState.name }) }}
+          {{ t('room.joinedAs', { name: session.user?.name ?? joinedGuestName }) }}
           <UBadge :color="room.connected ? 'success' : 'error'" variant="subtle" class="ml-2">
             {{ room.connected ? t('room.connected') : t('room.disconnected') }}
           </UBadge>
