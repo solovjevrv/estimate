@@ -419,3 +419,32 @@ describe('стол участников', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
   });
 });
+
+describe('выход из аккаунта на странице комнаты', () => {
+  it('логаут в шапке закрывает WS-сессию комнаты', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper, router } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, {
+        'GET /api/rooms/r1': () => json(200, { room: room1 }),
+        'POST /api/auth/logout': () => json(200, {}),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Вы вошли как «Иван»'));
+    expect(socket.connected).toBe(true);
+
+    const logoutButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Выйти');
+    await logoutButton!.trigger('click');
+
+    // Переход на главную размонтирует RoomPage — onBeforeUnmount закрывает сокет
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
+    expect(socket.connected).toBe(false);
+  });
+});

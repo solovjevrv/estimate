@@ -88,3 +88,103 @@ describe('каркас приложения', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Страница не найдена'));
   });
 });
+
+describe('выход из аккаунта', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('выход уводит с приватной страницы на главную', async () => {
+    const fetchImpl = vi.fn((path: string, init?: RequestInit) => {
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (path === '/api/me') {
+        return Promise.resolve(
+          jsonResponse(200, {
+            user: {
+              id: 'u1',
+              provider: 'google',
+              email: 'ivan@example.com',
+              name: 'Иван',
+              avatarUrl: null,
+            },
+          }),
+        );
+      }
+      if (path === '/api/auth/providers') {
+        return Promise.resolve(jsonResponse(200, { providers: ['google', 'yandex'] }));
+      }
+      if (path === '/api/teams') return Promise.resolve(jsonResponse(200, { teams: [] }));
+      if (method === 'POST' && path === '/api/auth/logout') {
+        return Promise.resolve(jsonResponse(200, {}));
+      }
+      return Promise.resolve(jsonResponse(404, { error: 'not_found', message: 'нет' }));
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+
+    const pinia = createPinia();
+    const router = createAppRouter(createMemoryHistory());
+    const wrapper = mount(App, {
+      global: { plugins: [pinia, router, createAppI18n('ru'), ui] },
+      attachTo: document.body,
+    });
+    await router.push('/teams');
+    await router.isReady();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Выйти'));
+
+    const logoutButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Выйти');
+    await logoutButton!.trigger('click');
+
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
+    expect(wrapper.text()).toContain('Войти');
+    expect(wrapper.text()).not.toContain('Выйти');
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/auth/logout',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
+  it('уводит на главную, даже если запрос выхода не дошёл до сервера', async () => {
+    const fetchImpl = vi.fn((path: string, init?: RequestInit) => {
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (path === '/api/me') {
+        return Promise.resolve(
+          jsonResponse(200, {
+            user: {
+              id: 'u1',
+              provider: 'google',
+              email: 'ivan@example.com',
+              name: 'Иван',
+              avatarUrl: null,
+            },
+          }),
+        );
+      }
+      if (path === '/api/auth/providers') {
+        return Promise.resolve(jsonResponse(200, { providers: ['google', 'yandex'] }));
+      }
+      if (path === '/api/teams') return Promise.resolve(jsonResponse(200, { teams: [] }));
+      if (method === 'POST' && path === '/api/auth/logout') {
+        // Сеть недоступна: session.logout() всё равно чистит пользователя на клиенте
+        return Promise.reject(new Error('сеть недоступна'));
+      }
+      return Promise.resolve(jsonResponse(404, { error: 'not_found', message: 'нет' }));
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+
+    const pinia = createPinia();
+    const router = createAppRouter(createMemoryHistory());
+    const wrapper = mount(App, {
+      global: { plugins: [pinia, router, createAppI18n('ru'), ui] },
+      attachTo: document.body,
+    });
+    await router.push('/teams');
+    await router.isReady();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Выйти'));
+
+    const logoutButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Выйти');
+    await logoutButton!.trigger('click');
+
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
+    expect(wrapper.text()).toContain('Войти');
+  });
+});
