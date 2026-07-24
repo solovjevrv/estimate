@@ -1,0 +1,200 @@
+import ui from '@nuxt/ui/vue-plugin';
+import type { AuthUser, Room, RoomState } from '@poker/shared';
+import { mount } from '@vue/test-utils';
+import { createPinia } from 'pinia';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createMemoryHistory } from 'vue-router';
+
+import App from '../src/App.vue';
+import { createAppI18n } from '../src/i18n';
+import { createAppRouter } from '../src/router';
+
+function json(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+const user: AuthUser = {
+  id: 'u1',
+  provider: 'google',
+  email: 'ivan@example.com',
+  name: 'Иван',
+  avatarUrl: null,
+};
+
+const room1: Room = {
+  id: 'r1',
+  teamId: null,
+  creatorId: 'u1',
+  name: 'Планирование спринта',
+  status: 'active',
+  revision: 1,
+  createdAt: '2026-07-24T00:00:00.000Z',
+};
+
+function roomState(overrides: Partial<RoomState> = {}): RoomState {
+  return {
+    room: room1,
+    round: null,
+    participants: [],
+    result: null,
+    ...overrides,
+  };
+}
+
+/** Фальшивый сокет: тот же приём, что и в room.test.ts */
+class FakeSocket {
+  connected = false;
+  readonly sent: Array<{ event: string; payload: unknown }> = [];
+  private readonly listeners = new Map<string, Array<(payload: never) => void>>();
+  next: unknown = null;
+  nextError: { error: string; message: string } | null = null;
+
+  connect(): void {
+    this.connected = true;
+    this.emitLocal('connect', undefined);
+  }
+
+  disconnect(): void {
+    this.connected = false;
+    this.emitLocal('disconnect', undefined);
+  }
+
+  on(event: string, handler: (payload: never) => void): void {
+    const list = this.listeners.get(event) ?? [];
+    list.push(handler);
+    this.listeners.set(event, list);
+  }
+
+  hasListeners(event: string): boolean {
+    return (this.listeners.get(event)?.length ?? 0) > 0;
+  }
+
+  emit(event: string, payload: unknown, ack: (result: unknown) => void): void {
+    this.sent.push({ event, payload });
+    ack(this.nextError === null ? { ok: true, data: this.next } : { ok: false, ...this.nextError });
+  }
+
+  emitLocal(event: string, payload: unknown): void {
+    for (const handler of this.listeners.get(event) ?? []) {
+      (handler as (p: unknown) => void)(payload);
+    }
+  }
+}
+
+let socket: FakeSocket;
+
+vi.mock('../src/lib/socket', async () => {
+  const actual = await vi.importActual<typeof import('../src/lib/socket')>('../src/lib/socket');
+  return { ...actual, createSocket: () => socket };
+});
+
+type Handlers = Record<string, () => Response>;
+
+function makeFetch(authenticated: boolean, handlers: Handlers = {}) {
+  return vi.fn((url: string, init?: RequestInit) => {
+    const method = (init?.method ?? 'GET').toUpperCase();
+    const handler = handlers[`${method} ${url}`];
+    if (handler) return Promise.resolve(handler());
+    if (url === '/api/me') {
+      return Promise.resolve(
+        authenticated ? json(200, { user }) : json(401, { error: 'unauthorized', message: 'нет' }),
+      );
+    }
+    if (url === '/api/auth/refresh') {
+      return Promise.resolve(json(401, { error: 'unauthorized', message: 'нет' }));
+    }
+    if (url === '/api/auth/providers') {
+      return Promise.resolve(json(200, { providers: ['google', 'yandex'] }));
+    }
+    return Promise.resolve(json(404, { error: 'not_found', message: 'нет' }));
+  });
+}
+
+async function mountApp(path: string, fetchImpl: ReturnType<typeof vi.fn>) {
+  vi.stubGlobal('fetch', fetchImpl);
+  const pinia = createPinia();
+  const router = createAppRouter(createMemoryHistory());
+  const wrapper = mount(App, {
+    global: { plugins: [pinia, router, createAppI18n('ru'), ui] },
+    attachTo: document.body,
+  });
+  await router.push(path);
+  await router.isReady();
+  return { wrapper, router };
+}
+
+beforeEach(() => {
+  socket = new FakeSocket();
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  document.body.innerHTML = '';
+});
+
+describe('вход в комнату', () => {
+  it('гостю показывает форму имени и заходит по WS после отправки', async () => {
+    socket.next = { state: roomState(), guestToken: 'tok', participantId: 'g1' };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    expect(wrapper.text()).toContain('Планирование спринта');
+
+    await wrapper.find('input').setValue('Мария');
+    await wrapper.find('form').trigger('submit');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Вы вошли как «Мария»'));
+    const join = socket.sent.find((s) => s.event === 'join_room');
+    expect(join?.payload).toMatchObject({ roomId: 'r1', guestName: 'Мария' });
+  });
+
+  it('вошедшего пользователя заводит в комнату без формы имени', async () => {
+    socket.next = { state: roomState(), guestToken: null, participantId: 'u1' };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Вы вошли как «Иван»'));
+    expect(wrapper.text()).not.toContain('Представьтесь');
+    const join = socket.sent.find((s) => s.event === 'join_room');
+    expect(join?.payload).toMatchObject({ roomId: 'r1' });
+  });
+
+  it('на несуществующую комнату показывает «не найдено»', async () => {
+    const { wrapper } = await mountApp(
+      '/rooms/zzz',
+      makeFetch(true, {
+        'GET /api/rooms/zzz': () => json(404, { error: 'not_found', message: 'нет' }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Комната не найдена'));
+  });
+
+  it('при отказе входа показывает ошибку и позволяет повторить', async () => {
+    socket.nextError = { error: 'forbidden', message: 'нет доступа' };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось войти в комнату'));
+
+    socket.nextError = null;
+    socket.next = { state: roomState(), guestToken: null, participantId: 'u1' };
+    const retryButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Повторить');
+    await retryButton!.trigger('click');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Вы вошли как «Иван»'));
+  });
+});
