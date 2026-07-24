@@ -202,7 +202,9 @@ describe('вход в комнату', () => {
   it('гостю показывает роль «Голосующий»', async () => {
     socket.next = {
       state: roomState({
-        participants: [participant({ participantId: 'g1', isGuest: true, role: 'voter' })],
+        participants: [
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
       }),
       guestToken: 'tok',
       participantId: 'g1',
