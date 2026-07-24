@@ -28,8 +28,14 @@ onMounted(() => {
  * это заметнее всего — WS-сессия переживает logout, пока страницу не размонтируют.
  */
 async function logout(): Promise<void> {
-  await session.logout();
-  await router.push('/');
+  try {
+    await session.logout();
+  } catch {
+    // Запрос на сервер не дошёл — session.logout() и так очистил пользователя
+    // на клиенте, значит со страницы всё равно надо уйти
+  } finally {
+    await router.push('/');
+  }
 }
 </script>
 
