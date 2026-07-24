@@ -185,6 +185,144 @@ describe('карточка команды', () => {
   });
 });
 
+const other: TeamMember = {
+  userId: 'u2',
+  name: 'Пётр',
+  email: 'petr@example.com',
+  avatarUrl: null,
+  role: 'member',
+  joinedAt: '2026-07-24T00:00:00.000Z',
+};
+
+/** Открытая модалка Nuxt UI телепортируется в body под role="dialog" */
+function dialog(): HTMLElement | null {
+  return document.body.querySelector('[role="dialog"]');
+}
+
+function dialogButton(text: string): HTMLButtonElement | undefined {
+  return Array.from(dialog()?.querySelectorAll('button') ?? []).find(
+    (b) => b.textContent?.trim() === text,
+  );
+}
+
+describe('управление составом', () => {
+  it('владельцу доступно исключение других участников', async () => {
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () =>
+          json(200, { team: teamA, role: 'owner', members: [owner, other] }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Пётр'));
+    // Кнопка исключения есть у чужого участника и отсутствует у самого владельца
+    expect(wrapper.findAll('[aria-label="Исключить"]')).toHaveLength(1);
+    expect(wrapper.text()).toContain('Удалить команду');
+    // Селект роли есть только у чужого участника, себе владелец роль не меняет
+    expect(wrapper.findAll('[aria-label="Роль"]')).toHaveLength(1);
+  });
+
+  it('обычному участнику управление недоступно', async () => {
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () =>
+          json(200, { team: teamA, role: 'member', members: [{ ...owner, role: 'owner' }, other] }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
+    expect(wrapper.find('[aria-label="Исключить"]').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('Удалить команду');
+    expect(wrapper.text()).not.toContain('Переименовать');
+  });
+
+  it('исключение участника убирает его из состава', async () => {
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () =>
+          json(200, { team: teamA, role: 'owner', members: [owner, other] }),
+        'DELETE /api/teams/t1/members/u2': () => new Response(null, { status: 204 }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Пётр'));
+
+    await wrapper.find('[aria-label="Исключить"]').trigger('click');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Исключить участника?'));
+    dialogButton('Исключить')!.click();
+
+    await vi.waitFor(() => expect(wrapper.text()).not.toContain('Пётр'));
+  });
+
+  it('выход из команды уводит на список команд', async () => {
+    const { wrapper, router } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        // Текущий пользователь u1 — обычный участник, владелец другой
+        'GET /api/teams/t1': () =>
+          json(200, {
+            team: teamA,
+            role: 'member',
+            members: [
+              { ...other, role: 'owner' },
+              { ...owner, role: 'member' },
+            ],
+          }),
+        'GET /api/teams': () => json(200, { teams: [] }),
+        'DELETE /api/teams/t1/members/u1': () => new Response(null, { status: 204 }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
+
+    await byText(wrapper, 'button', 'Выйти из команды')!.trigger('click');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Выйти из команды?'));
+    dialogButton('Выйти')!.click();
+
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('teams'));
+  });
+
+  it('удаление команды уводит на список команд', async () => {
+    const { wrapper, router } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams': () => json(200, { teams: [] }),
+        'DELETE /api/teams/t1': () => new Response(null, { status: 204 }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Удалить команду'));
+
+    await byText(wrapper, 'button', 'Удалить команду')!.trigger('click');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Удалить команду?'));
+    dialogButton('Удалить')!.click();
+
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('teams'));
+  });
+
+  it('переименование обновляет заголовок команды', async () => {
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'PATCH /api/teams/t1': () => json(200, { team: { ...teamA, name: 'Новое имя' } }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Настройки команды'));
+
+    await byText(wrapper, 'button', 'Переименовать')!.trigger('click');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Переименовать команду'));
+
+    const input = dialog()!.querySelector('input') as HTMLInputElement;
+    input.value = 'Новое имя';
+    input.dispatchEvent(new Event('input'));
+    dialogButton('Переименовать')!.click();
+
+    await vi.waitFor(() => expect(wrapper.find('h1').text()).toBe('Новое имя'));
+  });
+});
+
 describe('страница приглашения', () => {
   it('гостю показывает команду и предлагает войти', async () => {
     const { wrapper } = await mountApp(

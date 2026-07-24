@@ -73,5 +73,76 @@ export const useTeamsStore = defineStore('teams', () => {
     );
   }
 
-  return { list, current, loadList, create, loadTeam, rotateInvite, previewInvite, joinByInvite };
+  /**
+   * Сменить роль участника (только владелец). Назначение `owner` — передача
+   * владения: сервер понижает прежнего владельца до администратора и возвращает
+   * новую роль текущего пользователя в `actorRole`. Владелец в команде один,
+   * поэтому при передаче локально понижаем и прежнего владельца.
+   */
+  async function changeMemberRole(
+    teamId: string,
+    userId: string,
+    role: TeamRole,
+  ): Promise<{ member: { userId: string; role: TeamRole }; actorRole: TeamRole }> {
+    const res = await api.patch<{
+      member: { userId: string; role: TeamRole };
+      actorRole: TeamRole;
+    }>(`/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`, { role });
+
+    const cur = current.value;
+    if (cur && cur.team.id === teamId) {
+      const becameOwner = res.member.role === 'owner';
+      cur.members = cur.members.map((m) => {
+        if (m.userId === res.member.userId) return { ...m, role: res.member.role };
+        if (becameOwner && m.role === 'owner') return { ...m, role: 'admin' as TeamRole };
+        return m;
+      });
+      cur.role = res.actorRole;
+    }
+    return res;
+  }
+
+  /** Исключить участника (владелец) или выйти самому (любой участник). */
+  async function removeMember(teamId: string, userId: string): Promise<void> {
+    await api.delete(
+      `/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
+    );
+    const cur = current.value;
+    if (cur && cur.team.id === teamId) {
+      cur.members = cur.members.filter((m) => m.userId !== userId);
+    }
+  }
+
+  /** Переименовать команду (только владелец). */
+  async function rename(teamId: string, name: string): Promise<Team> {
+    const res = await api.patch<{ team: Team }>(`/api/teams/${encodeURIComponent(teamId)}`, {
+      name,
+    });
+    const cur = current.value;
+    if (cur && cur.team.id === teamId) cur.team = res.team;
+    list.value = list.value.map((t) => (t.id === teamId ? { ...t, name: res.team.name } : t));
+    return res.team;
+  }
+
+  /** Удалить команду (только владелец). Комнаты команды на бэкенде сохраняются. */
+  async function remove(teamId: string): Promise<void> {
+    await api.delete(`/api/teams/${encodeURIComponent(teamId)}`);
+    list.value = list.value.filter((t) => t.id !== teamId);
+    if (current.value?.team.id === teamId) current.value = null;
+  }
+
+  return {
+    list,
+    current,
+    loadList,
+    create,
+    loadTeam,
+    rotateInvite,
+    previewInvite,
+    joinByInvite,
+    changeMemberRole,
+    removeMember,
+    rename,
+    remove,
+  };
 });

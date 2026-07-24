@@ -124,4 +124,90 @@ describe('стор команд', () => {
 
     await expect(teams.previewInvite('zzz')).rejects.toBeInstanceOf(ApiError);
   });
+
+  const other: TeamMember = {
+    userId: 'u2',
+    name: 'Пётр',
+    email: 'petr@example.com',
+    avatarUrl: null,
+    role: 'member',
+    joinedAt: '2026-07-24T00:00:00.000Z',
+  };
+
+  it('смена роли участника обновляет состав', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json(200, { team: teamA, role: 'owner', members: [member, other] }),
+    );
+    const teams = useTeamsStore();
+    await teams.loadTeam('t1');
+
+    fetchMock.mockResolvedValueOnce(
+      json(200, { member: { userId: 'u2', role: 'admin' }, actorRole: 'owner' }),
+    );
+    await teams.changeMemberRole('t1', 'u2', 'admin');
+
+    expect(teams.current?.members.find((m) => m.userId === 'u2')?.role).toBe('admin');
+    expect(teams.current?.role).toBe('owner');
+  });
+
+  it('передача владения понижает прежнего владельца и роль текущего пользователя', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json(200, { team: teamA, role: 'owner', members: [member, other] }),
+    );
+    const teams = useTeamsStore();
+    await teams.loadTeam('t1');
+
+    // Сервер: u2 -> owner, текущий пользователь -> admin
+    fetchMock.mockResolvedValueOnce(
+      json(200, { member: { userId: 'u2', role: 'owner' }, actorRole: 'admin' }),
+    );
+    await teams.changeMemberRole('t1', 'u2', 'owner');
+
+    expect(teams.current?.members.find((m) => m.userId === 'u2')?.role).toBe('owner');
+    // прежний владелец u1 стал администратором
+    expect(teams.current?.members.find((m) => m.userId === 'u1')?.role).toBe('admin');
+    expect(teams.current?.role).toBe('admin');
+  });
+
+  it('исключение участника убирает его из состава', async () => {
+    fetchMock.mockResolvedValueOnce(
+      json(200, { team: teamA, role: 'owner', members: [member, other] }),
+    );
+    const teams = useTeamsStore();
+    await teams.loadTeam('t1');
+
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    await teams.removeMember('t1', 'u2');
+
+    expect(teams.current?.members.map((m) => m.userId)).toEqual(['u1']);
+  });
+
+  it('переименование обновляет карточку и список', async () => {
+    fetchMock.mockResolvedValueOnce(json(200, { teams: [teamA] }));
+    const teams = useTeamsStore();
+    await teams.loadList();
+    fetchMock.mockResolvedValueOnce(json(200, { team: teamA, role: 'owner', members: [member] }));
+    await teams.loadTeam('t1');
+
+    const renamed = { ...teamA, name: 'Новое имя' };
+    fetchMock.mockResolvedValueOnce(json(200, { team: renamed }));
+    await teams.rename('t1', 'Новое имя');
+
+    expect(teams.current?.team.name).toBe('Новое имя');
+    expect(teams.list.find((t) => t.id === 't1')?.name).toBe('Новое имя');
+  });
+
+  it('удаление убирает команду из списка и очищает карточку', async () => {
+    fetchMock.mockResolvedValueOnce(json(200, { teams: [teamA] }));
+    const teams = useTeamsStore();
+    await teams.loadList();
+    fetchMock.mockResolvedValueOnce(json(200, { team: teamA, role: 'owner', members: [member] }));
+    await teams.loadTeam('t1');
+
+    fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
+    await teams.remove('t1');
+
+    expect(teams.list).toEqual([]);
+    expect(teams.current).toBeNull();
+  });
 });
