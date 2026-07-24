@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { useRouter } from 'vue-router';
 
 import { LOCALES, rememberLocale, type Locale } from './i18n';
 import { useSessionStore } from './stores/session';
 
 const { t, locale } = useI18n();
 const session = useSessionStore();
+const router = useRouter();
 
 const language = computed({
   get: () => locale.value as Locale,
@@ -19,6 +21,16 @@ const language = computed({
 onMounted(() => {
   void session.ensureLoaded();
 });
+
+/**
+ * Без перехода страница остаётся как есть: гард роутера перепроверяет доступ
+ * только при навигации, а не при смене состояния сессии на месте. На комнате
+ * это заметнее всего — WS-сессия переживает logout, пока страницу не размонтируют.
+ */
+async function logout(): Promise<void> {
+  await session.logout();
+  await router.push('/');
+}
 </script>
 
 <template>
@@ -45,7 +57,7 @@ onMounted(() => {
               size="sm"
               color="neutral"
               variant="subtle"
-              @click="session.logout()"
+              @click="logout"
             >
               {{ t('nav.logout') }}
             </UButton>
