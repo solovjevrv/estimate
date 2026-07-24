@@ -68,6 +68,19 @@ describe('страница входа', () => {
     expect(wrapper.text()).toContain('Перенаправляем');
   });
 
+  it('вход через провайдера — внешняя ссылка, а не переход внутри приложения', async () => {
+    // Кнопка ведёт на /api/auth/… — это адрес бэкенда, а не роут приложения.
+    // Без пометки «внешняя» Nuxt UI перехватил бы клик как переход роутера и
+    // увёл бы на страницу «не найдено» вместо полной загрузки и старта OAuth.
+    const { wrapper, router } = await mountLogin('/login');
+
+    await wrapper.find('a[href="/api/auth/yandex"]').trigger('click');
+
+    // Роутер остался на входе: клик не был перехвачен как внутренний переход,
+    // значит браузер выполнит настоящую загрузку /api/auth/yandex и стартует OAuth
+    expect(router.currentRoute.value.name).toBe('login');
+  });
+
   it('не запоминает внешний адрес возврата', async () => {
     const { wrapper } = await mountLogin('/login?redirect=//evil.com');
 
