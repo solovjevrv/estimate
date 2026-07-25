@@ -38,6 +38,6 @@ describe('схема БД', () => {
 
   it('роли в команде соответствуют контракту @poker/shared', () => {
     const roleValues: readonly TeamRole[] = schema.teamRoleEnum.enumValues;
-    expect(roleValues).toEqual(['owner', 'admin', 'member', 'guest']);
+    expect(roleValues).toEqual(['admin', 'member', 'guest']);
   });
 });

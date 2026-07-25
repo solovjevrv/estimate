@@ -36,14 +36,15 @@ const MAX_INVITE_ATTEMPTS = 3;
 
 export interface RoleChangeResult {
   member: Membership;
-  /** Роль вызывающего после операции: при передаче владения он становится админом */
+  /** Роль вызывающего после операции: меняется, только если он менял роль сам себе */
   actorRole: TeamRole;
 }
 
 /**
  * Правила работы с командами. Все проверки прав живут здесь, а не в роутах:
  * изменения состава выполняются в транзакции с блокировкой строк, поэтому
- * одновременные запросы не могут оставить команду без владельца или с двумя.
+ * одновременные запросы не могут оставить команду без единого администратора.
+ * Администраторов может быть несколько — все равны в правах.
  */
 export class TeamsService {
   /** Репозиторий должен работать с тем же соединением, что и транзакции сервиса */
@@ -63,11 +64,11 @@ export class TeamsService {
     const team = await this.db.transaction(async (tx) => {
       const repo = new TeamsRepository(tx);
       const created = await repo.insertTeam(name);
-      await repo.insertMember(created.id, actorId, 'owner');
+      await repo.insertMember(created.id, actorId, 'admin');
       return created;
     });
 
-    return { id: team.id, name: team.name, createdAt: team.createdAt, role: 'owner' };
+    return { id: team.id, name: team.name, createdAt: team.createdAt, role: 'admin' };
   }
 
   async listForUser(actorId: string): Promise<TeamWithRole[]> {
@@ -104,7 +105,7 @@ export class TeamsService {
   async rename(actorId: string, teamId: string, rawName: string): Promise<Team> {
     const name = this.normalizeName(rawName);
 
-    return this.inTransaction(teamId, actorId, 'owner', async (repo) => {
+    return this.inTransaction(teamId, actorId, 'admin', async (repo) => {
       const team = await repo.updateName(teamId, name);
       if (!team) {
         throw new NotFoundError('Команда не найдена');
@@ -114,7 +115,7 @@ export class TeamsService {
   }
 
   async remove(actorId: string, teamId: string): Promise<void> {
-    await this.inTransaction(teamId, actorId, 'owner', async (repo) => {
+    await this.inTransaction(teamId, actorId, 'admin', async (repo) => {
       await repo.deleteTeam(teamId);
     });
   }
@@ -140,9 +141,8 @@ export class TeamsService {
   }
 
   /**
-   * Смена роли участника. Назначение нового владельца выполняется в одной
-   * транзакции: прежний владелец сначала понижается до администратора,
-   * поэтому владелец у команды всегда ровно один.
+   * Смена роли участника. Понизить себя (единственного администратора)
+   * нельзя — иначе команда осталась бы без администратора вовсе.
    */
   async changeMemberRole(
     actorId: string,
@@ -150,7 +150,7 @@ export class TeamsService {
     targetUserId: string,
     role: TeamRole,
   ): Promise<RoleChangeResult> {
-    return this.inTransaction(teamId, actorId, 'owner', async (repo, actor, members) => {
+    return this.inTransaction(teamId, actorId, 'admin', async (repo, actor, members) => {
       const target = members.find((member) => member.userId === targetUserId);
       if (!target) {
         throw new NotFoundError('Участник не найден');
@@ -158,19 +158,18 @@ export class TeamsService {
       if (target.role === role) {
         return { member: target, actorRole: actor.role };
       }
-      if (targetUserId === actorId) {
-        // Единственный владелец не может понизить себя: команда осталась бы без хозяина
-        throw new ConflictError('Сначала передайте владение другому участнику');
-      }
-
-      if (role === 'owner') {
-        await this.applyRole(repo, teamId, actorId, 'admin');
-        await this.applyRole(repo, teamId, targetUserId, 'owner');
-        return { member: { teamId, userId: targetUserId, role }, actorRole: 'admin' };
+      if (targetUserId === actorId && role !== 'admin') {
+        const admins = members.filter((member) => member.role === 'admin').length;
+        if (admins === 1) {
+          throw new ConflictError('В команде должен остаться хотя бы один администратор');
+        }
       }
 
       await this.applyRole(repo, teamId, targetUserId, role);
-      return { member: { teamId, userId: targetUserId, role }, actorRole: actor.role };
+      return {
+        member: { teamId, userId: targetUserId, role },
+        actorRole: targetUserId === actorId ? role : actor.role,
+      };
     });
   }
 
@@ -183,14 +182,14 @@ export class TeamsService {
       }
 
       if (targetUserId === actorId) {
-        // Выйти может каждый, но владелец — только передав команду
-        const owners = members.filter((member) => member.role === 'owner').length;
-        if (actor.role === 'owner' && owners === 1) {
-          throw new ConflictError('Передайте владение или удалите команду');
+        // Выйти может каждый, но не последний администратор
+        const admins = members.filter((member) => member.role === 'admin').length;
+        if (actor.role === 'admin' && admins === 1) {
+          throw new ConflictError('Назначьте другого администратора или удалите команду');
         }
-      } else if (actor.role !== 'owner') {
-        // Составом команды управляет владелец: администратор только приглашает
-        throw new ForbiddenError('Исключать участников может только владелец');
+      } else if (actor.role !== 'admin') {
+        // Составом команды управляет администратор: остальные только приглашают по ссылке
+        throw new ForbiddenError('Исключать участников может только администратор');
       }
 
       await repo.deleteMember(teamId, targetUserId);

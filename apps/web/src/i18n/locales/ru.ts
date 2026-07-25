@@ -27,7 +27,6 @@ export default {
     noProviders: 'Способы входа не настроены на сервере.',
   },
   role: {
-    owner: 'Владелец',
     admin: 'Администратор',
     member: 'Участник',
     guest: 'Гость',
@@ -72,11 +71,6 @@ export default {
     roleLabel: 'Роль',
     roleChanged: 'Роль обновлена',
     roleChangeError: 'Не удалось изменить роль',
-    transferTitle: 'Передать владение?',
-    transferText:
-      'Вы станете администратором, а «{name}» — владельцем команды. Вернуть владение сможет только новый владелец.',
-    transferConfirm: 'Передать владение',
-    ownerTransferred: 'Владелец команды изменён',
     remove: 'Исключить',
     removeConfirmTitle: 'Исключить участника?',
     removeConfirmText: '«{name}» потеряет доступ к команде.',
@@ -89,7 +83,8 @@ export default {
     leaveConfirm: 'Выйти',
     left: 'Вы вышли из команды',
     leaveError: 'Не удалось выйти из команды',
-    leaveLastOwner: 'Вы единственный владелец — сначала передайте владение или удалите команду.',
+    leaveLastAdmin:
+      'Вы единственный администратор — сначала назначьте другого или удалите команду.',
     settingsTitle: 'Настройки команды',
     rename: 'Переименовать',
     renameTitle: 'Переименовать команду',

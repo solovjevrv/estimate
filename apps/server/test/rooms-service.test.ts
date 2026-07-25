@@ -595,7 +595,7 @@ describe('RoomsService: список комнат команды', () => {
     await expect(service.listTeamRooms('u', 'team-1', true)).rejects.toBeInstanceOf(ForbiddenError);
   });
 
-  it('архив команды доступен админу и владельцу', async () => {
+  it('архив команды доступен администратору', async () => {
     const listRoomsByTeam = vi.fn(async () => [{ ...ROOM, archivedAt: new Date().toISOString() }]);
     const service = serviceWith(
       { listRoomsByTeam },
@@ -603,7 +603,7 @@ describe('RoomsService: список комнат команды', () => {
         findMembership: vi.fn(async () => ({
           teamId: 'team-1',
           userId: 'u',
-          role: 'owner' as const,
+          role: 'admin' as const,
         })),
       },
     );

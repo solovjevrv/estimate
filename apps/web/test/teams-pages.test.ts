@@ -24,12 +24,12 @@ const user: AuthUser = {
   avatarUrl: null,
 };
 
-const owner: TeamMember = {
+const admin: TeamMember = {
   userId: 'u1',
   name: 'Иван',
   email: 'ivan@example.com',
   avatarUrl: null,
-  role: 'owner',
+  role: 'admin',
   joinedAt: '2026-07-24T00:00:00.000Z',
 };
 
@@ -37,7 +37,7 @@ const teamA: TeamWithRole = {
   id: 't1',
   name: 'Команда А',
   createdAt: '2026-07-24T00:00:00.000Z',
-  role: 'owner',
+  role: 'admin',
 };
 
 type Handlers = Record<string, () => Response>;
@@ -95,7 +95,7 @@ describe('страница команд', () => {
     );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Команда А'));
-    expect(wrapper.text()).toContain('Владелец');
+    expect(wrapper.text()).toContain('Администратор');
   });
 
   it('показывает пустое состояние, когда команд нет', async () => {
@@ -126,12 +126,12 @@ describe('страница команд', () => {
 });
 
 describe('карточка команды', () => {
-  it('показывает состав и блок приглашения владельцу', async () => {
+  it('показывает состав и блок приглашения администратору', async () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
         'GET /api/teams/t1': () =>
-          json(200, { team: teamA, role: 'owner', members: [owner], inviteCode: 'abcdef' }),
+          json(200, { team: teamA, role: 'admin', members: [admin], inviteCode: 'abcdef' }),
       }),
     );
 
@@ -147,7 +147,7 @@ describe('карточка команды', () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
-        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [owner] }),
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [admin] }),
       }),
     );
 
@@ -174,7 +174,7 @@ describe('карточка команды', () => {
       '/teams/t1',
       makeFetch(true, {
         'GET /api/teams/t1': () =>
-          json(200, { team: teamA, role: 'owner', members: [owner], inviteCode: 'abcdef' }),
+          json(200, { team: teamA, role: 'admin', members: [admin], inviteCode: 'abcdef' }),
       }),
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Приглашение'));
@@ -206,20 +206,20 @@ function dialogButton(text: string): HTMLButtonElement | undefined {
 }
 
 describe('управление составом', () => {
-  it('владельцу доступно исключение других участников', async () => {
+  it('администратору доступно исключение других участников', async () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
         'GET /api/teams/t1': () =>
-          json(200, { team: teamA, role: 'owner', members: [owner, other] }),
+          json(200, { team: teamA, role: 'admin', members: [admin, other] }),
       }),
     );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Пётр'));
-    // Кнопка исключения есть у чужого участника и отсутствует у самого владельца
+    // Кнопка исключения есть у чужого участника и отсутствует у самого администратора
     expect(wrapper.findAll('[aria-label="Исключить"]')).toHaveLength(1);
     expect(wrapper.text()).toContain('Удалить команду');
-    // Селект роли есть только у чужого участника, себе владелец роль не меняет
+    // Селект роли есть только у чужого участника, себе администратор роль не меняет
     expect(wrapper.findAll('[aria-label="Роль"]')).toHaveLength(1);
   });
 
@@ -228,7 +228,7 @@ describe('управление составом', () => {
       '/teams/t1',
       makeFetch(true, {
         'GET /api/teams/t1': () =>
-          json(200, { team: teamA, role: 'member', members: [{ ...owner, role: 'owner' }, other] }),
+          json(200, { team: teamA, role: 'member', members: [admin, other] }),
       }),
     );
 
@@ -243,7 +243,7 @@ describe('управление составом', () => {
       '/teams/t1',
       makeFetch(true, {
         'GET /api/teams/t1': () =>
-          json(200, { team: teamA, role: 'owner', members: [owner, other] }),
+          json(200, { team: teamA, role: 'admin', members: [admin, other] }),
         'DELETE /api/teams/t1/members/u2': () => new Response(null, { status: 204 }),
       }),
     );
@@ -260,14 +260,14 @@ describe('управление составом', () => {
     const { wrapper, router } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
-        // Текущий пользователь u1 — обычный участник, владелец другой
+        // Текущий пользователь u1 — обычный участник, администратор другой
         'GET /api/teams/t1': () =>
           json(200, {
             team: teamA,
             role: 'member',
             members: [
-              { ...other, role: 'owner' },
-              { ...owner, role: 'member' },
+              { ...other, role: 'admin' },
+              { ...admin, role: 'member' },
             ],
           }),
         'GET /api/teams': () => json(200, { teams: [] }),
@@ -283,11 +283,51 @@ describe('управление составом', () => {
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('teams'));
   });
 
+  it('администратор может выйти из команды, если есть другой администратор', async () => {
+    const { wrapper, router } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () =>
+          json(200, { team: teamA, role: 'admin', members: [admin, { ...other, role: 'admin' }] }),
+        'GET /api/teams': () => json(200, { teams: [] }),
+        'DELETE /api/teams/t1/members/u1': () => new Response(null, { status: 204 }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Настройки команды'));
+
+    await byText(wrapper, 'button', 'Выйти из команды')!.trigger('click');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Выйти из команды?'));
+    dialogButton('Выйти')!.click();
+
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('teams'));
+  });
+
+  it('единственному администратору бэкенд отказывает выйти — показывает уведомление', async () => {
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: [admin] }),
+        'DELETE /api/teams/t1/members/u1': () =>
+          json(409, {
+            error: 'conflict',
+            message: 'В команде должен остаться хотя бы один администратор',
+          }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Настройки команды'));
+
+    await byText(wrapper, 'button', 'Выйти из команды')!.trigger('click');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Выйти из команды?'));
+    dialogButton('Выйти')!.click();
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Вы единственный администратор'));
+  });
+
   it('удаление команды уводит на список команд', async () => {
     const { wrapper, router } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
-        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: [admin] }),
         'GET /api/teams': () => json(200, { teams: [] }),
         'DELETE /api/teams/t1': () => new Response(null, { status: 204 }),
       }),
@@ -305,7 +345,7 @@ describe('управление составом', () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
-        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: [admin] }),
         'PATCH /api/teams/t1': () => json(200, { team: { ...teamA, name: 'Новое имя' } }),
       }),
     );
@@ -347,7 +387,7 @@ describe('дашборд команды', () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
-        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: [admin] }),
         'GET /api/teams/t1/rooms': () => json(200, { rooms: [activeRoom, closedRoom] }),
       }),
     );
@@ -364,7 +404,7 @@ describe('дашборд команды', () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
-        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: [admin] }),
         'GET /api/teams/t1/rooms': () => json(200, { rooms: [] }),
       }),
     );
@@ -378,9 +418,9 @@ describe('дашборд команды', () => {
     const { wrapper, router } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
-        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: [admin] }),
         'GET /api/teams/t1/rooms': () => json(200, { rooms: [activeRoom] }),
-        'GET /api/teams/t2': () => json(200, { team: teamB, role: 'owner', members: [owner] }),
+        'GET /api/teams/t2': () => json(200, { team: teamB, role: 'admin', members: [admin] }),
         'GET /api/teams/t2/rooms': () => json(200, { rooms: [roomB] }),
       }),
     );
@@ -396,7 +436,7 @@ describe('дашборд команды', () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
-        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: [admin] }),
         'GET /api/teams/t1/rooms': () => json(500, { error: 'internal', message: 'сбой' }),
       }),
     );
@@ -411,7 +451,7 @@ describe('архив комнат команды', () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
-        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [owner] }),
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [admin] }),
         'GET /api/teams/t1/rooms': () => json(200, { rooms: [] }),
       }),
     );
@@ -420,13 +460,13 @@ describe('архив комнат команды', () => {
     expect(wrapper.text()).not.toContain('Показать архив');
   });
 
-  it('владелец открывает архив и удаляет комнату навсегда', async () => {
+  it('администратор открывает архив и удаляет комнату навсегда', async () => {
     const archivedRoom: Room = { ...activeRoom, id: 'r7', archivedAt: '2026-07-25T00:00:00.000Z' };
     const remove = vi.fn(() => new Response(null, { status: 204 }));
     const { wrapper } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
-        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: [admin] }),
         'GET /api/teams/t1/rooms': () => json(200, { rooms: [] }),
         'GET /api/teams/t1/rooms?archived=true': () => json(200, { rooms: [archivedRoom] }),
         'DELETE /api/rooms/r7': remove,
@@ -448,11 +488,11 @@ describe('архив комнат команды', () => {
 });
 
 describe('создание комнаты команды', () => {
-  it('владельцу доступна кнопка создания, участнику — нет', async () => {
+  it('администратору доступна кнопка создания, участнику — нет', async () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
-        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [owner] }),
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [admin] }),
         'GET /api/teams/t1/rooms': () => json(200, { rooms: [] }),
       }),
     );
@@ -460,12 +500,12 @@ describe('создание комнаты команды', () => {
     expect(wrapper.text()).not.toContain('Создать комнату');
   });
 
-  it('владелец создаёт комнату от лица команды и переходит в неё', async () => {
+  it('администратор создаёт комнату от лица команды и переходит в неё', async () => {
     const created: Room = { ...activeRoom, id: 'r5', teamId: 't1', name: 'Новая комната' };
     const { wrapper, router } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
-        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: [admin] }),
         'GET /api/teams/t1/rooms': () => json(200, { rooms: [] }),
         'GET /api/rooms/r5': () => json(200, { room: created }),
         'POST /api/rooms': () => json(201, { room: created }),
@@ -519,7 +559,7 @@ describe('страница приглашения', () => {
       makeFetch(true, {
         'GET /api/invites/abcdef': () => json(200, { team: { id: 't1', name: 'Команда А' } }),
         'POST /api/invites/abcdef/join': () => json(200, { team: teamA, role: 'member' }),
-        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [owner] }),
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [admin] }),
       }),
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Вступить'));

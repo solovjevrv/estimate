@@ -16,7 +16,7 @@ const teamA: TeamWithRole = {
   id: 't1',
   name: 'Команда А',
   createdAt: '2026-07-24T00:00:00.000Z',
-  role: 'owner',
+  role: 'admin',
 };
 
 const member: TeamMember = {
@@ -24,7 +24,7 @@ const member: TeamMember = {
   name: 'Иван',
   email: 'ivan@example.com',
   avatarUrl: null,
-  role: 'owner',
+  role: 'admin',
   joinedAt: '2026-07-24T00:00:00.000Z',
 };
 
@@ -76,7 +76,7 @@ describe('стор команд', () => {
 
   it('карточка команды: код приглашения сохраняется для админа', async () => {
     fetchMock.mockResolvedValue(
-      json(200, { team: teamA, role: 'owner', members: [member], inviteCode: 'abcdef' }),
+      json(200, { team: teamA, role: 'admin', members: [member], inviteCode: 'abcdef' }),
     );
     const teams = useTeamsStore();
 
@@ -87,7 +87,7 @@ describe('стор команд', () => {
 
   it('перевыпуск кода обновляет открытую карточку', async () => {
     fetchMock.mockResolvedValueOnce(
-      json(200, { team: teamA, role: 'owner', members: [member], inviteCode: 'old123' }),
+      json(200, { team: teamA, role: 'admin', members: [member], inviteCode: 'old123' }),
     );
     const teams = useTeamsStore();
     await teams.loadTeam('t1');
@@ -136,42 +136,41 @@ describe('стор команд', () => {
 
   it('смена роли участника обновляет состав', async () => {
     fetchMock.mockResolvedValueOnce(
-      json(200, { team: teamA, role: 'owner', members: [member, other] }),
+      json(200, { team: teamA, role: 'admin', members: [member, other] }),
     );
     const teams = useTeamsStore();
     await teams.loadTeam('t1');
 
     fetchMock.mockResolvedValueOnce(
-      json(200, { member: { userId: 'u2', role: 'admin' }, actorRole: 'owner' }),
+      json(200, { member: { userId: 'u2', role: 'admin' }, actorRole: 'admin' }),
     );
     await teams.changeMemberRole('t1', 'u2', 'admin');
 
     expect(teams.current?.members.find((m) => m.userId === 'u2')?.role).toBe('admin');
-    expect(teams.current?.role).toBe('owner');
+    expect(teams.current?.role).toBe('admin');
   });
 
-  it('передача владения понижает прежнего владельца и роль текущего пользователя', async () => {
+  it('смена своей роли обновляет роль текущей карточки', async () => {
+    const secondAdmin: TeamMember = { ...other, userId: 'u2', role: 'admin' };
     fetchMock.mockResolvedValueOnce(
-      json(200, { team: teamA, role: 'owner', members: [member, other] }),
+      json(200, { team: teamA, role: 'admin', members: [member, secondAdmin] }),
     );
     const teams = useTeamsStore();
     await teams.loadTeam('t1');
 
-    // Сервер: u2 -> owner, текущий пользователь -> admin
+    // Администратор понижает сам себя (u1) — в команде остался ещё один админ (u2)
     fetchMock.mockResolvedValueOnce(
-      json(200, { member: { userId: 'u2', role: 'owner' }, actorRole: 'admin' }),
+      json(200, { member: { userId: 'u1', role: 'member' }, actorRole: 'member' }),
     );
-    await teams.changeMemberRole('t1', 'u2', 'owner');
+    await teams.changeMemberRole('t1', 'u1', 'member');
 
-    expect(teams.current?.members.find((m) => m.userId === 'u2')?.role).toBe('owner');
-    // прежний владелец u1 стал администратором
-    expect(teams.current?.members.find((m) => m.userId === 'u1')?.role).toBe('admin');
-    expect(teams.current?.role).toBe('admin');
+    expect(teams.current?.members.find((m) => m.userId === 'u1')?.role).toBe('member');
+    expect(teams.current?.role).toBe('member');
   });
 
   it('исключение участника убирает его из состава', async () => {
     fetchMock.mockResolvedValueOnce(
-      json(200, { team: teamA, role: 'owner', members: [member, other] }),
+      json(200, { team: teamA, role: 'admin', members: [member, other] }),
     );
     const teams = useTeamsStore();
     await teams.loadTeam('t1');
@@ -186,7 +185,7 @@ describe('стор команд', () => {
     fetchMock.mockResolvedValueOnce(json(200, { teams: [teamA] }));
     const teams = useTeamsStore();
     await teams.loadList();
-    fetchMock.mockResolvedValueOnce(json(200, { team: teamA, role: 'owner', members: [member] }));
+    fetchMock.mockResolvedValueOnce(json(200, { team: teamA, role: 'admin', members: [member] }));
     await teams.loadTeam('t1');
 
     const renamed = { ...teamA, name: 'Новое имя' };
@@ -201,7 +200,7 @@ describe('стор команд', () => {
     fetchMock.mockResolvedValueOnce(json(200, { teams: [teamA] }));
     const teams = useTeamsStore();
     await teams.loadList();
-    fetchMock.mockResolvedValueOnce(json(200, { team: teamA, role: 'owner', members: [member] }));
+    fetchMock.mockResolvedValueOnce(json(200, { team: teamA, role: 'admin', members: [member] }));
     await teams.loadTeam('t1');
 
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));

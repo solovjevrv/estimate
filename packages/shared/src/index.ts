@@ -35,14 +35,14 @@ export interface AuthUser {
   avatarUrl: string | null;
 }
 
-/** Роли участника внутри команды */
-export type TeamRole = 'owner' | 'admin' | 'member' | 'guest';
+/** Роли участника внутри команды. Администраторов может быть несколько — все равны в правах. */
+export type TeamRole = 'admin' | 'member' | 'guest';
 
 /** Роли от старшей к младшей: право старшей роли включает права всех младших */
-export const TEAM_ROLES: readonly TeamRole[] = ['owner', 'admin', 'member', 'guest'];
+export const TEAM_ROLES: readonly TeamRole[] = ['admin', 'member', 'guest'];
 
 /** Чем меньше вес, тем больше прав */
-const TEAM_ROLE_WEIGHT: Record<TeamRole, number> = { owner: 0, admin: 1, member: 2, guest: 3 };
+const TEAM_ROLE_WEIGHT: Record<TeamRole, number> = { admin: 0, member: 1, guest: 2 };
 
 /** Хватает ли роли `role` там, где требуется не ниже `required` */
 export function hasTeamRole(role: TeamRole, required: TeamRole): boolean {

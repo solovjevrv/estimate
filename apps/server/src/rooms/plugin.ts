@@ -71,8 +71,8 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
         summary: 'Создать комнату',
         description:
           'Создатель становится скрам-мастером. Комнату можно завести и без команды — ' +
-          'тогда в неё пускают по прямой ссылке. Комнату от лица команды создают её ' +
-          'администратор и владелец.',
+          'тогда в неё пускают по прямой ссылке. Комнату от лица команды создаёт её ' +
+          'администратор.',
         security: [{ session: [] }],
         body: createRoomBody,
         response: {
