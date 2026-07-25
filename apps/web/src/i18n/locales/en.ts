@@ -148,6 +148,11 @@ export default {
     resultAverage: 'Average: {average}',
     resultMin: 'Min: {min}',
     resultMax: 'Max: {max}',
+    createTitle: 'New room',
+    createNamePlaceholder: 'For example, Sprint planning',
+    create: 'Create room',
+    creating: 'Creating…',
+    createError: 'Could not create the room. Please try again.',
   },
   notFound: {
     title: 'Page not found',

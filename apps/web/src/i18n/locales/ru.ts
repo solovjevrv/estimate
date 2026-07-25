@@ -148,6 +148,11 @@ export default {
     resultAverage: 'Среднее: {average}',
     resultMin: 'Мин: {min}',
     resultMax: 'Макс: {max}',
+    createTitle: 'Новая комната',
+    createNamePlaceholder: 'Например, Планирование спринта',
+    create: 'Создать комнату',
+    creating: 'Создаём…',
+    createError: 'Не удалось создать комнату. Попробуйте ещё раз.',
   },
   notFound: {
     title: 'Страница не найдена',

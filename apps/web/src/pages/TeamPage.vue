@@ -1,13 +1,21 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { TEAM_NAME_MAX_LENGTH, TEAM_ROLES, type TeamMember, type TeamRole } from '@poker/shared';
+import {
+  hasTeamRole,
+  ROOM_NAME_MAX_LENGTH,
+  TEAM_NAME_MAX_LENGTH,
+  TEAM_ROLES,
+  type TeamMember,
+  type TeamRole,
+} from '@poker/shared';
 import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import { ApiError } from '../lib/api';
 import { roleBadgeColor } from '../lib/team-roles';
+import { useRoomsStore } from '../stores/rooms';
 import { useSessionStore } from '../stores/session';
 import { useTeamRoomsStore } from '../stores/team-rooms';
 import { useTeamsStore } from '../stores/teams';
@@ -19,6 +27,7 @@ const toast = useToast();
 const router = useRouter();
 const teams = useTeamsStore();
 const teamRooms = useTeamRoomsStore();
+const rooms = useRoomsStore();
 const session = useSessionStore();
 
 const loading = ref(true);
@@ -35,6 +44,10 @@ const overview = computed(() => teams.current);
 const currentUserId = computed(() => session.user?.id ?? null);
 /** Управлять составом (роли, исключение) может только владелец */
 const isOwner = computed(() => overview.value?.role === 'owner');
+/** Заводить комнаты от лица команды — то же право, что и на бэкенде: admin и owner */
+const canCreateRooms = computed(
+  () => !!overview.value && hasTeamRole(overview.value.role, 'admin'),
+);
 
 /** Пока идёт запрос по участнику — блокируем его элементы управления. Набор, а
  * не один id: операции по разным участникам могут идти внахлёст. */
@@ -113,6 +126,39 @@ async function loadRooms(): Promise<void> {
     await teamRooms.load(props.id);
   } catch {
     roomsFailed.value = true;
+  }
+}
+
+// --- Создание комнаты от лица команды ---
+const createRoomOpen = ref(false);
+const creatingRoom = ref(false);
+const createRoomState = reactive({ name: '' });
+
+watch(createRoomOpen, (isOpen) => {
+  if (!isOpen) createRoomState.name = '';
+});
+
+function validateRoomName(s: { name: string }): FormError[] {
+  const errors: FormError[] = [];
+  const name = s.name.trim();
+  if (!name) {
+    errors.push({ name: 'name', message: t('teams.nameRequired') });
+  } else if (name.length > ROOM_NAME_MAX_LENGTH) {
+    errors.push({ name: 'name', message: t('teams.nameTooLong', { max: ROOM_NAME_MAX_LENGTH }) });
+  }
+  return errors;
+}
+
+async function onCreateRoom(event: FormSubmitEvent<{ name: string }>): Promise<void> {
+  creatingRoom.value = true;
+  try {
+    const room = await rooms.create(event.data.name.trim(), props.id);
+    createRoomOpen.value = false;
+    await router.push({ name: 'room', params: { id: room.id } });
+  } catch {
+    toast.add({ title: t('room.createError'), color: 'error' });
+  } finally {
+    creatingRoom.value = false;
   }
 }
 
@@ -311,7 +357,17 @@ async function confirmDelete(): Promise<void> {
 
       <UCard>
         <template #header>
-          <h2 class="font-medium">{{ t('team.roomsTitle') }}</h2>
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="font-medium">{{ t('team.roomsTitle') }}</h2>
+            <UButton
+              v-if="canCreateRooms"
+              icon="i-lucide-plus"
+              size="sm"
+              @click="createRoomOpen = true"
+            >
+              {{ t('room.create') }}
+            </UButton>
+          </div>
         </template>
 
         <UAlert
@@ -509,6 +565,36 @@ async function confirmDelete(): Promise<void> {
         <UButton color="error" :loading="leaving" @click="confirmLeave">
           {{ t('team.leaveConfirm') }}
         </UButton>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="createRoomOpen" :title="t('room.createTitle')">
+      <template #body>
+        <UForm
+          :state="createRoomState"
+          :validate="validateRoomName"
+          class="space-y-4"
+          @submit="onCreateRoom"
+        >
+          <UFormField :label="t('teams.nameLabel')" name="name">
+            <UInput
+              v-model="createRoomState.name"
+              :placeholder="t('room.createNamePlaceholder')"
+              :maxlength="ROOM_NAME_MAX_LENGTH"
+              autofocus
+              class="w-full"
+            />
+          </UFormField>
+
+          <div class="flex justify-end gap-2">
+            <UButton color="neutral" variant="ghost" @click="createRoomOpen = false">
+              {{ t('teams.cancel') }}
+            </UButton>
+            <UButton type="submit" :loading="creatingRoom">
+              {{ creatingRoom ? t('room.creating') : t('room.create') }}
+            </UButton>
+          </div>
+        </UForm>
       </template>
     </UModal>
 
