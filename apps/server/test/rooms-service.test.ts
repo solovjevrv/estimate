@@ -25,6 +25,7 @@ const ROOM: Room = {
   status: 'active',
   revision: 0,
   createdAt: new Date().toISOString(),
+  archivedAt: null,
 };
 
 const ROUND: Round = {
@@ -483,6 +484,144 @@ describe('RoomsService: ссылки на задачу', () => {
       ROUND.id,
       { jiraUrl: 'https://jira.example.com/TASK-9' },
       ROUND.linksVersion,
+    );
+  });
+});
+
+describe('RoomsService: архивация комнаты', () => {
+  it('архивировать может только скрам-мастер', async () => {
+    const service = serviceWith({ findRoom: async () => ROOM });
+
+    await expect(service.archiveRoom('user-other', ROOM.id)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it('владелец архивирует свою комнату', async () => {
+    const archiveRoom = vi.fn(async () => ({ ...ROOM, archivedAt: new Date().toISOString() }));
+    const service = serviceWith({ findRoom: async () => ROOM, archiveRoom });
+
+    const archived = await service.archiveRoom('user-owner', ROOM.id);
+
+    expect(archiveRoom).toHaveBeenCalledWith(ROOM.id);
+    expect(archived.archivedAt).not.toBeNull();
+  });
+
+  it('повторная архивация уже архивной комнаты отклоняется конфликтом', async () => {
+    const archivedRoom: Room = { ...ROOM, archivedAt: new Date().toISOString() };
+    const service = serviceWith({ findRoom: async () => archivedRoom });
+
+    await expect(service.archiveRoom('user-owner', ROOM.id)).rejects.toBeInstanceOf(ConflictError);
+  });
+
+  it('админ команды архивирует комнату команды', async () => {
+    const teamRoom: Room = { ...ROOM, teamId: 'team-1', creatorId: 'someone-else' };
+    const archiveRoom = vi.fn(async () => ({ ...teamRoom, archivedAt: new Date().toISOString() }));
+    const service = serviceWith(
+      { findRoom: async () => teamRoom, archiveRoom },
+      {
+        findMembership: vi.fn(async () => ({
+          teamId: 'team-1',
+          userId: 'user-admin',
+          role: 'admin' as const,
+        })),
+      },
+    );
+
+    await service.archiveRoom('user-admin', teamRoom.id);
+
+    expect(archiveRoom).toHaveBeenCalledWith(teamRoom.id);
+  });
+});
+
+describe('RoomsService: настоящее удаление', () => {
+  it('удалять может только скрам-мастер', async () => {
+    const archivedRoom: Room = { ...ROOM, archivedAt: new Date().toISOString() };
+    const service = serviceWith({ findRoom: async () => archivedRoom });
+
+    await expect(service.deleteRoomPermanently('user-other', ROOM.id)).rejects.toBeInstanceOf(
+      ForbiddenError,
+    );
+  });
+
+  it('удалить можно только уже заархивированную комнату', async () => {
+    const service = serviceWith({ findRoom: async () => ROOM });
+
+    await expect(service.deleteRoomPermanently('user-owner', ROOM.id)).rejects.toBeInstanceOf(
+      ConflictError,
+    );
+  });
+
+  it('заархивированную комнату скрам-мастер удаляет насовсем', async () => {
+    const archivedRoom: Room = { ...ROOM, archivedAt: new Date().toISOString() };
+    const deleteArchivedRoom = vi.fn(async () => true);
+    const service = serviceWith({ findRoom: async () => archivedRoom, deleteArchivedRoom });
+
+    await service.deleteRoomPermanently('user-owner', ROOM.id);
+
+    expect(deleteArchivedRoom).toHaveBeenCalledWith(ROOM.id);
+  });
+});
+
+describe('RoomsService: список комнат команды', () => {
+  it('обычный список открыт рядовому участнику', async () => {
+    const listRoomsByTeam = vi.fn(async () => [ROOM]);
+    const service = serviceWith(
+      { listRoomsByTeam },
+      {
+        findMembership: vi.fn(async () => ({
+          teamId: 'team-1',
+          userId: 'u',
+          role: 'member' as const,
+        })),
+      },
+    );
+
+    await service.listTeamRooms('u', 'team-1');
+
+    expect(listRoomsByTeam).toHaveBeenCalledWith('team-1', false);
+  });
+
+  it('архив команды рядовому участнику недоступен', async () => {
+    const service = serviceWith(
+      {},
+      {
+        findMembership: vi.fn(async () => ({
+          teamId: 'team-1',
+          userId: 'u',
+          role: 'member' as const,
+        })),
+      },
+    );
+
+    await expect(service.listTeamRooms('u', 'team-1', true)).rejects.toBeInstanceOf(ForbiddenError);
+  });
+
+  it('архив команды доступен админу и владельцу', async () => {
+    const listRoomsByTeam = vi.fn(async () => [{ ...ROOM, archivedAt: new Date().toISOString() }]);
+    const service = serviceWith(
+      { listRoomsByTeam },
+      {
+        findMembership: vi.fn(async () => ({
+          teamId: 'team-1',
+          userId: 'u',
+          role: 'owner' as const,
+        })),
+      },
+    );
+
+    const rooms = await service.listTeamRooms('u', 'team-1', true);
+
+    expect(listRoomsByTeam).toHaveBeenCalledWith('team-1', true);
+    expect(rooms[0]?.archivedAt).not.toBeNull();
+  });
+});
+
+describe('RoomsService: архивная комната блокирует действия за столом', () => {
+  it('голосовать в архивной комнате нельзя', async () => {
+    const archivedRoom: Room = { ...ROOM, archivedAt: new Date().toISOString() };
+    const service = serviceWith({ lockRoom: async () => archivedRoom });
+
+    await expect(service.submitVote(ROOM.id, VOTER, { value: 3 })).rejects.toBeInstanceOf(
+      ConflictError,
     );
   });
 });

@@ -33,6 +33,7 @@ const room1: Room = {
   status: 'active',
   revision: 1,
   createdAt: '2026-07-24T00:00:00.000Z',
+  archivedAt: null,
 };
 
 function roomState(overrides: Partial<RoomState> = {}): RoomState {
@@ -658,6 +659,70 @@ describe('вскрытие карт', () => {
     await revealButton!.trigger('click');
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось вскрыть карты'));
+  });
+});
+
+describe('архивация комнаты', () => {
+  it('голосующему настройки комнаты не показываются', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: 'tok',
+      participantId: 'g1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await wrapper.find('input').setValue('Мария');
+    await wrapper.find('form').trigger('submit');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунд ещё не начат'));
+    expect(wrapper.text()).not.toContain('Архивировать комнату');
+  });
+
+  it('скрам-мастер архивирует комнату, и она становится доступна только для чтения', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+    const archivedRoom: Room = { ...room1, revision: 2, archivedAt: '2026-07-25T00:00:00.000Z' };
+    const archive = vi.fn(() => json(200, { room: archivedRoom }));
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, {
+        'GET /api/rooms/r1': () => json(200, { room: room1 }),
+        'POST /api/rooms/r1/archive': archive,
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Архивировать комнату'));
+
+    const archiveButton = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === 'Архивировать комнату');
+    await archiveButton!.trigger('click');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Архивировать комнату?'));
+
+    const confirmButton = Array.from(
+      document.body.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [],
+    ).find((b) => b.textContent?.trim() === 'Архивировать');
+    confirmButton!.click();
+
+    await vi.waitFor(() => expect(archive).toHaveBeenCalled());
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Комната в архиве'));
+    // Читаемо, но действия за столом больше не предлагаются
+    expect(wrapper.text()).not.toContain('Ваша оценка');
+    expect(wrapper.text()).not.toContain('Архивировать комнату');
   });
 });
 

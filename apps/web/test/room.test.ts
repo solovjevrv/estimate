@@ -81,6 +81,7 @@ function state(revision: number, overrides: Partial<RoomState> = {}): RoomState 
       status: 'active',
       revision,
       createdAt: '2026-07-23T10:00:00.000Z',
+      archivedAt: null,
     },
     round: round(),
     participants: [],

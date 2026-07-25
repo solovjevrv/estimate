@@ -241,10 +241,12 @@ describeDb('комнаты', () => {
       expect(byOwner.json()).toMatchObject({ room: { status: 'closed' } });
     });
 
-    it('список своих комнат показывает только комнаты без команды', async () => {
+    it('список своих комнат показывает и личные, и командные, но только созданные мной', async () => {
       const owner = await newUser('mine-owner');
+      const stranger = await newUser('mine-stranger');
       const team = await teamsService.create(owner.id, `Команда ${randomUUID().slice(0, 8)}`);
       teamIds.push(team.id);
+      await new TeamsRepository(db).insertMemberIfAbsent(team.id, stranger.id, 'admin');
       const personal = await newRoom(owner, 'Личная комната');
       const teamRoom = await app.inject({
         method: 'POST',
@@ -252,18 +254,151 @@ describeDb('комнаты', () => {
         headers: as(owner),
         payload: { name: 'Командная комната', teamId: team.id },
       });
-      roomIds.push((teamRoom.json() as { room: { id: string } }).room.id);
+      const teamRoomId = (teamRoom.json() as { room: { id: string } }).room.id;
+      roomIds.push(teamRoomId);
+      // Чужая комната той же команды не должна попасть в чужой список «моих»
+      const strangerRoom = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(stranger),
+        payload: { name: 'Комната участника', teamId: team.id },
+      });
+      roomIds.push((strangerRoom.json() as { room: { id: string } }).room.id);
 
       const res = await app.inject({ method: 'GET', url: '/api/rooms', headers: as(owner) });
 
       const rooms = (res.json() as { rooms: Array<{ id: string }> }).rooms;
-      expect(rooms.map((room) => room.id)).toEqual([personal]);
+      expect(rooms.map((room) => room.id).sort()).toEqual([personal, teamRoomId].sort());
     });
 
     it('несуществующая комната даёт 404', async () => {
       const res = await app.inject({ method: 'GET', url: `/api/rooms/${randomUUID()}` });
 
       expect(res.statusCode).toBe(404);
+    });
+  });
+
+  describe('архивация и удаление', () => {
+    it('архивировать может только скрам-мастер, комната пропадает из списка', async () => {
+      const owner = await newUser('archive-owner');
+      const stranger = await newUser('archive-stranger');
+      const roomId = await newRoom(owner, 'Комната к архивации');
+
+      const byStranger = await app.inject({
+        method: 'POST',
+        url: `/api/rooms/${roomId}/archive`,
+        headers: as(stranger),
+      });
+      expect(byStranger.statusCode).toBe(403);
+
+      const byOwner = await app.inject({
+        method: 'POST',
+        url: `/api/rooms/${roomId}/archive`,
+        headers: as(owner),
+      });
+      expect(byOwner.statusCode).toBe(200);
+      expect(byOwner.json()).toMatchObject({ room: { archivedAt: expect.any(String) } });
+
+      // Повторная архивация — конфликт
+      const again = await app.inject({
+        method: 'POST',
+        url: `/api/rooms/${roomId}/archive`,
+        headers: as(owner),
+      });
+      expect(again.statusCode).toBe(409);
+
+      // Из обычного списка комната пропала, но видна в архиве
+      const mine = await app.inject({ method: 'GET', url: '/api/rooms', headers: as(owner) });
+      expect((mine.json() as { rooms: Array<{ id: string }> }).rooms).not.toContainEqual(
+        expect.objectContaining({ id: roomId }),
+      );
+      const archived = await app.inject({
+        method: 'GET',
+        url: '/api/rooms?archived=true',
+        headers: as(owner),
+      });
+      expect((archived.json() as { rooms: Array<{ id: string }> }).rooms).toContainEqual(
+        expect.objectContaining({ id: roomId }),
+      );
+
+      // По прямой ссылке комната всё ещё доступна — только для чтения
+      const direct = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}` });
+      expect(direct.statusCode).toBe(200);
+    });
+
+    it('удалить навсегда можно только уже заархивированную комнату', async () => {
+      const owner = await newUser('delete-owner');
+      const roomId = await newRoom(owner, 'Комната к удалению');
+
+      const tooEarly = await app.inject({
+        method: 'DELETE',
+        url: `/api/rooms/${roomId}`,
+        headers: as(owner),
+      });
+      expect(tooEarly.statusCode).toBe(409);
+
+      await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/archive`, headers: as(owner) });
+      const deleted = await app.inject({
+        method: 'DELETE',
+        url: `/api/rooms/${roomId}`,
+        headers: as(owner),
+      });
+      expect(deleted.statusCode).toBe(204);
+
+      const gone = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}` });
+      expect(gone.statusCode).toBe(404);
+      // Комнату уже удалили сама — afterAll не должен пытаться удалить её ещё раз
+      roomIds.splice(roomIds.indexOf(roomId), 1);
+    });
+
+    it('архив команды виден только владельцу и администратору', async () => {
+      const owner = await newUser('team-archive-owner');
+      const member = await newUser('team-archive-member');
+      const team = await teamsService.create(owner.id, `Команда ${randomUUID().slice(0, 8)}`);
+      teamIds.push(team.id);
+      await new TeamsRepository(db).insertMemberIfAbsent(team.id, member.id, 'member');
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(owner),
+        payload: { name: 'Комната команды', teamId: team.id },
+      });
+      const roomId = (created.json() as { room: { id: string } }).room.id;
+      roomIds.push(roomId);
+      await app.inject({
+        method: 'POST',
+        url: `/api/rooms/${roomId}/archive`,
+        headers: as(owner),
+      });
+
+      const byMember = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${team.id}/rooms?archived=true`,
+        headers: as(member),
+      });
+      expect(byMember.statusCode).toBe(403);
+
+      const byOwner = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${team.id}/rooms?archived=true`,
+        headers: as(owner),
+      });
+      expect(byOwner.statusCode).toBe(200);
+      expect((byOwner.json() as { rooms: Array<{ id: string }> }).rooms).toContainEqual(
+        expect.objectContaining({ id: roomId }),
+      );
+    });
+
+    it('в архивной комнате нельзя начать раунд', async () => {
+      const owner = await newUser('archived-round-owner');
+      const roomId = await newRoom(owner, 'Комната в архиве');
+      await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/archive`, headers: as(owner) });
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+
+      const ack = await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+
+      expect(ack).toMatchObject({ ok: false, error: 'conflict' });
     });
   });
 

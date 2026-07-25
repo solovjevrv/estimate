@@ -108,16 +108,21 @@ export class RoomsService {
     return room;
   }
 
-  async listTeamRooms(actorId: string, teamId: string): Promise<Room[]> {
+  async listTeamRooms(actorId: string, teamId: string, archived = false): Promise<Room[]> {
     const membership = await this.teams.findMembership(teamId, actorId);
     if (!membership) {
       throw new NotFoundError('Команда не найдена');
     }
-    return this.repository.listRoomsByTeam(teamId);
+    // Архив команды видят только владелец и администратор — обычный список открыт всем участникам
+    if (archived && !hasTeamRole(membership.role, 'admin')) {
+      throw new ForbiddenError('Архив комнат команды видят только владелец и администратор');
+    }
+    return this.repository.listRoomsByTeam(teamId, archived);
   }
 
-  async listMyRooms(actorId: string): Promise<Room[]> {
-    return this.repository.listPersonalRooms(actorId);
+  /** И личные комнаты, и командные — всё, что пользователь создал сам */
+  async listMyRooms(actorId: string, archived = false): Promise<Room[]> {
+    return this.repository.listRoomsCreatedBy(actorId, archived);
   }
 
   async closeRoom(actorId: string, roomId: string): Promise<Room> {
@@ -130,6 +135,40 @@ export class RoomsService {
       throw new NotFoundError('Комната не найдена');
     }
     return closed;
+  }
+
+  /**
+   * Архивация — единственный способ «убрать» комнату из основных списков. Настоящее
+   * удаление доступно отдельным действием и только для уже заархивированной комнаты.
+   */
+  async archiveRoom(actorId: string, roomId: string): Promise<Room> {
+    const room = await this.getRoom(roomId);
+    if ((await this.resolveRole(room, actorId)) !== 'scrum_master') {
+      throw new ForbiddenError('Архивировать комнату может только скрам-мастер');
+    }
+    if (room.archivedAt) {
+      throw new ConflictError('Комната уже в архиве');
+    }
+    const archived = await this.repository.archiveRoom(roomId);
+    if (!archived) {
+      throw new ConflictError('Комната уже в архиве');
+    }
+    return archived;
+  }
+
+  /** Необратимо: раунды и голоса комнаты удаляются каскадом на уровне БД */
+  async deleteRoomPermanently(actorId: string, roomId: string): Promise<void> {
+    const room = await this.getRoom(roomId);
+    if ((await this.resolveRole(room, actorId)) !== 'scrum_master') {
+      throw new ForbiddenError('Удалить комнату может только скрам-мастер');
+    }
+    if (!room.archivedAt) {
+      throw new ConflictError('Сначала заархивируйте комнату');
+    }
+    const deleted = await this.repository.deleteArchivedRoom(roomId);
+    if (!deleted) {
+      throw new NotFoundError('Комната не найдена');
+    }
   }
 
   /**
@@ -416,6 +455,9 @@ export class RoomsService {
       }
       if (room.status === 'closed') {
         throw new ConflictError('Комната закрыта');
+      }
+      if (room.archivedAt) {
+        throw new ConflictError('Комната в архиве');
       }
       return action(repo, room, new TeamsRepository(tx));
     });

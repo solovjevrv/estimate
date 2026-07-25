@@ -6,6 +6,7 @@ import {
   ROOM_NAME_MAX_LENGTH,
   TEAM_NAME_MAX_LENGTH,
   TEAM_ROLES,
+  type Room,
   type TeamMember,
   type TeamRole,
 } from '@poker/shared';
@@ -126,6 +127,53 @@ async function loadRooms(): Promise<void> {
     await teamRooms.load(props.id);
   } catch {
     roomsFailed.value = true;
+  }
+}
+
+// --- Архив комнат команды: виден только владельцу/администратору, грузится по требованию ---
+const archiveOpen = ref(false);
+const archiveLoading = ref(false);
+const archiveFailed = ref(false);
+let archiveLoaded = false;
+
+async function toggleArchive(): Promise<void> {
+  archiveOpen.value = !archiveOpen.value;
+  if (archiveOpen.value && !archiveLoaded) {
+    archiveLoading.value = true;
+    archiveFailed.value = false;
+    try {
+      await teamRooms.loadArchived(props.id);
+      archiveLoaded = true;
+    } catch {
+      archiveFailed.value = true;
+    } finally {
+      archiveLoading.value = false;
+    }
+  }
+}
+
+const deleteRoomTarget = ref<Room | null>(null);
+const deleteRoomOpen = ref(false);
+const deletingRoom = ref(false);
+
+function askDeleteRoom(room: Room): void {
+  deleteRoomTarget.value = room;
+  deleteRoomOpen.value = true;
+}
+
+async function confirmDeleteRoom(): Promise<void> {
+  const target = deleteRoomTarget.value;
+  if (!target) return;
+  deletingRoom.value = true;
+  try {
+    await rooms.remove(target.id);
+    await teamRooms.loadArchived(props.id);
+    toast.add({ title: t('team.archiveDeleted'), color: 'success', icon: 'i-lucide-check' });
+    deleteRoomOpen.value = false;
+  } catch {
+    toast.add({ title: t('team.archiveDeleteError'), color: 'error' });
+  } finally {
+    deletingRoom.value = false;
   }
 }
 
@@ -400,6 +448,56 @@ async function confirmDelete(): Promise<void> {
         </div>
       </UCard>
 
+      <UCard v-if="canCreateRooms">
+        <template #header>
+          <div class="flex items-center justify-between gap-3">
+            <h2 class="font-medium">{{ t('team.archiveTitle') }}</h2>
+            <UButton color="neutral" variant="ghost" size="sm" @click="toggleArchive">
+              {{ archiveOpen ? t('team.archiveHide') : t('team.archiveShow') }}
+            </UButton>
+          </div>
+        </template>
+
+        <template v-if="archiveOpen">
+          <UAlert
+            v-if="archiveFailed"
+            color="error"
+            variant="subtle"
+            :description="t('team.archiveError')"
+          />
+          <div v-else-if="archiveLoading" class="text-muted flex justify-center py-4">
+            <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
+          </div>
+          <p v-else-if="teamRooms.archived.length === 0" class="text-muted text-sm">
+            {{ t('team.archiveEmpty') }}
+          </p>
+          <ul v-else class="divide-default divide-y">
+            <li
+              v-for="room in teamRooms.archived"
+              :key="room.id"
+              class="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+            >
+              <RouterLink
+                :to="{ name: 'room', params: { id: room.id } }"
+                class="min-w-0 flex-1 truncate"
+              >
+                {{ room.name }}
+              </RouterLink>
+              <span class="text-muted text-xs">{{ formatDate(room.createdAt) }}</span>
+              <UButton
+                icon="i-lucide-trash-2"
+                color="error"
+                variant="ghost"
+                size="sm"
+                @click="askDeleteRoom(room)"
+              >
+                {{ t('team.archiveDeleteRoom') }}
+              </UButton>
+            </li>
+          </ul>
+        </template>
+      </UCard>
+
       <UCard>
         <template #header>
           <h2 class="font-medium">{{ t('team.membersTitle') }}</h2>
@@ -564,6 +662,20 @@ async function confirmDelete(): Promise<void> {
         <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
         <UButton color="error" :loading="leaving" @click="confirmLeave">
           {{ t('team.leaveConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
+
+    <UModal
+      v-model:open="deleteRoomOpen"
+      :title="t('team.archiveDeleteConfirmTitle')"
+      :description="t('team.archiveDeleteConfirmText', { name: deleteRoomTarget?.name ?? '' })"
+      :ui="{ footer: 'justify-end' }"
+    >
+      <template #footer="{ close }">
+        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
+        <UButton color="error" :loading="deletingRoom" @click="confirmDeleteRoom">
+          {{ t('team.archiveDeleteConfirm') }}
         </UButton>
       </template>
     </UModal>
