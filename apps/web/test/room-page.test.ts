@@ -156,6 +156,9 @@ function makeFetch(authenticated: boolean, handlers: Handlers = {}) {
   });
 }
 
+/** Незаснятые инстансы копятся между тестами и замедляют файл под нагрузкой CI */
+let activeWrapper: ReturnType<typeof mount> | null = null;
+
 async function mountApp(path: string, fetchImpl: ReturnType<typeof vi.fn>) {
   vi.stubGlobal('fetch', fetchImpl);
   const pinia = createPinia();
@@ -164,6 +167,7 @@ async function mountApp(path: string, fetchImpl: ReturnType<typeof vi.fn>) {
     global: { plugins: [pinia, router, createAppI18n('ru'), ui] },
     attachTo: document.body,
   });
+  activeWrapper = wrapper;
   await router.push(path);
   await router.isReady();
   return { wrapper, router };
@@ -174,6 +178,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  activeWrapper?.unmount();
+  activeWrapper = null;
   vi.unstubAllGlobals();
   document.body.innerHTML = '';
 });
