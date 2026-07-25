@@ -331,6 +331,7 @@ const activeRoom: Room = {
   status: 'active',
   revision: 0,
   createdAt: '2026-07-24T00:00:00.000Z',
+  archivedAt: null,
 };
 
 const closedRoom: Room = {
@@ -402,6 +403,47 @@ describe('дашборд команды', () => {
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
     expect(wrapper.text()).toContain('Не удалось загрузить комнаты команды');
+  });
+});
+
+describe('архив комнат команды', () => {
+  it('рядовому участнику раздел архива не показывается', async () => {
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [owner] }),
+        'GET /api/teams/t1/rooms': () => json(200, { rooms: [] }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
+    expect(wrapper.text()).not.toContain('Показать архив');
+  });
+
+  it('владелец открывает архив и удаляет комнату навсегда', async () => {
+    const archivedRoom: Room = { ...activeRoom, id: 'r7', archivedAt: '2026-07-25T00:00:00.000Z' };
+    const remove = vi.fn(() => new Response(null, { status: 204 }));
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1/rooms': () => json(200, { rooms: [] }),
+        'GET /api/teams/t1/rooms?archived=true': () => json(200, { rooms: [archivedRoom] }),
+        'DELETE /api/rooms/r7': remove,
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Показать архив'));
+
+    await byText(wrapper, 'button', 'Показать архив')!.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Планирование спринта'));
+
+    await byText(wrapper, 'button', 'Удалить навсегда')!.trigger('click');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Удалить комнату навсегда?'));
+    dialogButton('Удалить навсегда')!.click();
+
+    await vi.waitFor(() => expect(remove).toHaveBeenCalled());
+    // Ждём, пока стор довершит правки (тост + перезагрузка архива), прежде чем тест уйдёт дальше
+    await vi.waitFor(() => expect(dialog()).toBeNull());
   });
 });
 

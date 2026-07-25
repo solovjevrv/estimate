@@ -49,6 +49,9 @@ async function logout(): Promise<void> {
           <RouterLink v-if="session.isAuthenticated" to="/teams" class="text-muted text-sm">
             {{ t('nav.teams') }}
           </RouterLink>
+          <RouterLink v-if="session.isAuthenticated" to="/my-rooms" class="text-muted text-sm">
+            {{ t('nav.myRooms') }}
+          </RouterLink>
 
           <div class="ml-auto flex items-center gap-2">
             <USelect

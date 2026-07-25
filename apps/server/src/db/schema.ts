@@ -80,6 +80,8 @@ export const rooms = pgTable(
     status: roomStatusEnum('status').notNull().default('active'),
     /** Номер изменения стола: растёт при каждом действии, по нему клиент отбрасывает отставшие рассылки */
     revision: integer('revision').notNull().default(0),
+    /** Заполнено — комната в архиве: доступна только для чтения, не в основных списках */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('rooms_team_id_idx').on(t.teamId)],

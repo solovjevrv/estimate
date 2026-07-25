@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n';
 
 import { ApiError, api } from '../lib/api';
 import { useRoomStore } from '../stores/room';
+import { useRoomsStore } from '../stores/rooms';
 import { useSessionStore } from '../stores/session';
 
 const props = defineProps<{ id: string }>();
@@ -21,6 +22,28 @@ const { t } = useI18n();
 const toast = useToast();
 const session = useSessionStore();
 const room = useRoomStore();
+const roomsStore = useRoomsStore();
+
+const isArchived = computed(() => room.room?.archivedAt != null);
+const archiveOpen = ref(false);
+const archiving = ref(false);
+
+async function onArchive(): Promise<void> {
+  archiving.value = true;
+  try {
+    const archivedRoom = await roomsStore.archive(props.id);
+    const current = room.state;
+    if (current) {
+      room.applyState({ ...current, room: archivedRoom });
+    }
+    archiveOpen.value = false;
+    toast.add({ title: t('room.archivedToast'), color: 'success', icon: 'i-lucide-check' });
+  } catch {
+    toast.add({ title: t('room.archiveError'), color: 'error' });
+  } finally {
+    archiving.value = false;
+  }
+}
 
 const deckOptions = computed<Array<{ label: string; value: DeckType }>>(() => [
   { label: t('room.deckFibonacci'), value: 'fibonacci' },
@@ -257,7 +280,17 @@ function retry(): void {
           <UBadge :color="room.connected ? 'success' : 'error'" variant="subtle" class="ml-2">
             {{ room.connected ? t('room.connected') : t('room.disconnected') }}
           </UBadge>
+          <UBadge v-if="isArchived" color="warning" variant="subtle" class="ml-2">
+            {{ t('room.archived') }}
+          </UBadge>
         </p>
+
+        <UAlert
+          v-if="isArchived"
+          color="warning"
+          variant="subtle"
+          :description="t('room.archivedAlert')"
+        />
 
         <UCard>
           <template #header>
@@ -296,7 +329,7 @@ function retry(): void {
           </ul>
         </UCard>
 
-        <UCard v-if="room.isScrumMaster && !room.round">
+        <UCard v-if="room.isScrumMaster && !room.round && !isArchived">
           <template #header>
             <h2 class="font-medium">{{ t('room.startRoundTitle') }}</h2>
           </template>
@@ -308,7 +341,7 @@ function retry(): void {
           </div>
         </UCard>
 
-        <UCard v-if="room.round && room.round.status === 'voting'">
+        <UCard v-if="room.round && room.round.status === 'voting' && !isArchived">
           <template #header>
             <h2 class="font-medium">{{ t('room.votingTitle') }}</h2>
           </template>
@@ -350,7 +383,35 @@ function retry(): void {
         </UCard>
 
         <!-- Новый раунд и правка ссылок Jira/Confluence — Epic 5 -->
+
+        <UCard v-if="room.isScrumMaster && !isArchived">
+          <template #header>
+            <h2 class="font-medium">{{ t('room.settingsTitle') }}</h2>
+          </template>
+          <UButton
+            icon="i-lucide-archive"
+            color="error"
+            variant="subtle"
+            @click="archiveOpen = true"
+          >
+            {{ t('room.archive') }}
+          </UButton>
+        </UCard>
       </template>
     </template>
+
+    <UModal
+      v-model:open="archiveOpen"
+      :title="t('room.archiveConfirmTitle')"
+      :description="t('room.archiveConfirmText')"
+      :ui="{ footer: 'justify-end' }"
+    >
+      <template #footer="{ close }">
+        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
+        <UButton color="error" :loading="archiving" @click="onArchive">
+          {{ t('room.archiveConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
   </section>
 </template>

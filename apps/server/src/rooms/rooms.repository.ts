@@ -53,11 +53,14 @@ export class RoomsRepository {
     return row ? this.toRoom(row) : null;
   }
 
-  async listRoomsByTeam(teamId: string): Promise<Room[]> {
+  async listRoomsByTeam(teamId: string, archived = false): Promise<Room[]> {
+    const archivedCondition = archived
+      ? sql`${schema.rooms.archivedAt} is not null`
+      : isNull(schema.rooms.archivedAt);
     const rows = await this.db
       .select()
       .from(schema.rooms)
-      .where(eq(schema.rooms.teamId, teamId))
+      .where(and(eq(schema.rooms.teamId, teamId), archivedCondition))
       .orderBy(desc(schema.rooms.createdAt));
     return rows.map((row) => this.toRoom(row));
   }
@@ -69,6 +72,25 @@ export class RoomsRepository {
       .where(eq(schema.rooms.id, roomId))
       .returning();
     return row ? this.toRoom(row) : null;
+  }
+
+  /** Помечает комнату архивной: не удаляет, только прячет из основных списков и запрещает действия за столом */
+  async archiveRoom(roomId: string): Promise<Room | null> {
+    const [row] = await this.db
+      .update(schema.rooms)
+      .set({ archivedAt: new Date(), revision: sql`${schema.rooms.revision} + 1` })
+      .where(and(eq(schema.rooms.id, roomId), isNull(schema.rooms.archivedAt)))
+      .returning();
+    return row ? this.toRoom(row) : null;
+  }
+
+  /** Настоящее удаление: возможно только для уже заархивированной комнаты. Раунды и голоса уходят каскадом */
+  async deleteArchivedRoom(roomId: string): Promise<boolean> {
+    const rows = await this.db
+      .delete(schema.rooms)
+      .where(and(eq(schema.rooms.id, roomId), sql`${schema.rooms.archivedAt} is not null`))
+      .returning({ id: schema.rooms.id });
+    return rows.length > 0;
   }
 
   /** Отмечает, что за столом что-то изменилось: по этому номеру клиент отбрасывает отставшие рассылки */
@@ -209,12 +231,15 @@ export class RoomsRepository {
     return Boolean(row);
   }
 
-  /** Комнаты без команды, созданные пользователем */
-  async listPersonalRooms(creatorId: string): Promise<Room[]> {
+  /** Все комнаты, которые создал пользователь — личные и командные вместе */
+  async listRoomsCreatedBy(creatorId: string, archived = false): Promise<Room[]> {
+    const archivedCondition = archived
+      ? sql`${schema.rooms.archivedAt} is not null`
+      : isNull(schema.rooms.archivedAt);
     const rows = await this.db
       .select()
       .from(schema.rooms)
-      .where(and(eq(schema.rooms.creatorId, creatorId), isNull(schema.rooms.teamId)))
+      .where(and(eq(schema.rooms.creatorId, creatorId), archivedCondition))
       .orderBy(desc(schema.rooms.createdAt));
     return rows.map((row) => this.toRoom(row));
   }
@@ -228,6 +253,7 @@ export class RoomsRepository {
       status: row.status,
       revision: row.revision,
       createdAt: row.createdAt.toISOString(),
+      archivedAt: row.archivedAt?.toISOString() ?? null,
     };
   }
 

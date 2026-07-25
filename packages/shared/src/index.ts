@@ -105,6 +105,8 @@ export interface Room {
    */
   revision: number;
   createdAt: string;
+  /** Заполнено — комната в архиве: доступна только для чтения, не в основных списках */
+  archivedAt: string | null;
 }
 
 export interface Round {
