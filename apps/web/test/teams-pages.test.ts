@@ -405,6 +405,44 @@ describe('дашборд команды', () => {
   });
 });
 
+describe('создание комнаты команды', () => {
+  it('владельцу доступна кнопка создания, участнику — нет', async () => {
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [owner] }),
+        'GET /api/teams/t1/rooms': () => json(200, { rooms: [] }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('В команде пока нет комнат'));
+    expect(wrapper.text()).not.toContain('Создать комнату');
+  });
+
+  it('владелец создаёт комнату от лица команды и переходит в неё', async () => {
+    const created: Room = { ...activeRoom, id: 'r5', teamId: 't1', name: 'Новая комната' };
+    const { wrapper, router } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'owner', members: [owner] }),
+        'GET /api/teams/t1/rooms': () => json(200, { rooms: [] }),
+        'GET /api/rooms/r5': () => json(200, { room: created }),
+        'POST /api/rooms': () => json(201, { room: created }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('В команде пока нет комнат'));
+
+    await byText(wrapper, 'button', 'Создать комнату')!.trigger('click');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Новая комната'));
+
+    const input = dialog()!.querySelector('input') as HTMLInputElement;
+    input.value = 'Новая комната';
+    input.dispatchEvent(new Event('input'));
+    dialogButton('Создать комнату')!.click();
+
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/rooms/r5'));
+  });
+});
+
 describe('страница приглашения', () => {
   it('гостю показывает команду и предлагает войти', async () => {
     const { wrapper } = await mountApp(

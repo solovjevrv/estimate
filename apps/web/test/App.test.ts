@@ -188,3 +188,94 @@ describe('выход из аккаунта', () => {
     expect(wrapper.text()).toContain('Войти');
   });
 });
+
+describe('создание личной комнаты с главной', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  function dialog(): HTMLElement | null {
+    return document.body.querySelector('[role="dialog"]');
+  }
+
+  it('гостю не показывает кнопку создания комнаты', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((path: string) =>
+        Promise.resolve(
+          path === '/api/auth/providers'
+            ? jsonResponse(200, { providers: ['google', 'yandex'] })
+            : jsonResponse(401, { error: 'unauthorized', message: 'нет' }),
+        ),
+      ),
+    );
+    const wrapper = await mountApp('/');
+
+    expect(wrapper.text()).not.toContain('Создать комнату');
+  });
+
+  it('авторизованный создаёт личную комнату и переходит в неё', async () => {
+    const created = {
+      id: 'r7',
+      teamId: null,
+      creatorId: 'u1',
+      name: 'Моя комната',
+      status: 'active',
+      revision: 0,
+      createdAt: '2026-07-25T00:00:00.000Z',
+    };
+    const fetchImpl = vi.fn((path: string, init?: RequestInit) => {
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (path === '/api/me') {
+        return Promise.resolve(
+          jsonResponse(200, {
+            user: {
+              id: 'u1',
+              provider: 'google',
+              email: 'ivan@example.com',
+              name: 'Иван',
+              avatarUrl: null,
+            },
+          }),
+        );
+      }
+      if (path === '/api/auth/providers') {
+        return Promise.resolve(jsonResponse(200, { providers: ['google', 'yandex'] }));
+      }
+      if (path === '/api/rooms/r7') return Promise.resolve(jsonResponse(200, { room: created }));
+      if (method === 'POST' && path === '/api/rooms') {
+        return Promise.resolve(jsonResponse(201, { room: created }));
+      }
+      return Promise.resolve(jsonResponse(404, { error: 'not_found', message: 'нет' }));
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+
+    const pinia = createPinia();
+    const router = createAppRouter(createMemoryHistory());
+    const wrapper = mount(App, {
+      global: { plugins: [pinia, router, createAppI18n('ru'), ui] },
+      attachTo: document.body,
+    });
+    await router.push('/');
+    await router.isReady();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Создать комнату'));
+
+    const openButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Создать комнату');
+    await openButton!.trigger('click');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Новая комната'));
+
+    const input = dialog()!.querySelector('input') as HTMLInputElement;
+    input.value = 'Моя комната';
+    input.dispatchEvent(new Event('input'));
+    const submitButton = Array.from(dialog()?.querySelectorAll('button') ?? []).find(
+      (b) => b.textContent?.trim() === 'Создать комнату',
+    );
+    submitButton!.click();
+
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/rooms/r7'));
+    expect(fetchImpl).toHaveBeenCalledWith(
+      '/api/rooms',
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+});
