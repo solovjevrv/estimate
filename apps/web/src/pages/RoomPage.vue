@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
-import { GUEST_NAME_MAX_LENGTH, type Room } from '@poker/shared';
-import { onBeforeUnmount, reactive, ref, watch } from 'vue';
+import { useToast } from '@nuxt/ui/composables';
+import {
+  FIBONACCI_DECK,
+  GUEST_NAME_MAX_LENGTH,
+  SCALE_0_5_DECK,
+  type DeckType,
+  type Room,
+} from '@poker/shared';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import { ApiError, api } from '../lib/api';
@@ -11,8 +18,52 @@ import { useSessionStore } from '../stores/session';
 const props = defineProps<{ id: string }>();
 
 const { t } = useI18n();
+const toast = useToast();
 const session = useSessionStore();
 const room = useRoomStore();
+
+const deckOptions = computed<Array<{ label: string; value: DeckType }>>(() => [
+  { label: t('room.deckFibonacci'), value: 'fibonacci' },
+  { label: t('room.deckScale05'), value: 'scale_0_5' },
+]);
+const selectedDeck = ref<DeckType>('fibonacci');
+const starting = ref(false);
+
+const deckCards = computed<readonly number[]>(() =>
+  room.round?.deckType === 'scale_0_5' ? SCALE_0_5_DECK : FIBONACCI_DECK,
+);
+/** Свой голос не приходит со снимком (сервер скрывает его до вскрытия) — держим локально */
+const myVote = ref<number | null>(null);
+watch(
+  () => room.round?.id,
+  () => {
+    myVote.value = null;
+  },
+);
+
+async function onStartRound(): Promise<void> {
+  starting.value = true;
+  try {
+    await room.startNewRound(selectedDeck.value);
+  } catch {
+    toast.add({ title: t('room.startRoundError'), color: 'error' });
+  } finally {
+    starting.value = false;
+  }
+}
+
+async function onVote(value: number): Promise<void> {
+  const previous = myVote.value;
+  myVote.value = value;
+  try {
+    await room.submitVote(value);
+  } catch {
+    // Пока этот голос летел, могли успеть кликнуть другую карту — откатываем
+    // только если выбор с тех пор не изменился, иначе затрём более новый голос
+    if (myVote.value === value) myVote.value = previous;
+    toast.add({ title: t('room.voteError'), color: 'error' });
+  }
+}
 
 type Phase = 'loading' | 'notFound' | 'loadError' | 'naming' | 'joining' | 'joined' | 'joinError';
 
@@ -233,7 +284,36 @@ function retry(): void {
           </ul>
         </UCard>
 
-        <!-- Карты, вскрытие и старт раунда — Epic 5 -->
+        <UCard v-if="room.isScrumMaster && !room.round">
+          <template #header>
+            <h2 class="font-medium">{{ t('room.startRoundTitle') }}</h2>
+          </template>
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <URadioGroup v-model="selectedDeck" :items="deckOptions" orientation="horizontal" />
+            <UButton :loading="starting" @click="onStartRound">
+              {{ starting ? t('room.starting') : t('room.startRound') }}
+            </UButton>
+          </div>
+        </UCard>
+
+        <UCard v-if="room.round">
+          <template #header>
+            <h2 class="font-medium">{{ t('room.votingTitle') }}</h2>
+          </template>
+          <div class="flex flex-wrap gap-2">
+            <UButton
+              v-for="card in deckCards"
+              :key="card"
+              :color="myVote === card ? 'primary' : 'neutral'"
+              :variant="myVote === card ? 'solid' : 'outline'"
+              @click="onVote(card)"
+            >
+              {{ card }}
+            </UButton>
+          </div>
+        </UCard>
+
+        <!-- Вскрытие карт и правка ссылок Jira/Confluence — Epic 5 -->
       </template>
     </template>
   </section>

@@ -81,6 +81,9 @@ class FakeSocket {
   private readonly listeners = new Map<string, Array<(payload: never) => void>>();
   next: unknown = null;
   nextError: { error: string; message: string } | null = null;
+  /** Следующий emit() не отвечает сразу — ack откладывается до ручного resolveHeldAck() */
+  holdNextAck = false;
+  private readonly heldAcks: Array<(result: unknown) => void> = [];
 
   connect(): void {
     this.connected = true;
@@ -104,7 +107,16 @@ class FakeSocket {
 
   emit(event: string, payload: unknown, ack: (result: unknown) => void): void {
     this.sent.push({ event, payload });
+    if (this.holdNextAck) {
+      this.holdNextAck = false;
+      this.heldAcks.push(ack);
+      return;
+    }
     ack(this.nextError === null ? { ok: true, data: this.next } : { ok: false, ...this.nextError });
+  }
+
+  resolveHeldAck(index: number, result: unknown): void {
+    this.heldAcks[index]?.(result);
   }
 
   emitLocal(event: string, payload: unknown): void {
@@ -417,6 +429,133 @@ describe('стол участников', () => {
     );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
+  });
+});
+
+describe('выбор колоды и голосование', () => {
+  it('скрам-мастер без раунда видит выбор колоды, голосующий — нет', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: 'tok',
+      participantId: 'g1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await wrapper.find('input').setValue('Мария');
+    await wrapper.find('form').trigger('submit');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунд ещё не начат'));
+    expect(wrapper.text()).not.toContain('Начать раунд');
+  });
+
+  it('скрам-мастер выбирает колоду и запускает раунд', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Начать раунд'));
+
+    const scaleRadio = wrapper.findAll('button[role="radio"]')[1];
+    await scaleRadio!.trigger('click');
+
+    const activeRound = round({ deckType: 'scale_0_5' });
+    socket.next = activeRound;
+    const startButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Начать раунд');
+    await startButton!.trigger('click');
+
+    const started = socket.sent.find((s) => s.event === 'start_new_round');
+    expect(started?.payload).toMatchObject({ deckType: 'scale_0_5', fromRoundId: null });
+
+    // Раунд появляется у всех через рассылку, а не через прямой ответ на запуск
+    socket.emitLocal(
+      WS_SERVER_EVENTS.ROOM_STATE,
+      roomState({
+        room: { ...room1, revision: room1.revision + 1 },
+        round: activeRound,
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+    // Шкала 0-5, а не Фибоначчи
+    expect(wrapper.text()).toContain('0');
+    expect(wrapper.text()).not.toContain('13');
+  });
+
+  it('нажатие на карту отправляет голос и подсвечивает выбор', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+
+    socket.next = null;
+    const card = wrapper.findAll('button').find((b) => b.text().trim() === '5');
+    await card!.trigger('click');
+
+    const voted = socket.sent.find((s) => s.event === 'submit_vote');
+    expect(voted?.payload).toMatchObject({ value: 5, roundId: 'rnd1' });
+    expect(card!.classes().join(' ')).toContain('bg-primary');
+  });
+
+  it('опоздавший отказ по старому голосу не затирает уже выбранную новую карту', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+
+    const findCard = (label: string) =>
+      wrapper.findAll('button').find((b) => b.text().trim() === label)!;
+
+    // Голос за «5» уходит, но сервер пока не отвечает
+    socket.holdNextAck = true;
+    await findCard('5').trigger('click');
+
+    // Пока ждём ответа, передумали и проголосовали за «8» — этот ack приходит сразу
+    socket.next = null;
+    await findCard('8').trigger('click');
+    expect(findCard('8').classes().join(' ')).toContain('bg-primary');
+
+    // Только теперь долетает отказ по «5» — он не должен откатить уже выбранную «8»
+    socket.resolveHeldAck(0, { ok: false, error: 'conflict', message: 'опоздал' });
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось отправить оценку'));
+    expect(findCard('8').classes().join(' ')).toContain('bg-primary');
+    expect(findCard('5').classes().join(' ')).not.toContain('bg-primary');
   });
 });
 
