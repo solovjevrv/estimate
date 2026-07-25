@@ -6,7 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 
-import type { AuthUser, JoinRoomResult, Round, RoomState, WsAck } from '@poker/shared';
+import type { AuthUser, JoinRoomResult, Round, RoomState, RoundResult, WsAck } from '@poker/shared';
 import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
 import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -452,7 +452,8 @@ describeDb('комнаты', () => {
       expect((await emit(master, WS_EVENTS.REVEAL_CARDS)).ok).toBe(true);
       const revealed = await guestSeesResult;
       expect(revealed.round?.status).toBe('revealed');
-      expect(revealed.result).toMatchObject({ average: 5.5, min: 3, max: 8 });
+      // Голоса разные — за самое частое значение всего 1 из 2
+      expect(revealed.result).toMatchObject({ average: 5.5, min: 3, max: 8, agreement: 50 });
       expect(revealed.result?.votes).toHaveLength(2);
 
       // Новый раунд обнуляет стол
@@ -464,6 +465,27 @@ describeDb('комнаты', () => {
       expect(fresh.round).toMatchObject({ seq: 2, deckType: 'scale_0_5', status: 'voting' });
       expect(fresh.result).toBeNull();
       expect(fresh.participants.some((participant) => participant.hasVoted)).toBe(false);
+    });
+
+    it('колода футболочных размеров: среднее не считается, но согласие есть', async () => {
+      const owner = await newUser('tshirt-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+
+      await joinRoom(master, roomId);
+      await joinRoom(guest, roomId, 'Гость');
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'tshirt' });
+
+      // Значение вне колоды маек отклоняется
+      const rejected = await emit(guest, WS_EVENTS.SUBMIT_VOTE, { value: 40 });
+      expect(rejected).toMatchObject({ ok: false, error: 'bad_request' });
+
+      await emit(guest, WS_EVENTS.SUBMIT_VOTE, { value: 3 });
+      await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 3 });
+
+      const ack = await emit<RoundResult>(master, WS_EVENTS.REVEAL_CARDS);
+      expect(ack.ok && ack.data).toMatchObject({ average: null, min: 3, max: 3, agreement: 100 });
     });
 
     it('ссылки на задачу правит любой участник и видят все', async () => {

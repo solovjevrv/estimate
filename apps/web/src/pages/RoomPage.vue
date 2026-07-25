@@ -2,11 +2,11 @@
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
 import {
-  FIBONACCI_DECK,
+  DECK_CARDS,
   GUEST_NAME_MAX_LENGTH,
-  SCALE_0_5_DECK,
   type DeckType,
   type Room,
+  tshirtLabel,
 } from '@poker/shared';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -48,14 +48,19 @@ async function onArchive(): Promise<void> {
 const deckOptions = computed<Array<{ label: string; value: DeckType }>>(() => [
   { label: t('room.deckFibonacci'), value: 'fibonacci' },
   { label: t('room.deckScale05'), value: 'scale_0_5' },
+  { label: t('room.deckTshirt'), value: 'tshirt' },
 ]);
 const selectedDeck = ref<DeckType>('fibonacci');
 const starting = ref(false);
 const revealing = ref(false);
 
-const deckCards = computed<readonly number[]>(() =>
-  room.round?.deckType === 'scale_0_5' ? SCALE_0_5_DECK : FIBONACCI_DECK,
+const deckCards = computed<readonly number[]>(
+  () => DECK_CARDS[room.round?.deckType ?? 'fibonacci'],
 );
+/** Для футболочных размеров подписью карты служит буквенный размер, а не число */
+function cardLabel(value: number): string {
+  return room.round?.deckType === 'tshirt' ? tshirtLabel(value) : String(value);
+}
 /** Свой голос не приходит со снимком (сервер скрывает его до вскрытия) — держим локально */
 const myVote = ref<number | null>(null);
 watch(
@@ -353,7 +358,7 @@ function retry(): void {
               :variant="myVote === card ? 'solid' : 'outline'"
               @click="onVote(card)"
             >
-              {{ card }}
+              {{ cardLabel(card) }}
             </UButton>
           </div>
           <UButton v-if="room.isScrumMaster" class="mt-4" :loading="revealing" @click="onReveal">
@@ -366,9 +371,12 @@ function retry(): void {
             <h2 class="font-medium">{{ t('room.resultTitle') }}</h2>
           </template>
           <p class="text-muted mb-3 text-sm">
-            {{ t('room.resultAverage', { average: room.result.average }) }} ·
-            {{ t('room.resultMin', { min: room.result.min }) }} ·
-            {{ t('room.resultMax', { max: room.result.max }) }}
+            <template v-if="room.result.average !== null">
+              {{ t('room.resultAverage', { average: room.result.average }) }} ·
+            </template>
+            {{ t('room.resultMin', { min: cardLabel(room.result.min) }) }} ·
+            {{ t('room.resultMax', { max: cardLabel(room.result.max) }) }} ·
+            {{ t('room.resultAgreement', { agreement: room.result.agreement }) }}
           </p>
           <ul class="divide-default divide-y">
             <li
@@ -377,7 +385,7 @@ function retry(): void {
               class="flex items-center justify-between py-2 first:pt-0 last:pb-0"
             >
               <span>{{ v.name }}</span>
-              <UBadge color="neutral" variant="subtle">{{ v.value }}</UBadge>
+              <UBadge color="neutral" variant="subtle">{{ cardLabel(v.value) }}</UBadge>
             </li>
           </ul>
         </UCard>

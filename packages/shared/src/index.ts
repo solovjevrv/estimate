@@ -79,13 +79,33 @@ export const TEAM_NAME_MAX_LENGTH = 80;
 export type RoomRole = 'scrum_master' | 'voter';
 
 /** Типы колод для оценки */
-export type DeckType = 'fibonacci' | 'scale_0_5';
+export type DeckType = 'fibonacci' | 'scale_0_5' | 'tshirt';
 
-export const DECK_TYPES: readonly DeckType[] = ['fibonacci', 'scale_0_5'];
+export const DECK_TYPES: readonly DeckType[] = ['fibonacci', 'scale_0_5', 'tshirt'];
 
-export const FIBONACCI_DECK: readonly number[] = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+export const FIBONACCI_DECK: readonly number[] = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233];
 
 export const SCALE_0_5_DECK: readonly number[] = [0, 1, 2, 3, 4, 5];
+
+/**
+ * Футболочные размеры хранятся и голосуются как числа (вес по шкале Фибоначчи) —
+ * так среднее/подсчёты остаются числовыми, а размер лишь подпись поверх числа.
+ */
+export const TSHIRT_LABELS: readonly string[] = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+export const TSHIRT_DECK: readonly number[] = [1, 2, 3, 5, 8, 13];
+
+/** Подпись размера для числа из TSHIRT_DECK; для прочих чисел — само число */
+export function tshirtLabel(value: number): string {
+  const index = TSHIRT_DECK.indexOf(value);
+  return index === -1 ? String(value) : (TSHIRT_LABELS[index] ?? String(value));
+}
+
+/** Допустимые числа по каждой колоде — по нему проверяется голос и строится стол */
+export const DECK_CARDS: Record<DeckType, readonly number[]> = {
+  fibonacci: FIBONACCI_DECK,
+  scale_0_5: SCALE_0_5_DECK,
+  tshirt: TSHIRT_DECK,
+};
 
 /** Статусы комнаты и раунда */
 export type RoomStatus = 'active' | 'closed';
@@ -147,9 +167,12 @@ export interface RevealedVote {
 
 /** Итоги раунда: считаются при вскрытии карт */
 export interface RoundResult {
-  average: number;
+  /** Для колоды футболочных размеров среднее не считается — null */
+  average: number | null;
   min: number;
   max: number;
+  /** Доля проголосовавших за самое частое значение, 0–100 */
+  agreement: number;
   votes: RevealedVote[];
 }
 
