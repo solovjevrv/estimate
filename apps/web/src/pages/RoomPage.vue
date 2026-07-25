@@ -28,6 +28,7 @@ const deckOptions = computed<Array<{ label: string; value: DeckType }>>(() => [
 ]);
 const selectedDeck = ref<DeckType>('fibonacci');
 const starting = ref(false);
+const revealing = ref(false);
 
 const deckCards = computed<readonly number[]>(() =>
   room.round?.deckType === 'scale_0_5' ? SCALE_0_5_DECK : FIBONACCI_DECK,
@@ -62,6 +63,17 @@ async function onVote(value: number): Promise<void> {
     // только если выбор с тех пор не изменился, иначе затрём более новый голос
     if (myVote.value === value) myVote.value = previous;
     toast.add({ title: t('room.voteError'), color: 'error' });
+  }
+}
+
+async function onReveal(): Promise<void> {
+  revealing.value = true;
+  try {
+    await room.revealCards();
+  } catch {
+    toast.add({ title: t('room.revealError'), color: 'error' });
+  } finally {
+    revealing.value = false;
   }
 }
 
@@ -296,7 +308,7 @@ function retry(): void {
           </div>
         </UCard>
 
-        <UCard v-if="room.round">
+        <UCard v-if="room.round && room.round.status === 'voting'">
           <template #header>
             <h2 class="font-medium">{{ t('room.votingTitle') }}</h2>
           </template>
@@ -311,9 +323,33 @@ function retry(): void {
               {{ card }}
             </UButton>
           </div>
+          <UButton v-if="room.isScrumMaster" class="mt-4" :loading="revealing" @click="onReveal">
+            {{ revealing ? t('room.revealing') : t('room.reveal') }}
+          </UButton>
         </UCard>
 
-        <!-- Вскрытие карт и правка ссылок Jira/Confluence — Epic 5 -->
+        <UCard v-if="room.result">
+          <template #header>
+            <h2 class="font-medium">{{ t('room.resultTitle') }}</h2>
+          </template>
+          <p class="text-muted mb-3 text-sm">
+            {{ t('room.resultAverage', { average: room.result.average }) }} ·
+            {{ t('room.resultMin', { min: room.result.min }) }} ·
+            {{ t('room.resultMax', { max: room.result.max }) }}
+          </p>
+          <ul class="divide-default divide-y">
+            <li
+              v-for="v in room.result.votes"
+              :key="v.participantId"
+              class="flex items-center justify-between py-2 first:pt-0 last:pb-0"
+            >
+              <span>{{ v.name }}</span>
+              <UBadge color="neutral" variant="subtle">{{ v.value }}</UBadge>
+            </li>
+          </ul>
+        </UCard>
+
+        <!-- Новый раунд и правка ссылок Jira/Confluence — Epic 5 -->
       </template>
     </template>
   </section>

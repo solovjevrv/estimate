@@ -141,6 +141,13 @@ export default {
     startRoundError: 'Could not start the round. Please try again.',
     votingTitle: 'Your vote',
     voteError: 'Could not submit your vote. Please try again.',
+    reveal: 'Reveal cards',
+    revealing: 'Revealing…',
+    revealError: 'Could not reveal the cards. Please try again.',
+    resultTitle: 'Round results',
+    resultAverage: 'Average: {average}',
+    resultMin: 'Min: {min}',
+    resultMax: 'Max: {max}',
   },
   notFound: {
     title: 'Page not found',

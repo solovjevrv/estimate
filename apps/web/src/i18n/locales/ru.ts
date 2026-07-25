@@ -141,6 +141,13 @@ export default {
     startRoundError: 'Не удалось начать раунд. Попробуйте ещё раз.',
     votingTitle: 'Ваша оценка',
     voteError: 'Не удалось отправить оценку. Попробуйте ещё раз.',
+    reveal: 'Вскрыть карты',
+    revealing: 'Вскрываем…',
+    revealError: 'Не удалось вскрыть карты. Попробуйте ещё раз.',
+    resultTitle: 'Результаты раунда',
+    resultAverage: 'Среднее: {average}',
+    resultMin: 'Мин: {min}',
+    resultMax: 'Макс: {max}',
   },
   notFound: {
     title: 'Страница не найдена',
