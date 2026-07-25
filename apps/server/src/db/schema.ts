@@ -16,7 +16,7 @@ import {
 export const authProviderEnum = pgEnum('auth_provider', ['google', 'yandex']);
 export const teamRoleEnum = pgEnum('team_role', ['admin', 'member', 'guest']);
 export const roomStatusEnum = pgEnum('room_status', ['active', 'closed']);
-export const deckTypeEnum = pgEnum('deck_type', ['fibonacci', 'scale_0_5']);
+export const deckTypeEnum = pgEnum('deck_type', ['fibonacci', 'scale_0_5', 'tshirt']);
 export const roundStatusEnum = pgEnum('round_status', ['voting', 'revealed']);
 
 /**

@@ -157,10 +157,14 @@ export class RoomsRepository {
    * Помечает раунд вскрытым. Обновляет только раунд в статусе голосования,
    * поэтому повторное вскрытие ничего не меняет.
    */
-  async markRevealed(roundId: string, average: number): Promise<Round | null> {
+  async markRevealed(roundId: string, average: number | null): Promise<Round | null> {
     const [row] = await this.db
       .update(schema.rounds)
-      .set({ status: 'revealed', average: average.toFixed(2), revealedAt: new Date() })
+      .set({
+        status: 'revealed',
+        average: average === null ? null : average.toFixed(2),
+        revealedAt: new Date(),
+      })
       .where(and(eq(schema.rounds.id, roundId), eq(schema.rounds.status, 'voting')))
       .returning();
     return row ? this.toRound(row) : null;

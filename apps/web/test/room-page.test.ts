@@ -505,6 +505,33 @@ describe('выбор колоды и голосование', () => {
     expect(wrapper.text()).not.toContain('13');
   });
 
+  it('скрам-мастер запускает раунд с колодой футболочных размеров', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Начать раунд'));
+
+    const tshirtRadio = wrapper.findAll('button[role="radio"]')[2];
+    await tshirtRadio!.trigger('click');
+
+    const activeRound = round({ deckType: 'tshirt' });
+    socket.next = activeRound;
+    const startButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Начать раунд');
+    await startButton!.trigger('click');
+
+    const started = socket.sent.find((s) => s.event === 'start_new_round');
+    expect(started?.payload).toMatchObject({ deckType: 'tshirt', fromRoundId: null });
+  });
+
   it('нажатие на карту отправляет голос и подсвечивает выбор', async () => {
     socket.next = {
       state: roomState({
@@ -571,6 +598,7 @@ function roundResult(overrides: Partial<RoundResult> = {}): RoundResult {
     average: 5,
     min: 3,
     max: 8,
+    agreement: 50,
     votes: [
       { participantId: 'u1', name: 'Иван', value: 5 },
       { participantId: 'g1', name: 'Мария', value: 8 },
@@ -642,6 +670,52 @@ describe('вскрытие карт', () => {
     expect(wrapper.text()).not.toContain('Ваша оценка');
     expect(wrapper.text()).toContain('Мария');
     expect(wrapper.text()).toContain('8');
+  });
+
+  it('колода футболочных размеров: карты и результаты в буквах, среднего нет, есть согласие', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ deckType: 'tshirt' }),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+
+    // Карты подписаны буквами размеров, а не числами
+    expect(wrapper.findAll('button').find((b) => b.text().trim() === 'M')).toBeDefined();
+    expect(wrapper.findAll('button').find((b) => b.text().trim() === '3')).toBeUndefined();
+
+    socket.next = roundResult({ average: null, min: 3, max: 3, agreement: 100 });
+    const revealButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Вскрыть карты');
+    await revealButton!.trigger('click');
+
+    socket.emitLocal(
+      WS_SERVER_EVENTS.ROOM_STATE,
+      roomState({
+        room: { ...room1, revision: room1.revision + 1 },
+        round: round({ deckType: 'tshirt', status: 'revealed', average: null }),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+        result: roundResult({
+          average: null,
+          min: 3,
+          max: 3,
+          agreement: 100,
+          votes: [{ participantId: 'u1', name: 'Иван', value: 3 }],
+        }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Согласие: 100%'));
+    expect(wrapper.text()).not.toContain('Среднее:');
+    expect(wrapper.text()).toContain('Мин: M');
+    expect(wrapper.text()).toContain('Макс: M');
   });
 
   it('при ошибке вскрытия показывает уведомление', async () => {

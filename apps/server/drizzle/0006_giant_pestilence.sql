@@ -1,0 +1,1 @@
+ALTER TYPE "public"."deck_type" ADD VALUE 'tshirt';

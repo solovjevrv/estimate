@@ -13,6 +13,7 @@ import {
   type SubmitVotePayload,
   type UpdateLinksPayload,
   DECK_TYPES,
+  TSHIRT_DECK,
   hasTeamRole,
 } from '@poker/shared';
 
@@ -276,7 +277,7 @@ export class RoomsService {
         hasVoted: voted.has(identity.participantId),
       })),
       // Оценки видны только после вскрытия карт
-      result: round?.status === 'revealed' ? this.summarize(votes, round.average) : null,
+      result: round?.status === 'revealed' ? this.summarize(votes, round, round.average) : null,
     };
   }
 
@@ -349,10 +350,10 @@ export class RoomsService {
       }
       // Карты могли вскрыть, пока запрос ждал блокировки — тогда показываем зафиксированное
       if (round.status !== 'voting') {
-        return this.summarize(votes, round.average);
+        return this.summarize(votes, round, round.average);
       }
 
-      const result = this.summarize(votes);
+      const result = this.summarize(votes, round);
       await repo.markRevealed(round.id, result.average);
       await repo.bumpRevision(roomId);
       return result;
@@ -497,28 +498,46 @@ export class RoomsService {
     if (!Number.isInteger(value) || value < 0 || value > MAX_VOTE_VALUE) {
       throw new ValidationError(`Оценка должна быть целым числом от 0 до ${MAX_VOTE_VALUE}`);
     }
-    // У колоды Фибоначчи можно добавить своё число, у шкалы предел жёсткий
+    // У колоды Фибоначчи можно добавить своё число, у шкалы и футболочных размеров — только из колоды
     if (round.deckType === 'scale_0_5' && value > 5) {
       throw new ValidationError('Для шкалы допустимы значения от 0 до 5');
+    }
+    if (round.deckType === 'tshirt' && !TSHIRT_DECK.includes(value)) {
+      throw new ValidationError('Для футболочных размеров допустимы только числа из колоды');
     }
   }
 
   /** Если раунд уже вскрыт, показываем зафиксированное среднее, а не пересчитанное */
-  private summarize(votes: VoteRecord[], stored: number | null = null): RoundResult {
+  private summarize(votes: VoteRecord[], round: Round, stored: number | null = null): RoundResult {
     const values = votes.map((vote) => vote.value);
     const sum = values.reduce((total, value) => total + value, 0);
+    // Для футболочных размеров среднее числового веса не несёт смысла — не считаем
+    const average =
+      round.deckType === 'tshirt'
+        ? null
+        : (stored ?? Math.round((sum / values.length) * 100) / 100);
 
     return {
-      // Простое среднее по всем голосам, крайние не отбрасываем
-      average: stored ?? Math.round((sum / values.length) * 100) / 100,
+      average,
       min: Math.min(...values),
       max: Math.max(...values),
+      agreement: this.calculateAgreement(values),
       votes: votes.map((vote) => ({
         participantId: vote.participantId,
         name: vote.name ?? 'Участник',
         value: vote.value,
       })),
     };
+  }
+
+  /** Доля проголосовавших за самое частое значение — метрика согласия команды */
+  private calculateAgreement(values: number[]): number {
+    const counts = new Map<number, number>();
+    for (const value of values) {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    const maxCount = Math.max(...counts.values());
+    return Math.round((maxCount / values.length) * 100);
   }
 
   /** Идентификаторы приходят по сокету без схем — проверяем формат до похода в базу */

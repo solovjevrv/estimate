@@ -33,7 +33,7 @@ describe('схема БД', () => {
   it('типы колод соответствуют контракту @poker/shared', () => {
     // Присваивание типизировано: несовпадение с DeckType сломает компиляцию
     const deckValues: readonly DeckType[] = schema.deckTypeEnum.enumValues;
-    expect(deckValues).toEqual(['fibonacci', 'scale_0_5']);
+    expect(deckValues).toEqual(['fibonacci', 'scale_0_5', 'tshirt']);
   });
 
   it('роли в команде соответствуют контракту @poker/shared', () => {

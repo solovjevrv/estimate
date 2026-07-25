@@ -162,6 +162,22 @@ describe('RoomsService: голосование', () => {
     );
   });
 
+  it('у футболочных размеров можно поставить только число из колоды', async () => {
+    const upsertUserVote = vi.fn(async () => {});
+    const service = serviceWith({
+      ...votingRepo,
+      findCurrentRound: async () => ({ ...ROUND, deckType: 'tshirt' as const }),
+      upsertUserVote,
+    });
+
+    await expect(service.submitVote(ROOM.id, VOTER, { value: 40 })).rejects.toBeInstanceOf(
+      ValidationError,
+    );
+
+    await service.submitVote(ROOM.id, VOTER, { value: 5 });
+    expect(upsertUserVote).toHaveBeenCalledWith(ROUND.id, VOTER.participantId, 5);
+  });
+
   it('после вскрытия карт голосовать нельзя', async () => {
     const service = serviceWith({
       ...votingRepo,

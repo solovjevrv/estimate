@@ -1,6 +1,15 @@
 import { describe, expect, it } from 'vitest';
 
-import { FIBONACCI_DECK, SCALE_0_5_DECK, TEAM_ROLES, WS_EVENTS, hasTeamRole } from '../src/index';
+import {
+  DECK_CARDS,
+  FIBONACCI_DECK,
+  SCALE_0_5_DECK,
+  TEAM_ROLES,
+  TSHIRT_DECK,
+  WS_EVENTS,
+  hasTeamRole,
+  tshirtLabel,
+} from '../src/index';
 
 describe('контракты WS-событий', () => {
   it('содержат все события из скоупа Epic 2', () => {
@@ -39,12 +48,29 @@ describe('ролевая модель команды', () => {
 });
 
 describe('колоды', () => {
-  it('колода Фибоначчи не пуста и отсортирована по возрастанию', () => {
+  it('колода Фибоначчи не пуста, отсортирована по возрастанию и доходит до 233', () => {
     expect(FIBONACCI_DECK.length).toBeGreaterThan(0);
     expect([...FIBONACCI_DECK]).toEqual([...FIBONACCI_DECK].sort((a, b) => a - b));
+    expect(FIBONACCI_DECK[FIBONACCI_DECK.length - 1]).toBe(233);
   });
 
   it('шкала 0–5 содержит целые значения от 0 до 5', () => {
     expect(SCALE_0_5_DECK).toEqual([0, 1, 2, 3, 4, 5]);
+  });
+
+  it('футболочные размеры мапятся на числа один к одному', () => {
+    expect(TSHIRT_DECK).toEqual([1, 2, 3, 5, 8, 13]);
+    expect(tshirtLabel(1)).toBe('XS');
+    expect(tshirtLabel(13)).toBe('XXL');
+  });
+
+  it('число вне колоды возвращает само себя как подпись', () => {
+    expect(tshirtLabel(999)).toBe('999');
+  });
+
+  it('DECK_CARDS содержит колоду для каждого типа', () => {
+    expect(DECK_CARDS.fibonacci).toBe(FIBONACCI_DECK);
+    expect(DECK_CARDS.scale_0_5).toBe(SCALE_0_5_DECK);
+    expect(DECK_CARDS.tshirt).toBe(TSHIRT_DECK);
   });
 });
