@@ -1,5 +1,5 @@
 import ui from '@nuxt/ui/vue-plugin';
-import type { AuthUser, Participant, Room, RoomState, Round } from '@poker/shared';
+import type { AuthUser, Participant, Room, RoomState, Round, RoundResult } from '@poker/shared';
 import { WS_SERVER_EVENTS } from '@poker/shared';
 import { mount } from '@vue/test-utils';
 import { createPinia } from 'pinia';
@@ -556,6 +556,108 @@ describe('выбор колоды и голосование', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось отправить оценку'));
     expect(findCard('8').classes().join(' ')).toContain('bg-primary');
     expect(findCard('5').classes().join(' ')).not.toContain('bg-primary');
+  });
+});
+
+function roundResult(overrides: Partial<RoundResult> = {}): RoundResult {
+  return {
+    average: 5,
+    min: 3,
+    max: 8,
+    votes: [
+      { participantId: 'u1', name: 'Иван', value: 5 },
+      { participantId: 'g1', name: 'Мария', value: 8 },
+    ],
+    ...overrides,
+  };
+}
+
+describe('вскрытие карт', () => {
+  it('скрам-мастер видит кнопку вскрытия, голосующий — нет', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: 'tok',
+      participantId: 'g1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await wrapper.find('input').setValue('Мария');
+    await wrapper.find('form').trigger('submit');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+    expect(wrapper.text()).not.toContain('Вскрыть карты');
+  });
+
+  it('вскрытие показывает результаты всем и прячет карты голосования', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Вскрыть карты'));
+
+    socket.next = roundResult();
+    const revealButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Вскрыть карты');
+    await revealButton!.trigger('click');
+
+    const revealed = socket.sent.find((s) => s.event === 'reveal_cards');
+    expect(revealed?.payload).toMatchObject({ roundId: 'rnd1' });
+
+    // Результат приходит всем через рассылку — не через прямой ответ на вскрытие
+    socket.emitLocal(
+      WS_SERVER_EVENTS.ROOM_STATE,
+      roomState({
+        room: { ...room1, revision: room1.revision + 1 },
+        round: round({ status: 'revealed', average: 5 }),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+        result: roundResult(),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Результаты раунда'));
+    expect(wrapper.text()).not.toContain('Ваша оценка');
+    expect(wrapper.text()).toContain('Мария');
+    expect(wrapper.text()).toContain('8');
+  });
+
+  it('при ошибке вскрытия показывает уведомление', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Вскрыть карты'));
+
+    socket.nextError = { error: 'conflict', message: 'Никто ещё не проголосовал' };
+    const revealButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Вскрыть карты');
+    await revealButton!.trigger('click');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось вскрыть карты'));
   });
 });
 
