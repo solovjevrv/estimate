@@ -18,17 +18,15 @@ describe('контракты WS-событий', () => {
 
 describe('ролевая модель команды', () => {
   it('роли перечислены от старшей к младшей', () => {
-    expect(TEAM_ROLES).toEqual(['owner', 'admin', 'member', 'guest']);
+    expect(TEAM_ROLES).toEqual(['admin', 'member', 'guest']);
   });
 
   it('старшая роль подходит там, где требуется младшая', () => {
-    expect(hasTeamRole('owner', 'admin')).toBe(true);
     expect(hasTeamRole('admin', 'member')).toBe(true);
     expect(hasTeamRole('member', 'guest')).toBe(true);
   });
 
   it('младшая роль не подходит там, где требуется старшая', () => {
-    expect(hasTeamRole('admin', 'owner')).toBe(false);
     expect(hasTeamRole('member', 'admin')).toBe(false);
     expect(hasTeamRole('guest', 'member')).toBe(false);
   });

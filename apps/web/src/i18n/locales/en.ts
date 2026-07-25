@@ -27,7 +27,6 @@ export default {
     noProviders: 'No sign-in methods are configured on the server.',
   },
   role: {
-    owner: 'Owner',
     admin: 'Admin',
     member: 'Member',
     guest: 'Guest',
@@ -72,11 +71,6 @@ export default {
     roleLabel: 'Role',
     roleChanged: 'Role updated',
     roleChangeError: 'Could not change the role',
-    transferTitle: 'Transfer ownership?',
-    transferText:
-      'You will become an admin and “{name}” will own the team. Only the new owner can hand it back.',
-    transferConfirm: 'Transfer ownership',
-    ownerTransferred: 'Team owner changed',
     remove: 'Remove',
     removeConfirmTitle: 'Remove member?',
     removeConfirmText: '“{name}” will lose access to the team.',
@@ -89,7 +83,7 @@ export default {
     leaveConfirm: 'Leave',
     left: 'You left the team',
     leaveError: 'Could not leave the team',
-    leaveLastOwner: 'You are the only owner — transfer ownership or delete the team first.',
+    leaveLastAdmin: 'You are the only admin — assign another one or delete the team first.',
     settingsTitle: 'Team settings',
     rename: 'Rename',
     renameTitle: 'Rename team',

@@ -43,12 +43,11 @@ function formatDate(iso: string): string {
 
 const overview = computed(() => teams.current);
 const currentUserId = computed(() => session.user?.id ?? null);
-/** Управлять составом (роли, исключение) может только владелец */
-const isOwner = computed(() => overview.value?.role === 'owner');
-/** Заводить комнаты от лица команды — то же право, что и на бэкенде: admin и owner */
-const canCreateRooms = computed(
-  () => !!overview.value && hasTeamRole(overview.value.role, 'admin'),
-);
+/**
+ * Роль admin — единственная с расширенными правами (создание комнат, состав,
+ * роли, переименование, удаление команды). Администраторов может быть несколько.
+ */
+const canManageTeam = computed(() => !!overview.value && hasTeamRole(overview.value.role, 'admin'));
 
 /** Пока идёт запрос по участнику — блокируем его элементы управления. Набор, а
  * не один id: операции по разным участникам могут идти внахлёст. */
@@ -89,7 +88,7 @@ const roomSections = computed(() => [
   },
 ]);
 
-/** Код приходит только админу и владельцу — по нему и показываем блок приглашения */
+/** Код приходит только администратору — по нему и показываем блок приглашения */
 const inviteUrl = computed(() =>
   overview.value?.inviteCode
     ? `${window.location.origin}/invite/${overview.value.inviteCode}`
@@ -130,7 +129,7 @@ async function loadRooms(): Promise<void> {
   }
 }
 
-// --- Архив комнат команды: виден только владельцу/администратору, грузится по требованию ---
+// --- Архив комнат команды: виден только администратору, грузится по требованию ---
 const archiveOpen = ref(false);
 const archiveLoading = ref(false);
 const archiveFailed = ref(false);
@@ -236,18 +235,9 @@ async function rotate(): Promise<void> {
   }
 }
 
-// --- Смена роли и передача владения ---
-const transferTarget = ref<TeamMember | null>(null);
-const transferOpen = ref(false);
-
-/** Владельца назначаем только через подтверждение — это передача владения */
+// --- Смена роли ---
 async function onRoleChange(member: TeamMember, role: TeamRole): Promise<void> {
   if (role === member.role) return;
-  if (role === 'owner') {
-    transferTarget.value = member;
-    transferOpen.value = true;
-    return;
-  }
   await applyRole(member.userId, role);
 }
 
@@ -260,21 +250,6 @@ async function applyRole(userId: string, role: TeamRole): Promise<void> {
     toast.add({ title: t('team.roleChangeError'), color: 'error' });
   } finally {
     setBusy(userId, false);
-  }
-}
-
-async function confirmTransfer(): Promise<void> {
-  const target = transferTarget.value;
-  if (!target) return;
-  setBusy(target.userId, true);
-  try {
-    await teams.changeMemberRole(props.id, target.userId, 'owner');
-    toast.add({ title: t('team.ownerTransferred'), color: 'success', icon: 'i-lucide-check' });
-    transferOpen.value = false;
-  } catch {
-    toast.add({ title: t('team.roleChangeError'), color: 'error' });
-  } finally {
-    setBusy(target.userId, false);
   }
 }
 
@@ -316,8 +291,8 @@ async function confirmLeave(): Promise<void> {
     leaveOpen.value = false;
     await router.push({ name: 'teams' });
   } catch (err) {
-    // Единственному владельцу бэкенд отвечает 409 — сначала передать владение
-    const key = err instanceof ApiError && err.status === 409 ? 'leaveLastOwner' : 'leaveError';
+    // Единственному администратору бэкенд отвечает 409 — сначала назначить другого
+    const key = err instanceof ApiError && err.status === 409 ? 'leaveLastAdmin' : 'leaveError';
     toast.add({ title: t(`team.${key}`), color: 'error' });
   } finally {
     leaving.value = false;
@@ -408,7 +383,7 @@ async function confirmDelete(): Promise<void> {
           <div class="flex items-center justify-between gap-3">
             <h2 class="font-medium">{{ t('team.roomsTitle') }}</h2>
             <UButton
-              v-if="canCreateRooms"
+              v-if="canManageTeam"
               icon="i-lucide-plus"
               size="sm"
               @click="createRoomOpen = true"
@@ -448,7 +423,7 @@ async function confirmDelete(): Promise<void> {
         </div>
       </UCard>
 
-      <UCard v-if="canCreateRooms">
+      <UCard v-if="canManageTeam">
         <template #header>
           <div class="flex items-center justify-between gap-3">
             <h2 class="font-medium">{{ t('team.archiveTitle') }}</h2>
@@ -511,9 +486,9 @@ async function confirmDelete(): Promise<void> {
             <UAvatar :src="member.avatarUrl ?? undefined" :alt="member.name" size="sm" />
             <span class="min-w-0 flex-1 truncate">{{ member.name }}</span>
 
-            <!-- Владелец меняет роли всем, кроме себя; себе показываем бейдж -->
+            <!-- Администратор меняет роли всем, кроме себя; себе показываем бейдж -->
             <USelect
-              v-if="isOwner && member.userId !== currentUserId"
+              v-if="canManageTeam && member.userId !== currentUserId"
               :model-value="member.role"
               :items="roleItems"
               value-key="value"
@@ -527,7 +502,7 @@ async function confirmDelete(): Promise<void> {
             </UBadge>
 
             <UButton
-              v-if="isOwner && member.userId !== currentUserId"
+              v-if="canManageTeam && member.userId !== currentUserId"
               icon="i-lucide-user-minus"
               color="error"
               variant="ghost"
@@ -570,7 +545,7 @@ async function confirmDelete(): Promise<void> {
         </template>
         <div class="flex flex-wrap gap-2">
           <UButton
-            v-if="isOwner"
+            v-if="canManageTeam"
             icon="i-lucide-pencil"
             color="neutral"
             variant="subtle"
@@ -578,10 +553,9 @@ async function confirmDelete(): Promise<void> {
           >
             {{ t('team.rename') }}
           </UButton>
-          <!-- Владелец в команде единственный: выйти он может только передав
-               владение или удалив команду, поэтому кнопку «Выйти» ему не показываем -->
+          <!-- Выйти может любой участник; единственному администратору бэкенд
+               откажет (409) и предложит сначала назначить другого -->
           <UButton
-            v-if="!isOwner"
             icon="i-lucide-log-out"
             color="neutral"
             variant="subtle"
@@ -590,7 +564,7 @@ async function confirmDelete(): Promise<void> {
             {{ t('team.leave') }}
           </UButton>
           <UButton
-            v-if="isOwner"
+            v-if="canManageTeam"
             icon="i-lucide-trash-2"
             color="error"
             variant="subtle"
@@ -612,24 +586,6 @@ async function confirmDelete(): Promise<void> {
         <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
         <UButton color="error" :loading="rotating" @click="rotate">
           {{ t('team.rotateConfirm') }}
-        </UButton>
-      </template>
-    </UModal>
-
-    <UModal
-      v-model:open="transferOpen"
-      :title="t('team.transferTitle')"
-      :description="t('team.transferText', { name: transferTarget?.name ?? '' })"
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer="{ close }">
-        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton
-          color="error"
-          :loading="transferTarget ? isBusy(transferTarget.userId) : false"
-          @click="confirmTransfer"
-        >
-          {{ t('team.transferConfirm') }}
         </UButton>
       </template>
     </UModal>

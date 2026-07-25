@@ -14,7 +14,7 @@ import {
 } from 'drizzle-orm/pg-core';
 
 export const authProviderEnum = pgEnum('auth_provider', ['google', 'yandex']);
-export const teamRoleEnum = pgEnum('team_role', ['owner', 'admin', 'member', 'guest']);
+export const teamRoleEnum = pgEnum('team_role', ['admin', 'member', 'guest']);
 export const roomStatusEnum = pgEnum('room_status', ['active', 'closed']);
 export const deckTypeEnum = pgEnum('deck_type', ['fibonacci', 'scale_0_5']);
 export const roundStatusEnum = pgEnum('round_status', ['voting', 'revealed']);
@@ -57,13 +57,7 @@ export const teamMembers = pgTable(
     role: teamRoleEnum('role').notNull().default('member'),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [
-    primaryKey({ columns: [t.teamId, t.userId] }),
-    // Владелец у команды ровно один: страховка на случай гонок при передаче владения
-    uniqueIndex('team_members_single_owner_idx')
-      .on(t.teamId)
-      .where(sql`role = 'owner'`),
-  ],
+  (t) => [primaryKey({ columns: [t.teamId, t.userId] })],
 );
 
 /**

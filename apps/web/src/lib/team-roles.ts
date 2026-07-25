@@ -1,8 +1,7 @@
 import type { TeamRole } from '@poker/shared';
 
-/** Цвет бейджа роли: владельца и админа выделяем, у рядовых ролей — нейтральный. */
-export function roleBadgeColor(role: TeamRole): 'primary' | 'info' | 'neutral' {
-  if (role === 'owner') return 'primary';
-  if (role === 'admin') return 'info';
+/** Цвет бейджа роли: админа выделяем, у рядовых ролей — нейтральный. */
+export function roleBadgeColor(role: TeamRole): 'primary' | 'neutral' {
+  if (role === 'admin') return 'primary';
   return 'neutral';
 }

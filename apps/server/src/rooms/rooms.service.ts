@@ -86,13 +86,13 @@ export class RoomsService {
     const teamId = input.teamId ?? null;
 
     if (teamId) {
-      // Комнату от лица команды заводят администратор и владелец
+      // Комнату от лица команды заводит администратор
       const membership = await this.teams.findMembership(teamId, actorId);
       if (!membership) {
         throw new NotFoundError('Команда не найдена');
       }
       if (!hasTeamRole(membership.role, 'admin')) {
-        throw new ForbiddenError('Создавать комнаты команды могут владелец и администратор');
+        throw new ForbiddenError('Создавать комнаты команды может администратор');
       }
     }
 
@@ -113,9 +113,9 @@ export class RoomsService {
     if (!membership) {
       throw new NotFoundError('Команда не найдена');
     }
-    // Архив команды видят только владелец и администратор — обычный список открыт всем участникам
+    // Архив команды видит только администратор — обычный список открыт всем участникам
     if (archived && !hasTeamRole(membership.role, 'admin')) {
-      throw new ForbiddenError('Архив комнат команды видят только владелец и администратор');
+      throw new ForbiddenError('Архив комнат команды видит только администратор');
     }
     return this.repository.listRoomsByTeam(teamId, archived);
   }
@@ -173,7 +173,7 @@ export class RoomsService {
 
   /**
    * Роль в комнате: создатель — скрам-мастер, а для командных комнат
-   * им же считаются владелец и администратор команды.
+   * им же считается администратор команды.
    */
   async resolveRole(
     room: Room,

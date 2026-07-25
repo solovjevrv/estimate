@@ -10,7 +10,7 @@ export interface TeamOverview {
   team: Team;
   role: TeamRole;
   members: TeamMember[];
-  /** Код приходит только админу и владельцу; остальным — null */
+  /** Код приходит только администратору; остальным — null */
   inviteCode: string | null;
 }
 
@@ -74,10 +74,8 @@ export const useTeamsStore = defineStore('teams', () => {
   }
 
   /**
-   * Сменить роль участника (только владелец). Назначение `owner` — передача
-   * владения: сервер понижает прежнего владельца до администратора и возвращает
-   * новую роль текущего пользователя в `actorRole`. Владелец в команде один,
-   * поэтому при передаче локально понижаем и прежнего владельца.
+   * Сменить роль участника (только администратор). `actorRole` в ответе
+   * меняется только когда админ меняет роль сам себе.
    */
   async function changeMemberRole(
     teamId: string,
@@ -91,18 +89,15 @@ export const useTeamsStore = defineStore('teams', () => {
 
     const cur = current.value;
     if (cur && cur.team.id === teamId) {
-      const becameOwner = res.member.role === 'owner';
-      cur.members = cur.members.map((m) => {
-        if (m.userId === res.member.userId) return { ...m, role: res.member.role };
-        if (becameOwner && m.role === 'owner') return { ...m, role: 'admin' as TeamRole };
-        return m;
-      });
+      cur.members = cur.members.map((m) =>
+        m.userId === res.member.userId ? { ...m, role: res.member.role } : m,
+      );
       cur.role = res.actorRole;
     }
     return res;
   }
 
-  /** Исключить участника (владелец) или выйти самому (любой участник). */
+  /** Исключить участника (администратор) или выйти самому (любой участник). */
   async function removeMember(teamId: string, userId: string): Promise<void> {
     await api.delete(
       `/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
@@ -113,7 +108,7 @@ export const useTeamsStore = defineStore('teams', () => {
     }
   }
 
-  /** Переименовать команду (только владелец). */
+  /** Переименовать команду (только администратор). */
   async function rename(teamId: string, name: string): Promise<Team> {
     const res = await api.patch<{ team: Team }>(`/api/teams/${encodeURIComponent(teamId)}`, {
       name,
@@ -124,7 +119,7 @@ export const useTeamsStore = defineStore('teams', () => {
     return res.team;
   }
 
-  /** Удалить команду (только владелец). Комнаты команды на бэкенде сохраняются. */
+  /** Удалить команду (только администратор). Комнаты команды на бэкенде сохраняются. */
   async function remove(teamId: string): Promise<void> {
     await api.delete(`/api/teams/${encodeURIComponent(teamId)}`);
     list.value = list.value.filter((t) => t.id !== teamId);
