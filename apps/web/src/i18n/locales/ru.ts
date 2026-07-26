@@ -229,5 +229,15 @@ export default {
   },
   profile: {
     notLoaded: 'Профиль ещё не загружен.',
+    nameLabel: 'Имя',
+    nameRequired: 'Введите имя',
+    nameTooLong: 'Слишком длинное имя (максимум {max})',
+    jobTitleLabel: 'Должность',
+    jobTitlePlaceholder: 'Например, Фронтенд-разработчик',
+    jobTitleTooLong: 'Слишком длинная должность (максимум {max})',
+    save: 'Сохранить',
+    saving: 'Сохраняем…',
+    saved: 'Профиль обновлён',
+    saveError: 'Не удалось сохранить профиль. Попробуйте ещё раз.',
   },
 };

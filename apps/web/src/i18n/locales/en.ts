@@ -228,5 +228,15 @@ export default {
   },
   profile: {
     notLoaded: 'The profile hasn’t loaded yet.',
+    nameLabel: 'Name',
+    nameRequired: 'Enter a name',
+    nameTooLong: 'Name is too long (maximum {max})',
+    jobTitleLabel: 'Job title',
+    jobTitlePlaceholder: 'For example, Frontend developer',
+    jobTitleTooLong: 'Job title is too long (maximum {max})',
+    save: 'Save',
+    saving: 'Saving…',
+    saved: 'Profile updated',
+    saveError: 'Could not save the profile. Please try again.',
   },
 };

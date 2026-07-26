@@ -9,6 +9,7 @@ const user: AuthUser = {
   provider: 'google',
   email: 'user@example.com',
   name: 'Иван',
+  jobTitle: null,
   avatarUrl: null,
 };
 
@@ -86,6 +87,35 @@ describe('стор сессии', () => {
     await expect(session.logout()).rejects.toThrow();
 
     expect(session.user).toBeNull();
+  });
+
+  it('обновляет имя и должность и сохраняет ответ сервера в сторе', async () => {
+    const session = useSessionStore();
+    session.setUser(user);
+    const updated: AuthUser = { ...user, name: 'Новое Имя', jobTitle: 'Аналитик' };
+    fetchMock.mockResolvedValue(jsonResponse(200, { user: updated }));
+
+    const result = await session.updateProfile({ name: 'Новое Имя', jobTitle: 'Аналитик' });
+
+    expect(result).toEqual(updated);
+    expect(session.user).toEqual(updated);
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/me',
+      expect.objectContaining({
+        method: 'PATCH',
+        body: JSON.stringify({ name: 'Новое Имя', jobTitle: 'Аналитик' }),
+      }),
+    );
+  });
+
+  it('отказ сервера при обновлении профиля не подменяет уже загруженного пользователя', async () => {
+    const session = useSessionStore();
+    session.setUser(user);
+    fetchMock.mockResolvedValue(jsonResponse(400, { error: 'bad_request', message: 'Имя пустое' }));
+
+    await expect(session.updateProfile({ name: '', jobTitle: '' })).rejects.toThrow();
+
+    expect(session.user).toEqual(user);
   });
 
   it('спрашивает у сервера включённые способы входа', async () => {

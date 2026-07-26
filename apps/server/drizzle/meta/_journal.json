@@ -50,6 +50,13 @@
       "when": 1784997290151,
       "tag": "0006_giant_pestilence",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785087605854,
+      "tag": "0007_chemical_marrow",
+      "breakpoints": true
     }
   ]
 }

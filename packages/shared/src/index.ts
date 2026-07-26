@@ -32,8 +32,13 @@ export interface AuthUser {
   provider: AuthProvider;
   email: string;
   name: string;
+  jobTitle: string | null;
   avatarUrl: string | null;
 }
+
+/** Ограничения полей профиля, редактируемых пользователем (задача 9.2) */
+export const USER_NAME_MAX_LENGTH = 60;
+export const USER_JOB_TITLE_MAX_LENGTH = 100;
 
 /** Роли участника внутри команды. Администраторов может быть несколько — все равны в правах. */
 export type TeamRole = 'admin' | 'member' | 'guest';

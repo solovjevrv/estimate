@@ -177,7 +177,9 @@ export class RoomsRepository {
         userId: schema.votes.userId,
         guestSessionId: schema.votes.guestSessionId,
         guestName: schema.votes.guestName,
-        userName: schema.users.name,
+        // Провайдер перезаписывает users.name при каждом входе — правка пользователя
+        // (9.2) живёт в display_name, поэтому наружу отдаём именно её при наличии
+        userName: sql<string | null>`coalesce(${schema.users.displayName}, ${schema.users.name})`,
         value: schema.votes.value,
         createdAt: schema.votes.createdAt,
       })

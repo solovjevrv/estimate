@@ -8,7 +8,7 @@ import fp from 'fastify-plugin';
 import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
 
-import { AuthController } from './auth.controller';
+import { AuthController, type ProfileBody } from './auth.controller';
 import { AuthService } from './auth.service';
 import { Authenticator } from './authenticator';
 import { OAUTH_PROVIDERS } from './providers';
@@ -46,7 +46,17 @@ const userResponse = {
     provider: { type: 'string' },
     email: { type: 'string' },
     name: { type: 'string' },
+    jobTitle: { type: ['string', 'null'] },
     avatarUrl: { type: ['string', 'null'] },
+  },
+} as const;
+
+const profileBody = {
+  type: 'object',
+  required: ['name'],
+  properties: {
+    name: { type: 'string' },
+    jobTitle: { type: 'string' },
   },
 } as const;
 
@@ -109,6 +119,32 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
       },
     },
     controller.me,
+  );
+
+  app.patch<{ Body: ProfileBody }>(
+    '/api/me',
+    {
+      preHandler: authenticator.handle,
+      schema: {
+        tags: [DOCS_TAGS.auth],
+        summary: 'Изменить имя и должность в профиле',
+        security: [{ session: [] }],
+        body: profileBody,
+        response: {
+          200: {
+            description: 'Профиль обновлён',
+            type: 'object',
+            properties: { user: userResponse },
+          },
+          400: {
+            description: 'Имя пустое/слишком длинное или должность слишком длинная',
+            ...errorResponse,
+          },
+          401: { description: 'Требуется вход', ...errorResponse },
+        },
+      },
+    },
+    controller.updateProfile,
   );
 
   app.post(
