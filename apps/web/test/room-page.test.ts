@@ -382,6 +382,8 @@ describe('стол участников', () => {
     expect(wrapper.text()).toContain('Гость');
     expect(wrapper.text()).not.toContain('Проголосовал');
     expect(wrapper.text()).not.toContain('Ожидаем');
+    // Ссылкам нечего редактировать — раунда ещё нет
+    expect(wrapper.text()).not.toContain('Ссылки на задачу');
   });
 
   it('с активным раундом показывает статус голосования каждого', async () => {
@@ -980,6 +982,227 @@ describe('архивация комнаты', () => {
     // Читаемо, но действия за столом больше не предлагаются
     expect(wrapper.text()).not.toContain('Ваша оценка');
     expect(wrapper.text()).not.toContain('Архивировать комнату');
+  });
+});
+
+function findLinkInput(wrapper: ReturnType<typeof mount>, hint: string) {
+  return wrapper
+    .findAll('input')
+    .find((el) => el.attributes('placeholder')?.toLowerCase().includes(hint));
+}
+
+describe('правка ссылок Jira/Confluence', () => {
+  it('показывает текущие ссылки раунда и сохраняет новые', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ jiraUrl: 'https://jira.example.com/OLD-1' }),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
+
+    const jiraInput = findLinkInput(wrapper, 'jira');
+    expect((jiraInput!.element as HTMLInputElement).value).toBe('https://jira.example.com/OLD-1');
+
+    const confluenceInput = findLinkInput(wrapper, 'confluence');
+    await confluenceInput!.setValue('https://confluence.example.com/NEW');
+
+    socket.next = null;
+    await wrapper.find('form').trigger('submit');
+
+    await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'update_links')).toBe(true));
+    const sent = socket.sent.find((s) => s.event === 'update_links');
+    expect(sent?.payload).toMatchObject({
+      jiraUrl: 'https://jira.example.com/OLD-1',
+      confluenceUrl: 'https://confluence.example.com/NEW',
+      roundId: 'rnd1',
+      version: 1,
+    });
+  });
+
+  it('не отправляет ссылку неверного формата', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
+
+    const jiraInput = findLinkInput(wrapper, 'jira');
+    await jiraInput!.setValue('ftp://not-a-link');
+    await wrapper.find('form').trigger('submit');
+
+    await vi.waitFor(() =>
+      expect(wrapper.text()).toContain('Ссылка должна начинаться с http:// или https://'),
+    );
+    expect(socket.sent.some((s) => s.event === 'update_links')).toBe(false);
+  });
+
+  it('при ошибке сохранения показывает уведомление', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
+
+    socket.nextError = { error: 'conflict', message: 'Ссылки уже изменил другой участник' };
+    const jiraInput = findLinkInput(wrapper, 'jira');
+    await jiraInput!.setValue('https://jira.example.com/X');
+    await wrapper.find('form').trigger('submit');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось сохранить ссылки'));
+    // Черновик не теряется при отказе — можно поправить и попробовать снова
+    expect((findLinkInput(wrapper, 'jira')!.element as HTMLInputElement).value).toBe(
+      'https://jira.example.com/X',
+    );
+  });
+
+  it('обновляет поля по рассылке, пока нет несохранённого черновика', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ jiraUrl: null, confluenceUrl: null }),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
+
+    // Другой участник сохранил ссылку — рассылка приходит без нашего участия
+    socket.emitLocal(
+      WS_SERVER_EVENTS.ROOM_STATE,
+      roomState({
+        room: { ...room1, revision: room1.revision + 1 },
+        round: round({ jiraUrl: 'https://jira.example.com/SYNCED', linksVersion: 2 }),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+    );
+
+    await vi.waitFor(() => {
+      const jiraInput = findLinkInput(wrapper, 'jira');
+      expect((jiraInput!.element as HTMLInputElement).value).toBe(
+        'https://jira.example.com/SYNCED',
+      );
+    });
+  });
+
+  it('не перетирает несохранённый черновик рассылкой от другого участника и шлёт версию черновика, а не свежую', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ jiraUrl: null, confluenceUrl: null, linksVersion: 1 }),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
+
+    const jiraInput = findLinkInput(wrapper, 'jira');
+    await jiraInput!.setValue('https://jira.example.com/DRAFT');
+
+    // Кто-то другой успел сохранить свои правки, пока мы печатали — версия в сторе уехала вперёд
+    socket.emitLocal(
+      WS_SERVER_EVENTS.ROOM_STATE,
+      roomState({
+        room: { ...room1, revision: room1.revision + 1 },
+        round: round({ jiraUrl: 'https://jira.example.com/OTHER', linksVersion: 2 }),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // Черновик на экране не тронут чужой рассылкой
+    const jiraInputAfter = findLinkInput(wrapper, 'jira');
+    expect((jiraInputAfter!.element as HTMLInputElement).value).toBe(
+      'https://jira.example.com/DRAFT',
+    );
+
+    // Наше сохранение бьёт версией, на которой основан черновик (1), а не свежей из стора (2) —
+    // иначе проверка версии на сервере молча пропустила бы перезапись чужой правки
+    socket.nextError = { error: 'conflict', message: 'Ссылки уже изменил другой участник' };
+    await wrapper.find('form').trigger('submit');
+
+    await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'update_links')).toBe(true));
+    const sent = socket.sent.find((s) => s.event === 'update_links');
+    expect(sent?.payload).toMatchObject({ version: 1 });
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось сохранить ссылки'));
+  });
+
+  it('новый раунд сбрасывает черновик прежнего раунда', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ status: 'revealed', jiraUrl: 'https://jira.example.com/OLD' }),
+        result: roundResult(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Результаты раунда'));
+
+    const jiraInput = findLinkInput(wrapper, 'jira');
+    await jiraInput!.setValue('https://jira.example.com/UNSAVED-DRAFT');
+
+    const nextRound = round({ id: 'rnd2', seq: 2, jiraUrl: null, confluenceUrl: null });
+    socket.next = nextRound;
+    const startButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Новый раунд');
+    await startButton!.trigger('click');
+
+    socket.emitLocal(
+      WS_SERVER_EVENTS.ROOM_STATE,
+      roomState({
+        room: { ...room1, revision: room1.revision + 1 },
+        round: nextRound,
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+    );
+
+    await vi.waitFor(() => {
+      const input = findLinkInput(wrapper, 'jira');
+      expect((input!.element as HTMLInputElement).value).toBe('');
+    });
   });
 });
 

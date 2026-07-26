@@ -349,6 +349,22 @@ describe('стор комнаты', () => {
       ).rejects.toMatchObject({ code: 'conflict', message: 'Ссылки уже изменили' });
     });
 
+    it('явно переданная версия перекрывает версию из уже обновившегося раунда', async () => {
+      const store = useRoomStore();
+      store.applyState(state(2, { round: round({ linksVersion: 4 }) }));
+      // Пока где-то держали черновик на версии 4, кто-то другой уже сохранил правки —
+      // версия в сторе уехала вперёд раньше, чем черновик отправили на сохранение
+      store.applyState(state(3, { round: round({ linksVersion: 5 }) }));
+      socket.next = null;
+
+      await store.updateLinks({ jiraUrl: 'https://jira.example/PP-1', version: 4 });
+
+      expect(socket.sent[0]).toEqual({
+        event: WS_EVENTS.UPDATE_LINKS,
+        payload: { jiraUrl: 'https://jira.example/PP-1', roundId: 'r1', version: 4 },
+      });
+    });
+
     it('не даёт действовать без подключения к комнате', async () => {
       const store = useRoomStore();
       store.leave();

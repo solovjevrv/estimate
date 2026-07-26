@@ -193,15 +193,28 @@ export const useRoomStore = defineStore('room', () => {
     );
   }
 
+  /**
+   * Версию по умолчанию берём из живого раунда, но вызывающий код может прислать
+   * снимок версии, на котором основан его черновик: пока черновик редактировался,
+   * рассылка могла уже подвинуть версию в сторе вперёд, и живая версия перестаёт
+   * отличать «никто не менял» от «кто-то уже сохранил, пока мы печатали» — тогда
+   * проверка версии на сервере молча перестаёт защищать от гонки.
+   */
   async function updateLinks(links: {
     jiraUrl?: string | null;
     confluenceUrl?: string | null;
+    version?: number | null;
   }): Promise<void> {
+    const { version, ...fields } = links;
     const current = round.value;
     await emitWithAck<typeof WS_EVENTS.UPDATE_LINKS, null>(
       requireSocket(),
       WS_EVENTS.UPDATE_LINKS,
-      { ...links, roundId: current?.id ?? null, version: current?.linksVersion ?? null },
+      {
+        ...fields,
+        roundId: current?.id ?? null,
+        version: version !== undefined ? version : (current?.linksVersion ?? null),
+      },
     );
   }
 
