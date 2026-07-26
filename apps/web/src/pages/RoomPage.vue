@@ -147,6 +147,60 @@ function onRevealClick(): void {
   }
 }
 
+const linksForm = reactive({ jiraUrl: '', confluenceUrl: '' });
+/** Есть несохранённая правка — рассылка с сервера не должна её затереть */
+const linksDirty = ref(false);
+/**
+ * Версия, на которой основан черновик. Пока он не сохранён, рассылки могут
+ * подвинуть версию в сторе вперёд — если бы сохранение брало версию оттуда,
+ * а не отсюда, оно бы прошло поверх чужой правки, не заметив её.
+ */
+const linksBaseVersion = ref<number | null>(null);
+const savingLinks = ref(false);
+
+watch(
+  () => room.round,
+  (round, previous) => {
+    if (round?.id !== previous?.id) {
+      linksDirty.value = false;
+    }
+    if (!round || linksDirty.value) return;
+    linksForm.jiraUrl = round.jiraUrl ?? '';
+    linksForm.confluenceUrl = round.confluenceUrl ?? '';
+    linksBaseVersion.value = round.linksVersion;
+  },
+  { immediate: true },
+);
+
+function validateLinks(state: { jiraUrl: string; confluenceUrl: string }): FormError[] {
+  const errors: FormError[] = [];
+  if (state.jiraUrl.trim() && !/^https?:\/\//i.test(state.jiraUrl.trim())) {
+    errors.push({ name: 'jiraUrl', message: t('room.linksInvalid') });
+  }
+  if (state.confluenceUrl.trim() && !/^https?:\/\//i.test(state.confluenceUrl.trim())) {
+    errors.push({ name: 'confluenceUrl', message: t('room.linksInvalid') });
+  }
+  return errors;
+}
+
+async function onSaveLinks(
+  event: FormSubmitEvent<{ jiraUrl: string; confluenceUrl: string }>,
+): Promise<void> {
+  savingLinks.value = true;
+  try {
+    await room.updateLinks({
+      jiraUrl: event.data.jiraUrl.trim(),
+      confluenceUrl: event.data.confluenceUrl.trim(),
+      version: linksBaseVersion.value,
+    });
+    linksDirty.value = false;
+  } catch {
+    toast.add({ title: t('room.linksError'), color: 'error' });
+  } finally {
+    savingLinks.value = false;
+  }
+}
+
 type Phase = 'loading' | 'notFound' | 'loadError' | 'naming' | 'joining' | 'joined' | 'joinError';
 
 const phase = ref<Phase>('loading');
@@ -441,7 +495,37 @@ function retry(): void {
           </div>
         </UCard>
 
-        <!-- Правка ссылок Jira/Confluence — 5.6 -->
+        <UCard v-if="room.round && !isArchived">
+          <template #header>
+            <h2 class="font-medium">{{ t('room.linksTitle') }}</h2>
+          </template>
+          <UForm
+            :state="linksForm"
+            :validate="validateLinks"
+            class="space-y-4"
+            @submit="onSaveLinks"
+          >
+            <UFormField :label="t('room.linksJira')" name="jiraUrl">
+              <UInput
+                v-model="linksForm.jiraUrl"
+                :placeholder="t('room.linksJiraPlaceholder')"
+                class="w-full"
+                @update:model-value="linksDirty = true"
+              />
+            </UFormField>
+            <UFormField :label="t('room.linksConfluence')" name="confluenceUrl">
+              <UInput
+                v-model="linksForm.confluenceUrl"
+                :placeholder="t('room.linksConfluencePlaceholder')"
+                class="w-full"
+                @update:model-value="linksDirty = true"
+              />
+            </UFormField>
+            <UButton type="submit" :loading="savingLinks">
+              {{ savingLinks ? t('room.linksSaving') : t('room.linksSave') }}
+            </UButton>
+          </UForm>
+        </UCard>
 
         <UCard v-if="room.isScrumMaster && !isArchived">
           <template #header>
