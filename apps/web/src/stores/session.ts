@@ -55,6 +55,13 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
+  /** Правка имени/должности со страницы профиля — оба поля одним запросом */
+  async function updateProfile(fields: { name: string; jobTitle: string }): Promise<AuthUser> {
+    const res = await api.patch<{ user: AuthUser }>('/api/me', fields);
+    user.value = res.user;
+    return res.user;
+  }
+
   async function logout(): Promise<void> {
     try {
       await api.post('/api/auth/logout');
@@ -77,6 +84,7 @@ export const useSessionStore = defineStore('session', () => {
     isAuthenticated,
     ensureLoaded,
     loadProviders,
+    updateProfile,
     logout,
     setUser,
   };

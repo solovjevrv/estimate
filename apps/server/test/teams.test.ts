@@ -234,6 +234,26 @@ describeDb('API команд', () => {
       expect(members.every((entry) => typeof entry.email === 'string')).toBe(true);
     });
 
+    it('в составе команды показывается имя, изменённое в профиле (9.2), а не имя от провайдера', async () => {
+      const admin = await newUser('display-name-admin');
+      const member = await newUser('display-name-member');
+      const teamId = await newTeam(admin, [[member, 'member']]);
+      await new UsersRepository(db).updateProfile(member.id, {
+        name: 'Псевдоним из профиля',
+        jobTitle: null,
+      });
+
+      const view = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${teamId}/members`,
+        headers: as(admin),
+      });
+
+      const members = (view.json() as { members: Array<{ userId: string; name: string }> }).members;
+      const changed = members.find((entry) => entry.userId === member.id);
+      expect(changed?.name).toBe('Псевдоним из профиля');
+    });
+
     it('посторонний получает 404, а не 403 — существование команды не раскрывается', async () => {
       const admin = await newUser('secret-admin');
       const stranger = await newUser('stranger');

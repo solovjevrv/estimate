@@ -21,6 +21,7 @@ const user: AuthUser = {
   provider: 'google',
   email: 'ivan@example.com',
   name: 'Иван',
+  jobTitle: null,
   avatarUrl: null,
 };
 

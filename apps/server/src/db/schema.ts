@@ -31,7 +31,12 @@ export const users = pgTable(
     provider: authProviderEnum('provider').notNull(),
     providerId: text('provider_id').notNull(),
     email: text('email').notNull(),
+    /** Имя от провайдера — перезаписывается при каждом входе, поэтому правка живёт в display_name */
     name: text('name').notNull(),
+    /** Пользовательское переопределение имени; NULL — показываем name от провайдера */
+    displayName: text('display_name'),
+    /** Должность, вводится свободным текстом — провайдер её не даёт */
+    jobTitle: text('job_title'),
     avatarUrl: text('avatar_url'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },

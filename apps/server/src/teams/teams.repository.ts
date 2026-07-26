@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
 import type { Team, TeamMember, TeamRole } from '@poker/shared';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, sql } from 'drizzle-orm';
 
 import type { Db } from '../db';
 import { schema } from '../db';
@@ -107,7 +107,9 @@ export class TeamsRepository {
     const rows = await this.db
       .select({
         userId: schema.users.id,
-        name: schema.users.name,
+        // Провайдер перезаписывает users.name при каждом входе — правка пользователя
+        // (9.2) живёт в display_name, поэтому наружу отдаём именно её при наличии
+        name: sql<string>`coalesce(${schema.users.displayName}, ${schema.users.name})`,
         email: schema.users.email,
         avatarUrl: schema.users.avatarUrl,
         role: schema.teamMembers.role,

@@ -9,6 +9,11 @@ import type { AuthService, Session } from './auth.service';
 import type { OAuthProvider } from './providers';
 import { REFRESH_COOKIE, type TokenService } from './token.service';
 
+export interface ProfileBody {
+  name: string;
+  jobTitle?: string;
+}
+
 /** Тонкий слой между HTTP и сценариями входа */
 export class AuthController {
   constructor(
@@ -27,6 +32,12 @@ export class AuthController {
       user: await this.withSessionReset(reply, () => this.service.currentUser(req.user.sub)),
     };
   };
+
+  readonly updateProfile = async (
+    req: FastifyRequest<{ Body: ProfileBody }>,
+  ): Promise<unknown> => ({
+    user: await this.service.updateProfile(req.user.sub, req.body),
+  });
 
   readonly refresh = async (req: FastifyRequest, reply: FastifyReply): Promise<unknown> => {
     const session = await this.withSessionReset(reply, () =>

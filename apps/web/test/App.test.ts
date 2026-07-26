@@ -238,6 +238,91 @@ describe('страница профиля', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('ivan@example.com'));
     expect(wrapper.text()).toContain('Google');
   });
+
+  it('позволяет отредактировать имя и должность', async () => {
+    let currentUser = {
+      id: 'u1',
+      provider: 'google',
+      email: 'ivan@example.com',
+      name: 'Иван',
+      jobTitle: null as string | null,
+      avatarUrl: null,
+    };
+    const fetchImpl = vi.fn((path: string, init?: RequestInit) => {
+      const method = (init?.method ?? 'GET').toUpperCase();
+      if (path === '/api/me' && method === 'PATCH') {
+        const body = JSON.parse(init?.body as string) as { name: string; jobTitle: string };
+        currentUser = { ...currentUser, name: body.name, jobTitle: body.jobTitle || null };
+        return Promise.resolve(jsonResponse(200, { user: currentUser }));
+      }
+      if (path === '/api/me') {
+        return Promise.resolve(jsonResponse(200, { user: currentUser }));
+      }
+      return Promise.resolve(jsonResponse(404, { error: 'not_found', message: 'нет' }));
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+
+    const pinia = createPinia();
+    const router = createAppRouter(createMemoryHistory());
+    const wrapper = mount(App, {
+      global: { plugins: [pinia, router, createAppI18n('ru'), ui] },
+      attachTo: document.body,
+    });
+    await router.push('/profile');
+    await router.isReady();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('ivan@example.com'));
+
+    const inputs = wrapper.findAll('input');
+    await inputs[0]!.setValue('Новое Имя');
+    await inputs[1]!.setValue('Фронтенд-разработчик');
+    await wrapper.find('form').trigger('submit');
+
+    await vi.waitFor(() =>
+      expect(fetchImpl).toHaveBeenCalledWith(
+        '/api/me',
+        expect.objectContaining({ method: 'PATCH' }),
+      ),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Профиль обновлён'));
+  });
+
+  it('не даёт сохранить пустое имя', async () => {
+    const fetchImpl = vi.fn<(path: string, init?: RequestInit) => Promise<Response>>((path) => {
+      if (path === '/api/me') {
+        return Promise.resolve(
+          jsonResponse(200, {
+            user: {
+              id: 'u1',
+              provider: 'google',
+              email: 'ivan@example.com',
+              name: 'Иван',
+              jobTitle: null,
+              avatarUrl: null,
+            },
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse(404, { error: 'not_found', message: 'нет' }));
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+
+    const pinia = createPinia();
+    const router = createAppRouter(createMemoryHistory());
+    const wrapper = mount(App, {
+      global: { plugins: [pinia, router, createAppI18n('ru'), ui] },
+      attachTo: document.body,
+    });
+    await router.push('/profile');
+    await router.isReady();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('ivan@example.com'));
+
+    const nameInput = wrapper.findAll('input')[0]!;
+    await nameInput.setValue('   ');
+    await wrapper.find('form').trigger('submit');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Введите имя'));
+    expect(fetchImpl.mock.calls.some((call) => call[1]?.method === 'PATCH')).toBe(false);
+  });
 });
 
 describe('меню пользователя: тема и язык', () => {

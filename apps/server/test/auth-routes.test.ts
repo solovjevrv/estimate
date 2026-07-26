@@ -174,6 +174,122 @@ describeDb('аутентификация', () => {
     });
   });
 
+  describe('PATCH /api/me', () => {
+    it('без куки отвечает 401', async () => {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/me',
+        payload: { name: 'Кто-то' },
+      });
+
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('меняет имя и должность', async () => {
+      const user = await createUser({ providerId: `patch-${suffix}` });
+      const { access } = issue(app, user.id);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/me',
+        headers: { cookie: cookieHeader(ACCESS_COOKIE, access) },
+        payload: { name: 'Новое Имя', jobTitle: 'Фронтенд-разработчик' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.json()).toMatchObject({
+        user: { id: user.id, name: 'Новое Имя', jobTitle: 'Фронтенд-разработчик' },
+      });
+    });
+
+    it('пустая должность сохраняется как «не заполнено», а не пустая строка', async () => {
+      const user = await createUser({ providerId: `patch-empty-job-${suffix}` });
+      const { access } = issue(app, user.id);
+      await app.inject({
+        method: 'PATCH',
+        url: '/api/me',
+        headers: { cookie: cookieHeader(ACCESS_COOKIE, access) },
+        payload: { name: 'Имя', jobTitle: 'Аналитик' },
+      });
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/me',
+        headers: { cookie: cookieHeader(ACCESS_COOKIE, access) },
+        payload: { name: 'Имя', jobTitle: '   ' },
+      });
+
+      expect(res.json()).toMatchObject({ user: { jobTitle: null } });
+    });
+
+    it('пустое имя отклоняется', async () => {
+      const user = await createUser({ providerId: `patch-empty-name-${suffix}` });
+      const { access } = issue(app, user.id);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/me',
+        headers: { cookie: cookieHeader(ACCESS_COOKIE, access) },
+        payload: { name: '   ' },
+      });
+
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('слишком длинное имя отклоняется', async () => {
+      const user = await createUser({ providerId: `patch-long-name-${suffix}` });
+      const { access } = issue(app, user.id);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/me',
+        headers: { cookie: cookieHeader(ACCESS_COOKIE, access) },
+        payload: { name: 'а'.repeat(61) },
+      });
+
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('слишком длинная должность отклоняется', async () => {
+      const user = await createUser({ providerId: `patch-long-job-${suffix}` });
+      const { access } = issue(app, user.id);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: '/api/me',
+        headers: { cookie: cookieHeader(ACCESS_COOKIE, access) },
+        payload: { name: 'Имя', jobTitle: 'а'.repeat(101) },
+      });
+
+      expect(res.statusCode).toBe(400);
+    });
+
+    it('правка имени переживает следующий вход через OAuth — провайдер не должен её затирать', async () => {
+      const providerId = `patch-survives-login-${suffix}`;
+      const user = await createUser({ providerId });
+      const { access } = issue(app, user.id);
+      await app.inject({
+        method: 'PATCH',
+        url: '/api/me',
+        headers: { cookie: cookieHeader(ACCESS_COOKIE, access) },
+        payload: { name: 'Моё Имя', jobTitle: 'Тестировщик' },
+      });
+
+      // Повторный вход тем же провайдером — как будто пользователь перезалогинился
+      const relogged = await new UsersRepository(db).upsertFromOAuth('google', {
+        providerId,
+        email: `user-${suffix}@example.com`,
+        name: 'Имя От Провайдера',
+        avatarUrl: 'https://example.com/new-avatar.png',
+      });
+
+      expect(relogged.id).toBe(user.id);
+      expect(relogged.name).toBe('Моё Имя');
+      expect(relogged.jobTitle).toBe('Тестировщик');
+      expect(relogged.avatarUrl).toBe('https://example.com/new-avatar.png');
+    });
+  });
+
   describe('POST /api/auth/refresh', () => {
     it('выдаёт новую пару токенов по refresh-куке', async () => {
       const user = await createUser({ providerId: `refresh-${suffix}` });

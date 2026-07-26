@@ -467,6 +467,26 @@ describeDb('комнаты', () => {
       expect(fresh.participants.some((participant) => participant.hasVoted)).toBe(false);
     });
 
+    it('после вскрытия карт голос подписан именем, изменённым в профиле (9.2), а не именем от провайдера', async () => {
+      const owner = await newUser('reveal-display-name-owner');
+      await new UsersRepository(db).updateProfile(owner.id, {
+        name: 'Скрам-мастер Псевдоним',
+        jobTitle: null,
+      });
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+
+      await joinRoom(master, roomId);
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+      await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 5 });
+
+      const ack = await emit<RoundResult>(master, WS_EVENTS.REVEAL_CARDS);
+
+      expect(ack.ok && ack.data?.votes).toMatchObject([
+        { name: 'Скрам-мастер Псевдоним', value: 5 },
+      ]);
+    });
+
     it('колода футболочных размеров: среднее не считается, но согласие есть', async () => {
       const owner = await newUser('tshirt-owner');
       const roomId = await newRoom(owner);

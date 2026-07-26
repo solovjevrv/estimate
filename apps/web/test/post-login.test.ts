@@ -68,6 +68,7 @@ describe('связка с настоящим гардом роутера', () =>
     provider: 'google',
     email: 'user@example.com',
     name: 'Иван',
+    jobTitle: null,
     avatarUrl: null,
   };
 
