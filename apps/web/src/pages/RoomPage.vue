@@ -11,6 +11,10 @@ import {
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import DeckBar from '../components/room/DeckBar.vue';
+import ParticipantCard from '../components/room/ParticipantCard.vue';
+import RoomTopBar from '../components/room/RoomTopBar.vue';
+import RoundResultPanel from '../components/room/RoundResultPanel.vue';
 import { ApiError, api } from '../lib/api';
 import { useRoomStore } from '../stores/room';
 import { useRoomsStore } from '../stores/rooms';
@@ -76,6 +80,59 @@ const roundPhase = computed<RoundPhase>(() => room.round?.status ?? 'none');
 const votedCount = computed(() => room.participants.filter((p) => p.hasVoted).length);
 const totalCount = computed(() => room.participants.length);
 const allVoted = computed(() => totalCount.value > 0 && votedCount.value === totalCount.value);
+
+const votesByParticipant = computed<Map<string, number>>(
+  () => new Map((room.result?.votes ?? []).map((v) => [v.participantId, v.value])),
+);
+
+/**
+ * Значение-мода среди оценок раунда — победитель для панели результатов и
+ * подсветки карточек. При ничьей чёткого победителя нет — никого не подсвечиваем.
+ */
+const winnerValue = computed<number | null>(() => {
+  const counts = new Map<number, number>();
+  for (const value of votesByParticipant.value.values()) {
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  let best: number | null = null;
+  let bestCount = 0;
+  let tie = false;
+  for (const [value, count] of counts) {
+    if (count > bestCount) {
+      best = value;
+      bestCount = count;
+      tie = false;
+    } else if (count === bestCount) {
+      tie = true;
+    }
+  }
+  return tie ? null : best;
+});
+const winnerLabel = computed(() =>
+  winnerValue.value === null ? null : cardLabel(winnerValue.value),
+);
+
+const resultVotes = computed(() =>
+  (room.result?.votes ?? []).map((v) => ({
+    participantId: v.participantId,
+    name: v.name,
+    valueLabel: cardLabel(v.value),
+  })),
+);
+
+function revealedValueLabel(participantId: string): string | null {
+  if (roundPhase.value !== 'revealed') return null;
+  const value = votesByParticipant.value.get(participantId);
+  return value === undefined ? null : cardLabel(value);
+}
+
+function isWinnerParticipant(participantId: string): boolean {
+  return (
+    roundPhase.value === 'revealed' &&
+    winnerValue.value !== null &&
+    votesByParticipant.value.get(participantId) === winnerValue.value
+  );
+}
 
 const deckCardTitle = computed(() => {
   if (roundPhase.value === 'voting') return t('room.cancelRoundTitle');
@@ -335,7 +392,7 @@ function retry(): void {
     </div>
 
     <template v-else-if="roomInfo">
-      <h1 class="text-2xl font-semibold">{{ roomInfo.name }}</h1>
+      <h1 v-if="phase !== 'joined'" class="text-2xl font-semibold">{{ roomInfo.name }}</h1>
 
       <UCard v-if="phase === 'naming'" class="max-w-sm">
         <template #header>
@@ -373,17 +430,15 @@ function retry(): void {
       </template>
 
       <template v-else-if="phase === 'joined'">
+        <RoomTopBar
+          :name="roomInfo.name"
+          :archived="isArchived"
+          :connected="room.connected"
+          :can-archive="room.isScrumMaster && !isArchived"
+          @archive="archiveOpen = true"
+        />
         <p class="text-muted text-sm">
           {{ t('room.joinedAs', { name: session.user?.name ?? joinedGuestName }) }}
-          <UBadge :color="room.isScrumMaster ? 'primary' : 'neutral'" variant="subtle" class="ml-2">
-            {{ room.isScrumMaster ? t('room.roleScrumMaster') : t('room.roleVoter') }}
-          </UBadge>
-          <UBadge :color="room.connected ? 'success' : 'error'" variant="subtle" class="ml-2">
-            {{ room.connected ? t('room.connected') : t('room.disconnected') }}
-          </UBadge>
-          <UBadge v-if="isArchived" color="warning" variant="subtle" class="ml-2">
-            {{ t('room.archived') }}
-          </UBadge>
         </p>
 
         <UAlert
@@ -393,119 +448,28 @@ function retry(): void {
           :description="t('room.archivedAlert')"
         />
 
-        <UCard>
-          <template #header>
-            <h2 class="font-medium">{{ t('room.participantsTitle') }}</h2>
-          </template>
-
-          <p v-if="!room.round" class="text-muted mb-3 text-sm">{{ t('room.noRoundYet') }}</p>
-
-          <ul class="divide-default divide-y">
-            <li
-              v-for="p in room.participants"
-              :key="p.participantId"
-              class="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
-            >
-              <UAvatar :src="p.avatarUrl ?? undefined" :alt="p.name" size="sm" />
-              <span class="min-w-0 flex-1 truncate">
-                {{ p.name }}
-                <span v-if="p.participantId === room.participantId" class="text-muted text-xs">
-                  {{ t('room.you') }}
-                </span>
-              </span>
-              <UBadge v-if="p.isGuest" color="neutral" variant="subtle">
-                {{ t('room.guestBadge') }}
-              </UBadge>
-              <UBadge :color="p.role === 'scrum_master' ? 'primary' : 'neutral'" variant="subtle">
-                {{ p.role === 'scrum_master' ? t('room.roleScrumMaster') : t('room.roleVoter') }}
-              </UBadge>
-              <UBadge
-                v-if="room.round"
-                :color="p.hasVoted ? 'success' : 'neutral'"
-                variant="subtle"
-              >
-                {{ p.hasVoted ? t('room.voted') : t('room.notVoted') }}
-              </UBadge>
-            </li>
-          </ul>
-        </UCard>
-
-        <UCard v-if="room.round && room.round.status === 'voting' && !isArchived">
-          <template #header>
-            <h2 class="font-medium">{{ t('room.votingTitle') }}</h2>
-          </template>
-          <p class="text-muted mb-3 text-sm">
-            {{ t('room.votedCount', { voted: votedCount, total: totalCount }) }}
-          </p>
-          <div class="flex flex-wrap gap-2">
-            <UButton
-              v-for="card in deckCards"
-              :key="card"
-              :color="myVote === card ? 'primary' : 'neutral'"
-              :variant="myVote === card ? 'solid' : 'outline'"
-              @click="onVote(card)"
-            >
-              {{ cardLabel(card) }}
-            </UButton>
+        <!-- Компактный тулбар запуска раунда и ссылок на задачу — вместо крупных карточек -->
+        <div v-if="room.isScrumMaster && !isArchived" class="border-default rounded-lg border p-3">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <span class="text-sm font-medium">{{ deckCardTitle }}</span>
+            <div class="flex flex-wrap items-center gap-3">
+              <URadioGroup v-model="selectedDeck" :items="deckOptions" orientation="horizontal" />
+              <UButton size="sm" :loading="starting" @click="onDeckActionClick">
+                {{ starting ? t('room.starting') : deckCardButtonLabel }}
+              </UButton>
+            </div>
           </div>
-          <UButton
-            v-if="room.isScrumMaster"
-            class="mt-4"
-            :loading="revealing"
-            @click="onRevealClick"
-          >
-            {{ revealing ? t('room.revealing') : t('room.reveal') }}
-          </UButton>
-        </UCard>
+        </div>
 
-        <UCard v-if="room.result">
-          <template #header>
-            <h2 class="font-medium">{{ t('room.resultTitle') }}</h2>
-          </template>
-          <p class="text-muted mb-3 text-sm">
-            <template v-if="room.result.average !== null">
-              {{ t('room.resultAverage', { average: room.result.average }) }} ·
-            </template>
-            {{ t('room.resultMin', { min: cardLabel(room.result.min) }) }} ·
-            {{ t('room.resultMax', { max: cardLabel(room.result.max) }) }} ·
-            {{ t('room.resultAgreement', { agreement: room.result.agreement }) }}
-          </p>
-          <ul class="divide-default divide-y">
-            <li
-              v-for="v in room.result.votes"
-              :key="v.participantId"
-              class="flex items-center justify-between py-2 first:pt-0 last:pb-0"
-            >
-              <span>{{ v.name }}</span>
-              <UBadge color="neutral" variant="subtle">{{ cardLabel(v.value) }}</UBadge>
-            </li>
-          </ul>
-        </UCard>
-
-        <!-- Новый раунд/отмена раунда переиспользуют один и тот же запуск раунда (5.5) -->
-        <UCard v-if="room.isScrumMaster && !isArchived">
-          <template #header>
-            <h2 class="font-medium">{{ deckCardTitle }}</h2>
-          </template>
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <URadioGroup v-model="selectedDeck" :items="deckOptions" orientation="horizontal" />
-            <UButton :loading="starting" @click="onDeckActionClick">
-              {{ starting ? t('room.starting') : deckCardButtonLabel }}
-            </UButton>
-          </div>
-        </UCard>
-
-        <UCard v-if="room.round && !isArchived">
-          <template #header>
-            <h2 class="font-medium">{{ t('room.linksTitle') }}</h2>
-          </template>
+        <div v-if="room.round && !isArchived" class="border-default rounded-lg border p-3">
+          <h2 class="text-muted mb-2 text-sm font-medium">{{ t('room.linksTitle') }}</h2>
           <UForm
             :state="linksForm"
             :validate="validateLinks"
-            class="space-y-4"
+            class="flex flex-col gap-3 sm:flex-row sm:items-start"
             @submit="onSaveLinks"
           >
-            <UFormField :label="t('room.linksJira')" name="jiraUrl">
+            <UFormField :label="t('room.linksJira')" name="jiraUrl" class="flex-1">
               <UInput
                 v-model="linksForm.jiraUrl"
                 :placeholder="t('room.linksJiraPlaceholder')"
@@ -513,7 +477,7 @@ function retry(): void {
                 @update:model-value="linksDirty = true"
               />
             </UFormField>
-            <UFormField :label="t('room.linksConfluence')" name="confluenceUrl">
+            <UFormField :label="t('room.linksConfluence')" name="confluenceUrl" class="flex-1">
               <UInput
                 v-model="linksForm.confluenceUrl"
                 :placeholder="t('room.linksConfluencePlaceholder')"
@@ -521,25 +485,56 @@ function retry(): void {
                 @update:model-value="linksDirty = true"
               />
             </UFormField>
-            <UButton type="submit" :loading="savingLinks">
+            <UButton type="submit" class="sm:mt-6" :loading="savingLinks">
               {{ savingLinks ? t('room.linksSaving') : t('room.linksSave') }}
             </UButton>
           </UForm>
+        </div>
+
+        <div v-if="room.result" class="border-default rounded-lg border p-4">
+          <RoundResultPanel
+            :average="room.result.average"
+            :min-label="cardLabel(room.result.min)"
+            :max-label="cardLabel(room.result.max)"
+            :agreement="room.result.agreement"
+            :winner-label="winnerLabel"
+            :votes="resultVotes"
+          />
+        </div>
+
+        <UCard>
+          <template #header>
+            <h2 class="font-medium">{{ t('room.participantsTitle') }}</h2>
+          </template>
+
+          <p v-if="!room.round" class="text-muted mb-3 text-sm">{{ t('room.noRoundYet') }}</p>
+
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <ParticipantCard
+              v-for="p in room.participants"
+              :key="p.participantId"
+              :participant="p"
+              :is-self="p.participantId === room.participantId"
+              :round-status="roundPhase"
+              :value-label="revealedValueLabel(p.participantId)"
+              :is-winner="isWinnerParticipant(p.participantId)"
+            />
+          </div>
         </UCard>
 
-        <UCard v-if="room.isScrumMaster && !isArchived">
-          <template #header>
-            <h2 class="font-medium">{{ t('room.settingsTitle') }}</h2>
-          </template>
-          <UButton
-            icon="i-lucide-archive"
-            color="error"
-            variant="subtle"
-            @click="archiveOpen = true"
-          >
-            {{ t('room.archive') }}
-          </UButton>
-        </UCard>
+        <DeckBar
+          v-if="room.round && room.round.status === 'voting' && !isArchived"
+          :title="t('room.votingTitle')"
+          :voted-count-text="t('room.votedCount', { voted: votedCount, total: totalCount })"
+          :cards="deckCards"
+          :card-label="cardLabel"
+          :selected-value="myVote"
+          :is-scrum-master="room.isScrumMaster"
+          :revealing="revealing"
+          :reveal-label="revealing ? t('room.revealing') : t('room.reveal')"
+          @vote="onVote"
+          @reveal="onRevealClick"
+        />
       </template>
     </template>
 

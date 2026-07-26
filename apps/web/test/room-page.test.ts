@@ -737,6 +737,123 @@ describe('вскрытие карт', () => {
     expect(wrapper.text()).toContain('Макс: M');
   });
 
+  it('подсвечивает карточки победителей (самое частое значение) и показывает его в результатах', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, hasVoted: true }),
+          participant({ participantId: 'g2', name: 'Пётр', isGuest: true, hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Вскрыть карты'));
+
+    const revealResult = roundResult({
+      average: 4.3,
+      min: 3,
+      max: 5,
+      agreement: 67,
+      votes: [
+        { participantId: 'u1', name: 'Иван', value: 5 },
+        { participantId: 'g1', name: 'Мария', value: 5 },
+        { participantId: 'g2', name: 'Пётр', value: 3 },
+      ],
+    });
+    socket.next = revealResult;
+    const revealButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Вскрыть карты');
+    await revealButton!.trigger('click');
+
+    socket.emitLocal(
+      WS_SERVER_EVENTS.ROOM_STATE,
+      roomState({
+        room: { ...room1, revision: room1.revision + 1 },
+        round: round({ status: 'revealed', average: 4.3 }),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true }),
+          participant({ participantId: 'g2', name: 'Пётр', isGuest: true }),
+        ],
+        result: revealResult,
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Победитель'));
+    const winnerValue = wrapper.findAll('span').find((s) => s.text().trim() === '5');
+    expect(winnerValue).toBeDefined();
+
+    const winnerCards = wrapper
+      .findAll('div')
+      .filter(
+        (d) =>
+          d.classes().includes('border-warning') &&
+          d.classes().includes('bg-warning/10') &&
+          !d.classes().includes('text-warning'),
+      );
+    expect(winnerCards).toHaveLength(2);
+    expect(winnerCards.some((c) => c.text().includes('Иван'))).toBe(true);
+    expect(winnerCards.some((c) => c.text().includes('Мария'))).toBe(true);
+    expect(winnerCards.some((c) => c.text().includes('Пётр'))).toBe(false);
+  });
+
+  it('при ничьей никого не подсвечивает победителем', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Вскрыть карты'));
+
+    socket.next = roundResult();
+    const revealButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Вскрыть карты');
+    await revealButton!.trigger('click');
+
+    socket.emitLocal(
+      WS_SERVER_EVENTS.ROOM_STATE,
+      roomState({
+        room: { ...room1, revision: room1.revision + 1 },
+        round: round({ status: 'revealed', average: 5 }),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true }),
+        ],
+        result: roundResult(),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Результаты раунда'));
+    expect(wrapper.text()).not.toContain('Победитель');
+    expect(
+      wrapper
+        .findAll('div')
+        .some(
+          (d) =>
+            d.classes().includes('border-warning') &&
+            d.classes().includes('bg-warning/10') &&
+            !d.classes().includes('text-warning'),
+        ),
+    ).toBe(false);
+  });
+
   it('при ошибке вскрытия показывает уведомление', async () => {
     socket.next = {
       state: roomState({
@@ -967,12 +1084,16 @@ describe('архивация комнаты', () => {
         'POST /api/rooms/r1/archive': archive,
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Архивировать комнату'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
 
-    const archiveButton = wrapper
-      .findAll('button')
-      .find((b) => b.text().trim() === 'Архивировать комнату');
-    await archiveButton!.trigger('click');
+    // Архивирование теперь спрятано в меню комнаты — оно телепортируется в document.body
+    const menuTrigger = document.body.querySelector('button[aria-label="Меню комнаты"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Архивировать комнату'));
+    const archiveItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Архивировать комнату',
+    );
+    (archiveItem as HTMLElement).click();
     await vi.waitFor(() => expect(document.body.textContent).toContain('Архивировать комнату?'));
 
     const confirmButton = Array.from(
@@ -985,6 +1106,37 @@ describe('архивация комнаты', () => {
     // Читаемо, но действия за столом больше не предлагаются
     expect(wrapper.text()).not.toContain('Ваша оценка');
     expect(wrapper.text()).not.toContain('Архивировать комнату');
+  });
+});
+
+describe('меню комнаты: копирование ссылки', () => {
+  it('пункт «Скопировать ссылку» копирует адрес комнаты в буфер обмена', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    socket.next = {
+      state: roomState({
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Планирование спринта'));
+
+    const menuTrigger = document.body.querySelector('button[aria-label="Меню комнаты"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Скопировать ссылку'));
+    const copyItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Скопировать ссылку',
+    );
+    (copyItem as HTMLElement).click();
+
+    await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith(window.location.href));
   });
 });
 
