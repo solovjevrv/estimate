@@ -10,6 +10,14 @@ export default {
     login: 'Sign in',
     logout: 'Sign out',
     language: 'Language',
+    profile: 'Profile',
+    userMenu: 'User menu',
+    themeLabel: 'Theme',
+    theme: {
+      system: 'System theme',
+      light: 'Light theme',
+      dark: 'Dark theme',
+    },
   },
   home: {
     lead: 'Gather the team, open a room and estimate tasks with cards.',
@@ -217,5 +225,8 @@ export default {
     title: 'Page not found',
     lead: 'The link is outdated or the address has a typo.',
     home: 'Go home',
+  },
+  profile: {
+    notLoaded: 'The profile hasn’t loaded yet.',
   },
 };

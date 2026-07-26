@@ -129,14 +129,21 @@ describe('выход из аккаунта', () => {
     });
     await router.push('/teams');
     await router.isReady();
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Выйти'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Иван'));
 
-    const logoutButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Выйти');
-    await logoutButton!.trigger('click');
+    // Меню пользователя телепортируется в document.body, поэтому и триггер,
+    // и пункт «Выйти» ищем через реальный DOM, а не дерево wrapper
+    const menuTrigger = document.body.querySelector('button[aria-label="Меню пользователя"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Выйти'));
+
+    const logoutItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Выйти',
+    );
+    (logoutItem as HTMLElement).click();
 
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
     expect(wrapper.text()).toContain('Войти');
-    expect(wrapper.text()).not.toContain('Выйти');
     expect(fetchImpl).toHaveBeenCalledWith(
       '/api/auth/logout',
       expect.objectContaining({ method: 'POST' }),
@@ -179,13 +186,114 @@ describe('выход из аккаунта', () => {
     });
     await router.push('/teams');
     await router.isReady();
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Выйти'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Иван'));
 
-    const logoutButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Выйти');
-    await logoutButton!.trigger('click');
+    const menuTrigger = document.body.querySelector('button[aria-label="Меню пользователя"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Выйти'));
+
+    const logoutItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Выйти',
+    );
+    (logoutItem as HTMLElement).click();
 
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
     expect(wrapper.text()).toContain('Войти');
+  });
+});
+
+describe('страница профиля', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('показывает имя, почту и провайдера входа', async () => {
+    const fetchImpl = vi.fn((path: string) => {
+      if (path === '/api/me') {
+        return Promise.resolve(
+          jsonResponse(200, {
+            user: {
+              id: 'u1',
+              provider: 'google',
+              email: 'ivan@example.com',
+              name: 'Иван',
+              avatarUrl: null,
+            },
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse(404, { error: 'not_found', message: 'нет' }));
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+
+    const pinia = createPinia();
+    const router = createAppRouter(createMemoryHistory());
+    const wrapper = mount(App, {
+      global: { plugins: [pinia, router, createAppI18n('ru'), ui] },
+      attachTo: document.body,
+    });
+    await router.push('/profile');
+    await router.isReady();
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('ivan@example.com'));
+    expect(wrapper.text()).toContain('Google');
+  });
+});
+
+describe('меню пользователя: тема и язык', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    localStorage.clear();
+    document.documentElement.classList.remove('dark');
+  });
+
+  it('пункт «Тёмная тема» в меню применяет тёмную тему и не закрывает меню', async () => {
+    const fetchImpl = vi.fn((path: string) => {
+      if (path === '/api/me') {
+        return Promise.resolve(
+          jsonResponse(200, {
+            user: {
+              id: 'u1',
+              provider: 'google',
+              email: 'ivan@example.com',
+              name: 'Иван',
+              avatarUrl: null,
+            },
+          }),
+        );
+      }
+      return Promise.resolve(jsonResponse(404, { error: 'not_found', message: 'нет' }));
+    });
+    vi.stubGlobal('fetch', fetchImpl);
+
+    const pinia = createPinia();
+    const router = createAppRouter(createMemoryHistory());
+    const wrapper = mount(App, {
+      global: { plugins: [pinia, router, createAppI18n('ru'), ui] },
+      attachTo: document.body,
+    });
+    await router.push('/');
+    await router.isReady();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Иван'));
+
+    const menuTrigger = document.body.querySelector('button[aria-label="Меню пользователя"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Тема'));
+
+    const themeSubmenuTrigger = Array.from(
+      document.body.querySelectorAll('[role="menuitem"]'),
+    ).find((el) => el.textContent?.trim() === 'Тема');
+    (themeSubmenuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Тёмная тема'));
+
+    const darkOption = Array.from(document.body.querySelectorAll('[role="menuitemcheckbox"]')).find(
+      (el) => el.textContent?.trim() === 'Тёмная тема',
+    );
+    (darkOption as HTMLElement).click();
+
+    await vi.waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(true));
+    // Меню осталось открытым — пункт всё ещё виден в DOM
+    expect(document.body.textContent).toContain('Тёмная тема');
   });
 });
 

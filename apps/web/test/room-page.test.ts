@@ -422,7 +422,9 @@ describe('стол участников', () => {
       '/rooms/r1',
       makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Иван'));
+    // Имя авторизованного участника теперь есть и в шапке — ждём именно вход
+    // в комнату (запись в столе участников), а не первое появление имени на странице
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунд ещё не начат'));
     expect(wrapper.text()).not.toContain('Мария');
 
     // Рассылка сервера о новом участнике — стол обновляется без действий пользователя
@@ -1226,8 +1228,14 @@ describe('выход из аккаунта на странице комнаты'
     await vi.waitFor(() => expect(wrapper.text()).toContain('Вы вошли как «Иван»'));
     expect(socket.connected).toBe(true);
 
-    const logoutButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Выйти');
-    await logoutButton!.trigger('click');
+    // Меню пользователя телепортируется в document.body — ищем через реальный DOM
+    const menuTrigger = document.body.querySelector('button[aria-label="Меню пользователя"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Выйти'));
+    const logoutItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Выйти',
+    );
+    (logoutItem as HTMLElement).click();
 
     // Переход на главную размонтирует RoomPage — onBeforeUnmount закрывает сокет
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
