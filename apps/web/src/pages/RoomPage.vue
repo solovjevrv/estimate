@@ -70,14 +70,46 @@ watch(
   },
 );
 
+type RoundPhase = 'none' | 'voting' | 'revealed';
+const roundPhase = computed<RoundPhase>(() => room.round?.status ?? 'none');
+
+const votedCount = computed(() => room.participants.filter((p) => p.hasVoted).length);
+const totalCount = computed(() => room.participants.length);
+const allVoted = computed(() => totalCount.value > 0 && votedCount.value === totalCount.value);
+
+const deckCardTitle = computed(() => {
+  if (roundPhase.value === 'voting') return t('room.cancelRoundTitle');
+  if (roundPhase.value === 'revealed') return t('room.newRoundTitle');
+  return t('room.startRoundTitle');
+});
+const deckCardButtonLabel = computed(() => {
+  if (roundPhase.value === 'voting') return t('room.cancelRound');
+  if (roundPhase.value === 'revealed') return t('room.newRound');
+  return t('room.startRound');
+});
+
+const cancelConfirmOpen = ref(false);
+const revealConfirmOpen = ref(false);
+
+/** Смена раунда переиспользует один и тот же WS-запрос — сервер и отменяет текущий, и начинает следующий */
 async function onStartRound(): Promise<void> {
   starting.value = true;
   try {
     await room.startNewRound(selectedDeck.value);
+    cancelConfirmOpen.value = false;
   } catch {
     toast.add({ title: t('room.startRoundError'), color: 'error' });
   } finally {
     starting.value = false;
+  }
+}
+
+/** Раунд ещё не начат или уже вскрыт — терять нечего, спрашивать не о чем */
+function onDeckActionClick(): void {
+  if (roundPhase.value === 'voting' && votedCount.value > 0) {
+    cancelConfirmOpen.value = true;
+  } else {
+    void onStartRound();
   }
 }
 
@@ -98,10 +130,20 @@ async function onReveal(): Promise<void> {
   revealing.value = true;
   try {
     await room.revealCards();
+    revealConfirmOpen.value = false;
   } catch {
     toast.add({ title: t('room.revealError'), color: 'error' });
   } finally {
     revealing.value = false;
+  }
+}
+
+/** Если проголосовали все — вскрываем сразу, иначе сперва спрашиваем подтверждение */
+function onRevealClick(): void {
+  if (allVoted.value) {
+    void onReveal();
+  } else {
+    revealConfirmOpen.value = true;
   }
 }
 
@@ -334,22 +376,13 @@ function retry(): void {
           </ul>
         </UCard>
 
-        <UCard v-if="room.isScrumMaster && !room.round && !isArchived">
-          <template #header>
-            <h2 class="font-medium">{{ t('room.startRoundTitle') }}</h2>
-          </template>
-          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <URadioGroup v-model="selectedDeck" :items="deckOptions" orientation="horizontal" />
-            <UButton :loading="starting" @click="onStartRound">
-              {{ starting ? t('room.starting') : t('room.startRound') }}
-            </UButton>
-          </div>
-        </UCard>
-
         <UCard v-if="room.round && room.round.status === 'voting' && !isArchived">
           <template #header>
             <h2 class="font-medium">{{ t('room.votingTitle') }}</h2>
           </template>
+          <p class="text-muted mb-3 text-sm">
+            {{ t('room.votedCount', { voted: votedCount, total: totalCount }) }}
+          </p>
           <div class="flex flex-wrap gap-2">
             <UButton
               v-for="card in deckCards"
@@ -361,7 +394,12 @@ function retry(): void {
               {{ cardLabel(card) }}
             </UButton>
           </div>
-          <UButton v-if="room.isScrumMaster" class="mt-4" :loading="revealing" @click="onReveal">
+          <UButton
+            v-if="room.isScrumMaster"
+            class="mt-4"
+            :loading="revealing"
+            @click="onRevealClick"
+          >
             {{ revealing ? t('room.revealing') : t('room.reveal') }}
           </UButton>
         </UCard>
@@ -390,7 +428,20 @@ function retry(): void {
           </ul>
         </UCard>
 
-        <!-- Новый раунд и правка ссылок Jira/Confluence — Epic 5 -->
+        <!-- Новый раунд/отмена раунда переиспользуют один и тот же запуск раунда (5.5) -->
+        <UCard v-if="room.isScrumMaster && !isArchived">
+          <template #header>
+            <h2 class="font-medium">{{ deckCardTitle }}</h2>
+          </template>
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <URadioGroup v-model="selectedDeck" :items="deckOptions" orientation="horizontal" />
+            <UButton :loading="starting" @click="onDeckActionClick">
+              {{ starting ? t('room.starting') : deckCardButtonLabel }}
+            </UButton>
+          </div>
+        </UCard>
+
+        <!-- Правка ссылок Jira/Confluence — 5.6 -->
 
         <UCard v-if="room.isScrumMaster && !isArchived">
           <template #header>
@@ -418,6 +469,34 @@ function retry(): void {
         <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
         <UButton color="error" :loading="archiving" @click="onArchive">
           {{ t('room.archiveConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
+
+    <UModal
+      v-model:open="cancelConfirmOpen"
+      :title="t('room.cancelRoundConfirmTitle')"
+      :description="t('room.cancelRoundConfirmText')"
+      :ui="{ footer: 'justify-end' }"
+    >
+      <template #footer="{ close }">
+        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
+        <UButton color="error" :loading="starting" @click="onStartRound">
+          {{ t('room.cancelRoundConfirm') }}
+        </UButton>
+      </template>
+    </UModal>
+
+    <UModal
+      v-model:open="revealConfirmOpen"
+      :title="t('room.revealConfirmTitle')"
+      :description="t('room.revealConfirmText', { voted: votedCount, total: totalCount })"
+      :ui="{ footer: 'justify-end' }"
+    >
+      <template #footer="{ close }">
+        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
+        <UButton color="primary" :loading="revealing" @click="onReveal">
+          {{ t('room.revealConfirmButton') }}
         </UButton>
       </template>
     </UModal>
