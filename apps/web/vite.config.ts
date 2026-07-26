@@ -28,6 +28,7 @@ export default defineConfig({
   },
   test: {
     environment: 'jsdom',
+    setupFiles: ['./test/setup.ts'],
     // Сценарии Playwright запускает свой раннер
     exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
   },

@@ -1,2 +1,6 @@
 @import 'tailwindcss';
 @import '@nuxt/ui';
+
+/* Тема управляется классом `.dark` на <html> (см. src/lib/theme.ts), а не системным
+   media-query напрямую — иначе переключатель светлая/тёмная/системная не имел бы смысла */
+@custom-variant dark (&:where(.dark, .dark *));

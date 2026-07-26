@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import type { DropdownMenuItem } from '@nuxt/ui';
 import { computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import { LOCALES, rememberLocale, type Locale } from './i18n';
+import { initTheme, theme, THEME_MODES, type ThemeMode } from './lib/theme';
 import { useSessionStore } from './stores/session';
 
 const { t, locale } = useI18n();
@@ -18,8 +20,70 @@ const language = computed({
   },
 });
 
+const themeIcons: Record<ThemeMode, string> = {
+  system: 'i-lucide-monitor',
+  light: 'i-lucide-sun',
+  dark: 'i-lucide-moon',
+};
+
+const languageLabels: Record<Locale, string> = {
+  ru: 'Русский',
+  en: 'English',
+};
+
+const nextTheme = computed<ThemeMode>(() => {
+  const index = THEME_MODES.indexOf(theme.value);
+  return THEME_MODES[(index + 1) % THEME_MODES.length] ?? 'system';
+});
+
+function cycleTheme(): void {
+  theme.value = nextTheme.value;
+}
+
+// preventDefault в onSelect держит меню открытым: иначе Reka UI закрывает его
+// после любого выбора, включая чекбоксы, и переключить тему/язык дважды подряд
+// можно было бы только через повторное открытие меню
+function keepMenuOpen(e: Event): void {
+  e.preventDefault();
+}
+
+const themeMenuItems = computed<DropdownMenuItem[]>(() =>
+  THEME_MODES.map((mode) => ({
+    label: t(`nav.theme.${mode}`),
+    icon: themeIcons[mode],
+    type: 'checkbox',
+    checked: theme.value === mode,
+    onUpdateChecked: (checked: boolean) => {
+      if (checked) theme.value = mode;
+    },
+    onSelect: keepMenuOpen,
+  })),
+);
+
+const languageMenuItems = computed<DropdownMenuItem[]>(() =>
+  LOCALES.map((loc) => ({
+    label: languageLabels[loc],
+    type: 'checkbox',
+    checked: language.value === loc,
+    onUpdateChecked: (checked: boolean) => {
+      if (checked) language.value = loc;
+    },
+    onSelect: keepMenuOpen,
+  })),
+);
+
+const userMenuItems = computed<DropdownMenuItem[][]>(() => [
+  [
+    { label: t('nav.themeLabel'), icon: themeIcons[theme.value], children: themeMenuItems.value },
+    { label: t('nav.language'), icon: 'i-lucide-languages', children: languageMenuItems.value },
+  ],
+  [{ label: t('nav.profile'), icon: 'i-lucide-user', to: '/profile' }],
+  [{ label: t('nav.logout'), icon: 'i-lucide-log-out', onSelect: () => void logout() }],
+]);
+
 onMounted(() => {
   void session.ensureLoaded();
+  initTheme();
 });
 
 /**
@@ -54,22 +118,44 @@ async function logout(): Promise<void> {
           </RouterLink>
 
           <div class="ml-auto flex items-center gap-2">
-            <USelect
-              v-model="language"
-              :items="[...LOCALES]"
-              size="sm"
-              :aria-label="t('nav.language')"
-            />
+            <template v-if="!session.isAuthenticated">
+              <USelect
+                v-model="language"
+                :items="[...LOCALES]"
+                size="sm"
+                :aria-label="t('nav.language')"
+              />
 
-            <UButton
-              v-if="session.isAuthenticated"
-              size="sm"
-              color="neutral"
-              variant="subtle"
-              @click="logout"
-            >
-              {{ t('nav.logout') }}
-            </UButton>
+              <UTooltip :text="t(`nav.theme.${nextTheme}`)">
+                <UButton
+                  :icon="themeIcons[theme]"
+                  size="sm"
+                  color="neutral"
+                  variant="subtle"
+                  :aria-label="t(`nav.theme.${nextTheme}`)"
+                  @click="cycleTheme"
+                />
+              </UTooltip>
+            </template>
+
+            <UDropdownMenu v-if="session.isAuthenticated" :items="userMenuItems">
+              <button
+                type="button"
+                class="hover:bg-elevated flex items-center gap-2 rounded-md px-2 py-1"
+                :aria-label="t('nav.userMenu')"
+              >
+                <span class="flex flex-col items-end leading-tight">
+                  <span class="text-sm font-semibold">{{ session.user?.name }}</span>
+                  <span class="text-primary text-xs">{{ session.user?.email }}</span>
+                </span>
+                <UAvatar
+                  :src="session.user?.avatarUrl ?? undefined"
+                  :alt="session.user?.name"
+                  size="md"
+                />
+                <UIcon name="i-lucide-chevron-down" class="text-muted size-4" />
+              </button>
+            </UDropdownMenu>
             <UButton v-else size="sm" to="/login">{{ t('nav.login') }}</UButton>
           </div>
         </nav>
