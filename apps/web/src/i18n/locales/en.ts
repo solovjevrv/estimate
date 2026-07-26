@@ -1,6 +1,6 @@
 export default {
   app: {
-    name: 'Planning Poker',
+    name: 'EstiMate',
     tagline: 'Estimate work as a team — fast, without arguing about what everyone meant',
   },
   nav: {
@@ -20,10 +20,20 @@ export default {
     },
   },
   home: {
-    lead: 'Gather the team, open a room and estimate tasks with cards.',
+    eyebrow: 'Your agile sidekick',
+    headline: 'Estimate work like a fun game, not a meeting',
+    lead: 'Gather the team, open a room and estimate the backlog with cards. Fast, honest, and no arguing about what everyone meant.',
     startWithTeam: 'Go to teams',
     startAsGuest: 'Sign in to create a room',
-    deck: 'Fibonacci deck: {cards}',
+    bullet1: 'Large cards',
+    bullet2: 'Guest access via link',
+    bullet3: 'Shared team space',
+    card1Title: 'Play with cards',
+    card1Desc: 'Large cards and a clear status — see at a glance who already made a choice.',
+    card2Title: 'Join without signing up',
+    card2Desc: 'A guest joins straight from a room link and sits down at the table right away.',
+    card3Title: 'A shared team space',
+    card3Desc: 'Active and finished rooms for the team, in one place, visible to every member.',
   },
   login: {
     title: 'Sign in',

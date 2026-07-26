@@ -119,7 +119,7 @@ async function confirmDelete(): Promise<void> {
     </div>
 
     <template v-else>
-      <UCard>
+      <div class="surface-card p-6">
         <p v-if="list.length === 0" class="text-muted text-sm">{{ t('myRooms.empty') }}</p>
         <div v-else class="space-y-5">
           <div v-for="section in roomSections" v-show="section.rooms.length" :key="section.key">
@@ -143,36 +143,35 @@ async function confirmDelete(): Promise<void> {
             </ul>
           </div>
         </div>
-      </UCard>
+      </div>
 
-      <UCard>
-        <template #header>
-          <div class="flex items-center justify-between gap-3">
-            <h2 class="font-medium">{{ t('myRooms.archiveTitle') }}</h2>
-            <UButton color="neutral" variant="ghost" size="sm" @click="toggleArchive">
-              {{ archiveOpen ? t('myRooms.archiveHide') : t('myRooms.archiveShow') }}
-            </UButton>
-          </div>
-        </template>
+      <div class="surface-card overflow-hidden">
+        <div class="flex items-center justify-between gap-3 p-6" :class="{ 'pb-0': archiveOpen }">
+          <h2 class="font-medium">{{ t('myRooms.archiveTitle') }}</h2>
+          <UButton color="neutral" variant="ghost" size="sm" @click="toggleArchive">
+            {{ archiveOpen ? t('myRooms.archiveHide') : t('myRooms.archiveShow') }}
+          </UButton>
+        </div>
 
         <template v-if="archiveOpen">
           <UAlert
             v-if="archiveFailed"
             color="error"
             variant="subtle"
+            class="mx-6 mb-6"
             :description="t('myRooms.archiveError')"
           />
           <div v-else-if="archiveLoading" class="text-muted flex justify-center py-4">
             <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
           </div>
-          <p v-else-if="archived.length === 0" class="text-muted text-sm">
+          <p v-else-if="archived.length === 0" class="text-muted px-6 pb-6 text-sm">
             {{ t('myRooms.archiveEmpty') }}
           </p>
-          <ul v-else class="divide-default divide-y">
+          <ul v-else class="divide-default divide-y px-6 pb-2">
             <li
               v-for="room in archived"
               :key="room.id"
-              class="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+              class="flex items-center gap-3 py-3 first:pt-4 last:pb-4"
             >
               <RouterLink
                 :to="{ name: 'room', params: { id: room.id } }"
@@ -196,7 +195,7 @@ async function confirmDelete(): Promise<void> {
             </li>
           </ul>
         </template>
-      </UCard>
+      </div>
     </template>
 
     <UModal

@@ -107,8 +107,22 @@ async function logout(): Promise<void> {
   <UApp>
     <div class="min-h-screen flex flex-col bg-default text-default">
       <header class="border-b border-default">
-        <nav class="mx-auto flex w-full max-w-5xl items-center gap-4 px-4 py-3">
-          <RouterLink to="/" class="font-semibold">{{ t('app.name') }}</RouterLink>
+        <nav class="mx-auto flex w-full max-w-[73.75rem] items-center gap-4 px-4 py-3">
+          <RouterLink to="/" class="flex items-center gap-2">
+            <span class="relative inline-block size-[30px]" aria-hidden="true">
+              <span
+                class="absolute top-0.5 left-1.5 h-[22px] w-4 rounded"
+                style="background: var(--brand-amber); transform: rotate(-8deg)"
+              />
+              <span
+                class="bg-primary absolute top-0.5 left-0 h-[22px] w-4 rounded"
+                style="transform: rotate(8deg)"
+              />
+            </span>
+            <span class="font-heading text-lg font-extrabold tracking-tight">
+              {{ t('app.name') }}
+            </span>
+          </RouterLink>
 
           <RouterLink v-if="session.isAuthenticated" to="/teams" class="text-muted text-sm">
             {{ t('nav.teams') }}
@@ -161,7 +175,7 @@ async function logout(): Promise<void> {
         </nav>
       </header>
 
-      <main class="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+      <main class="mx-auto w-full max-w-[73.75rem] flex-1 px-4 py-8">
         <RouterView />
       </main>
     </div>

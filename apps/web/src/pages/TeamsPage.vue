@@ -5,7 +5,7 @@ import { onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
-import { roleBadgeColor } from '../lib/team-roles';
+import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
 import { useTeamsStore } from '../stores/teams';
 
 const { t } = useI18n();
@@ -84,15 +84,20 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
 
     <ul v-else class="grid gap-3 sm:grid-cols-2">
       <li v-for="team in teams.list" :key="team.id">
-        <RouterLink :to="{ name: 'team', params: { id: team.id } }" class="block">
-          <UCard class="hover:ring-primary transition hover:ring-1">
-            <div class="flex items-center justify-between gap-3">
-              <span class="font-medium">{{ team.name }}</span>
-              <UBadge :color="roleBadgeColor(team.role)" variant="subtle">
-                {{ t(`role.${team.role}`) }}
-              </UBadge>
-            </div>
-          </UCard>
+        <RouterLink
+          :to="{ name: 'team', params: { id: team.id } }"
+          class="surface-card surface-card-hover flex items-center gap-4 p-5"
+        >
+          <span
+            class="font-heading flex size-11 shrink-0 items-center justify-center rounded-xl text-base font-bold text-white"
+            :style="{ background: teamAvatarColor(team.id) }"
+          >
+            {{ team.name.charAt(0).toUpperCase() }}
+          </span>
+          <span class="min-w-0 flex-1 font-semibold">{{ team.name }}</span>
+          <UBadge :color="roleBadgeColor(team.role)" variant="subtle">
+            {{ t(`role.${team.role}`) }}
+          </UBadge>
         </RouterLink>
       </li>
     </ul>

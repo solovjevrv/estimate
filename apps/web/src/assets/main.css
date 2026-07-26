@@ -4,3 +4,85 @@
 /* Тема управляется классом `.dark` на <html> (см. src/lib/theme.ts), а не системным
    media-query напрямую — иначе переключатель светлая/тёмная/системная не имел бы смысла */
 @custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-heading: 'Sora', sans-serif;
+  --font-sans: 'Manrope', sans-serif;
+}
+
+/*
+ * Фирменная тема EstiMate (9.5.1): тёплый акцентный зелёный вместо стандартного
+ * Nuxt UI `green`. Переопределяем сами оттенки `--ui-color-primary-*`, а не
+ * подключаем механизм `ui.colors` вите-плагина — он регистрирует новые цветовые
+ * алиасы и был нестабилен на ранних v4-альфах; переопределение готовых
+ * переменных документировано и не зависит от этого пути.
+ */
+:root {
+  --ui-radius: 0.75rem;
+
+  --ui-color-primary-50: oklch(96% 0.025 155);
+  --ui-color-primary-100: oklch(93% 0.05 155);
+  --ui-color-primary-200: oklch(87% 0.08 155);
+  --ui-color-primary-300: oklch(79% 0.11 155);
+  --ui-color-primary-400: oklch(65% 0.15 155);
+  --ui-color-primary-500: oklch(48% 0.16 155);
+  --ui-color-primary-600: oklch(43% 0.16 155);
+  --ui-color-primary-700: oklch(40% 0.155 155);
+  --ui-color-primary-800: oklch(34% 0.13 155);
+  --ui-color-primary-900: oklch(28% 0.1 155);
+  --ui-color-primary-950: oklch(20% 0.07 155);
+
+  /* Декоративные акценты (аватары/иллюстрации) — не заведены как ui.colors,
+     используются напрямую через произвольные значения Tailwind (bg-[var(--brand-amber)]) */
+  --brand-amber: oklch(78% 0.19 75);
+  --brand-coral: oklch(66% 0.21 25);
+  --brand-blue: oklch(58% 0.14 260);
+
+  --brand-bg: oklch(97% 0.012 85);
+}
+
+.dark {
+  --brand-bg: oklch(18% 0.012 250);
+}
+
+body {
+  background: var(--brand-bg);
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.font-heading {
+  font-family: var(--font-heading);
+}
+
+/* Поверхность без бордера, только тень — используется в новой разметке 9.5
+   (хиро, карточки фич, строки списков), поверх готовых UCard бордер не трогаем */
+.surface-card {
+  border-radius: 1.125rem;
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 5%),
+    0 16px 40px -20px rgb(0 0 0 / 18%);
+}
+
+.dark .surface-card {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 25%),
+    0 16px 40px -20px rgb(0 0 0 / 55%);
+}
+
+.surface-card-hover {
+  transition:
+    transform 0.15s,
+    box-shadow 0.15s;
+}
+
+.surface-card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow:
+    0 4px 10px rgb(0 0 0 / 6%),
+    0 20px 44px -18px rgb(0 0 0 / 24%);
+}

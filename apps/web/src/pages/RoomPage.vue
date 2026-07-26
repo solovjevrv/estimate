@@ -449,7 +449,7 @@ function retry(): void {
         />
 
         <!-- Компактный тулбар запуска раунда и ссылок на задачу — вместо крупных карточек -->
-        <div v-if="room.isScrumMaster && !isArchived" class="border-default rounded-lg border p-3">
+        <div v-if="room.isScrumMaster && !isArchived" class="surface-card p-4">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <span class="text-sm font-medium">{{ deckCardTitle }}</span>
             <div class="flex flex-wrap items-center gap-3">
@@ -461,7 +461,7 @@ function retry(): void {
           </div>
         </div>
 
-        <div v-if="room.round && !isArchived" class="border-default rounded-lg border p-3">
+        <div v-if="room.round && !isArchived" class="surface-card p-4">
           <h2 class="text-muted mb-2 text-sm font-medium">{{ t('room.linksTitle') }}</h2>
           <UForm
             :state="linksForm"
@@ -491,7 +491,7 @@ function retry(): void {
           </UForm>
         </div>
 
-        <div v-if="room.result" class="border-default rounded-lg border p-4">
+        <div v-if="room.result" class="surface-card p-4">
           <RoundResultPanel
             :average="room.result.average"
             :min-label="cardLabel(room.result.min)"
