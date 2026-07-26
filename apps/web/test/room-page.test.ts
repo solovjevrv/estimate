@@ -636,7 +636,14 @@ describe('вскрытие карт', () => {
     socket.next = {
       state: roomState({
         round: round(),
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+        participants: [
+          participant({
+            participantId: 'u1',
+            name: 'Иван',
+            role: 'scrum_master',
+            hasVoted: true,
+          }),
+        ],
       }),
       guestToken: null,
       participantId: 'u1',
@@ -676,7 +683,14 @@ describe('вскрытие карт', () => {
     socket.next = {
       state: roomState({
         round: round({ deckType: 'tshirt' }),
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+        participants: [
+          participant({
+            participantId: 'u1',
+            name: 'Иван',
+            role: 'scrum_master',
+            hasVoted: true,
+          }),
+        ],
       }),
       guestToken: null,
       participantId: 'u1',
@@ -722,7 +736,14 @@ describe('вскрытие карт', () => {
     socket.next = {
       state: roomState({
         round: round(),
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+        participants: [
+          participant({
+            participantId: 'u1',
+            name: 'Иван',
+            role: 'scrum_master',
+            hasVoted: true,
+          }),
+        ],
       }),
       guestToken: null,
       participantId: 'u1',
@@ -739,6 +760,162 @@ describe('вскрытие карт', () => {
     await revealButton!.trigger('click');
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось вскрыть карты'));
+  });
+
+  it('показывает счётчик проголосовавших', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, hasVoted: false }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Проголосовало: 1 из 2'));
+  });
+
+  it('вскрытие при неполном голосовании просит подтверждение, а после него вскрывает карты', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, hasVoted: false }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Проголосовало: 1 из 2'));
+
+    const revealButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Вскрыть карты');
+    await revealButton!.trigger('click');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Проголосовали не все'));
+    expect(socket.sent.some((s) => s.event === 'reveal_cards')).toBe(false);
+
+    socket.next = roundResult();
+    const confirmButton = Array.from(
+      document.body.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [],
+    ).find((b) => b.textContent?.trim() === 'Вскрыть карты');
+    confirmButton!.click();
+
+    await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'reveal_cards')).toBe(true));
+  });
+});
+
+describe('новый раунд и отмена раунда', () => {
+  it('после вскрытия скрам-мастер видит «Новый раунд» и запускает следующую задачу', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ status: 'revealed', average: 5 }),
+        result: roundResult(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Результаты раунда'));
+
+    const nextRound = round({ id: 'rnd2', seq: 2 });
+    socket.next = nextRound;
+    const startButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Новый раунд');
+    await startButton!.trigger('click');
+
+    const started = socket.sent.find((s) => s.event === 'start_new_round');
+    expect(started?.payload).toMatchObject({ fromRoundId: 'rnd1' });
+  });
+
+  it('отмена раунда без голосов запускает новый сразу, без вопроса', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({
+            participantId: 'u1',
+            name: 'Иван',
+            role: 'scrum_master',
+            hasVoted: false,
+          }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Отменить раунд'));
+
+    const nextRound = round({ id: 'rnd2', seq: 2 });
+    socket.next = nextRound;
+    const cancelButton = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === 'Отменить раунд');
+    await cancelButton!.trigger('click');
+
+    const started = socket.sent.find((s) => s.event === 'start_new_round');
+    expect(started?.payload).toMatchObject({ fromRoundId: 'rnd1' });
+    expect(document.body.textContent).not.toContain('Отменить голосование?');
+  });
+
+  it('отмена раунда с уже поставленными голосами требует подтверждения', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Отменить раунд'));
+
+    const cancelButton = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === 'Отменить раунд');
+    await cancelButton!.trigger('click');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Отменить голосование?'));
+    expect(socket.sent.some((s) => s.event === 'start_new_round')).toBe(false);
+
+    const nextRound = round({ id: 'rnd2', seq: 2 });
+    socket.next = nextRound;
+    const confirmButton = Array.from(
+      document.body.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [],
+    ).find((b) => b.textContent?.trim() === 'Отменить и начать заново');
+    confirmButton!.click();
+
+    await vi.waitFor(() =>
+      expect(socket.sent.some((s) => s.event === 'start_new_round')).toBe(true),
+    );
   });
 });
 
