@@ -31,6 +31,15 @@ const languageLabels: Record<Locale, string> = {
   en: 'English',
 };
 
+const nextTheme = computed<ThemeMode>(() => {
+  const index = THEME_MODES.indexOf(theme.value);
+  return THEME_MODES[(index + 1) % THEME_MODES.length] ?? 'system';
+});
+
+function cycleTheme(): void {
+  theme.value = nextTheme.value;
+}
+
 // preventDefault в onSelect держит меню открытым: иначе Reka UI закрывает его
 // после любого выбора, включая чекбоксы, и переключить тему/язык дважды подряд
 // можно было бы только через повторное открытие меню
@@ -117,18 +126,16 @@ async function logout(): Promise<void> {
                 :aria-label="t('nav.language')"
               />
 
-              <UButtonGroup>
+              <UTooltip :text="t(`nav.theme.${nextTheme}`)">
                 <UButton
-                  v-for="mode in THEME_MODES"
-                  :key="mode"
-                  :icon="themeIcons[mode]"
+                  :icon="themeIcons[theme]"
                   size="sm"
                   color="neutral"
-                  :variant="theme === mode ? 'solid' : 'subtle'"
-                  :aria-label="t(`nav.theme.${mode}`)"
-                  @click="theme = mode"
+                  variant="subtle"
+                  :aria-label="t(`nav.theme.${nextTheme}`)"
+                  @click="cycleTheme"
                 />
-              </UButtonGroup>
+              </UTooltip>
             </template>
 
             <UDropdownMenu v-if="session.isAuthenticated" :items="userMenuItems">
