@@ -2,7 +2,7 @@
 import type { DropdownMenuItem } from '@nuxt/ui';
 import { computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import { LOCALES, rememberLocale, type Locale } from './i18n';
 import { initTheme, theme, THEME_MODES, type ThemeMode } from './lib/theme';
@@ -11,6 +11,10 @@ import { useSessionStore } from './stores/session';
 const { t, locale } = useI18n();
 const session = useSessionStore();
 const router = useRouter();
+const route = useRoute();
+
+const teamsLinkActive = computed(() => route.path.startsWith('/teams'));
+const myRoomsLinkActive = computed(() => route.path.startsWith('/my-rooms'));
 
 const language = computed({
   get: () => locale.value as Locale,
@@ -105,15 +109,39 @@ async function logout(): Promise<void> {
 
 <template>
   <UApp>
-    <div class="min-h-screen flex flex-col bg-default text-default">
-      <header class="border-b border-default">
-        <nav class="mx-auto flex w-full max-w-5xl items-center gap-4 px-4 py-3">
-          <RouterLink to="/" class="font-semibold">{{ t('app.name') }}</RouterLink>
+    <div class="min-h-screen flex flex-col bg-default text-highlighted">
+      <header class="border-default border-b" style="background-color: var(--brand-surface)">
+        <nav class="mx-auto flex h-[76px] w-full max-w-[73.75rem] items-center gap-8 px-14">
+          <RouterLink to="/" class="flex items-center gap-2">
+            <span class="relative inline-block size-[30px]" aria-hidden="true">
+              <span
+                class="absolute top-[2px] left-[6px] h-[22px] w-4 rounded"
+                style="background: var(--brand-amber); transform: rotate(-8deg)"
+              />
+              <span
+                class="bg-primary absolute top-[2px] left-0 h-[22px] w-4 rounded"
+                style="transform: rotate(8deg)"
+              />
+            </span>
+            <span class="font-heading text-[19px] font-extrabold tracking-tight">{{
+              t('app.name')
+            }}</span>
+          </RouterLink>
 
-          <RouterLink v-if="session.isAuthenticated" to="/teams" class="text-muted text-sm">
+          <RouterLink
+            v-if="session.isAuthenticated"
+            to="/teams"
+            class="text-[15px] font-semibold"
+            :class="teamsLinkActive ? 'text-primary' : 'text-muted'"
+          >
             {{ t('nav.teams') }}
           </RouterLink>
-          <RouterLink v-if="session.isAuthenticated" to="/my-rooms" class="text-muted text-sm">
+          <RouterLink
+            v-if="session.isAuthenticated"
+            to="/my-rooms"
+            class="text-[15px] font-semibold"
+            :class="myRoomsLinkActive ? 'text-primary' : 'text-muted'"
+          >
             {{ t('nav.myRooms') }}
           </RouterLink>
 
@@ -145,13 +173,16 @@ async function logout(): Promise<void> {
                 :aria-label="t('nav.userMenu')"
               >
                 <span class="flex flex-col items-end leading-tight">
-                  <span class="text-sm font-semibold">{{ session.user?.name }}</span>
-                  <span class="text-primary text-xs">{{ session.user?.email }}</span>
+                  <span class="text-sm font-bold">{{ session.user?.name }}</span>
+                  <span class="text-primary text-[13px] font-semibold">{{
+                    session.user?.email
+                  }}</span>
                 </span>
                 <UAvatar
                   :src="session.user?.avatarUrl ?? undefined"
                   :alt="session.user?.name"
                   size="md"
+                  class="size-[38px]"
                 />
                 <UIcon name="i-lucide-chevron-down" class="text-muted size-4" />
               </button>
@@ -161,7 +192,7 @@ async function logout(): Promise<void> {
         </nav>
       </header>
 
-      <main class="mx-auto w-full max-w-5xl flex-1 px-4 py-8">
+      <main class="mx-auto w-full max-w-[73.75rem] flex-1 px-4 py-14">
         <RouterView />
       </main>
     </div>

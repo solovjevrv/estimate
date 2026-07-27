@@ -406,7 +406,7 @@ describe('стол участников', () => {
     );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Проголосовал'));
-    expect(wrapper.text()).toContain('Ожидаем');
+    expect(wrapper.text()).toContain('Ждём: Мария');
     expect(wrapper.text()).not.toContain('Раунд ещё не начат');
   });
 
@@ -483,8 +483,8 @@ describe('выбор колоды и голосование', () => {
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Начать раунд'));
 
-    const scaleRadio = wrapper.findAll('button[role="radio"]')[1];
-    await scaleRadio!.trigger('click');
+    const scaleTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Шкала 0–5');
+    await scaleTab!.trigger('click');
 
     const activeRound = round({ deckType: 'scale_0_5' });
     socket.next = activeRound;
@@ -525,8 +525,10 @@ describe('выбор колоды и голосование', () => {
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Начать раунд'));
 
-    const tshirtRadio = wrapper.findAll('button[role="radio"]')[2];
-    await tshirtRadio!.trigger('click');
+    const tshirtTab = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === 'Футболочные размеры');
+    await tshirtTab!.trigger('click');
 
     const activeRound = round({ deckType: 'tshirt' });
     socket.next = activeRound;
@@ -790,14 +792,7 @@ describe('вскрытие карт', () => {
     const winnerValue = wrapper.findAll('span').find((s) => s.text().trim() === '5');
     expect(winnerValue).toBeDefined();
 
-    const winnerCards = wrapper
-      .findAll('div')
-      .filter(
-        (d) =>
-          d.classes().includes('border-warning') &&
-          d.classes().includes('bg-warning/10') &&
-          !d.classes().includes('text-warning'),
-      );
+    const winnerCards = wrapper.findAll('[data-winner="true"]');
     expect(winnerCards).toHaveLength(2);
     expect(winnerCards.some((c) => c.text().includes('Иван'))).toBe(true);
     expect(winnerCards.some((c) => c.text().includes('Мария'))).toBe(true);
@@ -842,16 +837,7 @@ describe('вскрытие карт', () => {
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Результаты раунда'));
     expect(wrapper.text()).not.toContain('Победитель');
-    expect(
-      wrapper
-        .findAll('div')
-        .some(
-          (d) =>
-            d.classes().includes('border-warning') &&
-            d.classes().includes('bg-warning/10') &&
-            !d.classes().includes('text-warning'),
-        ),
-    ).toBe(false);
+    expect(wrapper.findAll('[data-winner="true"]')).toHaveLength(0);
   });
 
   it('при ошибке вскрытия показывает уведомление', async () => {

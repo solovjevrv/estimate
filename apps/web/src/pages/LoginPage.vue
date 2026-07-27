@@ -66,16 +66,20 @@ onMounted(() => {
 </script>
 
 <template>
-  <UCard class="mx-auto max-w-sm">
-    <template #header>
-      <div class="space-y-1">
-        <h1 class="text-2xl font-semibold">{{ t('login.title') }}</h1>
-        <p class="text-muted text-sm">{{ t('login.lead') }}</p>
+  <div class="mx-auto flex max-w-sm justify-center py-16">
+    <div class="surface-card surface-card-lg w-full px-[30px] py-[34px]">
+      <div class="mb-6 text-center">
+        <h1 class="font-heading text-2xl font-extrabold">{{ t('login.title') }}</h1>
+        <p class="text-muted mt-2 text-sm">{{ t('login.lead') }}</p>
       </div>
-    </template>
 
-    <div class="space-y-4">
-      <UAlert v-if="failed" color="error" variant="subtle" :description="t('login.failed')" />
+      <UAlert
+        v-if="failed"
+        color="error"
+        variant="subtle"
+        class="mb-4"
+        :description="t('login.failed')"
+      />
 
       <div class="space-y-3">
         <UButton
@@ -87,7 +91,8 @@ onMounted(() => {
           :disabled="pending !== null"
           block
           color="neutral"
-          variant="subtle"
+          variant="outline"
+          class="rounded-[11px] py-3 text-[15px] font-bold"
           @click="start(provider)"
         >
           {{ pending === provider ? t('login.redirecting') : t(labels[provider]) }}
@@ -98,5 +103,5 @@ onMounted(() => {
         </p>
       </div>
     </div>
-  </UCard>
+  </div>
 </template>

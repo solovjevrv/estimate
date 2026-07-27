@@ -31,7 +31,7 @@ async function mountApp(path: string) {
   await router.isReady();
 
   // Страницы грузятся асинхронно, профиль и провайдеры — запросами
-  await vi.waitFor(() => expect(wrapper.text()).toContain('Planning Poker'));
+  await vi.waitFor(() => expect(wrapper.text()).toContain('EstiMate'));
   return wrapper;
 }
 
@@ -56,8 +56,10 @@ describe('каркас приложения', () => {
   it('показывает шапку и главную страницу', async () => {
     const wrapper = await mountApp('/');
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('1, 2, 3, 5, 8, 13, 21'));
-    expect(wrapper.text()).toContain('Оценка задач командой');
+    await vi.waitFor(() =>
+      expect(wrapper.text()).toContain('Оценка спринта, которая проходит быстро и без спора'),
+    );
+    expect(wrapper.text()).toContain('Играйте картами');
   });
 
   it('гостю предлагает войти, а не выйти', async () => {

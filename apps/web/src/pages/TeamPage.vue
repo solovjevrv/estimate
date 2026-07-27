@@ -15,7 +15,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import { ApiError } from '../lib/api';
-import { roleBadgeColor } from '../lib/team-roles';
+import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
 import { useRoomsStore } from '../stores/rooms';
 import { useSessionStore } from '../stores/session';
 import { useTeamRoomsStore } from '../stores/team-rooms';
@@ -69,24 +69,19 @@ const roleItems = computed(() =>
   TEAM_ROLES.map((role) => ({ label: t(`role.${role}`), value: role })),
 );
 
-/** Дашборд комнат: активные и завершённые одним списком секций, чтобы не
- * дублировать разметку строки. */
-const roomSections = computed(() => [
-  {
-    key: 'active',
-    title: t('team.roomsActive'),
-    badge: t('team.roomActive'),
-    color: 'success' as const,
-    rooms: teamRooms.active,
-  },
-  {
-    key: 'closed',
-    title: t('team.roomsClosed'),
-    badge: t('team.roomClosed'),
-    color: 'neutral' as const,
-    rooms: teamRooms.closed,
-  },
+const roomTabs = computed(() => [
+  { key: 'active' as const, label: t('team.roomsActive') },
+  { key: 'archive' as const, label: t('team.tabArchive') },
 ]);
+
+/** «Архив» объединяет завершённые (видны всем) и по-настоящему заархивированные
+ * (видны только администратору) — они не пересекаются на бэкенде: список
+ * `teamRooms.list` вообще не включает заархивированные комнаты. */
+const archiveTabRooms = computed(() =>
+  [...teamRooms.closed, ...teamRooms.archived].sort((a, b) =>
+    b.createdAt.localeCompare(a.createdAt),
+  ),
+);
 
 /** Код приходит только администратору — по нему и показываем блок приглашения */
 const inviteUrl = computed(() =>
@@ -94,6 +89,13 @@ const inviteUrl = computed(() =>
     ? `${window.location.origin}/invite/${overview.value.inviteCode}`
     : null,
 );
+
+// --- Таб «Архив»: заархивированная часть видна только администратору, грузится
+// по требованию — обычный участник видит в этом табе только завершённые комнаты ---
+const roomsTab = ref<'active' | 'archive'>('active');
+const archiveLoading = ref(false);
+const archiveFailed = ref(false);
+let archiveLoaded = false;
 
 // immediate — грузим при заходе; watch — на случай перехода между командами,
 // когда vue-router переиспользует компонент и onMounted повторно не срабатывает
@@ -104,6 +106,9 @@ async function load(): Promise<void> {
   notFound.value = false;
   loadFailed.value = false;
   roomsFailed.value = false;
+  roomsTab.value = 'active';
+  archiveLoaded = false;
+  archiveFailed.value = false;
   teamRooms.reset();
   try {
     await teams.loadTeam(props.id);
@@ -129,15 +134,9 @@ async function loadRooms(): Promise<void> {
   }
 }
 
-// --- Архив комнат команды: виден только администратору, грузится по требованию ---
-const archiveOpen = ref(false);
-const archiveLoading = ref(false);
-const archiveFailed = ref(false);
-let archiveLoaded = false;
-
-async function toggleArchive(): Promise<void> {
-  archiveOpen.value = !archiveOpen.value;
-  if (archiveOpen.value && !archiveLoaded) {
+async function selectRoomsTab(tab: 'active' | 'archive'): Promise<void> {
+  roomsTab.value = tab;
+  if (tab === 'archive' && canManageTeam.value && !archiveLoaded) {
     archiveLoading.value = true;
     archiveFailed.value = false;
     try {
@@ -353,9 +352,13 @@ async function confirmDelete(): Promise<void> {
 </script>
 
 <template>
-  <section class="space-y-6">
-    <RouterLink :to="{ name: 'teams' }" class="text-muted hover:text-default inline-flex text-sm">
-      ← {{ t('team.back') }}
+  <section class="space-y-5">
+    <RouterLink
+      :to="{ name: 'teams' }"
+      class="text-muted hover:text-default inline-flex w-fit items-center gap-1.5 text-[14.5px] font-semibold"
+    >
+      <UIcon name="i-lucide-chevron-left" class="size-4" />
+      {{ t('team.back') }}
     </RouterLink>
 
     <UAlert v-if="notFound" color="error" variant="subtle" :description="t('team.notFound')" />
@@ -371,121 +374,142 @@ async function confirmDelete(): Promise<void> {
     </div>
 
     <template v-else-if="overview">
-      <div class="flex items-center gap-3">
-        <h1 class="text-2xl font-semibold">{{ overview.team.name }}</h1>
-        <UBadge :color="roleBadgeColor(overview.role)" variant="subtle">
+      <div class="flex items-center gap-3.5">
+        <h1 class="font-heading text-3xl font-extrabold">{{ overview.team.name }}</h1>
+        <span
+          class="badge-pill"
+          :class="
+            roleBadgeColor(overview.role) === 'primary'
+              ? 'badge-pill-primary'
+              : 'badge-pill-neutral'
+          "
+        >
           {{ t(`role.${overview.role}`) }}
-        </UBadge>
+        </span>
       </div>
 
-      <UCard>
-        <template #header>
-          <div class="flex items-center justify-between gap-3">
-            <h2 class="font-medium">{{ t('team.roomsTitle') }}</h2>
-            <UButton
-              v-if="canManageTeam"
-              icon="i-lucide-plus"
-              size="sm"
-              @click="createRoomOpen = true"
-            >
-              {{ t('room.create') }}
-            </UButton>
-          </div>
-        </template>
+      <div class="surface-card overflow-hidden">
+        <div class="flex items-center justify-between gap-3 px-[30px] py-5">
+          <h2 class="text-[17px] font-bold">{{ t('team.roomsTitle') }}</h2>
+          <UButton
+            v-if="canManageTeam"
+            icon="i-lucide-plus"
+            class="rounded-[11px] px-[18px] py-[11px] text-sm font-bold"
+            @click="createRoomOpen = true"
+          >
+            {{ t('room.create') }}
+          </UButton>
+        </div>
+
+        <div class="flex items-center gap-2 px-[30px] pb-4">
+          <button
+            v-for="tab in roomTabs"
+            :key="tab.key"
+            type="button"
+            class="rounded-full px-4 py-1.5 text-[13px] font-bold transition-colors"
+            :class="
+              roomsTab === tab.key
+                ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)]'
+                : 'text-muted hover:text-default cursor-pointer'
+            "
+            @click="selectRoomsTab(tab.key)"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
 
         <UAlert
           v-if="roomsFailed"
           color="error"
           variant="subtle"
+          class="mx-[30px] mb-5"
           :description="t('team.roomsError')"
         />
-        <p v-else-if="teamRooms.list.length === 0" class="text-muted text-sm">
-          {{ t('team.roomsEmpty') }}
-        </p>
-        <div v-else class="space-y-5">
-          <div v-for="section in roomSections" v-show="section.rooms.length" :key="section.key">
-            <h3 class="text-muted mb-2 text-xs font-medium tracking-wide uppercase">
-              {{ section.title }}
-            </h3>
-            <ul class="divide-default divide-y">
-              <li v-for="room in section.rooms" :key="room.id">
-                <RouterLink
-                  :to="{ name: 'room', params: { id: room.id } }"
-                  class="hover:bg-elevated/50 -mx-2 flex items-center gap-3 rounded px-2 py-3"
-                >
-                  <span class="min-w-0 flex-1 truncate">{{ room.name }}</span>
-                  <span class="text-muted text-xs">{{ formatDate(room.createdAt) }}</span>
-                  <UBadge :color="section.color" variant="subtle">{{ section.badge }}</UBadge>
-                </RouterLink>
-              </li>
-            </ul>
-          </div>
-        </div>
-      </UCard>
-
-      <UCard v-if="canManageTeam">
-        <template #header>
-          <div class="flex items-center justify-between gap-3">
-            <h2 class="font-medium">{{ t('team.archiveTitle') }}</h2>
-            <UButton color="neutral" variant="ghost" size="sm" @click="toggleArchive">
-              {{ archiveOpen ? t('team.archiveHide') : t('team.archiveShow') }}
-            </UButton>
-          </div>
+        <template v-else-if="roomsTab === 'active'">
+          <p v-if="teamRooms.active.length === 0" class="text-muted px-[30px] pb-5 text-sm">
+            {{ t('team.roomsEmpty') }}
+          </p>
+          <RouterLink
+            v-for="room in teamRooms.active"
+            :key="room.id"
+            :to="{ name: 'room', params: { id: room.id } }"
+            class="border-default hover:bg-elevated/50 flex items-center justify-between gap-3 border-t px-[30px] py-[18px]"
+          >
+            <span class="min-w-0 flex-1 truncate text-base font-bold">{{ room.name }}</span>
+            <div class="flex shrink-0 items-center gap-3.5">
+              <span class="text-muted text-sm">{{ formatDate(room.createdAt) }}</span>
+              <span class="badge-pill badge-pill-primary">{{ t('team.roomActive') }}</span>
+            </div>
+          </RouterLink>
         </template>
-
-        <template v-if="archiveOpen">
+        <template v-else>
+          <!-- Ошибка тянет только заархивированную часть (доступна лишь администратору) —
+               уже загруженные завершённые комнаты всё равно показываем ниже, не прячем их
+               за баннером. -->
           <UAlert
             v-if="archiveFailed"
             color="error"
             variant="subtle"
+            class="mx-[30px] mb-5"
             :description="t('team.archiveError')"
           />
-          <div v-else-if="archiveLoading" class="text-muted flex justify-center py-4">
+          <div v-if="archiveLoading" class="text-muted flex justify-center pb-5">
             <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
           </div>
-          <p v-else-if="teamRooms.archived.length === 0" class="text-muted text-sm">
-            {{ t('team.archiveEmpty') }}
-          </p>
-          <ul v-else class="divide-default divide-y">
-            <li
-              v-for="room in teamRooms.archived"
+          <template v-else>
+            <p v-if="archiveTabRooms.length === 0" class="text-muted px-[30px] pb-5 text-sm">
+              {{ t('team.archiveEmpty') }}
+            </p>
+            <div
+              v-for="room in archiveTabRooms"
               :key="room.id"
-              class="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
+              class="border-default flex items-center justify-between gap-3 border-t px-[30px] py-[18px]"
             >
               <RouterLink
                 :to="{ name: 'room', params: { id: room.id } }"
-                class="min-w-0 flex-1 truncate"
+                class="min-w-0 flex-1 truncate text-base font-bold"
               >
                 {{ room.name }}
               </RouterLink>
-              <span class="text-muted text-xs">{{ formatDate(room.createdAt) }}</span>
-              <UButton
-                icon="i-lucide-trash-2"
-                color="error"
-                variant="ghost"
-                size="sm"
-                @click="askDeleteRoom(room)"
-              >
-                {{ t('team.archiveDeleteRoom') }}
-              </UButton>
-            </li>
-          </ul>
+              <div class="flex shrink-0 items-center gap-3.5">
+                <span class="text-muted text-sm">{{ formatDate(room.createdAt) }}</span>
+                <span class="badge-pill badge-pill-neutral">{{ t('team.roomClosed') }}</span>
+                <UButton
+                  v-if="room.archivedAt && canManageTeam"
+                  icon="i-lucide-trash-2"
+                  color="error"
+                  variant="ghost"
+                  size="sm"
+                  @click="askDeleteRoom(room)"
+                >
+                  {{ t('team.archiveDeleteRoom') }}
+                </UButton>
+              </div>
+            </div>
+          </template>
         </template>
-      </UCard>
+      </div>
 
-      <UCard>
-        <template #header>
-          <h2 class="font-medium">{{ t('team.membersTitle') }}</h2>
-        </template>
-        <ul class="divide-default divide-y">
-          <li
-            v-for="member in overview.members"
-            :key="member.userId"
-            class="flex items-center gap-3 py-3 first:pt-0 last:pb-0"
-          >
-            <UAvatar :src="member.avatarUrl ?? undefined" :alt="member.name" size="sm" />
-            <span class="min-w-0 flex-1 truncate">{{ member.name }}</span>
+      <div class="surface-card px-[30px] py-[26px]">
+        <h2 class="mb-[18px] text-[17px] font-bold">{{ t('team.membersTitle') }}</h2>
+        <div
+          v-for="member in overview.members"
+          :key="member.userId"
+          class="border-default flex items-center justify-between gap-3 border-t py-3.5 first:border-t-0 first:pt-0 last:pb-0"
+        >
+          <div class="flex min-w-0 items-center gap-3.5">
+            <UAvatar
+              :src="member.avatarUrl ?? undefined"
+              :alt="member.name"
+              size="md"
+              class="size-[38px] shrink-0"
+              :class="teamAvatarColor(member.userId)"
+              :ui="{ fallback: 'font-heading text-[12px] font-bold text-white' }"
+            />
+            <span class="min-w-0 truncate text-[15.5px] font-bold">{{ member.name }}</span>
+          </div>
 
+          <div class="flex shrink-0 items-center gap-3">
             <!-- Администратор меняет роли всем, кроме себя; себе показываем бейдж -->
             <USelect
               v-if="canManageTeam && member.userId !== currentUserId"
@@ -495,11 +519,22 @@ async function confirmDelete(): Promise<void> {
               :aria-label="t('team.roleLabel')"
               :disabled="isBusy(member.userId)"
               class="w-40"
+              :ui="{
+                base: 'rounded-[9px] border border-[var(--brand-border)] bg-[var(--brand-surface)] py-2 ps-3.5 pe-[34px] ring-0',
+              }"
               @update:model-value="onRoleChange(member, $event as TeamRole)"
             />
-            <UBadge v-else :color="roleBadgeColor(member.role)" variant="subtle">
+            <span
+              v-else
+              class="badge-pill"
+              :class="
+                roleBadgeColor(member.role) === 'primary'
+                  ? 'badge-pill-primary'
+                  : 'badge-pill-neutral'
+              "
+            >
               {{ t(`role.${member.role}`) }}
-            </UBadge>
+            </span>
 
             <UButton
               v-if="canManageTeam && member.userId !== currentUserId"
@@ -511,44 +546,50 @@ async function confirmDelete(): Promise<void> {
               :disabled="isBusy(member.userId)"
               @click="askRemove(member)"
             />
-          </li>
-        </ul>
-      </UCard>
-
-      <UCard v-if="inviteUrl">
-        <template #header>
-          <h2 class="font-medium">{{ t('team.inviteTitle') }}</h2>
-        </template>
-        <div class="space-y-3">
-          <p class="text-muted text-sm">{{ t('team.inviteHint') }}</p>
-          <div class="flex flex-wrap items-center gap-2">
-            <UInput :model-value="inviteUrl" readonly class="grow" :ui="{ base: 'font-mono' }" />
-            <UButton icon="i-lucide-copy" color="neutral" variant="subtle" @click="copyInvite">
-              {{ t('team.copy') }}
-            </UButton>
           </div>
+        </div>
+      </div>
+
+      <div v-if="inviteUrl" class="surface-card px-[30px] py-[26px]">
+        <h2 class="mb-1.5 text-[17px] font-bold">{{ t('team.inviteTitle') }}</h2>
+        <p class="text-muted mb-4 text-sm">{{ t('team.inviteHint') }}</p>
+        <div class="mb-3.5 flex flex-wrap items-center gap-3">
+          <UInput
+            :model-value="inviteUrl"
+            readonly
+            class="grow"
+            :ui="{
+              base: 'font-mono rounded-[11px] border-[length:1.5px] border-[color:var(--brand-border)] bg-[var(--brand-surface)] px-4 py-3 ring-0',
+            }"
+          />
           <UButton
-            icon="i-lucide-refresh-cw"
-            color="neutral"
-            variant="ghost"
-            size="sm"
-            @click="rotateOpen = true"
+            icon="i-lucide-copy"
+            class="rounded-[10px] px-[18px] py-3 text-sm font-bold"
+            @click="copyInvite"
           >
-            {{ t('team.rotate') }}
+            {{ t('team.copy') }}
           </UButton>
         </div>
-      </UCard>
+        <UButton
+          icon="i-lucide-refresh-cw"
+          color="neutral"
+          variant="link"
+          class="p-0 text-[13.5px] font-semibold"
+          @click="rotateOpen = true"
+        >
+          {{ t('team.rotate') }}
+        </UButton>
+      </div>
 
-      <UCard>
-        <template #header>
-          <h2 class="font-medium">{{ t('team.settingsTitle') }}</h2>
-        </template>
-        <div class="flex flex-wrap gap-2">
+      <div class="surface-card px-[30px] py-[26px]">
+        <h2 class="mb-[18px] text-[17px] font-bold">{{ t('team.settingsTitle') }}</h2>
+        <div class="flex flex-wrap gap-3">
           <UButton
             v-if="canManageTeam"
             icon="i-lucide-pencil"
             color="neutral"
-            variant="subtle"
+            variant="outline"
+            class="rounded-[10px] px-[18px] py-[11px] text-sm font-bold"
             @click="renameOpen = true"
           >
             {{ t('team.rename') }}
@@ -558,7 +599,8 @@ async function confirmDelete(): Promise<void> {
           <UButton
             icon="i-lucide-log-out"
             color="neutral"
-            variant="subtle"
+            variant="outline"
+            class="rounded-[10px] px-[18px] py-[11px] text-sm font-bold"
             @click="leaveOpen = true"
           >
             {{ t('team.leave') }}
@@ -568,12 +610,13 @@ async function confirmDelete(): Promise<void> {
             icon="i-lucide-trash-2"
             color="error"
             variant="subtle"
+            class="rounded-[10px] px-[18px] py-[11px] text-sm font-bold"
             @click="deleteOpen = true"
           >
             {{ t('team.deleteTeam') }}
           </UButton>
         </div>
-      </UCard>
+      </div>
     </template>
 
     <UModal

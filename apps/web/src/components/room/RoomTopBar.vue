@@ -45,20 +45,24 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
 
 <template>
   <div class="flex items-start justify-between gap-3">
-    <div class="flex flex-wrap items-center gap-2">
-      <h1 class="text-2xl font-semibold">{{ props.name }}</h1>
-      <UBadge :color="props.connected ? 'success' : 'error'" variant="subtle">
+    <div class="flex flex-wrap items-center gap-2.5">
+      <h1 class="font-heading text-[28px] font-extrabold">{{ props.name }}</h1>
+      <span
+        class="badge-pill"
+        :class="props.connected ? 'badge-pill-primary' : 'badge-pill-neutral'"
+      >
         {{ props.connected ? t('room.connected') : t('room.disconnected') }}
-      </UBadge>
-      <UBadge v-if="props.archived" color="warning" variant="subtle">
+      </span>
+      <span v-if="props.archived" class="badge-pill badge-pill-neutral">
         {{ t('room.archived') }}
-      </UBadge>
+      </span>
     </div>
     <UDropdownMenu :items="menuItems">
       <UButton
         icon="i-lucide-ellipsis-vertical"
         color="neutral"
         variant="ghost"
+        class="size-9 rounded-[10px]"
         :aria-label="t('room.roomMenu')"
       />
     </UDropdownMenu>

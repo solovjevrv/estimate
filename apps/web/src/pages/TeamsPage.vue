@@ -5,7 +5,7 @@ import { onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
-import { roleBadgeColor } from '../lib/team-roles';
+import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
 import { useTeamsStore } from '../stores/teams';
 
 const { t } = useI18n();
@@ -70,8 +70,15 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
 <template>
   <section class="space-y-6">
     <div class="flex items-center justify-between gap-4">
-      <h1 class="text-2xl font-semibold">{{ t('teams.title') }}</h1>
-      <UButton icon="i-lucide-plus" @click="open = true">{{ t('teams.create') }}</UButton>
+      <h1 class="font-heading text-3xl font-extrabold">{{ t('teams.title') }}</h1>
+      <UButton
+        size="lg"
+        icon="i-lucide-plus"
+        class="h-[43px] px-[22px] text-[15px] font-bold"
+        @click="open = true"
+      >
+        {{ t('teams.create') }}
+      </UButton>
     </div>
 
     <UAlert v-if="loadFailed" color="error" variant="subtle" :description="t('teams.loadError')" />
@@ -82,17 +89,29 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
 
     <p v-else-if="teams.list.length === 0" class="text-muted">{{ t('teams.empty') }}</p>
 
-    <ul v-else class="grid gap-3 sm:grid-cols-2">
+    <ul v-else class="flex flex-col gap-4">
       <li v-for="team in teams.list" :key="team.id">
-        <RouterLink :to="{ name: 'team', params: { id: team.id } }" class="block">
-          <UCard class="hover:ring-primary transition hover:ring-1">
-            <div class="flex items-center justify-between gap-3">
-              <span class="font-medium">{{ team.name }}</span>
-              <UBadge :color="roleBadgeColor(team.role)" variant="subtle">
-                {{ t(`role.${team.role}`) }}
-              </UBadge>
+        <RouterLink
+          :to="{ name: 'team', params: { id: team.id } }"
+          class="surface-card surface-card-hover flex items-center justify-between gap-3 p-6"
+        >
+          <div class="flex min-w-0 items-center gap-4">
+            <div
+              class="font-heading flex size-[46px] shrink-0 items-center justify-center rounded-[12px] text-base font-bold text-white"
+              :class="teamAvatarColor(team.id)"
+            >
+              {{ team.name.slice(0, 1).toUpperCase() }}
             </div>
-          </UCard>
+            <span class="truncate text-lg font-bold">{{ team.name }}</span>
+          </div>
+          <span
+            class="badge-pill shrink-0"
+            :class="
+              roleBadgeColor(team.role) === 'primary' ? 'badge-pill-primary' : 'badge-pill-neutral'
+            "
+          >
+            {{ t(`role.${team.role}`) }}
+          </span>
         </RouterLink>
       </li>
     </ul>

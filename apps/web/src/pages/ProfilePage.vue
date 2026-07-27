@@ -62,30 +62,61 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
 </script>
 
 <template>
-  <UCard v-if="session.user" class="mx-auto max-w-md">
-    <div class="flex flex-col items-center gap-3 text-center">
-      <UAvatar :src="session.user.avatarUrl ?? undefined" :alt="session.user.name" size="xl" />
-      <p class="text-muted text-sm">{{ session.user.email }}</p>
-      <UBadge color="neutral" variant="subtle">
-        {{ providerLabels[session.user.provider] ?? session.user.provider }}
-      </UBadge>
-    </div>
+  <div
+    v-if="session.user"
+    class="surface-card surface-card-lg mx-auto flex max-w-[480px] flex-col items-center px-[30px] py-[26px]"
+  >
+    <UAvatar
+      :src="session.user.avatarUrl ?? undefined"
+      :alt="session.user.name"
+      class="mb-4 size-[72px]"
+    />
+    <p class="mb-3 text-[15px] font-semibold" style="color: var(--ui-color-primary-500)">
+      {{ session.user.email }}
+    </p>
+    <span class="badge-pill badge-pill-neutral mb-7">
+      {{ providerLabels[session.user.provider] ?? session.user.provider }}
+    </span>
 
-    <UForm :state="form" :validate="validate" class="mt-6 space-y-4" @submit="onSubmit">
-      <UFormField :label="t('profile.nameLabel')" name="name">
-        <UInput v-model="form.name" class="w-full" />
+    <UForm :state="form" :validate="validate" class="w-full" @submit="onSubmit">
+      <UFormField
+        :label="t('profile.nameLabel')"
+        name="name"
+        class="mb-[18px]"
+        :ui="{ label: 'text-sm font-bold mb-2' }"
+      >
+        <UInput
+          v-model="form.name"
+          class="w-full"
+          :ui="{
+            base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] px-4 py-[13px] ring-0',
+          }"
+        />
       </UFormField>
-      <UFormField :label="t('profile.jobTitleLabel')" name="jobTitle">
+      <UFormField
+        :label="t('profile.jobTitleLabel')"
+        name="jobTitle"
+        class="mb-[26px]"
+        :ui="{ label: 'text-sm font-bold mb-2' }"
+      >
         <UInput
           v-model="form.jobTitle"
           class="w-full"
           :placeholder="t('profile.jobTitlePlaceholder')"
+          :ui="{
+            base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] px-4 py-[13px] ring-0',
+          }"
         />
       </UFormField>
-      <UButton type="submit" :loading="saving" block>
+      <UButton
+        type="submit"
+        :loading="saving"
+        block
+        class="rounded-[12px] py-[14px] text-[15px] font-bold"
+      >
         {{ saving ? t('profile.saving') : t('profile.save') }}
       </UButton>
     </UForm>
-  </UCard>
+  </div>
   <p v-else class="text-muted text-center">{{ t('profile.notLoaded') }}</p>
 </template>

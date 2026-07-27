@@ -24,11 +24,15 @@ const dashOffset = computed(() => circumference * (1 - props.agreement / 100));
 
 <template>
   <div>
-    <h2 class="mb-3 font-medium">{{ t('room.resultTitle') }}</h2>
+    <h2 class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
+      {{ t('room.resultTitle') }}
+    </h2>
     <div class="flex flex-wrap items-center gap-6">
       <div v-if="props.winnerLabel" class="flex flex-col items-center gap-1">
         <span class="text-muted text-xs">{{ t('room.resultWinnerLabel') }}</span>
-        <span class="text-primary text-2xl font-bold">{{ props.winnerLabel }}</span>
+        <span class="font-heading text-2xl font-extrabold text-[var(--brand-primary-text)]">{{
+          props.winnerLabel
+        }}</span>
       </div>
 
       <div class="flex flex-col items-center gap-1">
@@ -73,9 +77,9 @@ const dashOffset = computed(() => circumference * (1 - props.agreement / 100));
     </div>
 
     <div class="mt-4 flex flex-wrap gap-2">
-      <UBadge v-for="v in props.votes" :key="v.participantId" color="neutral" variant="subtle">
+      <span v-for="v in props.votes" :key="v.participantId" class="badge-pill badge-pill-neutral">
         {{ v.name }}: {{ v.valueLabel }}
-      </UBadge>
+      </span>
     </div>
   </div>
 </template>

@@ -390,7 +390,7 @@ const closedRoom: Room = {
 };
 
 describe('дашборд команды', () => {
-  it('показывает активные и завершённые комнаты со ссылками', async () => {
+  it('показывает активные комнаты на вкладке «Активные»', async () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
@@ -400,10 +400,25 @@ describe('дашборд команды', () => {
     );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Планирование спринта'));
-    expect(wrapper.text()).toContain('Ретро квартала');
     expect(wrapper.text()).toContain('Активные');
-    expect(wrapper.text()).toContain('Завершённые');
+    expect(wrapper.text()).not.toContain('Ретро квартала');
     expect(wrapper.find('a[href="/rooms/r1"]').exists()).toBe(true);
+  });
+
+  it('показывает завершённые комнаты на вкладке «Архив»', async () => {
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: [admin] }),
+        'GET /api/teams/t1/rooms': () => json(200, { rooms: [activeRoom, closedRoom] }),
+        'GET /api/teams/t1/rooms?archived=true': () => json(200, { rooms: [] }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Планирование спринта'));
+
+    await byText(wrapper, 'button', 'Архив')!.trigger('click');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ретро квартала'));
     expect(wrapper.find('a[href="/rooms/r2"]').exists()).toBe(true);
   });
 
@@ -454,20 +469,23 @@ describe('дашборд команды', () => {
 });
 
 describe('архив комнат команды', () => {
-  it('рядовому участнику раздел архива не показывается', async () => {
+  it('рядовому участнику вкладка «Архив» доступна, но без удаления навсегда', async () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
       makeFetch(true, {
         'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [admin] }),
-        'GET /api/teams/t1/rooms': () => json(200, { rooms: [] }),
+        'GET /api/teams/t1/rooms': () => json(200, { rooms: [closedRoom] }),
       }),
     );
-
     await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
-    expect(wrapper.text()).not.toContain('Показать архив');
+
+    await byText(wrapper, 'button', 'Архив')!.trigger('click');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ретро квартала'));
+    expect(wrapper.text()).not.toContain('Удалить навсегда');
   });
 
-  it('администратор открывает архив и удаляет комнату навсегда', async () => {
+  it('администратор видит заархивированную комнату в «Архиве» и удаляет её навсегда', async () => {
     const archivedRoom: Room = { ...activeRoom, id: 'r7', archivedAt: '2026-07-25T00:00:00.000Z' };
     const remove = vi.fn(() => new Response(null, { status: 204 }));
     const { wrapper } = await mountApp(
@@ -479,9 +497,9 @@ describe('архив комнат команды', () => {
         'DELETE /api/rooms/r7': remove,
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Показать архив'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Комнаты'));
 
-    await byText(wrapper, 'button', 'Показать архив')!.trigger('click');
+    await byText(wrapper, 'button', 'Архив')!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('Планирование спринта'));
 
     await byText(wrapper, 'button', 'Удалить навсегда')!.trigger('click');
