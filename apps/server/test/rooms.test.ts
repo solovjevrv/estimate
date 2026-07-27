@@ -792,6 +792,130 @@ describeDb('комнаты', () => {
     });
   });
 
+  describe('таймер обсуждения', () => {
+    it('новая комната отдаёт таймер по умолчанию: 5 минут, не запущен', async () => {
+      const owner = await newUser('timer-default-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+
+      const state = await joinRoom(master, roomId);
+
+      expect(state.timer).toMatchObject({ durationSec: 300, running: false, endsAt: null });
+    });
+
+    it('гость может стартовать, ставить на паузу и сбрасывать таймер — рассылка уходит всем', async () => {
+      const owner = await newUser('timer-control-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      await joinRoom(guest, roomId, 'Таймер-гость');
+
+      const masterSeesStart = nextState(master);
+      const started = await emit(guest, WS_EVENTS.START_TIMER);
+      expect(started.ok).toBe(true);
+      const afterStart = await masterSeesStart;
+      expect(afterStart.timer.running).toBe(true);
+      expect(afterStart.timer.endsAt).not.toBeNull();
+
+      const masterSeesPause = nextState(master);
+      const paused = await emit(guest, WS_EVENTS.PAUSE_TIMER);
+      expect(paused.ok).toBe(true);
+      const afterPause = await masterSeesPause;
+      expect(afterPause.timer).toMatchObject({ running: false, endsAt: null });
+      expect(afterPause.timer.remainingSec).toBeLessThanOrEqual(300);
+
+      const masterSeesReset = nextState(master);
+      const reset = await emit(guest, WS_EVENTS.RESET_TIMER, { durationSec: 600 });
+      expect(reset.ok).toBe(true);
+      const afterReset = await masterSeesReset;
+      expect(afterReset.timer).toMatchObject({
+        durationSec: 600,
+        running: false,
+        endsAt: null,
+        remainingSec: 600,
+      });
+    });
+
+    it('произвольная длительность (не из пресетов) отклоняется', async () => {
+      const owner = await newUser('timer-bad-duration-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+
+      const ack = await emit(master, WS_EVENTS.RESET_TIMER, { durationSec: 42 });
+
+      expect(ack).toMatchObject({ ok: false, error: 'bad_request' });
+    });
+
+    it('новый раунд сбрасывает таймер обсуждения предыдущей задачи', async () => {
+      const owner = await newUser('timer-round-reset-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+      await emit(master, WS_EVENTS.START_TIMER);
+
+      const masterSeesNewRound = nextState(master);
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'scale_0_5' });
+      const fresh = await masterSeesNewRound;
+
+      expect(fresh.timer).toMatchObject({ running: false, endsAt: null, remainingSec: 300 });
+    });
+
+    it('таймер прошлой комнаты не утекает: переход на живом сокете без дисконнекта чистит её состояние', async () => {
+      const ownerA = await newUser('timer-leak-owner-a');
+      const roomA = await newRoom(ownerA, 'Таймер: комната А');
+      const ownerB = await newUser('timer-leak-owner-b');
+      const roomB = await newRoom(ownerB, 'Таймер: комната Б');
+
+      const client = connect(ownerA);
+      await joinRoom(client, roomA);
+      expect((await emit(client, WS_EVENTS.START_TIMER)).ok).toBe(true);
+
+      // Тот же сокет уходит в другую комнату без разрыва соединения — roomA пустеет
+      await joinRoom(client, roomB);
+
+      // Новый участник заходит в опустевшую комнату А: если состояние не почистили,
+      // он увидит чужой «бегущий» таймер вместо дефолтного
+      const fresh = connect();
+      const freshState = await joinRoom(fresh, roomA, 'Новый гость');
+      expect(freshState.timer).toMatchObject({
+        durationSec: 300,
+        running: false,
+        endsAt: null,
+        remainingSec: 300,
+      });
+    });
+
+    it('одновременные события над таймером не оставляют «рваного» состояния', async () => {
+      const owner = await newUser('timer-concurrent-owner');
+      const roomId = await newRoom(owner, 'Таймер: гонка событий');
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      await joinRoom(guest, roomId, 'Параллельный гость');
+
+      const [startAck, resetAck] = await Promise.all([
+        emit(guest, WS_EVENTS.START_TIMER),
+        emit(master, WS_EVENTS.RESET_TIMER, { durationSec: 900 }),
+      ]);
+      expect(startAck.ok).toBe(true);
+      expect(resetAck.ok).toBe(true);
+
+      // Независимый наблюдатель забирает окончательный снимок — какое бы из двух
+      // действий ни применилось последним, состояние не должно быть гибридом
+      // «идёт отсчёт, но endsAt пуст» или «остановлен, но endsAt заполнен»
+      const observer = connect();
+      const observed = await joinRoom(observer, roomId, 'Наблюдатель');
+      if (observed.timer.running) {
+        expect(observed.timer.endsAt).not.toBeNull();
+      } else {
+        expect(observed.timer.endsAt).toBeNull();
+      }
+    });
+  });
+
   /**
    * Одновременные действия за столом. Сервис зовём напрямую: так события
    * уходят в базу параллельно, без очереди одного сокета.

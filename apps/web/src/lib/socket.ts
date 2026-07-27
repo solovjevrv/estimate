@@ -6,8 +6,10 @@
 import type {
   JoinRoomPayload,
   JoinRoomResult,
+  ResetTimerPayload,
   RevealCardsPayload,
   RoomState,
+  RoomTimerState,
   Round,
   RoundResult,
   StartRoundPayload,
@@ -48,6 +50,15 @@ interface ClientToServerEvents {
   [WS_EVENTS.REVEAL_CARDS]: (p: RevealCardsPayload, ack: (r: WsAck<RoundResult>) => void) => void;
   [WS_EVENTS.START_NEW_ROUND]: (p: StartRoundPayload, ack: (r: WsAck<Round>) => void) => void;
   [WS_EVENTS.UPDATE_LINKS]: (p: UpdateLinksPayload, ack: (r: WsAck<null>) => void) => void;
+  [WS_EVENTS.START_TIMER]: (
+    p: Record<string, never>,
+    ack: (r: WsAck<RoomTimerState>) => void,
+  ) => void;
+  [WS_EVENTS.PAUSE_TIMER]: (
+    p: Record<string, never>,
+    ack: (r: WsAck<RoomTimerState>) => void,
+  ) => void;
+  [WS_EVENTS.RESET_TIMER]: (p: ResetTimerPayload, ack: (r: WsAck<RoomTimerState>) => void) => void;
 }
 
 export type PokerSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

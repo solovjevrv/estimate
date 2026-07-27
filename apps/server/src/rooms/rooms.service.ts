@@ -9,10 +9,12 @@ import {
   type Round,
   type RoundResult,
   type DeckType,
+  type RoomTimerState,
   type StartRoundPayload,
   type SubmitVotePayload,
   type UpdateLinksPayload,
   DECK_TYPES,
+  TIMER_DEFAULT_DURATION_SEC,
   TSHIRT_DECK,
   hasTeamRole,
 } from '@poker/shared';
@@ -246,7 +248,16 @@ export class RoomsService {
    * Читается одним снимком базы, иначе между запросами успевает пройти вскрытие
    * карт и участники получат рваную картину: раунд ещё открыт, а голоса финальные.
    */
-  async getState(roomId: string, participants: ParticipantIdentity[]): Promise<RoomState> {
+  async getState(
+    roomId: string,
+    participants: ParticipantIdentity[],
+    timer: RoomTimerState = {
+      durationSec: TIMER_DEFAULT_DURATION_SEC,
+      running: false,
+      endsAt: null,
+      remainingSec: TIMER_DEFAULT_DURATION_SEC,
+    },
+  ): Promise<RoomState> {
     const { room, round, votes } = await this.db.transaction(
       async (tx) => {
         const repo = new RoomsRepository(tx);
@@ -278,6 +289,7 @@ export class RoomsService {
       })),
       // Оценки видны только после вскрытия карт
       result: round?.status === 'revealed' ? this.summarize(votes, round, round.average) : null,
+      timer,
     };
   }
 

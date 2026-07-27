@@ -3,7 +3,9 @@ import {
   WS_SERVER_EVENTS,
   type JoinRoomPayload,
   type JoinRoomResult,
+  type ResetTimerPayload,
   type RoomState,
+  type RoomTimerState,
   type RevealCardsPayload,
   type Round,
   type RoundResult,
@@ -19,6 +21,7 @@ import { AppError, ForbiddenError, ValidationError } from '../errors';
 import type { PokerServer } from '../socket';
 
 import { RoomPresence, type ParticipantIdentity } from './presence';
+import { RoomTimer } from './room-timer';
 import type { RoomsService } from './rooms.service';
 
 type Ack<T> = (response: WsAck<T>) => void;
@@ -42,6 +45,7 @@ export class RoomsGateway {
   constructor(
     private readonly service: RoomsService,
     private readonly presence = new RoomPresence(),
+    private readonly timer = new RoomTimer(),
   ) {}
 
   register(io: PokerServer, log: FastifyBaseLogger): void {
@@ -81,8 +85,40 @@ export class RoomsGateway {
             identity,
             payload as StartRoundPayload,
           );
+          // Новая задача — таймер обсуждения предыдущей ей не нужен
+          this.timer.reset(roomId);
           await this.broadcastState(io, roomId);
           return round;
+        });
+      });
+
+      socket.on(WS_EVENTS.START_TIMER, (...args: unknown[]) => {
+        const { ack } = this.readArgs<undefined>(args);
+        this.run<RoomTimerState>(socket, log, ack, async () => {
+          const { roomId } = this.requireSeat(socket);
+          const state = this.timer.start(roomId);
+          await this.broadcastState(io, roomId);
+          return state;
+        });
+      });
+
+      socket.on(WS_EVENTS.PAUSE_TIMER, (...args: unknown[]) => {
+        const { ack } = this.readArgs<undefined>(args);
+        this.run<RoomTimerState>(socket, log, ack, async () => {
+          const { roomId } = this.requireSeat(socket);
+          const state = this.timer.pause(roomId);
+          await this.broadcastState(io, roomId);
+          return state;
+        });
+      });
+
+      socket.on(WS_EVENTS.RESET_TIMER, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<ResetTimerPayload>(args);
+        this.run<RoomTimerState>(socket, log, ack, async () => {
+          const { roomId } = this.requireSeat(socket);
+          const state = this.timer.reset(roomId, payload?.durationSec);
+          await this.broadcastState(io, roomId);
+          return state;
         });
       });
 
@@ -100,6 +136,10 @@ export class RoomsGateway {
       socket.on('disconnect', () => {
         const roomId = this.presence.leave(socket.id);
         if (roomId) {
+          // Стол опустел — сиюминутному состоянию таймера дальше жить незачем
+          if (this.presence.list(roomId).length === 0) {
+            this.timer.clear(roomId);
+          }
           this.broadcastState(io, roomId).catch((err: unknown) => {
             log.warn({ err, roomId }, 'Не удалось разослать состояние после выхода участника');
           });
@@ -134,6 +174,11 @@ export class RoomsGateway {
     this.presence.join(payload.roomId, socket.id, identity);
 
     if (previousRoom && previousRoom !== payload.roomId) {
+      // Прошлая комната опустела — сиюминутному состоянию таймера дальше жить незачем
+      // (как и при disconnect ниже: без этого запись в RoomTimer осталась бы навсегда)
+      if (this.presence.list(previousRoom).length === 0) {
+        this.timer.clear(previousRoom);
+      }
       await this.broadcastState(io, previousRoom);
     }
 
@@ -162,7 +207,11 @@ export class RoomsGateway {
   private async broadcastState(io: PokerServer, roomId: string): Promise<RoomState> {
     const previous = this.broadcasts.get(roomId) ?? Promise.resolve();
     const send = previous.then(async () => {
-      const state = await this.service.getState(roomId, this.presence.list(roomId));
+      const state = await this.service.getState(
+        roomId,
+        this.presence.list(roomId),
+        this.timer.get(roomId),
+      );
       io.to(roomId).emit(WS_SERVER_EVENTS.ROOM_STATE, state);
       return state;
     });

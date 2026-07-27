@@ -7,6 +7,9 @@ export const WS_EVENTS = {
   REVEAL_CARDS: 'reveal_cards',
   START_NEW_ROUND: 'start_new_round',
   UPDATE_LINKS: 'update_links',
+  START_TIMER: 'start_timer',
+  PAUSE_TIMER: 'pause_timer',
+  RESET_TIMER: 'reset_timer',
 } as const;
 
 export type WsEvent = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
@@ -181,6 +184,30 @@ export interface RoundResult {
   votes: RevealedVote[];
 }
 
+/**
+ * Общий таймер обсуждения раунда. Живёт в памяти процесса на комнату (как
+ * присутствие участников), а не в базе — это сиюминутное состояние стола.
+ * Пока идёт отсчёт, `endsAt` — абсолютный момент истечения: клиент считает
+ * оставшееся время сам, сверяясь с ним, а не ждёт тиков от сервера каждую секунду.
+ */
+export interface RoomTimerState {
+  durationSec: number;
+  running: boolean;
+  /** ISO-момент, когда таймер дойдёт до нуля; null — когда на паузе или сброшен */
+  endsAt: string | null;
+  /** Остаток в секундах на момент паузы/сброса; во время отсчёта не обновляется — считается от endsAt */
+  remainingSec: number;
+}
+
+/** Пресеты длительности на выбор — свободный ввод не делаем, чтобы не проверять диапазон */
+export const TIMER_DURATION_PRESETS_SEC: readonly number[] = [300, 600, 900];
+export const TIMER_DEFAULT_DURATION_SEC = 300;
+
+export interface ResetTimerPayload {
+  /** Новая длительность из пресетов; без поля — сброс на текущую длительность */
+  durationSec?: number;
+}
+
 /** Полный снимок комнаты — то, что видит участник */
 export interface RoomState {
   room: Room;
@@ -188,6 +215,7 @@ export interface RoomState {
   participants: Participant[];
   /** Заполняется только после вскрытия карт */
   result: RoundResult | null;
+  timer: RoomTimerState;
 }
 
 export interface JoinRoomPayload {

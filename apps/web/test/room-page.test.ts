@@ -1,6 +1,6 @@
 import ui from '@nuxt/ui/vue-plugin';
 import type { AuthUser, Participant, Room, RoomState, Round, RoundResult } from '@poker/shared';
-import { WS_SERVER_EVENTS } from '@poker/shared';
+import { TIMER_DEFAULT_DURATION_SEC, WS_SERVER_EVENTS } from '@poker/shared';
 import { mount } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -43,6 +43,12 @@ function roomState(overrides: Partial<RoomState> = {}): RoomState {
     round: null,
     participants: [],
     result: null,
+    timer: {
+      durationSec: TIMER_DEFAULT_DURATION_SEC,
+      running: false,
+      endsAt: null,
+      remainingSec: TIMER_DEFAULT_DURATION_SEC,
+    },
     ...overrides,
   };
 }
@@ -1379,5 +1385,100 @@ describe('выход из аккаунта на странице комнаты'
     // Переход на главную размонтирует RoomPage — onBeforeUnmount закрывает сокет
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/'));
     expect(socket.connected).toBe(false);
+  });
+});
+
+describe('таймер обсуждения', () => {
+  it('гость (не скрам-мастер) видит таймер и может его стартовать — прав не проверяем', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: 'tok',
+      participantId: 'g1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await wrapper.find('input').setValue('Мария');
+    await wrapper.find('form').trigger('submit');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Таймер обсуждения'));
+    expect(wrapper.text()).toContain('5:00');
+
+    socket.next = null;
+    const startButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Старт');
+    await startButton!.trigger('click');
+
+    const started = socket.sent.find((s) => s.event === 'start_timer');
+    expect(started?.payload).toEqual({});
+  });
+
+  it('во время отсчёта кнопка становится «Пауза» и шлёт pause_timer', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Таймер обсуждения'));
+
+    socket.emitLocal(
+      WS_SERVER_EVENTS.ROOM_STATE,
+      roomState({
+        room: { ...room1, revision: room1.revision + 1 },
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+        timer: {
+          durationSec: 300,
+          running: true,
+          endsAt: new Date(Date.now() + 300_000).toISOString(),
+          remainingSec: 300,
+        },
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(wrapper.findAll('button').some((b) => b.text().trim() === 'Пауза')).toBe(true),
+    );
+
+    socket.next = null;
+    const pauseButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Пауза');
+    await pauseButton!.trigger('click');
+
+    const paused = socket.sent.find((s) => s.event === 'pause_timer');
+    expect(paused?.payload).toEqual({});
+  });
+
+  it('клик по пресету длительности шлёт reset_timer с этой длительностью', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Таймер обсуждения'));
+
+    socket.next = null;
+    const preset10 = wrapper.findAll('button').find((b) => b.text().trim() === '10 мин');
+    await preset10!.trigger('click');
+
+    const reset = socket.sent.find((s) => s.event === 'reset_timer');
+    expect(reset?.payload).toEqual({ durationSec: 600 });
   });
 });
