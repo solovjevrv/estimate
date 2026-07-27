@@ -397,8 +397,12 @@ function retry(): void {
       :description="t('room.loadError')"
     />
 
-    <div v-else-if="phase === 'loading'" class="text-muted flex justify-center py-8">
-      <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin" />
+    <div v-else-if="phase === 'loading'" class="space-y-6">
+      <USkeleton class="h-9 w-1/3 bg-[var(--brand-border)]" />
+      <div class="surface-card surface-card-lg space-y-4 px-[30px] py-[26px]">
+        <USkeleton class="h-5 w-1/4 bg-[var(--brand-border)]" />
+        <USkeleton class="h-11 w-full rounded-[11px] bg-[var(--brand-border)]" />
+      </div>
     </div>
 
     <template v-else-if="roomInfo">

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 const props = defineProps<{
@@ -20,10 +20,60 @@ const { t } = useI18n();
 const radius = 30;
 const circumference = 2 * Math.PI * radius;
 const dashOffset = computed(() => circumference * (1 - props.agreement / 100));
+
+interface ConfettiPiece {
+  id: number;
+  left: number;
+  delay: number;
+  duration: number;
+  color: string;
+}
+
+const confettiColors = [
+  'var(--ui-color-primary-500)',
+  'var(--brand-amber)',
+  'var(--brand-primary-text)',
+];
+
+const confetti = ref<ConfettiPiece[]>([]);
+let nextConfettiId = 0;
+let clearConfettiTimer: ReturnType<typeof setTimeout> | null = null;
+
+// Единодушный консенсус (все проголосовавшие сошлись на одном значении) — лёгкий
+// разовый эффект при вскрытии, без новых зависимостей (чистый CSS/DOM)
+watch(
+  () => props.agreement,
+  (agreement) => {
+    if (agreement !== 100) return;
+    confetti.value = Array.from({ length: 24 }, (_, i) => ({
+      id: nextConfettiId++,
+      left: Math.random() * 100,
+      delay: Math.random() * 0.25,
+      duration: 0.9 + Math.random() * 0.5,
+      color: confettiColors[i % confettiColors.length] ?? confettiColors[0]!,
+    }));
+    if (clearConfettiTimer) clearTimeout(clearConfettiTimer);
+    clearConfettiTimer = setTimeout(() => {
+      confetti.value = [];
+    }, 1700);
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
-  <div>
+  <div class="relative">
+    <div
+      v-for="piece in confetti"
+      :key="piece.id"
+      class="confetti-piece pointer-events-none absolute top-0 size-2 rounded-sm"
+      :style="{
+        left: piece.left + '%',
+        backgroundColor: piece.color,
+        animationDelay: piece.delay + 's',
+        animationDuration: piece.duration + 's',
+      }"
+    />
     <h2 class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
       {{ t('room.resultTitle') }}
     </h2>
@@ -83,3 +133,22 @@ const dashOffset = computed(() => circumference * (1 - props.agreement / 100));
     </div>
   </div>
 </template>
+
+<style scoped>
+.confetti-piece {
+  animation-name: confetti-fall;
+  animation-timing-function: ease-in;
+  animation-fill-mode: forwards;
+}
+
+@keyframes confetti-fall {
+  0% {
+    opacity: 1;
+    transform: translateY(-10px) rotate(0deg);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(140px) rotate(360deg);
+  }
+}
+</style>

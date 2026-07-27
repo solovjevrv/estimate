@@ -22,41 +22,48 @@ const { t } = useI18n();
     class="flex w-[130px] flex-col items-center gap-2.5"
     :data-winner="props.roundStatus === 'revealed' && props.isWinner ? 'true' : undefined"
   >
-    <div class="relative h-[150px] w-[118px]">
+    <div class="relative h-[150px] w-[118px]" style="perspective: 800px">
       <div
-        class="absolute inset-0 flex items-center justify-center rounded-[14px]"
-        :class="[
-          props.roundStatus === 'revealed'
-            ? props.isWinner
-              ? 'bg-[var(--brand-primary-soft-bg)] shadow-[inset_0_0_0_2px_var(--brand-amber)]'
-              : 'surface-card'
-            : props.roundStatus === 'voting' && props.participant.hasVoted
-              ? 'bg-[var(--brand-primary-soft-bg)] shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]'
-              : 'bg-[var(--brand-border)]',
-        ]"
+        class="relative size-full transition-transform duration-500 ease-out [transform-style:preserve-3d]"
+        :style="props.roundStatus === 'revealed' ? 'transform: rotateY(180deg)' : ''"
       >
-        <template v-if="props.roundStatus === 'voting'">
-          <!-- Референс красит иконку в цвет самой карточки (--brand-border) — на месте
-               она невидима, видна только за счёт пульсирующей анимации (перенесена в
-               9.6). Без анимации берём --brand-outline-border — тот же приглушённый
-               "призрачный" эффект, но статично различимый. -->
-          <UIcon
-            v-if="!props.participant.hasVoted"
-            name="i-lucide-clock"
-            class="size-6"
-            style="color: var(--brand-outline-border)"
-          />
-          <span class="sr-only">
-            {{ props.participant.hasVoted ? t('room.voted') : t('room.notVoted') }}
-          </span>
-        </template>
-        <span
-          v-else-if="props.roundStatus === 'revealed'"
-          class="font-heading text-[28px] font-extrabold"
-          :class="props.isWinner ? 'text-[var(--brand-amber)]' : 'text-[var(--brand-primary-text)]'"
+        <!-- Лицо карты: состояние голосования (не вскрыто). В тёмной теме заливка --brand-border
+             сама по себе достаточно контрастна к фону страницы — там всё было в порядке. В
+             светлой контраста не хватает, поэтому добавляем тонкую обводку явного контрастного
+             тона (--brand-ink2, приглушённая прозрачностью); в тёмной обводка не нужна. -->
+        <div
+          class="absolute inset-0 flex items-center justify-center rounded-[14px] [backface-visibility:hidden]"
+          :class="
+            props.roundStatus === 'voting' && props.participant.hasVoted
+              ? 'bg-[var(--brand-primary-soft-bg)] shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]'
+              : 'bg-[var(--brand-border)] border-[1.5px] border-[var(--brand-ink2)]/45 dark:border-transparent'
+          "
         >
-          {{ props.valueLabel }}
-        </span>
+          <template v-if="props.roundStatus === 'voting'">
+            <UIcon
+              v-if="!props.participant.hasVoted"
+              name="i-lucide-clock"
+              class="size-6 animate-pulse"
+              style="color: var(--brand-ink2)"
+            />
+            <span class="sr-only">
+              {{ props.participant.hasVoted ? t('room.voted') : t('room.notVoted') }}
+            </span>
+          </template>
+        </div>
+        <!-- Обратная сторона: вскрытое значение -->
+        <div
+          class="absolute inset-0 flex items-center justify-center rounded-[14px] [backface-visibility:hidden] [transform:rotateY(180deg)]"
+          :class="
+            props.isWinner
+              ? 'bg-[var(--brand-primary-soft-bg)] shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]'
+              : 'bg-[var(--brand-surface)] shadow-[var(--brand-shadow-card)] border-[1.5px] border-[var(--brand-ink2)]/45 dark:border-transparent'
+          "
+        >
+          <span class="font-heading text-[28px] font-extrabold text-[var(--brand-primary-text)]">
+            {{ props.valueLabel }}
+          </span>
+        </div>
       </div>
       <div
         v-if="props.roundStatus === 'voting' && props.participant.hasVoted"

@@ -83,9 +83,12 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
 
     <UAlert v-if="loadFailed" color="error" variant="subtle" :description="t('teams.loadError')" />
 
-    <div v-else-if="loading" class="text-muted flex justify-center py-8">
-      <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin" />
-    </div>
+    <ul v-else-if="loading" class="flex flex-col gap-4">
+      <li v-for="i in 3" :key="i" class="surface-card flex items-center gap-4 p-6">
+        <USkeleton class="size-[46px] shrink-0 rounded-[12px] bg-[var(--brand-border)]" />
+        <USkeleton class="h-5 w-1/3 bg-[var(--brand-border)]" />
+      </li>
+    </ul>
 
     <p v-else-if="teams.list.length === 0" class="text-muted">{{ t('teams.empty') }}</p>
 

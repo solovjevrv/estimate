@@ -67,8 +67,10 @@ async function act(): Promise<void> {
 
 <template>
   <section class="mx-auto max-w-md space-y-6">
-    <div v-if="loading" class="text-muted flex justify-center py-8">
-      <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin" />
+    <div v-if="loading" class="surface-card space-y-4 p-[30px] text-center">
+      <USkeleton class="mx-auto size-8 rounded-full bg-[var(--brand-border)]" />
+      <USkeleton class="mx-auto h-5 w-2/3 bg-[var(--brand-border)]" />
+      <USkeleton class="h-10 w-full rounded-[11px] bg-[var(--brand-border)]" />
     </div>
 
     <UAlert
