@@ -369,8 +369,17 @@ async function confirmDelete(): Promise<void> {
       :description="t('team.loadError')"
     />
 
-    <div v-else-if="loading" class="text-muted flex justify-center py-8">
-      <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin" />
+    <div v-else-if="loading" class="space-y-5">
+      <USkeleton class="h-9 w-1/3 bg-[var(--brand-border)]" />
+      <div class="surface-card space-y-4 px-[30px] py-[26px]">
+        <USkeleton class="h-5 w-1/4 bg-[var(--brand-border)]" />
+        <USkeleton class="h-14 w-full rounded-[12px] bg-[var(--brand-border)]" />
+        <USkeleton class="h-14 w-full rounded-[12px] bg-[var(--brand-border)]" />
+      </div>
+      <div class="surface-card space-y-4 px-[30px] py-[26px]">
+        <USkeleton class="h-5 w-1/4 bg-[var(--brand-border)]" />
+        <USkeleton class="h-10 w-full rounded-[12px] bg-[var(--brand-border)]" />
+      </div>
     </div>
 
     <template v-else-if="overview">

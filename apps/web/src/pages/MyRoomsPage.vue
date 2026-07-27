@@ -168,8 +168,23 @@ async function confirmDelete(): Promise<void> {
       :description="t('myRooms.loadError')"
     />
 
-    <div v-else-if="loading" class="text-muted flex justify-center py-8">
-      <UIcon name="i-lucide-loader-circle" class="size-6 animate-spin" />
+    <div v-else-if="loading" class="space-y-5">
+      <div class="grid gap-4 sm:grid-cols-3">
+        <div v-for="i in 3" :key="i" class="surface-card px-6 py-[22px]">
+          <USkeleton class="mb-3 h-3 w-1/2 bg-[var(--brand-border)]" />
+          <USkeleton class="h-7 w-1/3 bg-[var(--brand-border)]" />
+        </div>
+      </div>
+      <div class="surface-card overflow-hidden">
+        <div
+          v-for="i in 3"
+          :key="i"
+          class="border-default flex items-center justify-between gap-3 border-t px-[30px] py-[22px] first:border-t-0"
+        >
+          <USkeleton class="h-5 w-1/3 bg-[var(--brand-border)]" />
+          <USkeleton class="h-5 w-20 rounded-full bg-[var(--brand-border)]" />
+        </div>
+      </div>
     </div>
 
     <template v-else>
