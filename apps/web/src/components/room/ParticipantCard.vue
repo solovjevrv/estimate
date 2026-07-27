@@ -2,6 +2,8 @@
 import type { Participant } from '@poker/shared';
 import { useI18n } from 'vue-i18n';
 
+import { teamAvatarColor } from '../../lib/team-roles';
+
 const props = defineProps<{
   participant: Participant;
   isSelf: boolean;
@@ -17,50 +19,81 @@ const { t } = useI18n();
 
 <template>
   <div
-    class="border-default flex flex-col items-center gap-2 rounded-lg border p-3 text-center transition-colors"
-    :class="[
-      props.isSelf ? 'ring-primary ring-2' : '',
-      props.isWinner ? 'border-warning bg-warning/10' : '',
-    ]"
+    class="flex w-[130px] flex-col items-center gap-2.5"
+    :data-winner="props.roundStatus === 'revealed' && props.isWinner ? 'true' : undefined"
   >
-    <UAvatar :src="participant.avatarUrl ?? undefined" :alt="participant.name" size="md" />
-    <div class="min-w-0">
-      <p class="truncate text-sm font-medium">
-        {{ participant.name }}
-        <span v-if="props.isSelf" class="text-muted text-xs">{{ t('room.you') }}</span>
+    <div class="relative h-[150px] w-[118px]">
+      <div
+        class="absolute inset-0 flex items-center justify-center rounded-[14px]"
+        :class="[
+          props.roundStatus === 'revealed'
+            ? props.isWinner
+              ? 'bg-[var(--brand-primary-soft-bg)] shadow-[inset_0_0_0_2px_var(--brand-amber)]'
+              : 'surface-card'
+            : props.roundStatus === 'voting' && props.participant.hasVoted
+              ? 'bg-[var(--brand-primary-soft-bg)] shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]'
+              : 'bg-[var(--brand-border)]',
+        ]"
+      >
+        <template v-if="props.roundStatus === 'voting'">
+          <!-- Референс красит иконку в цвет самой карточки (--brand-border) — на месте
+               она невидима, видна только за счёт пульсирующей анимации (перенесена в
+               9.6). Без анимации берём --brand-outline-border — тот же приглушённый
+               "призрачный" эффект, но статично различимый. -->
+          <UIcon
+            v-if="!props.participant.hasVoted"
+            name="i-lucide-clock"
+            class="size-6"
+            style="color: var(--brand-outline-border)"
+          />
+          <span class="sr-only">
+            {{ props.participant.hasVoted ? t('room.voted') : t('room.notVoted') }}
+          </span>
+        </template>
+        <span
+          v-else-if="props.roundStatus === 'revealed'"
+          class="font-heading text-[28px] font-extrabold"
+          :class="props.isWinner ? 'text-[var(--brand-amber)]' : 'text-[var(--brand-primary-text)]'"
+        >
+          {{ props.valueLabel }}
+        </span>
+      </div>
+      <div
+        v-if="props.roundStatus === 'voting' && props.participant.hasVoted"
+        class="absolute right-[-8px] bottom-[-8px] flex size-[26px] items-center justify-center rounded-full bg-[var(--ui-color-primary-500)]"
+        style="box-shadow: 0 0 0 3px var(--brand-surface)"
+      >
+        <UIcon name="i-lucide-check" class="size-3.5 text-white" />
+      </div>
+      <div
+        class="font-heading absolute -top-5 left-1/2 flex size-12 -translate-x-1/2 items-center justify-center rounded-full text-[15px] font-bold text-white"
+        :class="teamAvatarColor(props.participant.participantId)"
+        style="box-shadow: 0 0 0 3px var(--brand-surface)"
+      >
+        {{
+          props.participant.name
+            .split(' ')
+            .map((word) => word.charAt(0))
+            .join('')
+            .slice(0, 2)
+            .toUpperCase()
+        }}
+      </div>
+    </div>
+    <div class="text-center">
+      <p class="truncate text-sm font-bold">
+        {{ props.participant.name }}
+        <span v-if="props.isSelf" class="text-muted font-normal">{{ t('room.you') }}</span>
       </p>
       <p class="text-muted text-xs">
         {{ participant.role === 'scrum_master' ? t('room.roleScrumMaster') : t('room.roleVoter') }}
       </p>
+      <span
+        v-if="props.participant.isGuest"
+        class="badge-pill badge-pill-neutral mt-1 inline-block"
+      >
+        {{ t('room.guestBadge') }}
+      </span>
     </div>
-    <UBadge v-if="participant.isGuest" color="neutral" variant="subtle" size="sm">
-      {{ t('room.guestBadge') }}
-    </UBadge>
-
-    <div
-      v-if="props.roundStatus !== 'none'"
-      class="flex h-12 w-16 items-center justify-center rounded-md border text-lg font-semibold"
-      :class="
-        props.roundStatus === 'revealed'
-          ? props.isWinner
-            ? 'border-warning bg-warning/10 text-warning'
-            : 'border-primary bg-primary/5'
-          : participant.hasVoted
-            ? 'border-primary bg-primary/10'
-            : 'border-default border-dashed'
-      "
-    >
-      <template v-if="props.roundStatus === 'revealed'">{{ props.valueLabel }}</template>
-      <UIcon v-else-if="participant.hasVoted" name="i-lucide-check" class="text-primary size-5" />
-    </div>
-
-    <UBadge
-      v-if="props.roundStatus === 'voting'"
-      :color="participant.hasVoted ? 'success' : 'neutral'"
-      variant="subtle"
-      size="sm"
-    >
-      {{ participant.hasVoted ? t('room.voted') : t('room.notVoted') }}
-    </UBadge>
   </div>
 </template>

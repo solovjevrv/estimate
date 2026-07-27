@@ -28,6 +28,9 @@ claude.md
 CLAUDE.md
 PROGRESS.md
 PROGRESS_ARCHIVE.md
+
+# Дизайн-референсы (мокапы Claude Design и т.п.) — рабочий материал, не код
+.design/
 .claude/*
 # Скиллы держим в репозитории — это общая для команды справка по Nuxt UI
 !.claude/skills/
