@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n';
 
 import DeckBar from '../components/room/DeckBar.vue';
 import ParticipantCard from '../components/room/ParticipantCard.vue';
+import RoomTimerCard from '../components/room/RoomTimerCard.vue';
 import RoomTopBar from '../components/room/RoomTopBar.vue';
 import RoundResultPanel from '../components/room/RoundResultPanel.vue';
 import { ApiError, api } from '../lib/api';
@@ -55,6 +56,46 @@ async function onArchive(): Promise<void> {
     toast.add({ title: t('room.archiveError'), color: 'error' });
   } finally {
     archiving.value = false;
+  }
+}
+
+/**
+ * Таймером управляет любой участник (решение 27.07.2026) — прав здесь не
+ * проверяем, сервер тоже их не проверяет. Актуальное состояние приходит
+ * рассылкой `room_state`, поэтому здесь только флаг «идёт запрос».
+ */
+const timerPending = ref(false);
+
+async function onTimerStart(): Promise<void> {
+  timerPending.value = true;
+  try {
+    await room.startTimer();
+  } catch {
+    toast.add({ title: t('room.timerError'), color: 'error' });
+  } finally {
+    timerPending.value = false;
+  }
+}
+
+async function onTimerPause(): Promise<void> {
+  timerPending.value = true;
+  try {
+    await room.pauseTimer();
+  } catch {
+    toast.add({ title: t('room.timerError'), color: 'error' });
+  } finally {
+    timerPending.value = false;
+  }
+}
+
+async function onTimerReset(durationSec: number): Promise<void> {
+  timerPending.value = true;
+  try {
+    await room.resetTimer(durationSec);
+  } catch {
+    toast.add({ title: t('room.timerError'), color: 'error' });
+  } finally {
+    timerPending.value = false;
   }
 }
 
@@ -470,43 +511,54 @@ function retry(): void {
           :description="t('room.archivedAlert')"
         />
 
-        <div
-          v-if="room.isScrumMaster && !isArchived"
-          class="surface-card surface-card-lg px-[30px] py-[26px]"
-        >
-          <div class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
-            {{ t('room.deckTitle') }}
-          </div>
+        <div v-if="!isArchived" class="flex flex-col gap-5 lg:flex-row lg:items-stretch">
           <div
-            class="mb-[22px] inline-flex gap-1 rounded-[12px] p-1"
-            style="background-color: var(--brand-well-bg)"
+            v-if="room.isScrumMaster"
+            class="surface-card surface-card-lg min-w-0 flex-[1.4] px-[30px] py-[26px]"
           >
-            <button
-              v-for="option in deckOptions"
-              :key="option.value"
-              type="button"
-              class="rounded-[9px] px-4 py-[9px] text-sm font-bold whitespace-nowrap transition-colors"
-              :class="
-                selectedDeck === option.value
-                  ? 'bg-[var(--brand-surface)] text-[var(--brand-primary-text)] shadow-[0_1px_3px_rgba(0,0,0,0.15)]'
-                  : 'text-muted cursor-pointer'
-              "
-              @click="selectedDeck = option.value"
+            <div class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
+              {{ t('room.deckTitle') }}
+            </div>
+            <div
+              class="mb-[22px] inline-flex gap-1 rounded-[12px] p-1"
+              style="background-color: var(--brand-well-bg)"
             >
-              {{ option.label }}
-            </button>
+              <button
+                v-for="option in deckOptions"
+                :key="option.value"
+                type="button"
+                class="rounded-[9px] px-4 py-[9px] text-sm font-bold whitespace-nowrap transition-colors"
+                :class="
+                  selectedDeck === option.value
+                    ? 'bg-[var(--brand-surface)] text-[var(--brand-primary-text)] shadow-[0_1px_3px_rgba(0,0,0,0.15)]'
+                    : 'text-muted cursor-pointer'
+                "
+                @click="selectedDeck = option.value"
+              >
+                {{ option.label }}
+              </button>
+            </div>
+            <div>
+              <UButton
+                color="neutral"
+                variant="outline"
+                class="rounded-[11px] px-[22px] py-3 text-[14.5px] font-bold"
+                :loading="starting"
+                @click="onDeckActionClick"
+              >
+                {{ starting ? t('room.starting') : deckCardButtonLabel }}
+              </UButton>
+            </div>
           </div>
-          <div>
-            <UButton
-              color="neutral"
-              variant="outline"
-              class="rounded-[11px] px-[22px] py-3 text-[14.5px] font-bold"
-              :loading="starting"
-              @click="onDeckActionClick"
-            >
-              {{ starting ? t('room.starting') : deckCardButtonLabel }}
-            </UButton>
-          </div>
+
+          <RoomTimerCard
+            class="min-w-0 flex-1"
+            :timer="room.timer"
+            :pending="timerPending"
+            @start="onTimerStart"
+            @pause="onTimerPause"
+            @reset="onTimerReset"
+          />
         </div>
 
         <div

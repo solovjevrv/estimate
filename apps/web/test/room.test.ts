@@ -1,5 +1,5 @@
-import type { JoinRoomResult, RoomState, Round } from '@poker/shared';
-import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
+import type { JoinRoomResult, RoomState, RoomTimerState, Round } from '@poker/shared';
+import { TIMER_DEFAULT_DURATION_SEC, WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -71,6 +71,16 @@ function round(overrides: Partial<Round> = {}): Round {
   };
 }
 
+function timer(overrides: Partial<RoomTimerState> = {}): RoomTimerState {
+  return {
+    durationSec: TIMER_DEFAULT_DURATION_SEC,
+    running: false,
+    endsAt: null,
+    remainingSec: TIMER_DEFAULT_DURATION_SEC,
+    ...overrides,
+  };
+}
+
 function state(revision: number, overrides: Partial<RoomState> = {}): RoomState {
   return {
     room: {
@@ -86,6 +96,7 @@ function state(revision: number, overrides: Partial<RoomState> = {}): RoomState 
     round: round(),
     participants: [],
     result: null,
+    timer: timer(),
     ...overrides,
   };
 }
@@ -370,6 +381,35 @@ describe('стор комнаты', () => {
       store.leave();
 
       await expect(store.submitVote(3)).rejects.toThrow('Комната не подключена');
+    });
+
+    it('таймер: старт, пауза и сброс шлют события без прав — состояние придёт рассылкой', async () => {
+      const store = useRoomStore();
+      socket.next = null;
+
+      await store.startTimer();
+      expect(socket.sent[0]).toEqual({ event: WS_EVENTS.START_TIMER, payload: {} });
+
+      await store.pauseTimer();
+      expect(socket.sent[1]).toEqual({ event: WS_EVENTS.PAUSE_TIMER, payload: {} });
+
+      await store.resetTimer(600);
+      expect(socket.sent[2]).toEqual({
+        event: WS_EVENTS.RESET_TIMER,
+        payload: { durationSec: 600 },
+      });
+    });
+
+    it('таймер по умолчанию (комната ещё не присылала снимок с ним): дефолт 5 минут', () => {
+      const store = useRoomStore();
+      store.leave();
+
+      expect(store.timer).toEqual({
+        durationSec: TIMER_DEFAULT_DURATION_SEC,
+        running: false,
+        endsAt: null,
+        remainingSec: TIMER_DEFAULT_DURATION_SEC,
+      });
     });
   });
 });

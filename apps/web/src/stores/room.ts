@@ -8,10 +8,11 @@ import type {
   JoinRoomResult,
   Participant,
   RoomState,
+  RoomTimerState,
   Round,
   RoundResult,
 } from '@poker/shared';
-import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
+import { TIMER_DEFAULT_DURATION_SEC, WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
@@ -65,6 +66,15 @@ export const useRoomStore = defineStore('room', () => {
   const round = computed<Round | null>(() => state.value?.round ?? null);
   const participants = computed<Participant[]>(() => state.value?.participants ?? []);
   const result = computed<RoundResult | null>(() => state.value?.result ?? null);
+  const timer = computed<RoomTimerState>(
+    () =>
+      state.value?.timer ?? {
+        durationSec: TIMER_DEFAULT_DURATION_SEC,
+        running: false,
+        endsAt: null,
+        remainingSec: TIMER_DEFAULT_DURATION_SEC,
+      },
+  );
   const isScrumMaster = computed(
     () =>
       participants.value.find((p) => p.participantId === participantId.value)?.role ===
@@ -218,6 +228,35 @@ export const useRoomStore = defineStore('room', () => {
     );
   }
 
+  /**
+   * Таймер обсуждения: управлять может любой участник (решение 27.07.2026),
+   * поэтому прав не проверяем — сервер тоже их не проверяет. Актуальное
+   * состояние приходит рассылкой `room_state`, как и у остальных действий стола.
+   */
+  async function startTimer(): Promise<void> {
+    await emitWithAck<typeof WS_EVENTS.START_TIMER, RoomTimerState>(
+      requireSocket(),
+      WS_EVENTS.START_TIMER,
+      {},
+    );
+  }
+
+  async function pauseTimer(): Promise<void> {
+    await emitWithAck<typeof WS_EVENTS.PAUSE_TIMER, RoomTimerState>(
+      requireSocket(),
+      WS_EVENTS.PAUSE_TIMER,
+      {},
+    );
+  }
+
+  async function resetTimer(durationSec?: number): Promise<void> {
+    await emitWithAck<typeof WS_EVENTS.RESET_TIMER, RoomTimerState>(
+      requireSocket(),
+      WS_EVENTS.RESET_TIMER,
+      { durationSec },
+    );
+  }
+
   return {
     state,
     participantId,
@@ -226,6 +265,7 @@ export const useRoomStore = defineStore('room', () => {
     round,
     participants,
     result,
+    timer,
     isScrumMaster,
     applyState,
     join,
@@ -234,5 +274,8 @@ export const useRoomStore = defineStore('room', () => {
     revealCards,
     startNewRound,
     updateLinks,
+    startTimer,
+    pauseTimer,
+    resetTimer,
   };
 });
