@@ -331,10 +331,27 @@ describe('вход в комнату', () => {
     socket.nextError = null;
     socket.next = { state: roomState(), guestToken: null, participantId: 'u1' };
 
-    await vi.waitFor(() =>
-      expect(socket.sent.filter((s) => s.event === 'join_room')).toHaveLength(2),
-    );
+    // Восстановление идёт молча (7.7): стол ни на миг не должен уходить в экран
+    // «Входим…» — иначе при штатном истечении токена раз в 15 минут это было бы
+    // заметным миганием стола для всех участников разом
+    await Promise.resolve();
+    await Promise.resolve();
     expect(wrapper.text()).toContain('Участники');
+    expect(wrapper.text()).not.toContain('Входим…');
+
+    // Всего за сценарий три входа: первый вход, неудачный авто-реджойн (протухший
+    // токен) и успешное восстановление через `resetConnection()`. Дожидаемся,
+    // что счётчик именно устоялся на этом числе, а не просто прошёл через него —
+    // лишний повторный вход после восстановления должен быть замечен
+    await vi.waitFor(() =>
+      expect(socket.sent.filter((s) => s.event === 'join_room')).toHaveLength(3),
+    );
+    const settled = socket.sent.filter((s) => s.event === 'join_room').length;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(socket.sent.filter((s) => s.event === 'join_room')).toHaveLength(settled);
+    expect(wrapper.text()).toContain('Участники');
+    expect(wrapper.text()).not.toContain('Входим…');
   });
 
   it('после переподключения с по-настоящему истёкшей сессией предлагает войти гостем (7.16)', async () => {

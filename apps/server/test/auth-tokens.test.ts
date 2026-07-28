@@ -60,12 +60,26 @@ describe('TokenService', () => {
     expect(tokens.verify('не-токен', 'access')).toBeNull();
   });
 
-  it('читает пользователя из заголовка Cookie и не верит подделке', () => {
-    const { access } = tokens.issue('user-7', 'session-7');
+  describe('readAccessSessionFromCookieHeader (7.7)', () => {
+    it('читает пользователя и момент истечения из заголовка Cookie', () => {
+      const { access } = tokens.issue('user-7', 'session-7');
 
-    expect(tokens.readUserIdFromCookieHeader(`pp_access=${access}`)).toBe('user-7');
-    expect(tokens.readUserIdFromCookieHeader('pp_access=forged.jwt.value')).toBeNull();
-    expect(tokens.readUserIdFromCookieHeader(undefined)).toBeNull();
+      const session = tokens.readAccessSessionFromCookieHeader(`pp_access=${access}`);
+
+      expect(session?.userId).toBe('user-7');
+      expect(session?.expiresAt).toBeGreaterThan(Date.now());
+    });
+
+    it('не верит подделке и пустой куке', () => {
+      expect(tokens.readAccessSessionFromCookieHeader('pp_access=forged.jwt.value')).toBeNull();
+      expect(tokens.readAccessSessionFromCookieHeader(undefined)).toBeNull();
+    });
+
+    it('не принимает refresh-токен вместо access', () => {
+      const { refresh } = tokens.issue('user-7', 'session-7');
+
+      expect(tokens.readAccessSessionFromCookieHeader(`pp_access=${refresh}`)).toBeNull();
+    });
   });
 
   describe('verifyRefresh (7.6)', () => {

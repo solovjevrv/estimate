@@ -19,9 +19,9 @@ class FakeSocket {
     this.emitLocal('connect', undefined);
   }
 
-  disconnect(): void {
+  disconnect(reason: string = 'io client disconnect'): void {
     this.connected = false;
-    this.emitLocal('disconnect', undefined);
+    this.emitLocal('disconnect', reason);
   }
 
   on(event: string, handler: (payload: never) => void): void {
@@ -285,6 +285,40 @@ describe('стор комнаты', () => {
 
       expect(onReconnectFailure).toHaveBeenCalledOnce();
       expect(store.participantId).toBe('p1'); // прошлое состояние не затирается неудачным входом
+    });
+
+    it('переподключается сам, если сервер разорвал соединение из-за истёкшего токена (7.7)', async () => {
+      const store = useRoomStore();
+      socket.next = { state: state(1), guestToken: null, participantId: 'p1' };
+      await store.join('room1');
+      socket.sent.length = 0;
+
+      // Сервер сам рвёт сокет по истечении access-токена — единственная причина,
+      // на которую socket.io-client не переподключается сам (7.7)
+      socket.next = { state: state(2), guestToken: null, participantId: 'p1' };
+      socket.disconnect('io server disconnect');
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(socket.connected).toBe(true);
+      expect(socket.sent[0]).toMatchObject({
+        event: WS_EVENTS.JOIN_ROOM,
+        payload: { roomId: 'room1' },
+      });
+    });
+
+    it('не переподключается сам при обычном обрыве — это забота клиента socket.io', async () => {
+      const store = useRoomStore();
+      socket.next = { state: state(1), guestToken: null, participantId: 'p1' };
+      await store.join('room1');
+      socket.sent.length = 0;
+
+      socket.disconnect('transport close');
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(socket.connected).toBe(false);
+      expect(socket.sent.length).toBe(0);
     });
 
     it('на первом подключении входит один раз, без лишнего повторного входа', async () => {

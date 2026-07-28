@@ -99,4 +99,58 @@ describe('Socket.io', () => {
       await app.close();
     }
   });
+
+  it('рвёт соединение сразу после истечения access-токена (7.7)', async () => {
+    const { app, port } = await startApp(authConfig);
+    try {
+      const access = app.jwt.sign({ sub: 'user-42', typ: 'access' }, { expiresIn: 1 });
+      const client = createClient(`http://127.0.0.1:${port}`, {
+        transports: ['websocket'],
+        extraHeaders: { cookie: `${ACCESS_COOKIE}=${access}` },
+      });
+
+      try {
+        const reason = await new Promise<string>((resolve, reject) => {
+          const timer = setTimeout(
+            () => reject(new Error('сокет не был отключён за 3 секунды')),
+            3_000,
+          );
+          client.on('disconnect', (r: string) => {
+            clearTimeout(timer);
+            resolve(r);
+          });
+        });
+
+        expect(reason).toBe('io server disconnect');
+      } finally {
+        client.close();
+      }
+    } finally {
+      await app.close();
+    }
+  });
+
+  it('не рвёт соединение гостя без куки', async () => {
+    const { app, port } = await startApp(authConfig);
+    try {
+      const client = createClient(`http://127.0.0.1:${port}`, { transports: ['websocket'] });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          client.on('connect', () => resolve());
+          client.on('connect_error', reject);
+        });
+
+        const stillConnected = await new Promise<boolean>((resolve) => {
+          client.once('disconnect', () => resolve(false));
+          setTimeout(() => resolve(client.connected), 1_500);
+        });
+
+        expect(stillConnected).toBe(true);
+      } finally {
+        client.close();
+      }
+    } finally {
+      await app.close();
+    }
+  });
 });
