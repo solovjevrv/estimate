@@ -1,25 +1,23 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-const props = defineProps<{
-  average: number | null;
-  minLabel: string;
-  maxLabel: string;
-  agreement: number;
-  winnerLabel: string | null;
-  /**
-   * Голоса раунда как есть, независимо от текущего списка участников — тот, кто
-   * успел проголосовать и затем вышел из комнаты, не должен пропасть из результата.
-   */
-  votes: Array<{ participantId: string; name: string; valueLabel: string }>;
-}>();
+import StatRing from './StatRing.vue';
+
+const props = withDefaults(
+  defineProps<{
+    average: number | null;
+    minLabel: string;
+    maxLabel: string;
+    agreement: number;
+    winnerLabel: string | null;
+    /** Голоса тех, кто успел проголосовать и вышел до вскрытия — их карточки уже нет в «Участниках» */
+    departedVotes?: Array<{ participantId: string; name: string; valueLabel: string }>;
+  }>(),
+  { departedVotes: () => [] },
+);
 
 const { t } = useI18n();
-
-const radius = 30;
-const circumference = 2 * Math.PI * radius;
-const dashOffset = computed(() => circumference * (1 - props.agreement / 100));
 
 interface ConfettiPiece {
   id: number;
@@ -85,51 +83,39 @@ watch(
         }}</span>
       </div>
 
-      <div class="flex flex-col items-center gap-1">
-        <div class="relative flex h-[72px] w-[72px] items-center justify-center">
-          <svg viewBox="0 0 72 72" class="absolute inset-0 -rotate-90">
-            <circle
-              cx="36"
-              cy="36"
-              :r="radius"
-              fill="none"
-              stroke="currentColor"
-              class="text-default opacity-20"
-              stroke-width="8"
-            />
-            <circle
-              cx="36"
-              cy="36"
-              :r="radius"
-              fill="none"
-              stroke="currentColor"
-              class="text-primary"
-              stroke-width="8"
-              stroke-linecap="round"
-              :stroke-dasharray="circumference"
-              :stroke-dashoffset="dashOffset"
-            />
-          </svg>
-          <span class="relative text-sm font-semibold">{{ props.agreement }}%</span>
-        </div>
-        <span class="text-muted text-xs">
-          {{ t('room.resultAgreement', { agreement: props.agreement }) }}
-        </span>
-      </div>
-
-      <div class="text-muted flex flex-col gap-1 text-sm">
-        <span v-if="props.average !== null">
-          {{ t('room.resultAverage', { average: props.average }) }}
-        </span>
-        <span>{{ t('room.resultMin', { min: props.minLabel }) }}</span>
-        <span>{{ t('room.resultMax', { max: props.maxLabel }) }}</span>
-      </div>
+      <StatRing
+        v-if="props.average !== null"
+        :value-label="String(props.average)"
+        :label="t('room.resultAverage', { average: props.average })"
+      />
+      <StatRing
+        :value-label="`${props.agreement}%`"
+        :percent="props.agreement"
+        :label="t('room.resultAgreement', { agreement: props.agreement })"
+      />
+      <StatRing
+        :value-label="props.minLabel"
+        :label="t('room.resultMin', { min: props.minLabel })"
+      />
+      <StatRing
+        :value-label="props.maxLabel"
+        :label="t('room.resultMax', { max: props.maxLabel })"
+      />
     </div>
 
-    <div class="mt-4 flex flex-wrap gap-2">
-      <span v-for="v in props.votes" :key="v.participantId" class="badge-pill badge-pill-neutral">
-        {{ v.name }}: {{ v.valueLabel }}
-      </span>
+    <div v-if="props.departedVotes.length" class="mt-4">
+      <h3 class="text-muted mb-2 text-xs font-bold tracking-[0.03em] uppercase">
+        {{ t('room.resultDepartedTitle') }}
+      </h3>
+      <div class="flex flex-wrap gap-2">
+        <span
+          v-for="v in props.departedVotes"
+          :key="v.participantId"
+          class="badge-pill badge-pill-neutral"
+        >
+          {{ v.name }}: {{ v.valueLabel }}
+        </span>
+      </div>
     </div>
   </div>
 </template>

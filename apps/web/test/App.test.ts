@@ -69,6 +69,23 @@ describe('каркас приложения', () => {
     expect(wrapper.text()).not.toContain('Выйти');
   });
 
+  it('переключатель темы в шапке гостя переключает светлую/тёмную', async () => {
+    await mountApp('/');
+    document.documentElement.classList.remove('dark');
+
+    // Пока тема светлая, кнопка предлагает переключить на тёмную — и наоборот
+    const toDark = document.body.querySelector('button[aria-label="Тёмная тема"]');
+    expect(toDark).not.toBeNull();
+
+    (toDark as HTMLElement).click();
+    await vi.waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(true));
+
+    const toLight = document.body.querySelector('button[aria-label="Светлая тема"]');
+    expect(toLight).not.toBeNull();
+    (toLight as HTMLElement).click();
+    await vi.waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(false));
+  });
+
   it('на странице входа показывает включённые способы входа', async () => {
     const wrapper = await mountApp('/login');
 
@@ -365,22 +382,19 @@ describe('меню пользователя: тема и язык', () => {
 
     const menuTrigger = document.body.querySelector('button[aria-label="Меню пользователя"]');
     (menuTrigger as HTMLElement).click();
-    await vi.waitFor(() => expect(document.body.textContent).toContain('Тема'));
-
-    const themeSubmenuTrigger = Array.from(
-      document.body.querySelectorAll('[role="menuitem"]'),
-    ).find((el) => el.textContent?.trim() === 'Тема');
-    (themeSubmenuTrigger as HTMLElement).click();
     await vi.waitFor(() => expect(document.body.textContent).toContain('Тёмная тема'));
 
-    const darkOption = Array.from(document.body.querySelectorAll('[role="menuitemcheckbox"]')).find(
-      (el) => el.textContent?.trim() === 'Тёмная тема',
+    const darkOption = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find((el) =>
+      el.textContent?.includes('Тёмная тема'),
     );
     (darkOption as HTMLElement).click();
 
     await vi.waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(true));
     // Меню осталось открытым — пункт всё ещё виден в DOM
     expect(document.body.textContent).toContain('Тёмная тема');
+    // Пункт не должен быть чекбоксом Nuxt UI — иначе рядом со свитчем встанет
+    // ещё и штатная галочка-чекмарк, задваивая индикатор состояния
+    expect(document.body.querySelectorAll('[role="menuitemcheckbox"]')).toHaveLength(0);
   });
 });
 

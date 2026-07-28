@@ -5,6 +5,7 @@ import { onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
+import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
 import { useTeamsStore } from '../stores/teams';
 
@@ -124,7 +125,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
       </li>
     </ul>
 
-    <UModal v-model:open="open" :title="t('teams.createTitle')">
+    <UModal v-model:open="open" :title="t('teams.createTitle')" :ui="MODAL_UI">
       <template #body>
         <UForm :state="state" :validate="validate" class="space-y-4" @submit="onSubmit">
           <UAlert
@@ -141,14 +142,17 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
               :maxlength="TEAM_NAME_MAX_LENGTH"
               autofocus
               class="w-full"
+              :ui="MODAL_INPUT_UI"
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="open = false">
+          <div class="flex justify-end gap-2.5">
+            <UButton color="neutral" variant="outline" :ui="MODAL_BUTTON_UI" @click="open = false">
               {{ t('teams.cancel') }}
             </UButton>
-            <UButton type="submit" :loading="submitting">{{ t('teams.submit') }}</UButton>
+            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="submitting">
+              {{ t('teams.submit') }}
+            </UButton>
           </div>
         </UForm>
       </template>

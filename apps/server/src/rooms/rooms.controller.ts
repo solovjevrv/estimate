@@ -52,10 +52,6 @@ export class RoomsController {
     ),
   });
 
-  readonly close = async (req: FastifyRequest<{ Params: RoomIdParams }>): Promise<unknown> => ({
-    room: await this.service.closeRoom(req.user.sub, req.params.id),
-  });
-
   readonly archive = async (req: FastifyRequest<{ Params: RoomIdParams }>): Promise<unknown> => ({
     room: await this.service.archiveRoom(req.user.sub, req.params.id),
   });

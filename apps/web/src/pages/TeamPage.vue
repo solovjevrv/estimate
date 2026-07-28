@@ -14,7 +14,9 @@ import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
+import ConfirmModal from '../components/ConfirmModal.vue';
 import { ApiError } from '../lib/api';
+import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
 import { useRoomsStore } from '../stores/rooms';
 import { useSessionStore } from '../stores/session';
@@ -628,67 +630,43 @@ async function confirmDelete(): Promise<void> {
       </div>
     </template>
 
-    <UModal
+    <ConfirmModal
       v-model:open="rotateOpen"
       :title="t('team.rotateConfirmTitle')"
       :description="t('team.rotateConfirmText')"
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer="{ close }">
-        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton color="error" :loading="rotating" @click="rotate">
-          {{ t('team.rotateConfirm') }}
-        </UButton>
-      </template>
-    </UModal>
+      :confirm-label="t('team.rotateConfirm')"
+      :loading="rotating"
+      @confirm="rotate"
+    />
 
-    <UModal
+    <ConfirmModal
       v-model:open="removeOpen"
       :title="t('team.removeConfirmTitle')"
       :description="t('team.removeConfirmText', { name: removeTarget?.name ?? '' })"
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer="{ close }">
-        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton
-          color="error"
-          :loading="removeTarget ? isBusy(removeTarget.userId) : false"
-          @click="confirmRemove"
-        >
-          {{ t('team.removeConfirm') }}
-        </UButton>
-      </template>
-    </UModal>
+      :confirm-label="t('team.removeConfirm')"
+      :loading="removeTarget ? isBusy(removeTarget.userId) : false"
+      @confirm="confirmRemove"
+    />
 
-    <UModal
+    <ConfirmModal
       v-model:open="leaveOpen"
       :title="t('team.leaveConfirmTitle')"
       :description="t('team.leaveConfirmText')"
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer="{ close }">
-        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton color="error" :loading="leaving" @click="confirmLeave">
-          {{ t('team.leaveConfirm') }}
-        </UButton>
-      </template>
-    </UModal>
+      :confirm-label="t('team.leaveConfirm')"
+      :loading="leaving"
+      @confirm="confirmLeave"
+    />
 
-    <UModal
+    <ConfirmModal
       v-model:open="deleteRoomOpen"
       :title="t('team.archiveDeleteConfirmTitle')"
       :description="t('team.archiveDeleteConfirmText', { name: deleteRoomTarget?.name ?? '' })"
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer="{ close }">
-        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton color="error" :loading="deletingRoom" @click="confirmDeleteRoom">
-          {{ t('team.archiveDeleteConfirm') }}
-        </UButton>
-      </template>
-    </UModal>
+      :confirm-label="t('team.archiveDeleteConfirm')"
+      :loading="deletingRoom"
+      @confirm="confirmDeleteRoom"
+    />
 
-    <UModal v-model:open="createRoomOpen" :title="t('room.createTitle')">
+    <UModal v-model:open="createRoomOpen" :title="t('room.createTitle')" :ui="MODAL_UI">
       <template #body>
         <UForm
           :state="createRoomState"
@@ -703,14 +681,20 @@ async function confirmDelete(): Promise<void> {
               :maxlength="ROOM_NAME_MAX_LENGTH"
               autofocus
               class="w-full"
+              :ui="MODAL_INPUT_UI"
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="createRoomOpen = false">
+          <div class="flex justify-end gap-2.5">
+            <UButton
+              color="neutral"
+              variant="outline"
+              :ui="MODAL_BUTTON_UI"
+              @click="createRoomOpen = false"
+            >
               {{ t('teams.cancel') }}
             </UButton>
-            <UButton type="submit" :loading="creatingRoom">
+            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="creatingRoom">
               {{ creatingRoom ? t('room.creating') : t('room.create') }}
             </UButton>
           </div>
@@ -718,7 +702,7 @@ async function confirmDelete(): Promise<void> {
       </template>
     </UModal>
 
-    <UModal v-model:open="renameOpen" :title="t('team.renameTitle')">
+    <UModal v-model:open="renameOpen" :title="t('team.renameTitle')" :ui="MODAL_UI">
       <template #body>
         <UForm :state="renameState" :validate="validateName" class="space-y-4" @submit="onRename">
           <UFormField :label="t('teams.nameLabel')" name="name">
@@ -728,31 +712,34 @@ async function confirmDelete(): Promise<void> {
               :maxlength="TEAM_NAME_MAX_LENGTH"
               autofocus
               class="w-full"
+              :ui="MODAL_INPUT_UI"
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="renameOpen = false">
+          <div class="flex justify-end gap-2.5">
+            <UButton
+              color="neutral"
+              variant="outline"
+              :ui="MODAL_BUTTON_UI"
+              @click="renameOpen = false"
+            >
               {{ t('teams.cancel') }}
             </UButton>
-            <UButton type="submit" :loading="renaming">{{ t('team.rename') }}</UButton>
+            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="renaming">
+              {{ t('team.rename') }}
+            </UButton>
           </div>
         </UForm>
       </template>
     </UModal>
 
-    <UModal
+    <ConfirmModal
       v-model:open="deleteOpen"
       :title="t('team.deleteConfirmTitle')"
       :description="t('team.deleteConfirmText')"
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer="{ close }">
-        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton color="error" :loading="deleting" @click="confirmDelete">
-          {{ t('team.deleteConfirm') }}
-        </UButton>
-      </template>
-    </UModal>
+      :confirm-label="t('team.deleteConfirm')"
+      :loading="deleting"
+      @confirm="confirmDelete"
+    />
   </section>
 </template>

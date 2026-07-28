@@ -6,6 +6,7 @@ import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
+import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useRoomsStore } from '../stores/rooms';
 import { useSessionStore } from '../stores/session';
 
@@ -151,7 +152,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
       </div>
     </div>
 
-    <UModal v-model:open="open" :title="t('room.createTitle')">
+    <UModal v-model:open="open" :title="t('room.createTitle')" :ui="MODAL_UI">
       <template #body>
         <UForm :state="state" :validate="validate" class="space-y-4" @submit="onSubmit">
           <UFormField :label="t('teams.nameLabel')" name="name">
@@ -161,14 +162,15 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
               :maxlength="ROOM_NAME_MAX_LENGTH"
               autofocus
               class="w-full"
+              :ui="MODAL_INPUT_UI"
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="open = false">
+          <div class="flex justify-end gap-2.5">
+            <UButton color="neutral" variant="outline" :ui="MODAL_BUTTON_UI" @click="open = false">
               {{ t('teams.cancel') }}
             </UButton>
-            <UButton type="submit" :loading="creating">
+            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="creating">
               {{ creating ? t('room.creating') : t('room.create') }}
             </UButton>
           </div>

@@ -4,8 +4,9 @@ import { computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 
+import ThemeSwitchTrack from './components/ThemeSwitchTrack.vue';
 import { LOCALES, rememberLocale, type Locale } from './i18n';
-import { initTheme, theme, THEME_MODES, type ThemeMode } from './lib/theme';
+import { initTheme, theme, toggleTheme } from './lib/theme';
 import { useSessionStore } from './stores/session';
 
 const { t, locale } = useI18n();
@@ -24,25 +25,12 @@ const language = computed({
   },
 });
 
-const themeIcons: Record<ThemeMode, string> = {
-  system: 'i-lucide-monitor',
-  light: 'i-lucide-sun',
-  dark: 'i-lucide-moon',
-};
+const isDark = computed(() => theme.value === 'dark');
 
 const languageLabels: Record<Locale, string> = {
   ru: 'Русский',
   en: 'English',
 };
-
-const nextTheme = computed<ThemeMode>(() => {
-  const index = THEME_MODES.indexOf(theme.value);
-  return THEME_MODES[(index + 1) % THEME_MODES.length] ?? 'system';
-});
-
-function cycleTheme(): void {
-  theme.value = nextTheme.value;
-}
 
 // preventDefault в onSelect держит меню открытым: иначе Reka UI закрывает его
 // после любого выбора, включая чекбоксы, и переключить тему/язык дважды подряд
@@ -50,19 +38,6 @@ function cycleTheme(): void {
 function keepMenuOpen(e: Event): void {
   e.preventDefault();
 }
-
-const themeMenuItems = computed<DropdownMenuItem[]>(() =>
-  THEME_MODES.map((mode) => ({
-    label: t(`nav.theme.${mode}`),
-    icon: themeIcons[mode],
-    type: 'checkbox',
-    checked: theme.value === mode,
-    onUpdateChecked: (checked: boolean) => {
-      if (checked) theme.value = mode;
-    },
-    onSelect: keepMenuOpen,
-  })),
-);
 
 const languageMenuItems = computed<DropdownMenuItem[]>(() =>
   LOCALES.map((loc) => ({
@@ -78,7 +53,15 @@ const languageMenuItems = computed<DropdownMenuItem[]>(() =>
 
 const userMenuItems = computed<DropdownMenuItem[][]>(() => [
   [
-    { label: t('nav.themeLabel'), icon: themeIcons[theme.value], children: themeMenuItems.value },
+    {
+      label: t('nav.themeLabel'),
+      icon: 'i-lucide-moon',
+      slot: 'theme',
+      onSelect: (e: Event) => {
+        e.preventDefault();
+        toggleTheme();
+      },
+    },
     { label: t('nav.language'), icon: 'i-lucide-languages', children: languageMenuItems.value },
   ],
   [{ label: t('nav.profile'), icon: 'i-lucide-user', to: '/profile' }],
@@ -154,19 +137,22 @@ async function logout(): Promise<void> {
                 :aria-label="t('nav.language')"
               />
 
-              <UTooltip :text="t(`nav.theme.${nextTheme}`)">
+              <UTooltip :text="t(isDark ? 'nav.theme.light' : 'nav.theme.dark')">
                 <UButton
-                  :icon="themeIcons[theme]"
+                  :icon="isDark ? 'i-lucide-moon' : 'i-lucide-sun'"
                   size="sm"
                   color="neutral"
                   variant="subtle"
-                  :aria-label="t(`nav.theme.${nextTheme}`)"
-                  @click="cycleTheme"
+                  :aria-label="t(isDark ? 'nav.theme.light' : 'nav.theme.dark')"
+                  @click="toggleTheme"
                 />
               </UTooltip>
             </template>
 
             <UDropdownMenu v-if="session.isAuthenticated" :items="userMenuItems">
+              <template #theme-trailing>
+                <ThemeSwitchTrack :is-dark="isDark" />
+              </template>
               <button
                 type="button"
                 class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1"

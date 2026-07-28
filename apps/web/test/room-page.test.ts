@@ -35,6 +35,9 @@ const room1: Room = {
   revision: 1,
   createdAt: '2026-07-24T00:00:00.000Z',
   archivedAt: null,
+  jiraUrl: null,
+  confluenceUrl: null,
+  linksVersion: 1,
 };
 
 function roomState(overrides: Partial<RoomState> = {}): RoomState {
@@ -71,9 +74,6 @@ function round(overrides: Partial<Round> = {}): Round {
     roomId: 'r1',
     seq: 1,
     deckType: 'fibonacci',
-    jiraUrl: null,
-    confluenceUrl: null,
-    linksVersion: 1,
     status: 'voting',
     average: null,
     createdAt: '2026-07-24T00:00:00.000Z',
@@ -392,8 +392,8 @@ describe('стол участников', () => {
     expect(wrapper.text()).toContain('Гость');
     expect(wrapper.text()).not.toContain('Проголосовал');
     expect(wrapper.text()).not.toContain('Ожидаем');
-    // Ссылкам нечего редактировать — раунда ещё нет
-    expect(wrapper.text()).not.toContain('Ссылки на задачу');
+    // Ссылки — свойство комнаты, редактируются и без активного раунда (7.25)
+    expect(wrapper.text()).toContain('Ссылки на задачу');
   });
 
   it('с активным раундом показывает статус голосования каждого', async () => {
@@ -994,6 +994,8 @@ describe('новый раунд и отмена раунда', () => {
     const started = socket.sent.find((s) => s.event === 'start_new_round');
     expect(started?.payload).toMatchObject({ fromRoundId: 'rnd1' });
     expect(document.body.textContent).not.toContain('Отменить голосование?');
+    // 7.23: тихий перезапуск визуально неотличим от старого раунда — тост подтверждает, что клик сработал
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Раунд перезапущен'));
   });
 
   it('отмена раунда с уже поставленными голосами требует подтверждения', async () => {
@@ -1140,10 +1142,11 @@ function findLinkInput(wrapper: ReturnType<typeof mount>, hint: string) {
 }
 
 describe('правка ссылок Jira/Confluence', () => {
-  it('показывает текущие ссылки раунда и сохраняет новые', async () => {
+  it('показывает текущие ссылки комнаты и сохраняет новые', async () => {
     socket.next = {
       state: roomState({
-        round: round({ jiraUrl: 'https://jira.example.com/OLD-1' }),
+        room: { ...room1, jiraUrl: 'https://jira.example.com/OLD-1' },
+        round: round(),
         participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
       }),
       guestToken: null,
@@ -1170,9 +1173,31 @@ describe('правка ссылок Jira/Confluence', () => {
     expect(sent?.payload).toMatchObject({
       jiraUrl: 'https://jira.example.com/OLD-1',
       confluenceUrl: 'https://confluence.example.com/NEW',
-      roundId: 'rnd1',
       version: 1,
     });
+  });
+
+  it('ссылки доступны и без активного раунда', async () => {
+    socket.next = {
+      state: roomState({
+        room: { ...room1, jiraUrl: 'https://jira.example.com/NO-ROUND' },
+        round: null,
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
+
+    const jiraInput = findLinkInput(wrapper, 'jira');
+    expect((jiraInput!.element as HTMLInputElement).value).toBe(
+      'https://jira.example.com/NO-ROUND',
+    );
   });
 
   it('не отправляет ссылку неверного формата', async () => {
@@ -1232,7 +1257,7 @@ describe('правка ссылок Jira/Confluence', () => {
   it('обновляет поля по рассылке, пока нет несохранённого черновика', async () => {
     socket.next = {
       state: roomState({
-        round: round({ jiraUrl: null, confluenceUrl: null }),
+        round: round(),
         participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
       }),
       guestToken: null,
@@ -1249,8 +1274,13 @@ describe('правка ссылок Jira/Confluence', () => {
     socket.emitLocal(
       WS_SERVER_EVENTS.ROOM_STATE,
       roomState({
-        room: { ...room1, revision: room1.revision + 1 },
-        round: round({ jiraUrl: 'https://jira.example.com/SYNCED', linksVersion: 2 }),
+        room: {
+          ...room1,
+          revision: room1.revision + 1,
+          jiraUrl: 'https://jira.example.com/SYNCED',
+          linksVersion: 2,
+        },
+        round: round(),
         participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
       }),
     );
@@ -1266,7 +1296,7 @@ describe('правка ссылок Jira/Confluence', () => {
   it('не перетирает несохранённый черновик рассылкой от другого участника и шлёт версию черновика, а не свежую', async () => {
     socket.next = {
       state: roomState({
-        round: round({ jiraUrl: null, confluenceUrl: null, linksVersion: 1 }),
+        round: round(),
         participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
       }),
       guestToken: null,
@@ -1286,8 +1316,13 @@ describe('правка ссылок Jira/Confluence', () => {
     socket.emitLocal(
       WS_SERVER_EVENTS.ROOM_STATE,
       roomState({
-        room: { ...room1, revision: room1.revision + 1 },
-        round: round({ jiraUrl: 'https://jira.example.com/OTHER', linksVersion: 2 }),
+        room: {
+          ...room1,
+          revision: room1.revision + 1,
+          jiraUrl: 'https://jira.example.com/OTHER',
+          linksVersion: 2,
+        },
+        round: round(),
         participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
       }),
     );
@@ -1311,10 +1346,56 @@ describe('правка ссылок Jira/Confluence', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось сохранить ссылки'));
   });
 
-  it('новый раунд сбрасывает черновик прежнего раунда', async () => {
+  it('переход в другую комнату не протаскивает несохранённый черновик ссылок', async () => {
+    const room2: Room = {
+      ...room1,
+      id: 'r2',
+      name: 'Ретро квартала',
+      jiraUrl: 'https://jira.example.com/ROOM2',
+    };
     socket.next = {
       state: roomState({
-        round: round({ status: 'revealed', jiraUrl: 'https://jira.example.com/OLD' }),
+        room: { ...room1, jiraUrl: 'https://jira.example.com/ROOM1' },
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper, router } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, {
+        'GET /api/rooms/r1': () => json(200, { room: room1 }),
+        'GET /api/rooms/r2': () => json(200, { room: room2 }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
+
+    const jiraInput = findLinkInput(wrapper, 'jira');
+    await jiraInput!.setValue('https://jira.example.com/UNSAVED-DRAFT');
+
+    socket.next = {
+      state: roomState({
+        room: room2,
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+    await router.push('/rooms/r2');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ретро квартала'));
+
+    await vi.waitFor(() => {
+      const input = findLinkInput(wrapper, 'jira');
+      expect((input!.element as HTMLInputElement).value).toBe('https://jira.example.com/ROOM2');
+    });
+  });
+
+  it('новый раунд не сбрасывает несохранённый черновик ссылок комнаты', async () => {
+    socket.next = {
+      state: roomState({
+        room: { ...room1, jiraUrl: 'https://jira.example.com/OLD' },
+        round: round({ status: 'revealed' }),
         result: roundResult(),
         participants: [
           participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
@@ -1333,7 +1414,7 @@ describe('правка ссылок Jira/Confluence', () => {
     const jiraInput = findLinkInput(wrapper, 'jira');
     await jiraInput!.setValue('https://jira.example.com/UNSAVED-DRAFT');
 
-    const nextRound = round({ id: 'rnd2', seq: 2, jiraUrl: null, confluenceUrl: null });
+    const nextRound = round({ id: 'rnd2', seq: 2 });
     socket.next = nextRound;
     const startButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Новый раунд');
     await startButton!.trigger('click');
@@ -1341,16 +1422,18 @@ describe('правка ссылок Jira/Confluence', () => {
     socket.emitLocal(
       WS_SERVER_EVENTS.ROOM_STATE,
       roomState({
-        room: { ...room1, revision: room1.revision + 1 },
+        room: { ...room1, jiraUrl: 'https://jira.example.com/OLD', revision: room1.revision + 1 },
         round: nextRound,
         participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
       }),
     );
 
-    await vi.waitFor(() => {
-      const input = findLinkInput(wrapper, 'jira');
-      expect((input!.element as HTMLInputElement).value).toBe('');
-    });
+    // Ссылки принадлежат комнате, а не раунду (7.25) — новый раунд не должен затирать черновик
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const input = findLinkInput(wrapper, 'jira');
+    expect((input!.element as HTMLInputElement).value).toBe(
+      'https://jira.example.com/UNSAVED-DRAFT',
+    );
   });
 });
 

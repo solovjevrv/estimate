@@ -11,6 +11,7 @@ import {
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import ConfirmModal from '../components/ConfirmModal.vue';
 import DeckBar from '../components/room/DeckBar.vue';
 import ParticipantCard from '../components/room/ParticipantCard.vue';
 import RoomTimerCard from '../components/room/RoomTimerCard.vue';
@@ -168,13 +169,16 @@ const winnerLabel = computed(() =>
   winnerValue.value === null ? null : cardLabel(winnerValue.value),
 );
 
-const resultVotes = computed(() =>
-  (room.result?.votes ?? []).map((v) => ({
-    participantId: v.participantId,
-    name: v.name,
-    valueLabel: cardLabel(v.value),
-  })),
-);
+/**
+ * Карточки участников показывают голос только тех, кто ещё в комнате — тот, кто
+ * успел проголосовать и вышел до вскрытия, иначе пропал бы из результата совсем.
+ */
+const departedVotes = computed(() => {
+  const presentIds = new Set(room.participants.map((p) => p.participantId));
+  return (room.result?.votes ?? [])
+    .filter((v) => !presentIds.has(v.participantId))
+    .map((v) => ({ participantId: v.participantId, name: v.name, valueLabel: cardLabel(v.value) }));
+});
 
 function revealedValueLabel(participantId: string): string | null {
   if (roundPhase.value !== 'revealed') return null;
@@ -200,11 +204,16 @@ const cancelConfirmOpen = ref(false);
 const revealConfirmOpen = ref(false);
 
 /** Смена раунда переиспользует один и тот же WS-запрос — сервер и отменяет текущий, и начинает следующий */
-async function onStartRound(): Promise<void> {
+async function onStartRound(options?: { silentRestart?: boolean }): Promise<void> {
   starting.value = true;
   try {
     await room.startNewRound(selectedDeck.value);
     cancelConfirmOpen.value = false;
+    // Без голосов раунд перезапускается без вопроса (см. onDeckActionClick) — новый раунд
+    // визуально неотличим от старого, поэтому без тоста клик выглядит так, будто ничего не произошло
+    if (options?.silentRestart) {
+      toast.add({ title: t('room.roundRestarted'), color: 'success', icon: 'i-lucide-refresh-cw' });
+    }
   } catch {
     toast.add({ title: t('room.startRoundError'), color: 'error' });
   } finally {
@@ -214,8 +223,12 @@ async function onStartRound(): Promise<void> {
 
 /** Раунд ещё не начат или уже вскрыт — терять нечего, спрашивать не о чем */
 function onDeckActionClick(): void {
-  if (roundPhase.value === 'voting' && votedCount.value > 0) {
-    cancelConfirmOpen.value = true;
+  if (roundPhase.value === 'voting') {
+    if (votedCount.value > 0) {
+      cancelConfirmOpen.value = true;
+    } else {
+      void onStartRound({ silentRestart: true });
+    }
   } else {
     void onStartRound();
   }
@@ -267,15 +280,17 @@ const linksBaseVersion = ref<number | null>(null);
 const savingLinks = ref(false);
 
 watch(
-  () => room.round,
-  (round, previous) => {
-    if (round?.id !== previous?.id) {
+  () => room.room,
+  (current, previous) => {
+    // Переход в другую комнату без перезагрузки страницы (тот же компонент) не должен
+    // протащить несохранённый черновик ссылок прежней комнаты в новую
+    if (current?.id !== previous?.id) {
       linksDirty.value = false;
     }
-    if (!round || linksDirty.value) return;
-    linksForm.jiraUrl = round.jiraUrl ?? '';
-    linksForm.confluenceUrl = round.confluenceUrl ?? '';
-    linksBaseVersion.value = round.linksVersion;
+    if (!current || linksDirty.value) return;
+    linksForm.jiraUrl = current.jiraUrl ?? '';
+    linksForm.confluenceUrl = current.confluenceUrl ?? '';
+    linksBaseVersion.value = current.linksVersion;
   },
   { immediate: true },
 );
@@ -555,10 +570,7 @@ function retry(): void {
           />
         </div>
 
-        <div
-          v-if="room.round && !isArchived"
-          class="surface-card surface-card-lg px-[30px] py-[26px]"
-        >
+        <div v-if="!isArchived" class="surface-card surface-card-lg px-[30px] py-[26px]">
           <h2 class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
             {{ t('room.linksTitle') }}
           </h2>
@@ -619,7 +631,7 @@ function retry(): void {
             :max-label="cardLabel(room.result.max)"
             :agreement="room.result.agreement"
             :winner-label="winnerLabel"
-            :votes="resultVotes"
+            :departed-votes="departedVotes"
           />
         </div>
 
@@ -676,46 +688,32 @@ function retry(): void {
       </template>
     </template>
 
-    <UModal
+    <ConfirmModal
       v-model:open="archiveOpen"
       :title="t('room.archiveConfirmTitle')"
       :description="t('room.archiveConfirmText')"
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer="{ close }">
-        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton color="error" :loading="archiving" @click="onArchive">
-          {{ t('room.archiveConfirm') }}
-        </UButton>
-      </template>
-    </UModal>
+      :confirm-label="t('room.archiveConfirm')"
+      :loading="archiving"
+      @confirm="onArchive"
+    />
 
-    <UModal
+    <ConfirmModal
       v-model:open="cancelConfirmOpen"
       :title="t('room.cancelRoundConfirmTitle')"
       :description="t('room.cancelRoundConfirmText')"
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer="{ close }">
-        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton color="error" :loading="starting" @click="onStartRound">
-          {{ t('room.cancelRoundConfirm') }}
-        </UButton>
-      </template>
-    </UModal>
+      :confirm-label="t('room.cancelRoundConfirm')"
+      :loading="starting"
+      @confirm="onStartRound()"
+    />
 
-    <UModal
+    <ConfirmModal
       v-model:open="revealConfirmOpen"
       :title="t('room.revealConfirmTitle')"
       :description="t('room.revealConfirmText', { voted: votedCount, total: totalCount })"
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer="{ close }">
-        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton color="primary" :loading="revealing" @click="onReveal">
-          {{ t('room.revealConfirmButton') }}
-        </UButton>
-      </template>
-    </UModal>
+      :confirm-label="t('room.revealConfirmButton')"
+      confirm-color="primary"
+      :loading="revealing"
+      @confirm="onReveal"
+    />
   </section>
 </template>

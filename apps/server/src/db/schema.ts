@@ -81,6 +81,11 @@ export const rooms = pgTable(
     revision: integer('revision').notNull().default(0),
     /** Заполнено — комната в архиве: доступна только для чтения, не в основных списках */
     archivedAt: timestamp('archived_at', { withTimezone: true }),
+    /** Комната заводится под одну задачу — ссылки принадлежат ей, не отдельному раунду (7.25) */
+    jiraUrl: text('jira_url'),
+    confluenceUrl: text('confluence_url'),
+    /** Версия ссылок для оптимистичной блокировки: растёт с каждой правкой */
+    linksVersion: integer('links_version').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('rooms_team_id_idx').on(t.teamId)],
@@ -96,10 +101,6 @@ export const rounds = pgTable(
     /** Порядковый номер раунда внутри комнаты, начиная с 1 */
     seq: integer('seq').notNull(),
     deckType: deckTypeEnum('deck_type').notNull(),
-    jiraUrl: text('jira_url'),
-    confluenceUrl: text('confluence_url'),
-    /** Версия ссылок для оптимистичной блокировки: растёт с каждой правкой */
-    linksVersion: integer('links_version').notNull().default(1),
     status: roundStatusEnum('status').notNull().default('voting'),
     /** Средний балл, вычисляется при вскрытии карт */
     average: numeric('average', { precision: 8, scale: 2 }),

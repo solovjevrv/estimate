@@ -157,32 +157,6 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
   );
 
   app.post<{ Params: RoomIdParams }>(
-    '/api/rooms/:id/close',
-    {
-      preHandler: authenticate,
-      schema: {
-        tags: [DOCS_TAGS.rooms],
-        summary: 'Закрыть комнату',
-        description:
-          'Доступно скрам-мастеру. В закрытой комнате нельзя голосовать и начинать раунды.',
-        security: [{ session: [] }],
-        params: idParams,
-        response: {
-          200: {
-            description: 'Комната закрыта',
-            type: 'object',
-            properties: { room: roomResponse },
-          },
-          401: { description: 'Требуется вход', ...errorResponse },
-          403: { description: 'Нужны права скрам-мастера', ...errorResponse },
-          404: { description: 'Комната не найдена', ...errorResponse },
-        },
-      },
-    },
-    controller.close,
-  );
-
-  app.post<{ Params: RoomIdParams }>(
     '/api/rooms/:id/archive',
     {
       preHandler: authenticate,

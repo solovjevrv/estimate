@@ -20,8 +20,6 @@ export interface CreateRoundInput {
   roomId: string;
   seq: number;
   deckType: DeckType;
-  jiraUrl?: string | null;
-  confluenceUrl?: string | null;
 }
 
 export class RoomsRepository {
@@ -63,15 +61,6 @@ export class RoomsRepository {
       .where(and(eq(schema.rooms.teamId, teamId), archivedCondition))
       .orderBy(desc(schema.rooms.createdAt));
     return rows.map((row) => this.toRoom(row));
-  }
-
-  async closeRoom(roomId: string): Promise<Room | null> {
-    const [row] = await this.db
-      .update(schema.rooms)
-      .set({ status: 'closed', revision: sql`${schema.rooms.revision} + 1` })
-      .where(eq(schema.rooms.id, roomId))
-      .returning();
-    return row ? this.toRoom(row) : null;
   }
 
   /** Помечает комнату архивной: не удаляет, только прячет из основных списков и запрещает действия за столом */
@@ -119,8 +108,6 @@ export class RoomsRepository {
         roomId: input.roomId,
         seq: input.seq,
         deckType: input.deckType,
-        jiraUrl: input.jiraUrl ?? null,
-        confluenceUrl: input.confluenceUrl ?? null,
       })
       .returning();
     if (!row) {
@@ -130,27 +117,27 @@ export class RoomsRepository {
   }
 
   /**
-   * Правит ссылки и поднимает их версию. Если передана ожидаемая версия,
+   * Правит ссылки комнаты и поднимает их версию. Если передана ожидаемая версия,
    * запись пройдёт только пока ссылки никто не менял — иначе вернётся null.
    */
-  async updateRoundLinks(
-    roundId: string,
+  async updateRoomLinks(
+    roomId: string,
     links: { jiraUrl?: string | null; confluenceUrl?: string | null },
     expectedVersion?: number,
-  ): Promise<Round | null> {
-    const patch: PgUpdateSetSource<typeof schema.rounds> = {
-      linksVersion: sql`${schema.rounds.linksVersion} + 1`,
+  ): Promise<Room | null> {
+    const patch: PgUpdateSetSource<typeof schema.rooms> = {
+      linksVersion: sql`${schema.rooms.linksVersion} + 1`,
     };
     if (links.jiraUrl !== undefined) patch.jiraUrl = links.jiraUrl;
     if (links.confluenceUrl !== undefined) patch.confluenceUrl = links.confluenceUrl;
 
     const condition =
       expectedVersion === undefined
-        ? eq(schema.rounds.id, roundId)
-        : and(eq(schema.rounds.id, roundId), eq(schema.rounds.linksVersion, expectedVersion));
+        ? eq(schema.rooms.id, roomId)
+        : and(eq(schema.rooms.id, roomId), eq(schema.rooms.linksVersion, expectedVersion));
 
-    const [row] = await this.db.update(schema.rounds).set(patch).where(condition).returning();
-    return row ? this.toRound(row) : null;
+    const [row] = await this.db.update(schema.rooms).set(patch).where(condition).returning();
+    return row ? this.toRoom(row) : null;
   }
 
   /**
@@ -260,6 +247,9 @@ export class RoomsRepository {
       revision: row.revision,
       createdAt: row.createdAt.toISOString(),
       archivedAt: row.archivedAt?.toISOString() ?? null,
+      jiraUrl: row.jiraUrl,
+      confluenceUrl: row.confluenceUrl,
+      linksVersion: row.linksVersion,
     };
   }
 
@@ -269,9 +259,6 @@ export class RoomsRepository {
       roomId: row.roomId,
       seq: row.seq,
       deckType: row.deckType,
-      jiraUrl: row.jiraUrl,
-      confluenceUrl: row.confluenceUrl,
-      linksVersion: row.linksVersion,
       status: row.status,
       average: row.average === null ? null : Number(row.average),
       createdAt: row.createdAt.toISOString(),
