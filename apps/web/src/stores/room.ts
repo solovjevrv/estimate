@@ -119,8 +119,18 @@ export const useRoomStore = defineStore('room', () => {
     applyState(joined.state);
   }
 
-  /** Вход в комнату: авторизованного сервер узнает по куке, гость называет имя */
-  async function join(roomId: string, guestName?: string): Promise<void> {
+  /**
+   * Вход в комнату: авторизованного сервер узнает по куке, гость называет имя.
+   * `onReconnectFailure` зовётся, если провалился именно автоматический вход
+   * после переподключения сокета (а не самый первый) — например, за время,
+   * пока вкладка простаивала, протух access-токен: хэндшейк увидит гостя без
+   * имени, и без этого коллбэка страница молча осталась бы в подвисшем виде (7.16).
+   */
+  async function join(
+    roomId: string,
+    guestName?: string,
+    onReconnectFailure?: () => void,
+  ): Promise<void> {
     // Смена комнаты на живом сокете: сбрасываем прошлый стол, иначе отставшая
     // рассылка старой комнаты (id другой — проверку revision не проходит) осталась бы на экране
     if (state.value && state.value.room.id !== roomId) {
@@ -141,7 +151,7 @@ export const useRoomStore = defineStore('room', () => {
         // Первый connect не трогаем — вход по нему сделает сам join ниже
         if (established) {
           void performJoin().catch(() => {
-            // Не вышло восстановиться — попробуем на следующем переподключении
+            onReconnectFailure?.();
           });
         }
       });

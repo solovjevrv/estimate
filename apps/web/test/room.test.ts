@@ -269,6 +269,24 @@ describe('стор комнаты', () => {
       });
     });
 
+    it('при провале автоматического входа после переподключения зовёт onReconnectFailure (7.16)', async () => {
+      const store = useRoomStore();
+      const onReconnectFailure = vi.fn();
+      socket.next = { state: state(1), guestToken: null, participantId: 'p1' };
+      await store.join('room1', undefined, onReconnectFailure);
+      socket.sent.length = 0;
+
+      // Сеть моргнула, а за это время протух access-токен: хэндшейк видит гостя без имени
+      socket.disconnect();
+      socket.nextError = { error: 'unauthorized', message: 'Гостю нужно имя' };
+      socket.connect();
+      await Promise.resolve();
+      await Promise.resolve();
+
+      expect(onReconnectFailure).toHaveBeenCalledOnce();
+      expect(store.participantId).toBe('p1'); // прошлое состояние не затирается неудачным входом
+    });
+
     it('на первом подключении входит один раз, без лишнего повторного входа', async () => {
       const store = useRoomStore();
       socket.next = { state: state(1), guestToken: null, participantId: 'p1' };

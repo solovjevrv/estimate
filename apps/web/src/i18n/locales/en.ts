@@ -144,6 +144,7 @@ export default {
     joining: 'Joining…',
     joinError: 'Could not join the room. Please try again.',
     retry: 'Retry',
+    sessionExpired: 'Your session expired — sign in again or continue as a guest.',
     roleScrumMaster: 'Scrum master',
     roleVoter: 'Voter',
     connected: 'Connected',

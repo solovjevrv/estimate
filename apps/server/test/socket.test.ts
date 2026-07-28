@@ -70,7 +70,7 @@ describe('Socket.io', () => {
   it('опознаёт пользователя по access-куке', async () => {
     const { app, port } = await startApp(authConfig);
     try {
-      const { access } = new TokenService(app.jwt, false).issue('user-42');
+      const { access } = new TokenService(app.jwt, false).issue('user-42', 'session-42');
 
       const userId = await connectAndReadUserId(app, port, `${ACCESS_COOKIE}=${access}`);
 

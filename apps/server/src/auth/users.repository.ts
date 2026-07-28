@@ -1,5 +1,5 @@
 import type { AuthProvider, AuthUser } from '@poker/shared';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 
 import type { Db } from '../db';
 import { schema } from '../db';
@@ -29,7 +29,13 @@ export class UsersRepository {
       })
       .onConflictDoUpdate({
         target: [schema.users.provider, schema.users.providerId],
-        set: { email: profile.email, name: profile.name, avatarUrl: profile.avatarUrl },
+        set: {
+          email: profile.email,
+          name: profile.name,
+          avatarUrl: profile.avatarUrl,
+          updatedAt: sql`now()`,
+          lastLoginAt: sql`now()`,
+        },
       })
       .returning();
 
@@ -50,7 +56,7 @@ export class UsersRepository {
   ): Promise<AuthUser> {
     const [row] = await this.db
       .update(schema.users)
-      .set({ displayName: fields.name, jobTitle: fields.jobTitle })
+      .set({ displayName: fields.name, jobTitle: fields.jobTitle, updatedAt: sql`now()` })
       .where(eq(schema.users.id, id))
       .returning();
 

@@ -17,6 +17,11 @@ export abstract class OAuthProvider {
   /** Эндпоинты провайдера для @fastify/oauth2 */
   abstract readonly configuration: ProviderConfiguration;
   abstract readonly scope: string[];
+  /**
+   * Доп. параметры экрана авторизации у провайдера. По умолчанию пусто —
+   * переопределяется там, где нужно принудительно показать выбор аккаунта (7.19).
+   */
+  readonly authorizeParams: Record<string, string> = {};
 
   /** Запрос профиля по выданному access-токену */
   abstract fetchProfile(accessToken: string): Promise<OAuthProfile>;

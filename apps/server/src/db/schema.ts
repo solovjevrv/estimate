@@ -39,8 +39,31 @@ export const users = pgTable(
     jobTitle: text('job_title'),
     avatarUrl: text('avatar_url'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Правится и входом через провайдера, и правкой профиля (9.2) (7.9) */
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Последний успешный вход через провайдера — задел под дашборд команды (3.5) (7.9) */
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('users_provider_provider_id_idx').on(t.provider, t.providerId)],
+);
+
+/**
+ * Выданные refresh-токены: одна строка = одна активная сессия. Id строки —
+ * это jti внутри refresh-JWT, поэтому обмен токена (или выход) может отозвать
+ * ровно эту сессию, не трогая остальные устройства пользователя (7.6).
+ */
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Совпадает с TTL refresh-токена — по нему можно чистить протухшие строки */
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [index('sessions_user_id_idx').on(t.userId)],
 );
 
 export const teams = pgTable('teams', {

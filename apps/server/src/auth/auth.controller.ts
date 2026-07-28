@@ -47,7 +47,8 @@ export class AuthController {
     return { user: session.user };
   };
 
-  readonly logout = async (_req: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
+  readonly logout = async (req: FastifyRequest, reply: FastifyReply): Promise<FastifyReply> => {
+    await this.service.logout(req.cookies[REFRESH_COOKIE]);
     this.tokens.clearCookies(reply);
     return reply.code(204).send();
   };

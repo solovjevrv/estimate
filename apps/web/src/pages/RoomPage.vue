@@ -390,13 +390,41 @@ async function joinAsSelf(): Promise<void> {
   const token = currentToken;
   phase.value = 'joining';
   try {
-    await room.join(props.id);
+    await room.join(props.id, undefined, () => {
+      if (token !== currentToken) return;
+      void recoverAuthenticatedJoin();
+    });
     if (token !== currentToken) return;
     phase.value = 'joined';
   } catch {
     if (token !== currentToken) return;
     phase.value = 'joinError';
   }
+}
+
+/**
+ * Сокет мог переподключиться (сон ноутбука, обрыв сети) уже после того, как
+ * протух access-токен, — сервер на хэндшейке видит гостя без имени, и вход
+ * отклоняется. Вместо повтора того же запроса по кругу сверяемся с сервером,
+ * жива ли сессия на самом деле: `session.load()` попутно один раз попробует
+ * продлить её (см. `lib/api.ts`). Если сессия и правда закончилась — не
+ * долбим сервер тем же запросом, а даём войти гостем (7.16).
+ */
+async function recoverAuthenticatedJoin(): Promise<void> {
+  const token = currentToken;
+  await session.load();
+  if (token !== currentToken) return;
+
+  if (session.isAuthenticated) {
+    // Место за столом было привязано к сломанному соединению — нужен новый сокет,
+    // чтобы хэндшейк на сервере перечитал куку заново
+    room.leave();
+    await joinAsSelf();
+    return;
+  }
+
+  phase.value = 'naming';
+  toast.add({ title: t('room.sessionExpired'), color: 'warning' });
 }
 
 function validateName(s: { name: string }): FormError[] {
@@ -425,10 +453,10 @@ async function onJoinAsGuest(event: FormSubmitEvent<{ name: string }>): Promise<
   }
 }
 
-/** После сбоя входа гостю дают попробовать снова с тем же именем, вошедшему — без формы */
+/** После сбоя входа гостю дают попробовать снова с тем же именем, вошедшему — сверяем сессию заново */
 function retry(): void {
   if (session.isAuthenticated) {
-    void joinAsSelf();
+    void recoverAuthenticatedJoin();
   } else {
     phase.value = 'naming';
   }
