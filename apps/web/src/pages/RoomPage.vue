@@ -11,6 +11,7 @@ import {
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import ConfirmModal from '../components/ConfirmModal.vue';
 import DeckBar from '../components/room/DeckBar.vue';
 import ParticipantCard from '../components/room/ParticipantCard.vue';
 import RoomTimerCard from '../components/room/RoomTimerCard.vue';
@@ -687,46 +688,32 @@ function retry(): void {
       </template>
     </template>
 
-    <UModal
+    <ConfirmModal
       v-model:open="archiveOpen"
       :title="t('room.archiveConfirmTitle')"
       :description="t('room.archiveConfirmText')"
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer="{ close }">
-        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton color="error" :loading="archiving" @click="onArchive">
-          {{ t('room.archiveConfirm') }}
-        </UButton>
-      </template>
-    </UModal>
+      :confirm-label="t('room.archiveConfirm')"
+      :loading="archiving"
+      @confirm="onArchive"
+    />
 
-    <UModal
+    <ConfirmModal
       v-model:open="cancelConfirmOpen"
       :title="t('room.cancelRoundConfirmTitle')"
       :description="t('room.cancelRoundConfirmText')"
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer="{ close }">
-        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton color="error" :loading="starting" @click="onStartRound()">
-          {{ t('room.cancelRoundConfirm') }}
-        </UButton>
-      </template>
-    </UModal>
+      :confirm-label="t('room.cancelRoundConfirm')"
+      :loading="starting"
+      @confirm="onStartRound()"
+    />
 
-    <UModal
+    <ConfirmModal
       v-model:open="revealConfirmOpen"
       :title="t('room.revealConfirmTitle')"
       :description="t('room.revealConfirmText', { voted: votedCount, total: totalCount })"
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer="{ close }">
-        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton color="primary" :loading="revealing" @click="onReveal">
-          {{ t('room.revealConfirmButton') }}
-        </UButton>
-      </template>
-    </UModal>
+      :confirm-label="t('room.revealConfirmButton')"
+      confirm-color="primary"
+      :loading="revealing"
+      @confirm="onReveal"
+    />
   </section>
 </template>

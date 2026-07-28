@@ -6,6 +6,7 @@ import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
+import ConfirmModal from '../components/ConfirmModal.vue';
 import { useRoomsStore } from '../stores/rooms';
 
 const { t, locale } = useI18n();
@@ -317,18 +318,13 @@ async function confirmDelete(): Promise<void> {
       </template>
     </UModal>
 
-    <UModal
+    <ConfirmModal
       v-model:open="deleteOpen"
       :title="t('myRooms.deleteConfirmTitle')"
       :description="t('myRooms.deleteConfirmText', { name: deleteTarget?.name ?? '' })"
-      :ui="{ footer: 'justify-end' }"
-    >
-      <template #footer="{ close }">
-        <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton color="error" :loading="deleting" @click="confirmDelete">
-          {{ t('myRooms.deleteConfirm') }}
-        </UButton>
-      </template>
-    </UModal>
+      :confirm-label="t('myRooms.deleteConfirm')"
+      :loading="deleting"
+      @confirm="confirmDelete"
+    />
   </section>
 </template>
