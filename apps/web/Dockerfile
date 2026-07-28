@@ -12,7 +12,7 @@ COPY packages/shared packages/shared
 COPY apps/web apps/web
 RUN pnpm --filter @poker/web build
 
-FROM nginx:alpine
+FROM nginxinc/nginx-unprivileged:alpine
 COPY apps/web/nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /app/apps/web/dist /usr/share/nginx/html
-EXPOSE 3000
+EXPOSE 8080 3000

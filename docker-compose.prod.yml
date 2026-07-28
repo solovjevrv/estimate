@@ -51,7 +51,8 @@ services:
     image: poker-web
     restart: unless-stopped
     ports:
-      - '80:80'
+      # nginx-unprivileged слушает 8080 внутри контейнера (не может биндиться на 80)
+      - '80:8080'
       - '3000:3000'
     volumes:
       - letsencrypt:/etc/letsencrypt:ro
@@ -62,7 +63,7 @@ services:
     # Периодический reload, чтобы nginx подхватывал продлённые сертификаты
     command: /bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g "daemon off;"'
     healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:80/health >/dev/null || exit 1']
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:8080/health >/dev/null || exit 1']
       interval: 10s
       timeout: 3s
       retries: 6
@@ -74,8 +75,15 @@ services:
     volumes:
       - letsencrypt:/etc/letsencrypt
       - certbot_www:/var/www/certbot
-    # Продление по webroot дважды в сутки; первый выпуск делается отдельной командой (см. README)
-    entrypoint: /bin/sh -c 'trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot --quiet; sleep 12h & wait $${!}; done'
+    # Продление по webroot дважды в сутки; первый выпуск делается отдельной командой (см. README).
+    # web работает под uid/gid 101 (nginx-unprivileged) и не может прочитать root:600 приватный
+    # ключ, который пишет certbot, — поэтому при старте и после каждого продления (--deploy-hook)
+    # отдаём группе 101 право на чтение
+    entrypoint: >
+      /bin/sh -c 'trap exit TERM;
+      fix() { chown -R root:101 /etc/letsencrypt/live /etc/letsencrypt/archive; chmod -R g+rX /etc/letsencrypt/live /etc/letsencrypt/archive; };
+      fix;
+      while :; do certbot renew --webroot -w /var/www/certbot --quiet --deploy-hook "chown -R root:101 /etc/letsencrypt/live /etc/letsencrypt/archive && chmod -R g+rX /etc/letsencrypt/live /etc/letsencrypt/archive"; sleep 12h & wait $${!}; done'
 
 volumes:
   postgres_data:
