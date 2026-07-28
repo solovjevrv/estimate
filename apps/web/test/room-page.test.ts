@@ -1346,6 +1346,51 @@ describe('правка ссылок Jira/Confluence', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось сохранить ссылки'));
   });
 
+  it('переход в другую комнату не протаскивает несохранённый черновик ссылок', async () => {
+    const room2: Room = {
+      ...room1,
+      id: 'r2',
+      name: 'Ретро квартала',
+      jiraUrl: 'https://jira.example.com/ROOM2',
+    };
+    socket.next = {
+      state: roomState({
+        room: { ...room1, jiraUrl: 'https://jira.example.com/ROOM1' },
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper, router } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, {
+        'GET /api/rooms/r1': () => json(200, { room: room1 }),
+        'GET /api/rooms/r2': () => json(200, { room: room2 }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
+
+    const jiraInput = findLinkInput(wrapper, 'jira');
+    await jiraInput!.setValue('https://jira.example.com/UNSAVED-DRAFT');
+
+    socket.next = {
+      state: roomState({
+        room: room2,
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+    await router.push('/rooms/r2');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ретро квартала'));
+
+    await vi.waitFor(() => {
+      const input = findLinkInput(wrapper, 'jira');
+      expect((input!.element as HTMLInputElement).value).toBe('https://jira.example.com/ROOM2');
+    });
+  });
+
   it('новый раунд не сбрасывает несохранённый черновик ссылок комнаты', async () => {
     socket.next = {
       state: roomState({

@@ -168,13 +168,16 @@ const winnerLabel = computed(() =>
   winnerValue.value === null ? null : cardLabel(winnerValue.value),
 );
 
-const resultVotes = computed(() =>
-  (room.result?.votes ?? []).map((v) => ({
-    participantId: v.participantId,
-    name: v.name,
-    valueLabel: cardLabel(v.value),
-  })),
-);
+/**
+ * Карточки участников показывают голос только тех, кто ещё в комнате — тот, кто
+ * успел проголосовать и вышел до вскрытия, иначе пропал бы из результата совсем.
+ */
+const departedVotes = computed(() => {
+  const presentIds = new Set(room.participants.map((p) => p.participantId));
+  return (room.result?.votes ?? [])
+    .filter((v) => !presentIds.has(v.participantId))
+    .map((v) => ({ participantId: v.participantId, name: v.name, valueLabel: cardLabel(v.value) }));
+});
 
 function revealedValueLabel(participantId: string): string | null {
   if (roundPhase.value !== 'revealed') return null;
@@ -277,7 +280,12 @@ const savingLinks = ref(false);
 
 watch(
   () => room.room,
-  (current) => {
+  (current, previous) => {
+    // Переход в другую комнату без перезагрузки страницы (тот же компонент) не должен
+    // протащить несохранённый черновик ссылок прежней комнаты в новую
+    if (current?.id !== previous?.id) {
+      linksDirty.value = false;
+    }
     if (!current || linksDirty.value) return;
     linksForm.jiraUrl = current.jiraUrl ?? '';
     linksForm.confluenceUrl = current.confluenceUrl ?? '';
@@ -622,7 +630,7 @@ function retry(): void {
             :max-label="cardLabel(room.result.max)"
             :agreement="room.result.agreement"
             :winner-label="winnerLabel"
-            :votes="resultVotes"
+            :departed-votes="departedVotes"
           />
         </div>
 

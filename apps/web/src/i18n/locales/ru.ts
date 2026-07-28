@@ -187,6 +187,7 @@ export default {
     resultMax: 'Макс: {max}',
     resultAgreement: 'Согласие: {agreement}%',
     resultWinnerLabel: 'Победитель',
+    resultDepartedTitle: 'Проголосовали и вышли',
     roomMenu: 'Меню комнаты',
     copyLink: 'Скопировать ссылку',
     linkCopied: 'Ссылка скопирована',

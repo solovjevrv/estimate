@@ -185,6 +185,7 @@ export default {
     resultMax: 'Max: {max}',
     resultAgreement: 'Agreement: {agreement}%',
     resultWinnerLabel: 'Winner',
+    resultDepartedTitle: 'Voted and left',
     roomMenu: 'Room menu',
     copyLink: 'Copy link',
     linkCopied: 'Link copied',
