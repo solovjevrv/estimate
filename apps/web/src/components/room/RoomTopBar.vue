@@ -56,7 +56,7 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
           <UIcon
             :name="props.connected ? 'i-lucide-wifi' : 'i-lucide-wifi-off'"
             class="size-4"
-            :class="props.connected ? 'text-white' : ''"
+            :style="props.connected ? 'color: white' : ''"
           />
         </span>
       </UTooltip>
