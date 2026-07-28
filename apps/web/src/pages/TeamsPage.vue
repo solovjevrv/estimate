@@ -5,7 +5,7 @@ import { onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
-import { MODAL_BUTTON_UI, MODAL_UI } from '../lib/modal-ui';
+import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
 import { useTeamsStore } from '../stores/teams';
 
@@ -142,6 +142,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
               :maxlength="TEAM_NAME_MAX_LENGTH"
               autofocus
               class="w-full"
+              :ui="MODAL_INPUT_UI"
             />
           </UFormField>
 

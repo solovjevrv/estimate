@@ -17,3 +17,12 @@ export const MODAL_UI = {
 
 /** Кнопки модалок из макета: радиус 10px, паддинг 11/18, 14px/700 — крупнее дефолта Nuxt UI */
 export const MODAL_BUTTON_UI = { base: 'rounded-[10px] px-[18px] py-[11px] text-[14px] font-bold' };
+
+/**
+ * Поле ввода из макета: padding 12/16, радиус 11px, реальный бордер 1.5px на
+ * tokenBorder — Nuxt UI по умолчанию даёт px-2.5/py-1.5, rounded-md (12px) и
+ * ring вместо border, заметно мельче и без явной рамки.
+ */
+export const MODAL_INPUT_UI = {
+  base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] px-4 py-3 text-[14.5px] ring-0',
+};
