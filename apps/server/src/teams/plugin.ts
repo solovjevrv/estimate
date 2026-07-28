@@ -59,7 +59,11 @@ const teamResponse = {
 
 const teamWithRoleResponse = {
   type: 'object',
-  properties: { ...teamResponse.properties, role: { type: 'string' } },
+  properties: {
+    ...teamResponse.properties,
+    role: { type: 'string' },
+    memberCount: { type: 'number' },
+  },
 } as const;
 
 const memberResponse = {
@@ -94,7 +98,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
       schema: {
         tags: [DOCS_TAGS.teams],
         summary: 'Создать команду',
-        description: 'Создатель сразу становится владельцем.',
+        description: 'Создатель сразу становится администратором.',
         security: [{ session: [] }],
         body: nameBody,
         response: {
@@ -141,7 +145,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         tags: [DOCS_TAGS.teams],
         summary: 'Карточка команды',
         description:
-          'Состав, роль текущего пользователя и код приглашения (только для админа и владельца). Посторонним отвечаем 404.',
+          'Состав, роль текущего пользователя и код приглашения (только для администратора). Посторонним отвечаем 404.',
         security: [{ session: [] }],
         params: teamIdParams,
         response: {
@@ -170,7 +174,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
       schema: {
         tags: [DOCS_TAGS.teams],
         summary: 'Переименовать команду',
-        description: 'Доступно только владельцу.',
+        description: 'Доступно администратору.',
         security: [{ session: [] }],
         params: teamIdParams,
         body: nameBody,
@@ -197,8 +201,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
       schema: {
         tags: [DOCS_TAGS.teams],
         summary: 'Удалить команду',
-        description:
-          'Доступно только владельцу. Комнаты команды сохраняются и остаются без команды.',
+        description: 'Доступно администратору. Комнаты команды сохраняются и остаются без команды.',
         security: [{ session: [] }],
         params: teamIdParams,
         response: {
@@ -239,8 +242,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
       schema: {
         tags: [DOCS_TAGS.teams],
         summary: 'Изменить роль участника',
-        description:
-          'Доступно только владельцу. Назначение роли owner передаёт владение: прежний владелец становится администратором.',
+        description: 'Доступно администратору. Администраторов в команде может быть несколько.',
         security: [{ session: [] }],
         params: memberParams,
         body: roleBody,
@@ -263,7 +265,10 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
           401: { description: 'Требуется вход', ...errorResponse },
           403: { description: 'Недостаточно прав', ...errorResponse },
           404: { description: 'Команда или участник не найдены', ...errorResponse },
-          409: { description: 'Единственный владелец не может понизить себя', ...errorResponse },
+          409: {
+            description: 'Единственный администратор не может понизить себя',
+            ...errorResponse,
+          },
         },
       },
     },
@@ -278,7 +283,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         tags: [DOCS_TAGS.teams],
         summary: 'Исключить участника или выйти',
         description:
-          'Исключать может только владелец, выйти самому — любой участник. Единственному владельцу нужно сначала передать владение.',
+          'Исключать может только администратор, выйти самому — любой участник. Единственному администратору нужно сначала назначить другого.',
         security: [{ session: [] }],
         params: memberParams,
         response: {
@@ -286,7 +291,10 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
           401: { description: 'Требуется вход', ...errorResponse },
           403: { description: 'Недостаточно прав', ...errorResponse },
           404: { description: 'Команда или участник не найдены', ...errorResponse },
-          409: { description: 'Владелец не может выйти, не передав команду', ...errorResponse },
+          409: {
+            description: 'Единственный администратор не может выйти, не назначив другого',
+            ...errorResponse,
+          },
         },
       },
     },
@@ -300,7 +308,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
       schema: {
         tags: [DOCS_TAGS.teams],
         summary: 'Перевыпустить код приглашения',
-        description: 'Доступно администратору и владельцу. Старая ссылка перестаёт работать.',
+        description: 'Доступно администратору. Старая ссылка перестаёт работать.',
         security: [{ session: [] }],
         params: teamIdParams,
         response: {

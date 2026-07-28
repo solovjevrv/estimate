@@ -29,6 +29,55 @@
       "when": 1784822097796,
       "tag": "0003_dazzling_thunderbolts",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1784975143860,
+      "tag": "0004_romantic_redwing",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1784993768165,
+      "tag": "0005_shocking_nicolaos",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1784997290151,
+      "tag": "0006_giant_pestilence",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785087605854,
+      "tag": "0007_chemical_marrow",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785230285115,
+      "tag": "0008_natural_silver_centurion",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785237878522,
+      "tag": "0009_far_titanium_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785238765787,
+      "tag": "0010_volatile_dark_beast",
+      "breakpoints": true
     }
   ]
 }

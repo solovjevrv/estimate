@@ -9,6 +9,10 @@ coverage/
 .vite/
 .eslintcache
 
+# Типы, которые генерирует плагин Nuxt UI при каждой сборке
+apps/web/auto-imports.d.ts
+apps/web/components.d.ts
+
 # Тесты
 playwright-report/
 test-results/
@@ -23,7 +27,13 @@ credentials.md
 claude.md
 CLAUDE.md
 PROGRESS.md
-.claude/
+PROGRESS_ARCHIVE.md
+
+# Дизайн-референсы (мокапы Claude Design и т.п.) — рабочий материал, не код
+.design/
+.claude/*
+# Скиллы держим в репозитории — это общая для команды справка по Nuxt UI
+!.claude/skills/
 
 # Логи
 *.log

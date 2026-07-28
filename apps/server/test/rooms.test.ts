@@ -6,7 +6,15 @@ import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 
-import type { AuthUser, JoinRoomResult, Round, RoomState, WsAck } from '@poker/shared';
+import type {
+  AuthUser,
+  JoinRoomResult,
+  Room,
+  Round,
+  RoomState,
+  RoundResult,
+  WsAck,
+} from '@poker/shared';
 import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
 import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -54,7 +62,9 @@ describeDb('комнаты', () => {
   const clients: Socket[] = [];
 
   function as(user: AuthUser): { cookie: string } {
-    return { cookie: `${ACCESS_COOKIE}=${new TokenService(app.jwt, false).issue(user.id).access}` };
+    return {
+      cookie: `${ACCESS_COOKIE}=${new TokenService(app.jwt, false).issue(user.id, randomUUID()).access}`,
+    };
   }
 
   async function newUser(label: string): Promise<AuthUser> {
@@ -220,31 +230,12 @@ describeDb('комнаты', () => {
       expect((list.json() as { rooms: unknown[] }).rooms).toHaveLength(1);
     });
 
-    it('закрыть комнату может только скрам-мастер', async () => {
-      const owner = await newUser('close-owner');
-      const stranger = await newUser('close-stranger');
-      const roomId = await newRoom(owner);
-
-      const byStranger = await app.inject({
-        method: 'POST',
-        url: `/api/rooms/${roomId}/close`,
-        headers: as(stranger),
-      });
-      const byOwner = await app.inject({
-        method: 'POST',
-        url: `/api/rooms/${roomId}/close`,
-        headers: as(owner),
-      });
-
-      expect(byStranger.statusCode).toBe(403);
-      expect(byOwner.statusCode).toBe(200);
-      expect(byOwner.json()).toMatchObject({ room: { status: 'closed' } });
-    });
-
-    it('список своих комнат показывает только комнаты без команды', async () => {
+    it('список своих комнат показывает и личные, и командные, но только созданные мной', async () => {
       const owner = await newUser('mine-owner');
+      const stranger = await newUser('mine-stranger');
       const team = await teamsService.create(owner.id, `Команда ${randomUUID().slice(0, 8)}`);
       teamIds.push(team.id);
+      await new TeamsRepository(db).insertMemberIfAbsent(team.id, stranger.id, 'admin');
       const personal = await newRoom(owner, 'Личная комната');
       const teamRoom = await app.inject({
         method: 'POST',
@@ -252,18 +243,151 @@ describeDb('комнаты', () => {
         headers: as(owner),
         payload: { name: 'Командная комната', teamId: team.id },
       });
-      roomIds.push((teamRoom.json() as { room: { id: string } }).room.id);
+      const teamRoomId = (teamRoom.json() as { room: { id: string } }).room.id;
+      roomIds.push(teamRoomId);
+      // Чужая комната той же команды не должна попасть в чужой список «моих»
+      const strangerRoom = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(stranger),
+        payload: { name: 'Комната участника', teamId: team.id },
+      });
+      roomIds.push((strangerRoom.json() as { room: { id: string } }).room.id);
 
       const res = await app.inject({ method: 'GET', url: '/api/rooms', headers: as(owner) });
 
       const rooms = (res.json() as { rooms: Array<{ id: string }> }).rooms;
-      expect(rooms.map((room) => room.id)).toEqual([personal]);
+      expect(rooms.map((room) => room.id).sort()).toEqual([personal, teamRoomId].sort());
     });
 
     it('несуществующая комната даёт 404', async () => {
       const res = await app.inject({ method: 'GET', url: `/api/rooms/${randomUUID()}` });
 
       expect(res.statusCode).toBe(404);
+    });
+  });
+
+  describe('архивация и удаление', () => {
+    it('архивировать может только скрам-мастер, комната пропадает из списка', async () => {
+      const owner = await newUser('archive-owner');
+      const stranger = await newUser('archive-stranger');
+      const roomId = await newRoom(owner, 'Комната к архивации');
+
+      const byStranger = await app.inject({
+        method: 'POST',
+        url: `/api/rooms/${roomId}/archive`,
+        headers: as(stranger),
+      });
+      expect(byStranger.statusCode).toBe(403);
+
+      const byOwner = await app.inject({
+        method: 'POST',
+        url: `/api/rooms/${roomId}/archive`,
+        headers: as(owner),
+      });
+      expect(byOwner.statusCode).toBe(200);
+      expect(byOwner.json()).toMatchObject({ room: { archivedAt: expect.any(String) } });
+
+      // Повторная архивация — конфликт
+      const again = await app.inject({
+        method: 'POST',
+        url: `/api/rooms/${roomId}/archive`,
+        headers: as(owner),
+      });
+      expect(again.statusCode).toBe(409);
+
+      // Из обычного списка комната пропала, но видна в архиве
+      const mine = await app.inject({ method: 'GET', url: '/api/rooms', headers: as(owner) });
+      expect((mine.json() as { rooms: Array<{ id: string }> }).rooms).not.toContainEqual(
+        expect.objectContaining({ id: roomId }),
+      );
+      const archived = await app.inject({
+        method: 'GET',
+        url: '/api/rooms?archived=true',
+        headers: as(owner),
+      });
+      expect((archived.json() as { rooms: Array<{ id: string }> }).rooms).toContainEqual(
+        expect.objectContaining({ id: roomId }),
+      );
+
+      // По прямой ссылке комната всё ещё доступна — только для чтения
+      const direct = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}` });
+      expect(direct.statusCode).toBe(200);
+    });
+
+    it('удалить навсегда можно только уже заархивированную комнату', async () => {
+      const owner = await newUser('delete-owner');
+      const roomId = await newRoom(owner, 'Комната к удалению');
+
+      const tooEarly = await app.inject({
+        method: 'DELETE',
+        url: `/api/rooms/${roomId}`,
+        headers: as(owner),
+      });
+      expect(tooEarly.statusCode).toBe(409);
+
+      await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/archive`, headers: as(owner) });
+      const deleted = await app.inject({
+        method: 'DELETE',
+        url: `/api/rooms/${roomId}`,
+        headers: as(owner),
+      });
+      expect(deleted.statusCode).toBe(204);
+
+      const gone = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}` });
+      expect(gone.statusCode).toBe(404);
+      // Комнату уже удалили сама — afterAll не должен пытаться удалить её ещё раз
+      roomIds.splice(roomIds.indexOf(roomId), 1);
+    });
+
+    it('архив команды виден только владельцу и администратору', async () => {
+      const owner = await newUser('team-archive-owner');
+      const member = await newUser('team-archive-member');
+      const team = await teamsService.create(owner.id, `Команда ${randomUUID().slice(0, 8)}`);
+      teamIds.push(team.id);
+      await new TeamsRepository(db).insertMemberIfAbsent(team.id, member.id, 'member');
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(owner),
+        payload: { name: 'Комната команды', teamId: team.id },
+      });
+      const roomId = (created.json() as { room: { id: string } }).room.id;
+      roomIds.push(roomId);
+      await app.inject({
+        method: 'POST',
+        url: `/api/rooms/${roomId}/archive`,
+        headers: as(owner),
+      });
+
+      const byMember = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${team.id}/rooms?archived=true`,
+        headers: as(member),
+      });
+      expect(byMember.statusCode).toBe(403);
+
+      const byOwner = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${team.id}/rooms?archived=true`,
+        headers: as(owner),
+      });
+      expect(byOwner.statusCode).toBe(200);
+      expect((byOwner.json() as { rooms: Array<{ id: string }> }).rooms).toContainEqual(
+        expect.objectContaining({ id: roomId }),
+      );
+    });
+
+    it('в архивной комнате нельзя начать раунд', async () => {
+      const owner = await newUser('archived-round-owner');
+      const roomId = await newRoom(owner, 'Комната в архиве');
+      await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/archive`, headers: as(owner) });
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+
+      const ack = await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+
+      expect(ack).toMatchObject({ ok: false, error: 'conflict' });
     });
   });
 
@@ -286,18 +410,10 @@ describeDb('комнаты', () => {
 
       // Скрам-мастер открывает раунд
       const guestSeesRound = nextState(guest);
-      const started = await emit(master, WS_EVENTS.START_NEW_ROUND, {
-        deckType: 'fibonacci',
-        jiraUrl: 'https://jira.example.com/TASK-1',
-      });
+      const started = await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
       expect(started.ok).toBe(true);
       const roundState = await guestSeesRound;
-      expect(roundState.round).toMatchObject({
-        seq: 1,
-        deckType: 'fibonacci',
-        status: 'voting',
-        jiraUrl: 'https://jira.example.com/TASK-1',
-      });
+      expect(roundState.round).toMatchObject({ seq: 1, deckType: 'fibonacci', status: 'voting' });
 
       // Голоса: до вскрытия видно только сам факт
       await emit(guest, WS_EVENTS.SUBMIT_VOTE, { value: 3 });
@@ -317,7 +433,8 @@ describeDb('комнаты', () => {
       expect((await emit(master, WS_EVENTS.REVEAL_CARDS)).ok).toBe(true);
       const revealed = await guestSeesResult;
       expect(revealed.round?.status).toBe('revealed');
-      expect(revealed.result).toMatchObject({ average: 5.5, min: 3, max: 8 });
+      // Голоса разные — за самое частое значение всего 1 из 2
+      expect(revealed.result).toMatchObject({ average: 5.5, min: 3, max: 8, agreement: 50 });
       expect(revealed.result?.votes).toHaveLength(2);
 
       // Новый раунд обнуляет стол
@@ -331,15 +448,56 @@ describeDb('комнаты', () => {
       expect(fresh.participants.some((participant) => participant.hasVoted)).toBe(false);
     });
 
-    it('ссылки на задачу правит любой участник и видят все', async () => {
-      const owner = await newUser('links-owner');
+    it('после вскрытия карт голос подписан именем, изменённым в профиле (9.2), а не именем от провайдера', async () => {
+      const owner = await newUser('reveal-display-name-owner');
+      await new UsersRepository(db).updateProfile(owner.id, {
+        name: 'Скрам-мастер Псевдоним',
+        jobTitle: null,
+      });
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+
+      await joinRoom(master, roomId);
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+      await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 5 });
+
+      const ack = await emit<RoundResult>(master, WS_EVENTS.REVEAL_CARDS);
+
+      expect(ack.ok && ack.data?.votes).toMatchObject([
+        { name: 'Скрам-мастер Псевдоним', value: 5 },
+      ]);
+    });
+
+    it('колода футболочных размеров: среднее не считается, но согласие есть', async () => {
+      const owner = await newUser('tshirt-owner');
       const roomId = await newRoom(owner);
       const master = connect(owner);
       const guest = connect();
 
       await joinRoom(master, roomId);
       await joinRoom(guest, roomId, 'Гость');
-      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'tshirt' });
+
+      // Значение вне колоды маек отклоняется
+      const rejected = await emit(guest, WS_EVENTS.SUBMIT_VOTE, { value: 40 });
+      expect(rejected).toMatchObject({ ok: false, error: 'bad_request' });
+
+      await emit(guest, WS_EVENTS.SUBMIT_VOTE, { value: 3 });
+      await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 3 });
+
+      const ack = await emit<RoundResult>(master, WS_EVENTS.REVEAL_CARDS);
+      expect(ack.ok && ack.data).toMatchObject({ average: null, min: 3, max: 3, agreement: 100 });
+    });
+
+    it('ссылки на задачу правит любой участник и видят все, даже без активного раунда', async () => {
+      const owner = await newUser('links-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+
+      const masterState = await joinRoom(master, roomId);
+      await joinRoom(guest, roomId, 'Гость');
+      expect(masterState.round).toBeNull();
 
       const masterSeesLinks = nextState(master);
       const updated = await emit(guest, WS_EVENTS.UPDATE_LINKS, {
@@ -348,7 +506,7 @@ describeDb('комнаты', () => {
       });
 
       expect(updated.ok).toBe(true);
-      expect((await masterSeesLinks).round).toMatchObject({
+      expect((await masterSeesLinks).room).toMatchObject({
         jiraUrl: 'https://jira.example.com/TASK-7',
         confluenceUrl: 'https://confluence.example.com/page',
       });
@@ -378,23 +536,6 @@ describeDb('комнаты', () => {
       const ack = await emit(client, WS_EVENTS.SUBMIT_VOTE, { value: 3 });
 
       expect(ack).toMatchObject({ ok: false, error: 'forbidden' });
-    });
-
-    it('в закрытой комнате голосовать нельзя', async () => {
-      const owner = await newUser('closed-owner');
-      const roomId = await newRoom(owner);
-      const master = connect(owner);
-      await joinRoom(master, roomId);
-      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
-      await app.inject({
-        method: 'POST',
-        url: `/api/rooms/${roomId}/close`,
-        headers: as(owner),
-      });
-
-      const ack = await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 5 });
-
-      expect(ack).toMatchObject({ ok: false, error: 'conflict' });
     });
 
     it('вскрывать нечего, пока никто не проголосовал', async () => {
@@ -471,20 +612,6 @@ describeDb('комнаты', () => {
       expect(await leaked).toBe('не пришло');
     });
 
-    it('вскрыть карты в закрытой комнате нельзя', async () => {
-      const owner = await newUser('reveal-closed-owner');
-      const roomId = await newRoom(owner);
-      const master = connect(owner);
-      await joinRoom(master, roomId);
-      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
-      await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 3 });
-      await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/close`, headers: as(owner) });
-
-      const ack = await emit(master, WS_EVENTS.REVEAL_CARDS);
-
-      expect(ack).toMatchObject({ ok: false, error: 'conflict' });
-    });
-
     it('повторное вскрытие не меняет результат', async () => {
       const owner = await newUser('double-reveal-owner');
       const roomId = await newRoom(owner);
@@ -537,12 +664,10 @@ describeDb('комнаты', () => {
       const roomId = await newRoom(owner);
       const master = connect(owner);
       const guest = connect();
-      await joinRoom(master, roomId);
+      const masterState = await joinRoom(master, roomId);
       await joinRoom(guest, roomId, 'Гость');
 
-      const started = nextState(master);
-      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
-      const version = (await started).round?.linksVersion as number;
+      const version = masterState.room.linksVersion;
 
       // Оба видели одну и ту же версию ссылок, но правит их первый
       const first = await emit(guest, WS_EVENTS.UPDATE_LINKS, {
@@ -612,6 +737,130 @@ describeDb('комнаты', () => {
       guest.close();
 
       expect((await masterSeesLeave).participants).toHaveLength(1);
+    });
+  });
+
+  describe('таймер обсуждения', () => {
+    it('новая комната отдаёт таймер по умолчанию: 5 минут, не запущен', async () => {
+      const owner = await newUser('timer-default-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+
+      const state = await joinRoom(master, roomId);
+
+      expect(state.timer).toMatchObject({ durationSec: 300, running: false, endsAt: null });
+    });
+
+    it('гость может стартовать, ставить на паузу и сбрасывать таймер — рассылка уходит всем', async () => {
+      const owner = await newUser('timer-control-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      await joinRoom(guest, roomId, 'Таймер-гость');
+
+      const masterSeesStart = nextState(master);
+      const started = await emit(guest, WS_EVENTS.START_TIMER);
+      expect(started.ok).toBe(true);
+      const afterStart = await masterSeesStart;
+      expect(afterStart.timer.running).toBe(true);
+      expect(afterStart.timer.endsAt).not.toBeNull();
+
+      const masterSeesPause = nextState(master);
+      const paused = await emit(guest, WS_EVENTS.PAUSE_TIMER);
+      expect(paused.ok).toBe(true);
+      const afterPause = await masterSeesPause;
+      expect(afterPause.timer).toMatchObject({ running: false, endsAt: null });
+      expect(afterPause.timer.remainingSec).toBeLessThanOrEqual(300);
+
+      const masterSeesReset = nextState(master);
+      const reset = await emit(guest, WS_EVENTS.RESET_TIMER, { durationSec: 600 });
+      expect(reset.ok).toBe(true);
+      const afterReset = await masterSeesReset;
+      expect(afterReset.timer).toMatchObject({
+        durationSec: 600,
+        running: false,
+        endsAt: null,
+        remainingSec: 600,
+      });
+    });
+
+    it('произвольная длительность (не из пресетов) отклоняется', async () => {
+      const owner = await newUser('timer-bad-duration-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+
+      const ack = await emit(master, WS_EVENTS.RESET_TIMER, { durationSec: 42 });
+
+      expect(ack).toMatchObject({ ok: false, error: 'bad_request' });
+    });
+
+    it('новый раунд сбрасывает таймер обсуждения предыдущей задачи', async () => {
+      const owner = await newUser('timer-round-reset-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+      await emit(master, WS_EVENTS.START_TIMER);
+
+      const masterSeesNewRound = nextState(master);
+      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'scale_0_5' });
+      const fresh = await masterSeesNewRound;
+
+      expect(fresh.timer).toMatchObject({ running: false, endsAt: null, remainingSec: 300 });
+    });
+
+    it('таймер прошлой комнаты не утекает: переход на живом сокете без дисконнекта чистит её состояние', async () => {
+      const ownerA = await newUser('timer-leak-owner-a');
+      const roomA = await newRoom(ownerA, 'Таймер: комната А');
+      const ownerB = await newUser('timer-leak-owner-b');
+      const roomB = await newRoom(ownerB, 'Таймер: комната Б');
+
+      const client = connect(ownerA);
+      await joinRoom(client, roomA);
+      expect((await emit(client, WS_EVENTS.START_TIMER)).ok).toBe(true);
+
+      // Тот же сокет уходит в другую комнату без разрыва соединения — roomA пустеет
+      await joinRoom(client, roomB);
+
+      // Новый участник заходит в опустевшую комнату А: если состояние не почистили,
+      // он увидит чужой «бегущий» таймер вместо дефолтного
+      const fresh = connect();
+      const freshState = await joinRoom(fresh, roomA, 'Новый гость');
+      expect(freshState.timer).toMatchObject({
+        durationSec: 300,
+        running: false,
+        endsAt: null,
+        remainingSec: 300,
+      });
+    });
+
+    it('одновременные события над таймером не оставляют «рваного» состояния', async () => {
+      const owner = await newUser('timer-concurrent-owner');
+      const roomId = await newRoom(owner, 'Таймер: гонка событий');
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      await joinRoom(guest, roomId, 'Параллельный гость');
+
+      const [startAck, resetAck] = await Promise.all([
+        emit(guest, WS_EVENTS.START_TIMER),
+        emit(master, WS_EVENTS.RESET_TIMER, { durationSec: 900 }),
+      ]);
+      expect(startAck.ok).toBe(true);
+      expect(resetAck.ok).toBe(true);
+
+      // Независимый наблюдатель забирает окончательный снимок — какое бы из двух
+      // действий ни применилось последним, состояние не должно быть гибридом
+      // «идёт отсчёт, но endsAt пуст» или «остановлен, но endsAt заполнен»
+      const observer = connect();
+      const observed = await joinRoom(observer, roomId, 'Наблюдатель');
+      if (observed.timer.running) {
+        expect(observed.timer.endsAt).not.toBeNull();
+      } else {
+        expect(observed.timer.endsAt).toBeNull();
+      }
     });
   });
 
@@ -700,17 +949,16 @@ describeDb('комнаты', () => {
     it('одновременная правка ссылок: побеждает один, второй узнаёт о конфликте', async () => {
       const owner = await newUser('race-links-owner');
       const roomId = await newRoom(owner);
-      const master = asMaster(owner);
-      const started = await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      const room = await service.getRoom(roomId);
 
       const attempts = await Promise.allSettled([
         service.updateLinks(roomId, {
           jiraUrl: 'https://jira.example.com/LEFT',
-          version: started.linksVersion,
+          version: room.linksVersion,
         }),
         service.updateLinks(roomId, {
           jiraUrl: 'https://jira.example.com/RIGHT',
-          version: started.linksVersion,
+          version: room.linksVersion,
         }),
       ]);
 
@@ -719,8 +967,8 @@ describeDb('комнаты', () => {
       expect(saved).toHaveLength(1);
       expect(rejected[0]?.reason).toBeInstanceOf(ConflictError);
       // Версия выросла ровно на одну правку — чужой текст не затёрт вторым разом
-      expect((saved[0] as PromiseFulfilledResult<Round>).value.linksVersion).toBe(
-        started.linksVersion + 1,
+      expect((saved[0] as PromiseFulfilledResult<Room>).value.linksVersion).toBe(
+        room.linksVersion + 1,
       );
     });
 
@@ -783,8 +1031,6 @@ describeDb('комнаты', () => {
     it('правка без версии остаётся прежней: побеждает последний', async () => {
       const owner = await newUser('race-links-legacy-owner');
       const roomId = await newRoom(owner);
-      const master = asMaster(owner);
-      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
 
       const updated = await service.updateLinks(roomId, {
         jiraUrl: 'https://jira.example.com/LEGACY',

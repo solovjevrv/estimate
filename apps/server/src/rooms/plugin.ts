@@ -5,7 +5,7 @@ import fp from 'fastify-plugin';
 import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
 
-import type { CreateRoomBody, RoomIdParams, TeamIdParams } from './rooms.controller';
+import type { ArchivedQuery, CreateRoomBody, RoomIdParams, TeamIdParams } from './rooms.controller';
 import { RoomsController } from './rooms.controller';
 import { RoomsService } from './rooms.service';
 
@@ -33,12 +33,20 @@ const roomResponse = {
     status: { type: 'string' },
     revision: { type: 'integer' },
     createdAt: { type: 'string' },
+    archivedAt: { type: ['string', 'null'] },
   },
 } as const;
 
 const roomsResponse = {
   type: 'object',
   properties: { rooms: { type: 'array', items: roomResponse } },
+} as const;
+
+// coerceTypes выключен глобально, поэтому булево из строки запроса не собрать
+// схемой — принимаем строку 'true'/'false' и разбираем её в контроллере
+const archivedQuery = {
+  type: 'object',
+  properties: { archived: { type: 'string', enum: ['true', 'false'] } },
 } as const;
 
 export interface RoomsPluginOptions {
@@ -63,8 +71,8 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
         summary: 'Создать комнату',
         description:
           'Создатель становится скрам-мастером. Комнату можно завести и без команды — ' +
-          'тогда в неё пускают по прямой ссылке. Комнату от лица команды создают её ' +
-          'администратор и владелец.',
+          'тогда в неё пускают по прямой ссылке. Комнату от лица команды создаёт её ' +
+          'администратор.',
         security: [{ session: [] }],
         body: createRoomBody,
         response: {
@@ -100,14 +108,18 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
     controller.get,
   );
 
-  app.get(
+  app.get<{ Querystring: ArchivedQuery }>(
     '/api/rooms',
     {
       preHandler: authenticate,
       schema: {
         tags: [DOCS_TAGS.rooms],
-        summary: 'Мои комнаты без команды',
+        summary: 'Мои комнаты',
+        description:
+          'Все комнаты, которые создал пользователь — личные и командные вместе. ' +
+          'По умолчанию без архивных; `archived=true` — только архивные.',
         security: [{ session: [] }],
+        querystring: archivedQuery,
         response: {
           200: { description: 'Список комнат', ...roomsResponse },
           401: { description: 'Требуется вход', ...errorResponse },
@@ -117,19 +129,26 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
     controller.listMine,
   );
 
-  app.get<{ Params: TeamIdParams }>(
+  app.get<{ Params: TeamIdParams; Querystring: ArchivedQuery }>(
     '/api/teams/:id/rooms',
     {
       preHandler: authenticate,
       schema: {
         tags: [DOCS_TAGS.rooms],
         summary: 'Комнаты команды',
-        description: 'Доступно любому участнику команды.',
+        description:
+          'Обычный список доступен любому участнику команды. Архивный (`archived=true`) — ' +
+          'только владельцу и администратору.',
         security: [{ session: [] }],
         params: idParams,
+        querystring: archivedQuery,
         response: {
           200: { description: 'Список комнат', ...roomsResponse },
           401: { description: 'Требуется вход', ...errorResponse },
+          403: {
+            description: 'Архив команды виден только владельцу и администратору',
+            ...errorResponse,
+          },
           404: { description: 'Команда не найдена или вы не в ней', ...errorResponse },
         },
       },
@@ -138,29 +157,56 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
   );
 
   app.post<{ Params: RoomIdParams }>(
-    '/api/rooms/:id/close',
+    '/api/rooms/:id/archive',
     {
       preHandler: authenticate,
       schema: {
         tags: [DOCS_TAGS.rooms],
-        summary: 'Закрыть комнату',
+        summary: 'Архивировать комнату',
         description:
-          'Доступно скрам-мастеру. В закрытой комнате нельзя голосовать и начинать раунды.',
+          'Доступно скрам-мастеру (создателю или админу/владельцу команды). Комната пропадает ' +
+          'из основных списков, но остаётся открыта по прямой ссылке для чтения. Настоящее ' +
+          'удаление — отдельным действием, только для уже заархивированной комнаты.',
         security: [{ session: [] }],
         params: idParams,
         response: {
           200: {
-            description: 'Комната закрыта',
+            description: 'Комната заархивирована',
             type: 'object',
             properties: { room: roomResponse },
           },
           401: { description: 'Требуется вход', ...errorResponse },
           403: { description: 'Нужны права скрам-мастера', ...errorResponse },
           404: { description: 'Комната не найдена', ...errorResponse },
+          409: { description: 'Комната уже в архиве', ...errorResponse },
         },
       },
     },
-    controller.close,
+    controller.archive,
+  );
+
+  app.delete<{ Params: RoomIdParams }>(
+    '/api/rooms/:id',
+    {
+      preHandler: authenticate,
+      schema: {
+        tags: [DOCS_TAGS.rooms],
+        summary: 'Удалить комнату навсегда',
+        description:
+          'Необратимо: удаляет раунды и голоса вместе с комнатой. Доступно только для уже ' +
+          'заархивированной комнаты и только скрам-мастеру.',
+        security: [{ session: [] }],
+        params: idParams,
+        response: {
+          204: { description: 'Комната удалена' },
+          401: { description: 'Требуется вход', ...errorResponse },
+          403: { description: 'Нужны права скрам-мастера', ...errorResponse },
+          404: { description: 'Комната не найдена', ...errorResponse },
+          409: { description: 'Сначала заархивируйте комнату', ...errorResponse },
+        },
+      },
+    },
+    controller.remove,
   );
 }
 

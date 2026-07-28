@@ -20,8 +20,6 @@ export interface CreateRoundInput {
   roomId: string;
   seq: number;
   deckType: DeckType;
-  jiraUrl?: string | null;
-  confluenceUrl?: string | null;
 }
 
 export class RoomsRepository {
@@ -53,22 +51,35 @@ export class RoomsRepository {
     return row ? this.toRoom(row) : null;
   }
 
-  async listRoomsByTeam(teamId: string): Promise<Room[]> {
+  async listRoomsByTeam(teamId: string, archived = false): Promise<Room[]> {
+    const archivedCondition = archived
+      ? sql`${schema.rooms.archivedAt} is not null`
+      : isNull(schema.rooms.archivedAt);
     const rows = await this.db
       .select()
       .from(schema.rooms)
-      .where(eq(schema.rooms.teamId, teamId))
+      .where(and(eq(schema.rooms.teamId, teamId), archivedCondition))
       .orderBy(desc(schema.rooms.createdAt));
     return rows.map((row) => this.toRoom(row));
   }
 
-  async closeRoom(roomId: string): Promise<Room | null> {
+  /** Помечает комнату архивной: не удаляет, только прячет из основных списков и запрещает действия за столом */
+  async archiveRoom(roomId: string): Promise<Room | null> {
     const [row] = await this.db
       .update(schema.rooms)
-      .set({ status: 'closed', revision: sql`${schema.rooms.revision} + 1` })
-      .where(eq(schema.rooms.id, roomId))
+      .set({ archivedAt: new Date(), revision: sql`${schema.rooms.revision} + 1` })
+      .where(and(eq(schema.rooms.id, roomId), isNull(schema.rooms.archivedAt)))
       .returning();
     return row ? this.toRoom(row) : null;
+  }
+
+  /** Настоящее удаление: возможно только для уже заархивированной комнаты. Раунды и голоса уходят каскадом */
+  async deleteArchivedRoom(roomId: string): Promise<boolean> {
+    const rows = await this.db
+      .delete(schema.rooms)
+      .where(and(eq(schema.rooms.id, roomId), sql`${schema.rooms.archivedAt} is not null`))
+      .returning({ id: schema.rooms.id });
+    return rows.length > 0;
   }
 
   /** Отмечает, что за столом что-то изменилось: по этому номеру клиент отбрасывает отставшие рассылки */
@@ -97,8 +108,6 @@ export class RoomsRepository {
         roomId: input.roomId,
         seq: input.seq,
         deckType: input.deckType,
-        jiraUrl: input.jiraUrl ?? null,
-        confluenceUrl: input.confluenceUrl ?? null,
       })
       .returning();
     if (!row) {
@@ -108,37 +117,41 @@ export class RoomsRepository {
   }
 
   /**
-   * Правит ссылки и поднимает их версию. Если передана ожидаемая версия,
+   * Правит ссылки комнаты и поднимает их версию. Если передана ожидаемая версия,
    * запись пройдёт только пока ссылки никто не менял — иначе вернётся null.
    */
-  async updateRoundLinks(
-    roundId: string,
+  async updateRoomLinks(
+    roomId: string,
     links: { jiraUrl?: string | null; confluenceUrl?: string | null },
     expectedVersion?: number,
-  ): Promise<Round | null> {
-    const patch: PgUpdateSetSource<typeof schema.rounds> = {
-      linksVersion: sql`${schema.rounds.linksVersion} + 1`,
+  ): Promise<Room | null> {
+    const patch: PgUpdateSetSource<typeof schema.rooms> = {
+      linksVersion: sql`${schema.rooms.linksVersion} + 1`,
     };
     if (links.jiraUrl !== undefined) patch.jiraUrl = links.jiraUrl;
     if (links.confluenceUrl !== undefined) patch.confluenceUrl = links.confluenceUrl;
 
     const condition =
       expectedVersion === undefined
-        ? eq(schema.rounds.id, roundId)
-        : and(eq(schema.rounds.id, roundId), eq(schema.rounds.linksVersion, expectedVersion));
+        ? eq(schema.rooms.id, roomId)
+        : and(eq(schema.rooms.id, roomId), eq(schema.rooms.linksVersion, expectedVersion));
 
-    const [row] = await this.db.update(schema.rounds).set(patch).where(condition).returning();
-    return row ? this.toRound(row) : null;
+    const [row] = await this.db.update(schema.rooms).set(patch).where(condition).returning();
+    return row ? this.toRoom(row) : null;
   }
 
   /**
    * Помечает раунд вскрытым. Обновляет только раунд в статусе голосования,
    * поэтому повторное вскрытие ничего не меняет.
    */
-  async markRevealed(roundId: string, average: number): Promise<Round | null> {
+  async markRevealed(roundId: string, average: number | null): Promise<Round | null> {
     const [row] = await this.db
       .update(schema.rounds)
-      .set({ status: 'revealed', average: average.toFixed(2), revealedAt: new Date() })
+      .set({
+        status: 'revealed',
+        average: average === null ? null : average.toFixed(2),
+        revealedAt: new Date(),
+      })
       .where(and(eq(schema.rounds.id, roundId), eq(schema.rounds.status, 'voting')))
       .returning();
     return row ? this.toRound(row) : null;
@@ -151,7 +164,9 @@ export class RoomsRepository {
         userId: schema.votes.userId,
         guestSessionId: schema.votes.guestSessionId,
         guestName: schema.votes.guestName,
-        userName: schema.users.name,
+        // Провайдер перезаписывает users.name при каждом входе — правка пользователя
+        // (9.2) живёт в display_name, поэтому наружу отдаём именно её при наличии
+        userName: sql<string | null>`coalesce(${schema.users.displayName}, ${schema.users.name})`,
         value: schema.votes.value,
         createdAt: schema.votes.createdAt,
       })
@@ -209,12 +224,15 @@ export class RoomsRepository {
     return Boolean(row);
   }
 
-  /** Комнаты без команды, созданные пользователем */
-  async listPersonalRooms(creatorId: string): Promise<Room[]> {
+  /** Все комнаты, которые создал пользователь — личные и командные вместе */
+  async listRoomsCreatedBy(creatorId: string, archived = false): Promise<Room[]> {
+    const archivedCondition = archived
+      ? sql`${schema.rooms.archivedAt} is not null`
+      : isNull(schema.rooms.archivedAt);
     const rows = await this.db
       .select()
       .from(schema.rooms)
-      .where(and(eq(schema.rooms.creatorId, creatorId), isNull(schema.rooms.teamId)))
+      .where(and(eq(schema.rooms.creatorId, creatorId), archivedCondition))
       .orderBy(desc(schema.rooms.createdAt));
     return rows.map((row) => this.toRoom(row));
   }
@@ -228,6 +246,10 @@ export class RoomsRepository {
       status: row.status,
       revision: row.revision,
       createdAt: row.createdAt.toISOString(),
+      archivedAt: row.archivedAt?.toISOString() ?? null,
+      jiraUrl: row.jiraUrl,
+      confluenceUrl: row.confluenceUrl,
+      linksVersion: row.linksVersion,
     };
   }
 
@@ -237,9 +259,6 @@ export class RoomsRepository {
       roomId: row.roomId,
       seq: row.seq,
       deckType: row.deckType,
-      jiraUrl: row.jiraUrl,
-      confluenceUrl: row.confluenceUrl,
-      linksVersion: row.linksVersion,
       status: row.status,
       average: row.average === null ? null : Number(row.average),
       createdAt: row.createdAt.toISOString(),

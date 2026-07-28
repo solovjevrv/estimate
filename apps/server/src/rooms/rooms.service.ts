@@ -9,10 +9,13 @@ import {
   type Round,
   type RoundResult,
   type DeckType,
+  type RoomTimerState,
   type StartRoundPayload,
   type SubmitVotePayload,
   type UpdateLinksPayload,
   DECK_TYPES,
+  TIMER_DEFAULT_DURATION_SEC,
+  TSHIRT_DECK,
   hasTeamRole,
 } from '@poker/shared';
 
@@ -86,13 +89,13 @@ export class RoomsService {
     const teamId = input.teamId ?? null;
 
     if (teamId) {
-      // Комнату от лица команды заводят администратор и владелец
+      // Комнату от лица команды заводит администратор
       const membership = await this.teams.findMembership(teamId, actorId);
       if (!membership) {
         throw new NotFoundError('Команда не найдена');
       }
       if (!hasTeamRole(membership.role, 'admin')) {
-        throw new ForbiddenError('Создавать комнаты команды могут владелец и администратор');
+        throw new ForbiddenError('Создавать комнаты команды может администратор');
       }
     }
 
@@ -108,33 +111,60 @@ export class RoomsService {
     return room;
   }
 
-  async listTeamRooms(actorId: string, teamId: string): Promise<Room[]> {
+  async listTeamRooms(actorId: string, teamId: string, archived = false): Promise<Room[]> {
     const membership = await this.teams.findMembership(teamId, actorId);
     if (!membership) {
       throw new NotFoundError('Команда не найдена');
     }
-    return this.repository.listRoomsByTeam(teamId);
+    // Архив команды видит только администратор — обычный список открыт всем участникам
+    if (archived && !hasTeamRole(membership.role, 'admin')) {
+      throw new ForbiddenError('Архив комнат команды видит только администратор');
+    }
+    return this.repository.listRoomsByTeam(teamId, archived);
   }
 
-  async listMyRooms(actorId: string): Promise<Room[]> {
-    return this.repository.listPersonalRooms(actorId);
+  /** И личные комнаты, и командные — всё, что пользователь создал сам */
+  async listMyRooms(actorId: string, archived = false): Promise<Room[]> {
+    return this.repository.listRoomsCreatedBy(actorId, archived);
   }
 
-  async closeRoom(actorId: string, roomId: string): Promise<Room> {
+  /**
+   * Архивация — единственный способ «убрать» комнату из основных списков. Настоящее
+   * удаление доступно отдельным действием и только для уже заархивированной комнаты.
+   */
+  async archiveRoom(actorId: string, roomId: string): Promise<Room> {
     const room = await this.getRoom(roomId);
     if ((await this.resolveRole(room, actorId)) !== 'scrum_master') {
-      throw new ForbiddenError('Закрыть комнату может только скрам-мастер');
+      throw new ForbiddenError('Архивировать комнату может только скрам-мастер');
     }
-    const closed = await this.repository.closeRoom(roomId);
-    if (!closed) {
+    if (room.archivedAt) {
+      throw new ConflictError('Комната уже в архиве');
+    }
+    const archived = await this.repository.archiveRoom(roomId);
+    if (!archived) {
+      throw new ConflictError('Комната уже в архиве');
+    }
+    return archived;
+  }
+
+  /** Необратимо: раунды и голоса комнаты удаляются каскадом на уровне БД */
+  async deleteRoomPermanently(actorId: string, roomId: string): Promise<void> {
+    const room = await this.getRoom(roomId);
+    if ((await this.resolveRole(room, actorId)) !== 'scrum_master') {
+      throw new ForbiddenError('Удалить комнату может только скрам-мастер');
+    }
+    if (!room.archivedAt) {
+      throw new ConflictError('Сначала заархивируйте комнату');
+    }
+    const deleted = await this.repository.deleteArchivedRoom(roomId);
+    if (!deleted) {
       throw new NotFoundError('Комната не найдена');
     }
-    return closed;
   }
 
   /**
    * Роль в комнате: создатель — скрам-мастер, а для командных комнат
-   * им же считаются владелец и администратор команды.
+   * им же считается администратор команды.
    */
   async resolveRole(
     room: Room,
@@ -206,7 +236,16 @@ export class RoomsService {
    * Читается одним снимком базы, иначе между запросами успевает пройти вскрытие
    * карт и участники получат рваную картину: раунд ещё открыт, а голоса финальные.
    */
-  async getState(roomId: string, participants: ParticipantIdentity[]): Promise<RoomState> {
+  async getState(
+    roomId: string,
+    participants: ParticipantIdentity[],
+    timer: RoomTimerState = {
+      durationSec: TIMER_DEFAULT_DURATION_SEC,
+      running: false,
+      endsAt: null,
+      remainingSec: TIMER_DEFAULT_DURATION_SEC,
+    },
+  ): Promise<RoomState> {
     const { room, round, votes } = await this.db.transaction(
       async (tx) => {
         const repo = new RoomsRepository(tx);
@@ -237,7 +276,8 @@ export class RoomsService {
         hasVoted: voted.has(identity.participantId),
       })),
       // Оценки видны только после вскрытия карт
-      result: round?.status === 'revealed' ? this.summarize(votes, round.average) : null,
+      result: round?.status === 'revealed' ? this.summarize(votes, round, round.average) : null,
+      timer,
     };
   }
 
@@ -310,10 +350,10 @@ export class RoomsService {
       }
       // Карты могли вскрыть, пока запрос ждал блокировки — тогда показываем зафиксированное
       if (round.status !== 'voting') {
-        return this.summarize(votes, round.average);
+        return this.summarize(votes, round, round.average);
       }
 
-      const result = this.summarize(votes);
+      const result = this.summarize(votes, round);
       await repo.markRevealed(round.id, result.average);
       await repo.bumpRevision(roomId);
       return result;
@@ -326,8 +366,6 @@ export class RoomsService {
     payload: StartRoundPayload,
   ): Promise<Round> {
     const deckType = this.requireDeckType(payload?.deckType);
-    const jiraUrl = this.normalizeLink(payload.jiraUrl);
-    const confluenceUrl = this.normalizeLink(payload.confluenceUrl);
 
     return this.inRoom(roomId, async (repo, room, teams) => {
       await this.assertScrumMaster(
@@ -351,42 +389,32 @@ export class RoomsService {
         roomId,
         seq: (current?.seq ?? 0) + 1,
         deckType,
-        jiraUrl,
-        confluenceUrl,
       });
       await repo.bumpRevision(roomId);
       return started;
     });
   }
 
-  /** Ссылки на задачу может править любой участник — так решено в Epic 5 */
-  async updateLinks(roomId: string, links: UpdateLinksPayload): Promise<Round> {
+  /** Ссылки на задачу принадлежат комнате целиком, менять может любой участник — Epic 5 / 7.25 */
+  async updateLinks(roomId: string, links: UpdateLinksPayload): Promise<Room> {
     const patch: UpdateLinksPayload = {};
     if (links.jiraUrl !== undefined) patch.jiraUrl = this.normalizeLink(links.jiraUrl);
     if (links.confluenceUrl !== undefined) {
       patch.confluenceUrl = this.normalizeLink(links.confluenceUrl);
     }
 
-    return this.inRoom(roomId, async (repo) => {
-      const round = await repo.findCurrentRound(roomId);
-      if (!round) {
-        throw new ConflictError('В комнате ещё нет раунда');
-      }
-      // Правка относится к конкретной задаче: ссылки прошлого раунда не должны попасть в новый
-      if (links.roundId != null && links.roundId !== round.id) {
-        throw new ConflictError('Раунд уже сменился, ссылки относятся к прошлой задаче');
-      }
+    return this.inRoom(roomId, async (repo, room) => {
       // Версию присылает клиент: если её нет, правка идёт по-старому — побеждает последний
       const version = links.version ?? undefined;
-      if (version !== undefined && version !== round.linksVersion) {
+      if (version !== undefined && version !== room.linksVersion) {
         throw new ConflictError('Ссылки уже изменил другой участник, проверьте новые значения');
       }
       // Править нечего — версию не трогаем, иначе чужие правки начнут отбиваться конфликтом
       if (Object.keys(patch).length === 0) {
-        return round;
+        return room;
       }
 
-      const updated = await repo.updateRoundLinks(round.id, patch, version);
+      const updated = await repo.updateRoomLinks(roomId, patch, version);
       if (!updated) {
         throw new ConflictError('Ссылки уже изменил другой участник, проверьте новые значения');
       }
@@ -414,8 +442,8 @@ export class RoomsService {
       if (!room) {
         throw new NotFoundError('Комната не найдена');
       }
-      if (room.status === 'closed') {
-        throw new ConflictError('Комната закрыта');
+      if (room.archivedAt) {
+        throw new ConflictError('Комната в архиве');
       }
       return action(repo, room, new TeamsRepository(tx));
     });
@@ -455,28 +483,46 @@ export class RoomsService {
     if (!Number.isInteger(value) || value < 0 || value > MAX_VOTE_VALUE) {
       throw new ValidationError(`Оценка должна быть целым числом от 0 до ${MAX_VOTE_VALUE}`);
     }
-    // У колоды Фибоначчи можно добавить своё число, у шкалы предел жёсткий
+    // У колоды Фибоначчи можно добавить своё число, у шкалы и футболочных размеров — только из колоды
     if (round.deckType === 'scale_0_5' && value > 5) {
       throw new ValidationError('Для шкалы допустимы значения от 0 до 5');
+    }
+    if (round.deckType === 'tshirt' && !TSHIRT_DECK.includes(value)) {
+      throw new ValidationError('Для футболочных размеров допустимы только числа из колоды');
     }
   }
 
   /** Если раунд уже вскрыт, показываем зафиксированное среднее, а не пересчитанное */
-  private summarize(votes: VoteRecord[], stored: number | null = null): RoundResult {
+  private summarize(votes: VoteRecord[], round: Round, stored: number | null = null): RoundResult {
     const values = votes.map((vote) => vote.value);
     const sum = values.reduce((total, value) => total + value, 0);
+    // Для футболочных размеров среднее числового веса не несёт смысла — не считаем
+    const average =
+      round.deckType === 'tshirt'
+        ? null
+        : (stored ?? Math.round((sum / values.length) * 100) / 100);
 
     return {
-      // Простое среднее по всем голосам, крайние не отбрасываем
-      average: stored ?? Math.round((sum / values.length) * 100) / 100,
+      average,
       min: Math.min(...values),
       max: Math.max(...values),
+      agreement: this.calculateAgreement(values),
       votes: votes.map((vote) => ({
         participantId: vote.participantId,
         name: vote.name ?? 'Участник',
         value: vote.value,
       })),
     };
+  }
+
+  /** Доля проголосовавших за самое частое значение — метрика согласия команды */
+  private calculateAgreement(values: number[]): number {
+    const counts = new Map<number, number>();
+    for (const value of values) {
+      counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    const maxCount = Math.max(...counts.values());
+    return Math.round((maxCount / values.length) * 100);
   }
 
   /** Идентификаторы приходят по сокету без схем — проверяем формат до похода в базу */

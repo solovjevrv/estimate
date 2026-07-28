@@ -98,7 +98,7 @@ describe('TeamsService: название команды', () => {
     const team = await service.create('user-1', `  ${name}  `);
 
     expect(team.name).toBe(name);
-    expect(team.role).toBe('owner');
+    expect(team.role).toBe('admin');
     vi.restoreAllMocks();
   });
 });

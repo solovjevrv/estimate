@@ -27,13 +27,13 @@ describe('TokenService', () => {
   });
 
   it('access-токен проверяется и отдаёт id пользователя', () => {
-    const { access } = tokens.issue('user-1');
+    const { access } = tokens.issue('user-1', 'session-1');
 
     expect(tokens.verify(access, 'access')).toBe('user-1');
   });
 
   it('access-токен не принимается вместо refresh (и наоборот)', () => {
-    const { access, refresh } = tokens.issue('user-1');
+    const { access, refresh } = tokens.issue('user-1', 'session-1');
 
     expect(tokens.verify(access, 'refresh')).toBeNull();
     expect(tokens.verify(refresh, 'access')).toBeNull();
@@ -42,7 +42,7 @@ describe('TokenService', () => {
   it('токен с чужой подписью отклоняется', async () => {
     const other = await jwtApp(`${SECRET}-другой`);
     try {
-      const { access } = new TokenService(other.jwt, false).issue('user-1');
+      const { access } = new TokenService(other.jwt, false).issue('user-1', 'session-1');
 
       expect(tokens.verify(access, 'access')).toBeNull();
     } finally {
@@ -60,11 +60,49 @@ describe('TokenService', () => {
     expect(tokens.verify('не-токен', 'access')).toBeNull();
   });
 
-  it('читает пользователя из заголовка Cookie и не верит подделке', () => {
-    const { access } = tokens.issue('user-7');
+  describe('readAccessSessionFromCookieHeader (7.7)', () => {
+    it('читает пользователя и момент истечения из заголовка Cookie', () => {
+      const { access } = tokens.issue('user-7', 'session-7');
 
-    expect(tokens.readUserIdFromCookieHeader(`pp_access=${access}`)).toBe('user-7');
-    expect(tokens.readUserIdFromCookieHeader('pp_access=forged.jwt.value')).toBeNull();
-    expect(tokens.readUserIdFromCookieHeader(undefined)).toBeNull();
+      const session = tokens.readAccessSessionFromCookieHeader(`pp_access=${access}`);
+
+      expect(session?.userId).toBe('user-7');
+      expect(session?.expiresAt).toBeGreaterThan(Date.now());
+    });
+
+    it('не верит подделке и пустой куке', () => {
+      expect(tokens.readAccessSessionFromCookieHeader('pp_access=forged.jwt.value')).toBeNull();
+      expect(tokens.readAccessSessionFromCookieHeader(undefined)).toBeNull();
+    });
+
+    it('не принимает refresh-токен вместо access', () => {
+      const { refresh } = tokens.issue('user-7', 'session-7');
+
+      expect(tokens.readAccessSessionFromCookieHeader(`pp_access=${refresh}`)).toBeNull();
+    });
+  });
+
+  describe('verifyRefresh (7.6)', () => {
+    it('достаёт id пользователя и jti из refresh-токена', () => {
+      const { refresh } = tokens.issue('user-1', 'session-abc');
+
+      expect(tokens.verifyRefresh(refresh)).toEqual({ userId: 'user-1', jti: 'session-abc' });
+    });
+
+    it('access-токен не проходит вместо refresh', () => {
+      const { access } = tokens.issue('user-1', 'session-abc');
+
+      expect(tokens.verifyRefresh(access)).toBeNull();
+    });
+
+    it('refresh-токен без jti (старый формат/подделка) отклоняется', () => {
+      const legacy = app.jwt.sign({ sub: 'user-1', typ: 'refresh' });
+
+      expect(tokens.verifyRefresh(legacy)).toBeNull();
+    });
+
+    it('мусор вместо токена отклоняется без исключения', () => {
+      expect(tokens.verifyRefresh('не-токен')).toBeNull();
+    });
   });
 });

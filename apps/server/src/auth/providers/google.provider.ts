@@ -7,6 +7,8 @@ export class GoogleOAuthProvider extends OAuthProvider {
   readonly name: AuthProvider = 'google';
   readonly configuration: ProviderConfiguration = fastifyOauth2.GOOGLE_CONFIGURATION;
   readonly scope = ['openid', 'email', 'profile'];
+  /** Иначе Google молча логинит тем же аккаунтом, что был выбран в прошлый раз (7.19) */
+  override readonly authorizeParams = { prompt: 'select_account' };
 
   override async fetchProfile(accessToken: string): Promise<OAuthProfile> {
     const data = await this.fetchJson(

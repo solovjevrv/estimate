@@ -14,9 +14,9 @@ import {
 } from 'drizzle-orm/pg-core';
 
 export const authProviderEnum = pgEnum('auth_provider', ['google', 'yandex']);
-export const teamRoleEnum = pgEnum('team_role', ['owner', 'admin', 'member', 'guest']);
+export const teamRoleEnum = pgEnum('team_role', ['admin', 'member', 'guest']);
 export const roomStatusEnum = pgEnum('room_status', ['active', 'closed']);
-export const deckTypeEnum = pgEnum('deck_type', ['fibonacci', 'scale_0_5']);
+export const deckTypeEnum = pgEnum('deck_type', ['fibonacci', 'scale_0_5', 'tshirt']);
 export const roundStatusEnum = pgEnum('round_status', ['voting', 'revealed']);
 
 /**
@@ -31,11 +31,39 @@ export const users = pgTable(
     provider: authProviderEnum('provider').notNull(),
     providerId: text('provider_id').notNull(),
     email: text('email').notNull(),
+    /** Имя от провайдера — перезаписывается при каждом входе, поэтому правка живёт в display_name */
     name: text('name').notNull(),
+    /** Пользовательское переопределение имени; NULL — показываем name от провайдера */
+    displayName: text('display_name'),
+    /** Должность, вводится свободным текстом — провайдер её не даёт */
+    jobTitle: text('job_title'),
     avatarUrl: text('avatar_url'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Правится и входом через провайдера, и правкой профиля (9.2) (7.9) */
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Последний успешный вход через провайдера — задел под дашборд команды (3.5) (7.9) */
+    lastLoginAt: timestamp('last_login_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex('users_provider_provider_id_idx').on(t.provider, t.providerId)],
+);
+
+/**
+ * Выданные refresh-токены: одна строка = одна активная сессия. Id строки —
+ * это jti внутри refresh-JWT, поэтому обмен токена (или выход) может отозвать
+ * ровно эту сессию, не трогая остальные устройства пользователя (7.6).
+ */
+export const sessions = pgTable(
+  'sessions',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /** Совпадает с TTL refresh-токена — по нему можно чистить протухшие строки */
+    expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
+  },
+  (t) => [index('sessions_user_id_idx').on(t.userId)],
 );
 
 export const teams = pgTable('teams', {
@@ -57,13 +85,7 @@ export const teamMembers = pgTable(
     role: teamRoleEnum('role').notNull().default('member'),
     joinedAt: timestamp('joined_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [
-    primaryKey({ columns: [t.teamId, t.userId] }),
-    // Владелец у команды ровно один: страховка на случай гонок при передаче владения
-    uniqueIndex('team_members_single_owner_idx')
-      .on(t.teamId)
-      .where(sql`role = 'owner'`),
-  ],
+  (t) => [primaryKey({ columns: [t.teamId, t.userId] })],
 );
 
 /**
@@ -80,6 +102,13 @@ export const rooms = pgTable(
     status: roomStatusEnum('status').notNull().default('active'),
     /** Номер изменения стола: растёт при каждом действии, по нему клиент отбрасывает отставшие рассылки */
     revision: integer('revision').notNull().default(0),
+    /** Заполнено — комната в архиве: доступна только для чтения, не в основных списках */
+    archivedAt: timestamp('archived_at', { withTimezone: true }),
+    /** Комната заводится под одну задачу — ссылки принадлежат ей, не отдельному раунду (7.25) */
+    jiraUrl: text('jira_url'),
+    confluenceUrl: text('confluence_url'),
+    /** Версия ссылок для оптимистичной блокировки: растёт с каждой правкой */
+    linksVersion: integer('links_version').notNull().default(1),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index('rooms_team_id_idx').on(t.teamId)],
@@ -95,10 +124,6 @@ export const rounds = pgTable(
     /** Порядковый номер раунда внутри комнаты, начиная с 1 */
     seq: integer('seq').notNull(),
     deckType: deckTypeEnum('deck_type').notNull(),
-    jiraUrl: text('jira_url'),
-    confluenceUrl: text('confluence_url'),
-    /** Версия ссылок для оптимистичной блокировки: растёт с каждой правкой */
-    linksVersion: integer('links_version').notNull().default(1),
     status: roundStatusEnum('status').notNull().default('voting'),
     /** Средний балл, вычисляется при вскрытии карт */
     average: numeric('average', { precision: 8, scale: 2 }),

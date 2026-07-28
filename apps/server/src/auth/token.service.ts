@@ -8,6 +8,15 @@ export interface SessionPayload {
   sub: string;
   /** Тип токена: короткоживущий access или долгоживущий refresh */
   typ: TokenType;
+  /**
+   * Id строки в `sessions` — только у refresh-токена. По нему обмен токена
+   * проверяет, что сессию не отозвали (выход, ротация при прошлом обмене) (7.6).
+   * Access-токен остаётся полностью stateless: смысла ходить в БД на каждый
+   * запрос ради 15-минутного токена нет.
+   */
+  jti?: string;
+  /** Момент истечения (секунды Unix) — добавляется библиотекой при `sign()` с `expiresIn` */
+  exp?: number;
 }
 
 declare module '@fastify/jwt' {
@@ -37,10 +46,14 @@ export class TokenService {
     private readonly cookieSecure: boolean,
   ) {}
 
-  issue(userId: string): SessionTokens {
+  /** `refreshJti` — id только что созданной строки в `sessions`, на которую опирается отзыв (7.6) */
+  issue(userId: string, refreshJti: string): SessionTokens {
     return {
       access: this.jwt.sign({ sub: userId, typ: 'access' }, { expiresIn: ACCESS_TTL_SECONDS }),
-      refresh: this.jwt.sign({ sub: userId, typ: 'refresh' }, { expiresIn: REFRESH_TTL_SECONDS }),
+      refresh: this.jwt.sign(
+        { sub: userId, typ: 'refresh', jti: refreshJti },
+        { expiresIn: REFRESH_TTL_SECONDS },
+      ),
     };
   }
 
@@ -60,13 +73,53 @@ export class TokenService {
     }
   }
 
-  /** Разбор сырого заголовка Cookie — нужен Socket.io, который не проходит через роутинг */
-  readUserIdFromCookieHeader(cookieHeader: string | undefined): string | null {
+  /**
+   * То же самое для refresh-токена, но дополнительно достаёт `jti` — без него
+   * нечем проверить отзыв сессии в БД.
+   */
+  verifyRefresh(token: string): { userId: string; jti: string } | null {
+    try {
+      const payload = this.jwt.verify<SessionPayload>(token);
+      if (
+        payload.typ !== 'refresh' ||
+        typeof payload.sub !== 'string' ||
+        !payload.sub ||
+        typeof payload.jti !== 'string' ||
+        !payload.jti
+      ) {
+        return null;
+      }
+      return { userId: payload.sub, jti: payload.jti };
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Разбор сырого заголовка Cookie — нужен Socket.io, который не проходит через роутинг.
+   * Возвращает и момент истечения токена: хендшейк происходит один раз на всё
+   * время жизни соединения, поэтому дальше сокет обязан сам знать, когда его
+   * куском выданная личность устареет (7.7).
+   */
+  readAccessSessionFromCookieHeader(
+    cookieHeader: string | undefined,
+  ): { userId: string; expiresAt: number } | null {
     if (!cookieHeader) {
       return null;
     }
     const token = this.readCookie(cookieHeader, ACCESS_COOKIE);
-    return token ? this.verify(token, 'access') : null;
+    if (!token) {
+      return null;
+    }
+    try {
+      const payload = this.jwt.verify<SessionPayload>(token);
+      if (payload.typ !== 'access' || typeof payload.sub !== 'string' || !payload.sub) {
+        return null;
+      }
+      return { userId: payload.sub, expiresAt: (payload.exp ?? 0) * 1000 };
+    } catch {
+      return null;
+    }
   }
 
   /** Свой разбор вместо @fastify/cookie: у сокета нет экземпляра Fastify под рукой */

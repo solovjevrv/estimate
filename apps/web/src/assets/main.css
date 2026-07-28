@@ -1,0 +1,180 @@
+@import 'tailwindcss';
+@import '@nuxt/ui';
+
+/* Тема управляется классом `.dark` на <html> (см. src/lib/theme.ts), а не системным
+   media-query напрямую — иначе явный выбор светлая/тёмная не имел бы смысла */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-heading: 'Sora', sans-serif;
+  --font-sans: 'Manrope', sans-serif;
+}
+
+/* Токены — пресет "playful" референса .design/main.html (EstiMate, 9.5): именно он задан
+   default'ом в data-props мокапа (vibe: playful, c1: 0.22, c2: 0.26, radiusLg: 28, radiusMd: 24),
+   а не "balanced", который был взят в первом проходе по ошибке — это и объясняло разъезд
+   зелёного (0.16 вместо 0.22 хромы) и скруглений карточек (16px вместо 24px). */
+:root {
+  /* Nuxt UI множит ВСЮ шкалу rounded-* Tailwind на эту переменную (rounded-md = *1.5,
+     rounded-lg = *2, rounded-xl = *3, rounded-3xl = *6 и т.д.) — это не только радиус
+     компонентов Nuxt UI, а глобальная переустановка Tailwind. 0.5rem даёт кнопкам/инпутам
+     (rounded-md) ровно 12px — под референс (кнопки там на фиксированных 9-12px, не завязаны
+     на vibe). Для своей разметки, где нужно точное значение, используем rounded-[Npx]. */
+  --ui-radius: 0.5rem;
+
+  /* primary/primaryDark/primaryText/primarySoftBg — формулы референса с c1=0.22 (playful):
+     primary = oklch(48% 0.22 155), primaryDark = oklch(40% 0.22 155),
+     primaryText = isDark ? oklch(78% 0.14 155) : oklch(38% 0.21 155),
+     primarySoftBg = isDark ? oklch(28% 0.09 155) : oklch(93% 0.09 155).
+     Остальные шаги шкалы — интерполяция между ними для нужд Nuxt UI (сам референс не
+     задаёт полную шкалу 50..950, только 500/700 + soft-bg/text). */
+  --ui-color-primary-50: oklch(93% 0.09 155);
+  --ui-color-primary-100: oklch(88% 0.14 155);
+  --ui-color-primary-200: oklch(80% 0.18 155);
+  --ui-color-primary-300: oklch(70% 0.2 155);
+  --ui-color-primary-400: oklch(58% 0.22 155);
+  --ui-color-primary-500: oklch(48% 0.22 155);
+  --ui-color-primary-600: oklch(44% 0.22 155);
+  --ui-color-primary-700: oklch(40% 0.22 155);
+  --ui-color-primary-800: oklch(34% 0.19 155);
+  --ui-color-primary-900: oklch(28% 0.14 155);
+  --ui-color-primary-950: oklch(20% 0.1 155);
+
+  --ui-color-neutral-50: oklch(97% 0.008 250);
+  --ui-color-neutral-100: oklch(94% 0.008 250);
+  --ui-color-neutral-200: oklch(89% 0.012 250);
+  --ui-color-neutral-300: oklch(80% 0.014 250);
+  --ui-color-neutral-400: oklch(68% 0.016 250);
+  --ui-color-neutral-500: oklch(46% 0.018 250);
+  --ui-color-neutral-600: oklch(38% 0.02 250);
+  --ui-color-neutral-700: oklch(30% 0.02 250);
+  --ui-color-neutral-800: oklch(26% 0.016 250);
+  --ui-color-neutral-900: oklch(20% 0.02 250);
+  --ui-color-neutral-950: oklch(14% 0.016 250);
+
+  /* amber = oklch(78% 0.26 70) в playful (c2=0.26); coral — фиксированное значение,
+     от vibe не зависит ни в одном пресете референса. */
+  --brand-amber: oklch(78% 0.26 70);
+  --brand-coral: oklch(64% 0.19 18);
+  --brand-primary-text: oklch(38% 0.21 155);
+  --brand-primary-soft-bg: oklch(93% 0.09 155);
+
+  /* tokens.{bg,surface,ink,ink2,border,outlineBorder} референса — держим отдельно от
+     семантических алиасов Nuxt UI (--ui-bg/--ui-text/--ui-border): они по дефолту берут
+     другие шаги нашей neutral-шкалы и потому не всегда совпадают с конкретными числами
+     референса (border/outlineBorder вообще не попадают ни в один шаг шкалы). */
+  --brand-bg: oklch(97% 0.008 250);
+  --brand-surface: oklch(99% 0.003 250);
+  --brand-ink: oklch(20% 0.02 250);
+  --brand-ink2: oklch(46% 0.018 250);
+  --brand-border: oklch(89% 0.012 250);
+  --brand-outline-border: oklch(89% 0.012 250);
+  --brand-shadow-card:
+    0 1px 2px oklch(20% 0.02 250 / 0.05), 0 16px 40px -20px oklch(20% 0.02 250 / 0.18);
+  /* Фон «желобка» под сегмент-таб колоды и невыбранных карт оценки на Room — это НЕ
+     neutral-100 (та ступень шкалы одна на обе темы), в тёмной референс красит его
+     заметно темнее фона карточки (0.17 против 0.26 у surface). */
+  --brand-well-bg: oklch(94% 0.008 250);
+
+  /* Nuxt UI хардкодит --ui-bg:#fff и --ui-text-highlighted:neutral-900 в светлой теме —
+     последнее совпадает с tokenInk само по себе, но выравниваем явно для симметрии с
+     тёмной темой ниже, где Nuxt UI хардкодит #fff вместо tokenInk (95% 0.006 250). */
+  --ui-bg: var(--brand-bg);
+  --ui-text-highlighted: var(--brand-ink);
+
+  /* Nuxt UI по умолчанию берёт --ui-border из neutral-200/neutral-800 (light/dark) —
+     в светлой теме это случайно совпадает с tokenBorder (тоже neutral-200), а в тёмной
+     расходится (neutral-800 = 0.26 0.016 250 вместо tokenBorder 0.35 0.02 250). Одно
+     переопределение здесь работает в обеих темах: --brand-border сам меняется под
+     :root.dark, а этот alias всегда следует за его текущим значением. */
+  --ui-border: var(--brand-border);
+
+  /* Та же история с --ui-border-accented (ring-accented/border-accented — рамка
+     инпутов, select'ов и variant="outline" кнопок): дефолт Nuxt UI берёт
+     neutral-300/neutral-700, в тёмной теме это 0.3 0.02 250 вместо tokenOutlineBorder
+     0.48 0.024 250 — рамка кнопок/полей выходит заметно темнее и малоконтрастнее
+     референса. */
+  --ui-border-accented: var(--brand-outline-border);
+}
+
+:root.dark {
+  --brand-amber: oklch(78% 0.26 70);
+  --brand-primary-text: oklch(78% 0.14 155);
+  --brand-primary-soft-bg: oklch(28% 0.09 155);
+
+  --brand-bg: oklch(20% 0.016 250);
+  --brand-surface: oklch(26% 0.016 250);
+  --brand-ink: oklch(95% 0.006 250);
+  --brand-ink2: oklch(68% 0.016 250);
+  --brand-border: oklch(35% 0.02 250);
+  --brand-outline-border: oklch(48% 0.024 250);
+  --brand-well-bg: oklch(17% 0.014 250);
+  --brand-shadow-card: 0 0 0 1px oklch(34% 0.02 250), 0 16px 40px -20px oklch(0% 0 0 / 0.6);
+
+  --ui-text-highlighted: var(--brand-ink);
+
+  /* Nuxt UI в тёмной теме сама сдвигает --ui-primary на более светлый оттенок
+     (primary-400 вместо 500) и красит --ui-text-inverted почти в чёрный — пастельная
+     кнопка с тёмным текстом. Референс использует ОДИН и тот же зелёный и белый текст
+     в обеих темах (primary не зависит от isDark), поэтому обе Nuxt-UI-шные пары
+     возвращаем к светлотемным значениям. */
+  --ui-primary: var(--ui-color-primary-500);
+  --ui-text-inverted: #fff;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.font-heading {
+  font-family: var(--font-heading);
+}
+
+.surface-card {
+  background-color: var(--brand-surface);
+  /* Фиксированное значение (radiusMd референса в пресете playful — 24px), не завязано
+     на --ui-radius: та переменная отвечает за компоненты Nuxt UI (кнопки/инпуты). */
+  border-radius: 1.5rem;
+  box-shadow: var(--brand-shadow-card);
+}
+
+/* radiusLg референса (28px) — экран Room в макете использует его для всех своих
+   карточек-секций, а не radiusMd, которым пользуются Teams/MyRooms/TeamPage. Идёт
+   вторым классом поверх .surface-card, поэтому должен быть объявлен после него —
+   при равной специфичности побеждает то правило, что позже в файле. */
+.surface-card-lg {
+  border-radius: 1.75rem;
+}
+
+.surface-card-hover {
+  transition: box-shadow 0.15s ease;
+}
+
+.surface-card-hover:hover {
+  box-shadow:
+    var(--brand-shadow-card),
+    0 0 0 1px var(--ui-color-primary-200);
+}
+
+/* Пилюли-бейджи (роль участника, статус комнаты) — везде либо primarySoftBg/primaryText,
+   либо border/ink2 референса, а не семантические color="primary"/"neutral" Nuxt UI (те
+   берут другие шаги шкалы и не совпадают по цвету). */
+.badge-pill {
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.badge-pill-primary {
+  background-color: var(--brand-primary-soft-bg);
+  color: var(--brand-primary-text);
+}
+
+.badge-pill-neutral {
+  background-color: var(--brand-border);
+  color: var(--brand-ink2);
+}

@@ -7,6 +7,9 @@ export const WS_EVENTS = {
   REVEAL_CARDS: 'reveal_cards',
   START_NEW_ROUND: 'start_new_round',
   UPDATE_LINKS: 'update_links',
+  START_TIMER: 'start_timer',
+  PAUSE_TIMER: 'pause_timer',
+  RESET_TIMER: 'reset_timer',
 } as const;
 
 export type WsEvent = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
@@ -32,17 +35,22 @@ export interface AuthUser {
   provider: AuthProvider;
   email: string;
   name: string;
+  jobTitle: string | null;
   avatarUrl: string | null;
 }
 
-/** Роли участника внутри команды */
-export type TeamRole = 'owner' | 'admin' | 'member' | 'guest';
+/** Ограничения полей профиля, редактируемых пользователем (задача 9.2) */
+export const USER_NAME_MAX_LENGTH = 60;
+export const USER_JOB_TITLE_MAX_LENGTH = 100;
+
+/** Роли участника внутри команды. Администраторов может быть несколько — все равны в правах. */
+export type TeamRole = 'admin' | 'member' | 'guest';
 
 /** Роли от старшей к младшей: право старшей роли включает права всех младших */
-export const TEAM_ROLES: readonly TeamRole[] = ['owner', 'admin', 'member', 'guest'];
+export const TEAM_ROLES: readonly TeamRole[] = ['admin', 'member', 'guest'];
 
 /** Чем меньше вес, тем больше прав */
-const TEAM_ROLE_WEIGHT: Record<TeamRole, number> = { owner: 0, admin: 1, member: 2, guest: 3 };
+const TEAM_ROLE_WEIGHT: Record<TeamRole, number> = { admin: 0, member: 1, guest: 2 };
 
 /** Хватает ли роли `role` там, где требуется не ниже `required` */
 export function hasTeamRole(role: TeamRole, required: TeamRole): boolean {
@@ -58,6 +66,8 @@ export interface Team {
 /** Команда в списке пользователя — вместе с его ролью в ней */
 export interface TeamWithRole extends Team {
   role: TeamRole;
+  /** Сколько всего участников в команде (не только видимых текущему пользователю) */
+  memberCount: number;
 }
 
 /** Участник команды: профиль пользователя + роль */
@@ -79,13 +89,33 @@ export const TEAM_NAME_MAX_LENGTH = 80;
 export type RoomRole = 'scrum_master' | 'voter';
 
 /** Типы колод для оценки */
-export type DeckType = 'fibonacci' | 'scale_0_5';
+export type DeckType = 'fibonacci' | 'scale_0_5' | 'tshirt';
 
-export const DECK_TYPES: readonly DeckType[] = ['fibonacci', 'scale_0_5'];
+export const DECK_TYPES: readonly DeckType[] = ['fibonacci', 'scale_0_5', 'tshirt'];
 
-export const FIBONACCI_DECK: readonly number[] = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89];
+export const FIBONACCI_DECK: readonly number[] = [1, 2, 3, 5, 8, 13, 21, 34, 55, 89, 144, 233];
 
 export const SCALE_0_5_DECK: readonly number[] = [0, 1, 2, 3, 4, 5];
+
+/**
+ * Футболочные размеры хранятся и голосуются как числа (вес по шкале Фибоначчи) —
+ * так среднее/подсчёты остаются числовыми, а размер лишь подпись поверх числа.
+ */
+export const TSHIRT_LABELS: readonly string[] = ['XS', 'S', 'M', 'L', 'XL', 'XXL'];
+export const TSHIRT_DECK: readonly number[] = [1, 2, 3, 5, 8, 13];
+
+/** Подпись размера для числа из TSHIRT_DECK; для прочих чисел — само число */
+export function tshirtLabel(value: number): string {
+  const index = TSHIRT_DECK.indexOf(value);
+  return index === -1 ? String(value) : (TSHIRT_LABELS[index] ?? String(value));
+}
+
+/** Допустимые числа по каждой колоде — по нему проверяется голос и строится стол */
+export const DECK_CARDS: Record<DeckType, readonly number[]> = {
+  fibonacci: FIBONACCI_DECK,
+  scale_0_5: SCALE_0_5_DECK,
+  tshirt: TSHIRT_DECK,
+};
 
 /** Статусы комнаты и раунда */
 export type RoomStatus = 'active' | 'closed';
@@ -105,6 +135,13 @@ export interface Room {
    */
   revision: number;
   createdAt: string;
+  /** Заполнено — комната в архиве: доступна только для чтения, не в основных списках */
+  archivedAt: string | null;
+  /** Комната заводится под одну задачу — ссылки принадлежат ей, не отдельному раунду (7.25) */
+  jiraUrl: string | null;
+  confluenceUrl: string | null;
+  /** Версия ссылок: растёт с каждой правкой, по ней ловятся одновременные правки */
+  linksVersion: number;
 }
 
 export interface Round {
@@ -113,10 +150,6 @@ export interface Round {
   /** Порядковый номер раунда внутри комнаты, начиная с 1 */
   seq: number;
   deckType: DeckType;
-  jiraUrl: string | null;
-  confluenceUrl: string | null;
-  /** Версия ссылок: растёт с каждой правкой, по ней ловятся одновременные правки */
-  linksVersion: number;
   status: RoundStatus;
   /** Средний балл, зафиксированный при вскрытии карт */
   average: number | null;
@@ -145,10 +178,37 @@ export interface RevealedVote {
 
 /** Итоги раунда: считаются при вскрытии карт */
 export interface RoundResult {
-  average: number;
+  /** Для колоды футболочных размеров среднее не считается — null */
+  average: number | null;
   min: number;
   max: number;
+  /** Доля проголосовавших за самое частое значение, 0–100 */
+  agreement: number;
   votes: RevealedVote[];
+}
+
+/**
+ * Общий таймер обсуждения раунда. Живёт в памяти процесса на комнату (как
+ * присутствие участников), а не в базе — это сиюминутное состояние стола.
+ * Пока идёт отсчёт, `endsAt` — абсолютный момент истечения: клиент считает
+ * оставшееся время сам, сверяясь с ним, а не ждёт тиков от сервера каждую секунду.
+ */
+export interface RoomTimerState {
+  durationSec: number;
+  running: boolean;
+  /** ISO-момент, когда таймер дойдёт до нуля; null — когда на паузе или сброшен */
+  endsAt: string | null;
+  /** Остаток в секундах на момент паузы/сброса; во время отсчёта не обновляется — считается от endsAt */
+  remainingSec: number;
+}
+
+/** Пресеты длительности на выбор — свободный ввод не делаем, чтобы не проверять диапазон */
+export const TIMER_DURATION_PRESETS_SEC: readonly number[] = [300, 600, 900];
+export const TIMER_DEFAULT_DURATION_SEC = 300;
+
+export interface ResetTimerPayload {
+  /** Новая длительность из пресетов; без поля — сброс на текущую длительность */
+  durationSec?: number;
 }
 
 /** Полный снимок комнаты — то, что видит участник */
@@ -158,6 +218,7 @@ export interface RoomState {
   participants: Participant[];
   /** Заполняется только после вскрытия карт */
   result: RoundResult | null;
+  timer: RoomTimerState;
 }
 
 export interface JoinRoomPayload {
@@ -198,8 +259,6 @@ export interface RevealCardsPayload {
 
 export interface StartRoundPayload {
   deckType: DeckType;
-  jiraUrl?: string | null;
-  confluenceUrl?: string | null;
   /**
    * Раунд, который клиент видел текущим (null — если раунда ещё не было).
    * Если стол уже ушёл вперёд, сервер вернёт текущий раунд вместо нового:
@@ -211,11 +270,6 @@ export interface StartRoundPayload {
 export interface UpdateLinksPayload {
   jiraUrl?: string | null;
   confluenceUrl?: string | null;
-  /**
-   * Раунд, к которому относится правка: ссылки прошлой задачи не должны попасть
-   * в новую. Без поля проверки нет.
-   */
-  roundId?: string | null;
   /**
    * Версия ссылок, которую видел клиент. Если за это время их поменял кто-то
    * другой, правка отклоняется — иначе чужой текст молча затрётся.

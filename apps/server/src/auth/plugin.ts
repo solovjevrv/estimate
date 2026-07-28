@@ -1,6 +1,7 @@
 import fastifyCookie from '@fastify/cookie';
 import fastifyJwt from '@fastify/jwt';
 import fastifyOauth2, { type OAuth2Namespace } from '@fastify/oauth2';
+import fastifyRateLimit from '@fastify/rate-limit';
 import { AUTH_PROVIDERS, type AuthProvider } from '@poker/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
@@ -8,10 +9,11 @@ import fp from 'fastify-plugin';
 import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
 
-import { AuthController } from './auth.controller';
+import { AuthController, type ProfileBody } from './auth.controller';
 import { AuthService } from './auth.service';
 import { Authenticator } from './authenticator';
 import { OAUTH_PROVIDERS } from './providers';
+import { SessionsRepository } from './sessions.repository';
 import { TokenService } from './token.service';
 import { UsersRepository } from './users.repository';
 
@@ -46,12 +48,26 @@ const userResponse = {
     provider: { type: 'string' },
     email: { type: 'string' },
     name: { type: 'string' },
+    jobTitle: { type: ['string', 'null'] },
     avatarUrl: { type: ['string', 'null'] },
+  },
+} as const;
+
+const profileBody = {
+  type: 'object',
+  required: ['name'],
+  properties: {
+    name: { type: 'string' },
+    jobTitle: { type: 'string' },
   },
 } as const;
 
 /** Таймаут запроса к token endpoint провайдера, мс */
 const TOKEN_REQUEST_TIMEOUT_MS = 5_000;
+
+/** Страховка от перебора и накрутки запросов к OAuth-провайдеру (7.8) */
+const AUTH_RATE_LIMIT_MAX = 20;
+const AUTH_RATE_LIMIT_WINDOW = '1 minute';
 
 async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Promise<void> {
   const config = opts.auth;
@@ -60,7 +76,11 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
   await app.register(fastifyJwt, { secret: config.jwtSecret });
 
   const tokens = new TokenService(app.jwt, config.cookieSecure);
-  const service = new AuthService(new UsersRepository(app.db), tokens);
+  const service = new AuthService(
+    new UsersRepository(app.db),
+    new SessionsRepository(app.db),
+    tokens,
+  );
   const authenticator = new Authenticator(tokens);
 
   const enabledProviders = AUTH_PROVIDERS.filter((provider) => config.providers[provider]);
@@ -72,27 +92,6 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
 
   app.decorate('authenticate', authenticator.handle);
   app.decorate('tokens', tokens);
-
-  app.get(
-    '/api/auth/providers',
-    {
-      schema: {
-        tags: [DOCS_TAGS.auth],
-        summary: 'Доступные способы входа',
-        description: 'Провайдер попадает в список, если для него заданы ключи в окружении.',
-        response: {
-          200: {
-            description: 'Список включённых провайдеров',
-            type: 'object',
-            properties: {
-              providers: { type: 'array', items: { type: 'string', enum: [...AUTH_PROVIDERS] } },
-            },
-          },
-        },
-      },
-    },
-    controller.listProviders,
-  );
 
   app.get(
     '/api/me',
@@ -111,87 +110,163 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
     controller.me,
   );
 
-  app.post(
-    '/api/auth/refresh',
+  app.patch<{ Body: ProfileBody }>(
+    '/api/me',
     {
+      preHandler: authenticator.handle,
       schema: {
         tags: [DOCS_TAGS.auth],
-        summary: 'Продлить сессию',
-        description: 'Обменивает refresh-куку на новую пару токенов и обновляет обе куки.',
-        security: [{ refresh: [] }],
+        summary: 'Изменить имя и должность в профиле',
+        security: [{ session: [] }],
+        body: profileBody,
         response: {
           200: {
-            description: 'Сессия продлена',
+            description: 'Профиль обновлён',
             type: 'object',
             properties: { user: userResponse },
           },
-          401: { description: 'Refresh-кука недействительна', ...errorResponse },
+          400: {
+            description: 'Имя пустое/слишком длинное или должность слишком длинная',
+            ...errorResponse,
+          },
+          401: { description: 'Требуется вход', ...errorResponse },
         },
       },
     },
-    controller.refresh,
+    controller.updateProfile,
   );
 
-  app.post(
-    '/api/auth/logout',
-    {
-      schema: {
-        tags: [DOCS_TAGS.auth],
-        summary: 'Выйти',
-        description: 'Гасит куки сессии в браузере.',
-        response: { 204: { description: 'Куки сброшены', type: 'null' } },
+  /**
+   * Всё под /api/auth/* — в отдельном вложенном контексте (без fp): так у
+   * лимитера свои границы и он не начинает считать заодно /api/me и весь
+   * остальной API (7.8). @fastify/oauth2 сам не создаёт дочерний контекст
+   * (обёрнут в fp), поэтому его decorator/маршрут регистрируются здесь же,
+   * под тем же лимитом.
+   */
+  await app.register(async (auth) => {
+    await auth.register(fastifyRateLimit, {
+      max: AUTH_RATE_LIMIT_MAX,
+      timeWindow: AUTH_RATE_LIMIT_WINDOW,
+      // Свой бюджет на каждый маршрут, а не один общий на весь /api/auth/*:
+      // иначе безобидный список провайдеров делил бы лимит с обменом токена
+      keyGenerator: (req) => `${req.ip}:${req.routeOptions.url ?? req.url}`,
+      // Сообщение на русском (единообразно с остальными ошибками); код/статус
+      // единый обработчик (http/error-handler.ts) достаёт сам из statusCode
+      errorResponseBuilder: (_req, context) => {
+        const err = new Error(`Слишком много запросов, повторите через ${context.after}`);
+        (err as Error & { statusCode: number }).statusCode = context.statusCode;
+        return err;
       },
-    },
-    controller.logout,
-  );
-
-  for (const name of enabledProviders) {
-    const credentials = config.providers[name];
-    if (!credentials) continue;
-    const provider = OAUTH_PROVIDERS[name];
-
-    await app.register(fastifyOauth2, {
-      name: namespaceOf(name),
-      scope: provider.scope,
-      credentials: {
-        client: { id: credentials.clientId, secret: credentials.clientSecret },
-        auth: provider.configuration,
-        // Зависший token endpoint не должен держать обработчик бесконечно
-        http: { timeout: TOKEN_REQUEST_TIMEOUT_MS },
-      },
-      // Должен в точности совпадать с redirect URI, прописанным в кабинете провайдера
-      callbackUri: `${config.publicOrigin}/api/auth/${name}/callback`,
-      startRedirectPath: `/api/auth/${name}`,
-      tags: [DOCS_TAGS.auth],
-      schema: {
-        tags: [DOCS_TAGS.auth],
-        summary: `Начать вход через ${name === 'google' ? 'Google' : 'Яндекс'}`,
-        description: 'Редирект на экран согласия провайдера.',
-        response: { 302: { description: 'Редирект к провайдеру', type: 'null' } },
-      },
-      pkce: 'S256',
-      cookie: { path: '/', httpOnly: true, sameSite: 'lax', secure: config.cookieSecure },
     });
 
-    const namespace = app[namespaceOf(name)];
-    if (!namespace) {
-      throw new Error(`Провайдер ${name} не инициализирован`);
-    }
-    app.get(
-      `/api/auth/${name}/callback`,
+    auth.get(
+      '/api/auth/providers',
       {
         schema: {
           tags: [DOCS_TAGS.auth],
-          summary: `Возврат от ${name === 'google' ? 'Google' : 'Яндекса'}`,
-          description:
-            'Обменивает код на токен, заводит или обновляет пользователя, ' +
-            'выставляет куки сессии и возвращает браузер на фронт.',
-          response: { 302: { description: 'Редирект на фронт', type: 'null' } },
+          summary: 'Доступные способы входа',
+          description: 'Провайдер попадает в список, если для него заданы ключи в окружении.',
+          response: {
+            200: {
+              description: 'Список включённых провайдеров',
+              type: 'object',
+              properties: {
+                providers: { type: 'array', items: { type: 'string', enum: [...AUTH_PROVIDERS] } },
+              },
+            },
+          },
         },
       },
-      controller.createCallbackHandler(provider, namespace),
+      controller.listProviders,
     );
-  }
+
+    auth.post(
+      '/api/auth/refresh',
+      {
+        schema: {
+          tags: [DOCS_TAGS.auth],
+          summary: 'Продлить сессию',
+          description: 'Обменивает refresh-куку на новую пару токенов и обновляет обе куки.',
+          security: [{ refresh: [] }],
+          response: {
+            200: {
+              description: 'Сессия продлена',
+              type: 'object',
+              properties: { user: userResponse },
+            },
+            401: { description: 'Refresh-кука недействительна', ...errorResponse },
+          },
+        },
+      },
+      controller.refresh,
+    );
+
+    auth.post(
+      '/api/auth/logout',
+      {
+        schema: {
+          tags: [DOCS_TAGS.auth],
+          summary: 'Выйти',
+          description: 'Гасит куки сессии в браузере.',
+          response: { 204: { description: 'Куки сброшены', type: 'null' } },
+        },
+      },
+      controller.logout,
+    );
+
+    for (const name of enabledProviders) {
+      const credentials = config.providers[name];
+      if (!credentials) continue;
+      const provider = OAUTH_PROVIDERS[name];
+
+      await auth.register(fastifyOauth2, {
+        name: namespaceOf(name),
+        scope: provider.scope,
+        credentials: {
+          client: { id: credentials.clientId, secret: credentials.clientSecret },
+          auth: provider.configuration,
+          // Зависший token endpoint не должен держать обработчик бесконечно
+          http: { timeout: TOKEN_REQUEST_TIMEOUT_MS },
+        },
+        // Должен в точности совпадать с redirect URI, прописанным в кабинете провайдера
+        callbackUri: `${config.publicOrigin}/api/auth/${name}/callback`,
+        startRedirectPath: `/api/auth/${name}`,
+        // Принудительный выбор аккаунта на экране провайдера (7.19)
+        callbackUriParams: provider.authorizeParams,
+        tags: [DOCS_TAGS.auth],
+        schema: {
+          tags: [DOCS_TAGS.auth],
+          summary: `Начать вход через ${name === 'google' ? 'Google' : 'Яндекс'}`,
+          description: 'Редирект на экран согласия провайдера.',
+          response: { 302: { description: 'Редирект к провайдеру', type: 'null' } },
+        },
+        pkce: 'S256',
+        cookie: { path: '/', httpOnly: true, sameSite: 'lax', secure: config.cookieSecure },
+      });
+
+      const namespace = auth[namespaceOf(name)];
+      if (!namespace) {
+        throw new Error(`Провайдер ${name} не инициализирован`);
+      }
+      // oauth2 декорирует вложенный контекст `auth` — снаружи (Socket.io, тесты)
+      // провайдер ищут через `app`, поэтому пробрасываем декоратор туда же
+      app.decorate(namespaceOf(name), namespace);
+      auth.get(
+        `/api/auth/${name}/callback`,
+        {
+          schema: {
+            tags: [DOCS_TAGS.auth],
+            summary: `Возврат от ${name === 'google' ? 'Google' : 'Яндекса'}`,
+            description:
+              'Обменивает код на токен, заводит или обновляет пользователя, ' +
+              'выставляет куки сессии и возвращает браузер на фронт.',
+            response: { 302: { description: 'Редирект на фронт', type: 'null' } },
+          },
+        },
+        controller.createCallbackHandler(provider, namespace),
+      );
+    }
+  });
 }
 
 export const authPlugin = fp(authPluginImpl, { name: 'poker-auth' });

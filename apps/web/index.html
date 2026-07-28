@@ -3,10 +3,32 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Planning Poker</title>
+    <title>EstiMate</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Sora:wght@600;700;800&family=Manrope:wght@400;500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
-    <div id="app"></div>
+    <script>
+      // Применяем сохранённую тему синхронно, до отрисовки Vue-приложения,
+      // чтобы страница не мигала неверной темой на загрузке
+      (function () {
+        try {
+          var mode = localStorage.getItem('poker:theme');
+          var dark =
+            mode === 'dark' ||
+            (mode !== 'light' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          document.documentElement.classList.toggle('dark', dark);
+        } catch (e) {
+          // Хранилище недоступно — останемся на системной теме по умолчанию
+        }
+      })();
+    </script>
+    <!-- isolate держит всплывающие элементы Nuxt UI в своём контексте наложения -->
+    <div id="app" class="isolate"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
