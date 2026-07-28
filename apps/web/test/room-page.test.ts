@@ -320,7 +320,7 @@ describe('вход в комнату', () => {
       '/rooms/r1',
       makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    // Бейдж соединения — иконка без текста (7.21), состояние проверяем по aria-label
+    // Бейдж соединения — иконка без текста (7.21), текст доступен через aria-label/tooltip
     await vi.waitFor(() => expect(wrapper.find('[aria-label="Подключено"]').exists()).toBe(true));
 
     socket.disconnect();
