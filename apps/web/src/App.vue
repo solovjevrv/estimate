@@ -56,11 +56,11 @@ const userMenuItems = computed<DropdownMenuItem[][]>(() => [
     {
       label: t('nav.themeLabel'),
       icon: 'i-lucide-moon',
-      type: 'checkbox',
-      checked: isDark.value,
       slot: 'theme',
-      onUpdateChecked: () => toggleTheme(),
-      onSelect: keepMenuOpen,
+      onSelect: (e: Event) => {
+        e.preventDefault();
+        toggleTheme();
+      },
     },
     { label: t('nav.language'), icon: 'i-lucide-languages', children: languageMenuItems.value },
   ],

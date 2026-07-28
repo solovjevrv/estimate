@@ -383,14 +383,17 @@ describe('меню пользователя: тема и язык', () => {
     (menuTrigger as HTMLElement).click();
     await vi.waitFor(() => expect(document.body.textContent).toContain('Тёмная тема'));
 
-    const darkOption = Array.from(document.body.querySelectorAll('[role="menuitemcheckbox"]')).find(
-      (el) => el.textContent?.trim() === 'Тёмная тема',
+    const darkOption = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find((el) =>
+      el.textContent?.includes('Тёмная тема'),
     );
     (darkOption as HTMLElement).click();
 
     await vi.waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(true));
     // Меню осталось открытым — пункт всё ещё виден в DOM
     expect(document.body.textContent).toContain('Тёмная тема');
+    // Пункт не должен быть чекбоксом Nuxt UI — иначе рядом со свитчем встанет
+    // ещё и штатная галочка-чекмарк, задваивая индикатор состояния
+    expect(document.body.querySelectorAll('[role="menuitemcheckbox"]')).toHaveLength(0);
   });
 });
 
