@@ -124,7 +124,37 @@ describeDb('API команд', () => {
       expect(team.role).toBe('admin');
 
       const list = await app.inject({ method: 'GET', url: '/api/teams', headers: as(admin) });
-      expect(list.json()).toMatchObject({ teams: [{ id: team.id, role: 'admin' }] });
+      expect(list.json()).toMatchObject({
+        teams: [{ id: team.id, role: 'admin', memberCount: 1 }],
+      });
+    });
+
+    it('список команд отдаёт число участников каждой — не только видимых в составе', async () => {
+      const admin = await newUser('count-admin');
+      const memberA = await newUser('count-member-a');
+      const memberB = await newUser('count-member-b');
+      const soloTeamId = await newTeam(admin);
+      const groupTeamId = await newTeam(admin, [
+        [memberA, 'member'],
+        [memberB, 'guest'],
+      ]);
+
+      const list = await app.inject({ method: 'GET', url: '/api/teams', headers: as(admin) });
+      const teams = (list.json() as { teams: Array<{ id: string; memberCount: number }> }).teams;
+
+      expect(teams.find((t) => t.id === soloTeamId)?.memberCount).toBe(1);
+      expect(teams.find((t) => t.id === groupTeamId)?.memberCount).toBe(3);
+
+      // Счётчик считает ВСЕХ участников, а не только тех, кого видит смотрящий
+      const memberView = await app.inject({
+        method: 'GET',
+        url: '/api/teams',
+        headers: as(memberA),
+      });
+      const memberTeams = (
+        memberView.json() as { teams: Array<{ id: string; memberCount: number }> }
+      ).teams;
+      expect(memberTeams.find((t) => t.id === groupTeamId)?.memberCount).toBe(3);
     });
 
     it('без входа команду не создать', async () => {

@@ -1,3 +1,4 @@
+import type { PluralizationRule } from 'vue-i18n';
 import { createI18n } from 'vue-i18n';
 
 import en from './locales/en';
@@ -35,6 +36,19 @@ export function detectLocale(): Locale {
   return preferred.find(isLocale) ?? DEFAULT_LOCALE;
 }
 
+/**
+ * Русское склонение — три формы (1 / 2–4 / 5–20,0), а не два, как в дефолтном
+ * английском правиле vue-i18n. Сообщения под это правило пишутся строго тремя
+ * формами через `|`: «участник | участника | участников».
+ */
+const ruPluralRule: PluralizationRule = (choice) => {
+  const mod10 = choice % 10;
+  const mod100 = choice % 100;
+  if (mod10 === 1 && mod100 !== 11) return 0;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return 1;
+  return 2;
+};
+
 export function rememberLocale(locale: Locale): void {
   try {
     localStorage.setItem(STORAGE_KEY, locale);
@@ -50,5 +64,6 @@ export function createAppI18n(locale: Locale = detectLocale()) {
     locale,
     fallbackLocale: DEFAULT_LOCALE,
     messages,
+    pluralRules: { ru: ruPluralRule },
   });
 }

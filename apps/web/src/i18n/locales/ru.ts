@@ -63,6 +63,7 @@ export default {
     cancel: 'Отмена',
     submit: 'Создать',
     createError: 'Не удалось создать команду. Попробуйте ещё раз.',
+    memberCount: '{count} участник | {count} участника | {count} участников',
   },
   team: {
     roomsTitle: 'Комнаты',

@@ -66,6 +66,8 @@ export interface Team {
 /** Команда в списке пользователя — вместе с его ролью в ней */
 export interface TeamWithRole extends Team {
   role: TeamRole;
+  /** Сколько всего участников в команде (не только видимых текущему пользователю) */
+  memberCount: number;
 }
 
 /** Участник команды: профиль пользователя + роль */

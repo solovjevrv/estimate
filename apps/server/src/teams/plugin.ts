@@ -59,7 +59,11 @@ const teamResponse = {
 
 const teamWithRoleResponse = {
   type: 'object',
-  properties: { ...teamResponse.properties, role: { type: 'string' } },
+  properties: {
+    ...teamResponse.properties,
+    role: { type: 'string' },
+    memberCount: { type: 'number' },
+  },
 } as const;
 
 const memberResponse = {

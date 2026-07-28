@@ -39,6 +39,7 @@ const teamA: TeamWithRole = {
   name: 'Команда А',
   createdAt: '2026-07-24T00:00:00.000Z',
   role: 'admin',
+  memberCount: 1,
 };
 
 type Handlers = Record<string, () => Response>;
@@ -103,6 +104,39 @@ describe('страница команд', () => {
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Команда А'));
     expect(wrapper.text()).toContain('Администратор');
+  });
+
+  it('склоняет число участников по русским правилам (1 / 2-4 / 5+)', async () => {
+    const { wrapper } = await mountApp(
+      '/teams',
+      makeFetch(true, {
+        'GET /api/teams': () =>
+          json(200, {
+            teams: [
+              { ...teamA, id: 't1', name: 'КомандаРаз', memberCount: 1 },
+              { ...teamA, id: 't2', name: 'КомандаДва', memberCount: 2 },
+              { ...teamA, id: 't3', name: 'КомандаПять', memberCount: 5 },
+              { ...teamA, id: 't4', name: 'КомандаОдиннадцать', memberCount: 11 },
+            ],
+          }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('КомандаРаз'));
+
+    // Ищем текст конкретной карточки по имени команды — иначе «1 участник» ложно
+    // совпал бы как подстрока внутри «11 участников» при проверке по всему wrapper.text()
+    const cardText = (teamName: string): string =>
+      wrapper
+        .findAll('li')
+        .find((li) => li.text().includes(teamName))!
+        .text();
+
+    expect(cardText('КомандаРаз')).toContain('1 участник');
+    expect(cardText('КомандаРаз')).not.toContain('участника');
+    expect(cardText('КомандаДва')).toContain('2 участника');
+    expect(cardText('КомандаПять')).toContain('5 участников');
+    // Исключение из общего правила «оканчивается на 1» — 11-14 всегда «участников»
+    expect(cardText('КомандаОдиннадцать')).toContain('11 участников');
   });
 
   it('показывает пустое состояние, когда команд нет', async () => {

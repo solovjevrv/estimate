@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 
 import type { Team, TeamMember, TeamRole } from '@poker/shared';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import type { Db } from '../db';
 import { schema } from '../db';
@@ -48,7 +48,9 @@ export class TeamsRepository {
       .onConflictDoNothing({ target: [schema.teamMembers.teamId, schema.teamMembers.userId] });
   }
 
-  async listTeamsForUser(userId: string): Promise<Array<Team & { role: TeamRole }>> {
+  async listTeamsForUser(
+    userId: string,
+  ): Promise<Array<Team & { role: TeamRole; memberCount: number }>> {
     const rows = await this.db
       .select({ team: schema.teams, role: schema.teamMembers.role })
       .from(schema.teamMembers)
@@ -56,7 +58,25 @@ export class TeamsRepository {
       .where(eq(schema.teamMembers.userId, userId))
       .orderBy(schema.teams.createdAt);
 
-    return rows.map(({ team, role }) => ({ ...this.toTeam(team), role }));
+    if (rows.length === 0) {
+      return [];
+    }
+
+    // Отдельным запросом, а не join+group by в первом — состав команд читается
+    // редко и в основном запросе, а тут просто список счётчиков по тем же id
+    const teamIds = rows.map(({ team }) => team.id);
+    const counts = await this.db
+      .select({ teamId: schema.teamMembers.teamId, count: sql<number>`count(*)::int` })
+      .from(schema.teamMembers)
+      .where(inArray(schema.teamMembers.teamId, teamIds))
+      .groupBy(schema.teamMembers.teamId);
+    const countByTeamId = new Map(counts.map((row) => [row.teamId, row.count]));
+
+    return rows.map(({ team, role }) => ({
+      ...this.toTeam(team),
+      role,
+      memberCount: countByTeamId.get(team.id) ?? 0,
+    }));
   }
 
   /** Команда вместе с кодом приглашения — читается одним запросом */
