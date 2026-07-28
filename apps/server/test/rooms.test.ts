@@ -6,7 +6,15 @@ import { randomUUID } from 'node:crypto';
 import type { AddressInfo } from 'node:net';
 import { fileURLToPath } from 'node:url';
 
-import type { AuthUser, JoinRoomResult, Round, RoomState, RoundResult, WsAck } from '@poker/shared';
+import type {
+  AuthUser,
+  JoinRoomResult,
+  Room,
+  Round,
+  RoomState,
+  RoundResult,
+  WsAck,
+} from '@poker/shared';
 import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
 import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
@@ -400,18 +408,10 @@ describeDb('комнаты', () => {
 
       // Скрам-мастер открывает раунд
       const guestSeesRound = nextState(guest);
-      const started = await emit(master, WS_EVENTS.START_NEW_ROUND, {
-        deckType: 'fibonacci',
-        jiraUrl: 'https://jira.example.com/TASK-1',
-      });
+      const started = await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
       expect(started.ok).toBe(true);
       const roundState = await guestSeesRound;
-      expect(roundState.round).toMatchObject({
-        seq: 1,
-        deckType: 'fibonacci',
-        status: 'voting',
-        jiraUrl: 'https://jira.example.com/TASK-1',
-      });
+      expect(roundState.round).toMatchObject({ seq: 1, deckType: 'fibonacci', status: 'voting' });
 
       // Голоса: до вскрытия видно только сам факт
       await emit(guest, WS_EVENTS.SUBMIT_VOTE, { value: 3 });
@@ -487,15 +487,15 @@ describeDb('комнаты', () => {
       expect(ack.ok && ack.data).toMatchObject({ average: null, min: 3, max: 3, agreement: 100 });
     });
 
-    it('ссылки на задачу правит любой участник и видят все', async () => {
+    it('ссылки на задачу правит любой участник и видят все, даже без активного раунда', async () => {
       const owner = await newUser('links-owner');
       const roomId = await newRoom(owner);
       const master = connect(owner);
       const guest = connect();
 
-      await joinRoom(master, roomId);
+      const masterState = await joinRoom(master, roomId);
       await joinRoom(guest, roomId, 'Гость');
-      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+      expect(masterState.round).toBeNull();
 
       const masterSeesLinks = nextState(master);
       const updated = await emit(guest, WS_EVENTS.UPDATE_LINKS, {
@@ -504,7 +504,7 @@ describeDb('комнаты', () => {
       });
 
       expect(updated.ok).toBe(true);
-      expect((await masterSeesLinks).round).toMatchObject({
+      expect((await masterSeesLinks).room).toMatchObject({
         jiraUrl: 'https://jira.example.com/TASK-7',
         confluenceUrl: 'https://confluence.example.com/page',
       });
@@ -662,12 +662,10 @@ describeDb('комнаты', () => {
       const roomId = await newRoom(owner);
       const master = connect(owner);
       const guest = connect();
-      await joinRoom(master, roomId);
+      const masterState = await joinRoom(master, roomId);
       await joinRoom(guest, roomId, 'Гость');
 
-      const started = nextState(master);
-      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
-      const version = (await started).round?.linksVersion as number;
+      const version = masterState.room.linksVersion;
 
       // Оба видели одну и ту же версию ссылок, но правит их первый
       const first = await emit(guest, WS_EVENTS.UPDATE_LINKS, {
@@ -949,17 +947,16 @@ describeDb('комнаты', () => {
     it('одновременная правка ссылок: побеждает один, второй узнаёт о конфликте', async () => {
       const owner = await newUser('race-links-owner');
       const roomId = await newRoom(owner);
-      const master = asMaster(owner);
-      const started = await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      const room = await service.getRoom(roomId);
 
       const attempts = await Promise.allSettled([
         service.updateLinks(roomId, {
           jiraUrl: 'https://jira.example.com/LEFT',
-          version: started.linksVersion,
+          version: room.linksVersion,
         }),
         service.updateLinks(roomId, {
           jiraUrl: 'https://jira.example.com/RIGHT',
-          version: started.linksVersion,
+          version: room.linksVersion,
         }),
       ]);
 
@@ -968,8 +965,8 @@ describeDb('комнаты', () => {
       expect(saved).toHaveLength(1);
       expect(rejected[0]?.reason).toBeInstanceOf(ConflictError);
       // Версия выросла ровно на одну правку — чужой текст не затёрт вторым разом
-      expect((saved[0] as PromiseFulfilledResult<Round>).value.linksVersion).toBe(
-        started.linksVersion + 1,
+      expect((saved[0] as PromiseFulfilledResult<Room>).value.linksVersion).toBe(
+        room.linksVersion + 1,
       );
     });
 
@@ -1032,8 +1029,6 @@ describeDb('комнаты', () => {
     it('правка без версии остаётся прежней: побеждает последний', async () => {
       const owner = await newUser('race-links-legacy-owner');
       const roomId = await newRoom(owner);
-      const master = asMaster(owner);
-      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
 
       const updated = await service.updateLinks(roomId, {
         jiraUrl: 'https://jira.example.com/LEGACY',

@@ -366,8 +366,6 @@ export class RoomsService {
     payload: StartRoundPayload,
   ): Promise<Round> {
     const deckType = this.requireDeckType(payload?.deckType);
-    const jiraUrl = this.normalizeLink(payload.jiraUrl);
-    const confluenceUrl = this.normalizeLink(payload.confluenceUrl);
 
     return this.inRoom(roomId, async (repo, room, teams) => {
       await this.assertScrumMaster(
@@ -391,42 +389,32 @@ export class RoomsService {
         roomId,
         seq: (current?.seq ?? 0) + 1,
         deckType,
-        jiraUrl,
-        confluenceUrl,
       });
       await repo.bumpRevision(roomId);
       return started;
     });
   }
 
-  /** Ссылки на задачу может править любой участник — так решено в Epic 5 */
-  async updateLinks(roomId: string, links: UpdateLinksPayload): Promise<Round> {
+  /** Ссылки на задачу принадлежат комнате целиком, менять может любой участник — Epic 5 / 7.25 */
+  async updateLinks(roomId: string, links: UpdateLinksPayload): Promise<Room> {
     const patch: UpdateLinksPayload = {};
     if (links.jiraUrl !== undefined) patch.jiraUrl = this.normalizeLink(links.jiraUrl);
     if (links.confluenceUrl !== undefined) {
       patch.confluenceUrl = this.normalizeLink(links.confluenceUrl);
     }
 
-    return this.inRoom(roomId, async (repo) => {
-      const round = await repo.findCurrentRound(roomId);
-      if (!round) {
-        throw new ConflictError('В комнате ещё нет раунда');
-      }
-      // Правка относится к конкретной задаче: ссылки прошлого раунда не должны попасть в новый
-      if (links.roundId != null && links.roundId !== round.id) {
-        throw new ConflictError('Раунд уже сменился, ссылки относятся к прошлой задаче');
-      }
+    return this.inRoom(roomId, async (repo, room) => {
       // Версию присылает клиент: если её нет, правка идёт по-старому — побеждает последний
       const version = links.version ?? undefined;
-      if (version !== undefined && version !== round.linksVersion) {
+      if (version !== undefined && version !== room.linksVersion) {
         throw new ConflictError('Ссылки уже изменил другой участник, проверьте новые значения');
       }
       // Править нечего — версию не трогаем, иначе чужие правки начнут отбиваться конфликтом
       if (Object.keys(patch).length === 0) {
-        return round;
+        return room;
       }
 
-      const updated = await repo.updateRoundLinks(round.id, patch, version);
+      const updated = await repo.updateRoomLinks(roomId, patch, version);
       if (!updated) {
         throw new ConflictError('Ссылки уже изменил другой участник, проверьте новые значения');
       }

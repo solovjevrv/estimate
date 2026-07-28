@@ -26,6 +26,9 @@ const ROOM: Room = {
   revision: 0,
   createdAt: new Date().toISOString(),
   archivedAt: null,
+  jiraUrl: null,
+  confluenceUrl: null,
+  linksVersion: 1,
 };
 
 const ROUND: Round = {
@@ -33,9 +36,6 @@ const ROUND: Round = {
   roomId: ROOM.id,
   seq: 1,
   deckType: 'fibonacci',
-  jiraUrl: null,
-  confluenceUrl: null,
-  linksVersion: 1,
   status: 'voting',
   average: null,
   createdAt: new Date().toISOString(),
@@ -391,8 +391,7 @@ describe('RoomsService: ссылки на задачу', () => {
   const repo: Partial<RoomsRepository> = {
     findRoom: async () => ROOM,
     lockRoom: async () => ROOM,
-    findCurrentRound: async () => ROUND,
-    updateRoundLinks: async (_id, links) => ({ ...ROUND, ...links }),
+    updateRoomLinks: async (_id, links) => ({ ...ROOM, ...links }),
   };
 
   it('ссылка без схемы отклоняется', async () => {
@@ -404,91 +403,78 @@ describe('RoomsService: ссылки на задачу', () => {
   });
 
   it('пустая строка убирает ссылку', async () => {
-    const updateRoundLinks = vi.fn(async (_id: string, links: object) => ({ ...ROUND, ...links }));
-    const service = serviceWith({ ...repo, updateRoundLinks });
+    const updateRoomLinks = vi.fn(async (_id: string, links: object) => ({ ...ROOM, ...links }));
+    const service = serviceWith({ ...repo, updateRoomLinks });
 
     await service.updateLinks(ROOM.id, { jiraUrl: '  ' });
 
-    expect(updateRoundLinks).toHaveBeenCalledWith(ROUND.id, { jiraUrl: null }, undefined);
+    expect(updateRoomLinks).toHaveBeenCalledWith(ROOM.id, { jiraUrl: null }, undefined);
   });
 
   it('корректная ссылка сохраняется', async () => {
     const service = serviceWith(repo);
 
-    const round = await service.updateLinks(ROOM.id, {
+    const room = await service.updateLinks(ROOM.id, {
       confluenceUrl: 'https://confluence.example.com/page',
     });
 
-    expect(round.confluenceUrl).toBe('https://confluence.example.com/page');
+    expect(room.confluenceUrl).toBe('https://confluence.example.com/page');
   });
 
   it('правка поверх чужой отклоняется: версия ссылок устарела', async () => {
-    const updateRoundLinks = vi.fn(async () => ROUND);
+    const updateRoomLinks = vi.fn(async () => ROOM);
     const service = serviceWith({
       ...repo,
       // Пока участник печатал, ссылки уже поменяли
-      findCurrentRound: async () => ({ ...ROUND, linksVersion: 5 }),
-      updateRoundLinks,
+      lockRoom: async () => ({ ...ROOM, linksVersion: 5 }),
+      updateRoomLinks,
     });
 
     await expect(
       service.updateLinks(ROOM.id, { jiraUrl: 'https://jira.example.com/TASK-9', version: 4 }),
     ).rejects.toBeInstanceOf(ConflictError);
-    expect(updateRoundLinks).not.toHaveBeenCalled();
+    expect(updateRoomLinks).not.toHaveBeenCalled();
   });
 
   it('версия null означает «версию не проверять», а не вечный конфликт', async () => {
-    const updateRoundLinks = vi.fn(async (_id: string, links: object) => ({ ...ROUND, ...links }));
-    const service = serviceWith({ ...repo, updateRoundLinks });
+    const updateRoomLinks = vi.fn(async (_id: string, links: object) => ({ ...ROOM, ...links }));
+    const service = serviceWith({ ...repo, updateRoomLinks });
 
     await service.updateLinks(ROOM.id, {
       jiraUrl: 'https://jira.example.com/TASK-1',
       version: null,
     });
 
-    expect(updateRoundLinks).toHaveBeenCalledWith(
-      ROUND.id,
+    expect(updateRoomLinks).toHaveBeenCalledWith(
+      ROOM.id,
       { jiraUrl: 'https://jira.example.com/TASK-1' },
       undefined,
     );
   });
 
-  it('правка чужого раунда отклоняется целиком', async () => {
-    const updateRoundLinks = vi.fn(async () => ROUND);
-    const service = serviceWith({ ...repo, updateRoundLinks });
-
-    await expect(
-      service.updateLinks(ROOM.id, {
-        jiraUrl: 'https://jira.example.com/OLD',
-        roundId: randomUUID(),
-      }),
-    ).rejects.toBeInstanceOf(ConflictError);
-    expect(updateRoundLinks).not.toHaveBeenCalled();
-  });
-
   it('пустая правка не поднимает версию: чужие правки не должны отбиваться', async () => {
-    const updateRoundLinks = vi.fn(async () => ROUND);
-    const service = serviceWith({ ...repo, updateRoundLinks });
+    const updateRoomLinks = vi.fn(async () => ROOM);
+    const service = serviceWith({ ...repo, updateRoomLinks });
 
-    const round = await service.updateLinks(ROOM.id, {});
+    const room = await service.updateLinks(ROOM.id, {});
 
-    expect(round.linksVersion).toBe(ROUND.linksVersion);
-    expect(updateRoundLinks).not.toHaveBeenCalled();
+    expect(room.linksVersion).toBe(ROOM.linksVersion);
+    expect(updateRoomLinks).not.toHaveBeenCalled();
   });
 
   it('правка с актуальной версией доходит до базы вместе с ней', async () => {
-    const updateRoundLinks = vi.fn(async (_id: string, links: object) => ({ ...ROUND, ...links }));
-    const service = serviceWith({ ...repo, updateRoundLinks });
+    const updateRoomLinks = vi.fn(async (_id: string, links: object) => ({ ...ROOM, ...links }));
+    const service = serviceWith({ ...repo, updateRoomLinks });
 
     await service.updateLinks(ROOM.id, {
       jiraUrl: 'https://jira.example.com/TASK-9',
-      version: ROUND.linksVersion,
+      version: ROOM.linksVersion,
     });
 
-    expect(updateRoundLinks).toHaveBeenCalledWith(
-      ROUND.id,
+    expect(updateRoomLinks).toHaveBeenCalledWith(
+      ROOM.id,
       { jiraUrl: 'https://jira.example.com/TASK-9' },
-      ROUND.linksVersion,
+      ROOM.linksVersion,
     );
   });
 });

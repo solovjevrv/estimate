@@ -137,6 +137,11 @@ export interface Room {
   createdAt: string;
   /** Заполнено — комната в архиве: доступна только для чтения, не в основных списках */
   archivedAt: string | null;
+  /** Комната заводится под одну задачу — ссылки принадлежат ей, не отдельному раунду (7.25) */
+  jiraUrl: string | null;
+  confluenceUrl: string | null;
+  /** Версия ссылок: растёт с каждой правкой, по ней ловятся одновременные правки */
+  linksVersion: number;
 }
 
 export interface Round {
@@ -145,10 +150,6 @@ export interface Round {
   /** Порядковый номер раунда внутри комнаты, начиная с 1 */
   seq: number;
   deckType: DeckType;
-  jiraUrl: string | null;
-  confluenceUrl: string | null;
-  /** Версия ссылок: растёт с каждой правкой, по ней ловятся одновременные правки */
-  linksVersion: number;
   status: RoundStatus;
   /** Средний балл, зафиксированный при вскрытии карт */
   average: number | null;
@@ -258,8 +259,6 @@ export interface RevealCardsPayload {
 
 export interface StartRoundPayload {
   deckType: DeckType;
-  jiraUrl?: string | null;
-  confluenceUrl?: string | null;
   /**
    * Раунд, который клиент видел текущим (null — если раунда ещё не было).
    * Если стол уже ушёл вперёд, сервер вернёт текущий раунд вместо нового:
@@ -271,11 +270,6 @@ export interface StartRoundPayload {
 export interface UpdateLinksPayload {
   jiraUrl?: string | null;
   confluenceUrl?: string | null;
-  /**
-   * Раунд, к которому относится правка: ссылки прошлой задачи не должны попасть
-   * в новую. Без поля проверки нет.
-   */
-  roundId?: string | null;
   /**
    * Версия ссылок, которую видел клиент. Если за это время их поменял кто-то
    * другой, правка отклоняется — иначе чужой текст молча затрётся.

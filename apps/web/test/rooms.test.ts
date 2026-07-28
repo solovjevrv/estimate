@@ -21,6 +21,9 @@ const room: Room = {
   revision: 0,
   createdAt: '2026-07-25T00:00:00.000Z',
   archivedAt: null,
+  jiraUrl: null,
+  confluenceUrl: null,
+  linksVersion: 1,
 };
 
 describe('стор создания комнат', () => {

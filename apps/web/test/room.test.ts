@@ -1,4 +1,4 @@
-import type { JoinRoomResult, RoomState, RoomTimerState, Round } from '@poker/shared';
+import type { JoinRoomResult, Room, RoomState, RoomTimerState, Round } from '@poker/shared';
 import { TIMER_DEFAULT_DURATION_SEC, WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -60,9 +60,6 @@ function round(overrides: Partial<Round> = {}): Round {
     roomId: 'room1',
     seq: 1,
     deckType: 'fibonacci',
-    jiraUrl: null,
-    confluenceUrl: null,
-    linksVersion: 1,
     status: 'voting',
     average: null,
     createdAt: '2026-07-23T10:00:00.000Z',
@@ -81,18 +78,26 @@ function timer(overrides: Partial<RoomTimerState> = {}): RoomTimerState {
   };
 }
 
+function roomFixture(revision: number, overrides: Partial<Room> = {}): Room {
+  return {
+    id: 'room1',
+    teamId: null,
+    creatorId: 'u1',
+    name: 'Спринт 14',
+    status: 'active',
+    revision,
+    createdAt: '2026-07-23T10:00:00.000Z',
+    archivedAt: null,
+    jiraUrl: null,
+    confluenceUrl: null,
+    linksVersion: 1,
+    ...overrides,
+  };
+}
+
 function state(revision: number, overrides: Partial<RoomState> = {}): RoomState {
   return {
-    room: {
-      id: 'room1',
-      teamId: null,
-      creatorId: 'u1',
-      name: 'Спринт 14',
-      status: 'active',
-      revision,
-      createdAt: '2026-07-23T10:00:00.000Z',
-      archivedAt: null,
-    },
+    room: roomFixture(revision),
     round: round(),
     participants: [],
     result: null,
@@ -337,9 +342,9 @@ describe('стор комнаты', () => {
       expect(created.id).toBe('r2');
     });
 
-    it('к правке ссылок прикладывает раунд и версию; ответ — пустой', async () => {
+    it('к правке ссылок прикладывает версию комнаты; ответ — пустой', async () => {
       const store = useRoomStore();
-      store.applyState(state(2, { round: round({ linksVersion: 4 }) }));
+      store.applyState(state(2, { room: roomFixture(2, { linksVersion: 4 }) }));
       // Сервер на правку ссылок отвечает null — новая версия придёт рассылкой
       socket.next = null;
 
@@ -347,7 +352,7 @@ describe('стор комнаты', () => {
 
       expect(socket.sent[0]).toEqual({
         event: WS_EVENTS.UPDATE_LINKS,
-        payload: { jiraUrl: 'https://jira.example/PP-1', roundId: 'r1', version: 4 },
+        payload: { jiraUrl: 'https://jira.example/PP-1', version: 4 },
       });
     });
 
@@ -360,19 +365,19 @@ describe('стор комнаты', () => {
       ).rejects.toMatchObject({ code: 'conflict', message: 'Ссылки уже изменили' });
     });
 
-    it('явно переданная версия перекрывает версию из уже обновившегося раунда', async () => {
+    it('явно переданная версия перекрывает версию из уже обновившейся комнаты', async () => {
       const store = useRoomStore();
-      store.applyState(state(2, { round: round({ linksVersion: 4 }) }));
+      store.applyState(state(2, { room: roomFixture(2, { linksVersion: 4 }) }));
       // Пока где-то держали черновик на версии 4, кто-то другой уже сохранил правки —
       // версия в сторе уехала вперёд раньше, чем черновик отправили на сохранение
-      store.applyState(state(3, { round: round({ linksVersion: 5 }) }));
+      store.applyState(state(3, { room: roomFixture(3, { linksVersion: 5 }) }));
       socket.next = null;
 
       await store.updateLinks({ jiraUrl: 'https://jira.example/PP-1', version: 4 });
 
       expect(socket.sent[0]).toEqual({
         event: WS_EVENTS.UPDATE_LINKS,
-        payload: { jiraUrl: 'https://jira.example/PP-1', roundId: 'r1', version: 4 },
+        payload: { jiraUrl: 'https://jira.example/PP-1', version: 4 },
       });
     });
 

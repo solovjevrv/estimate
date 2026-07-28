@@ -276,15 +276,12 @@ const linksBaseVersion = ref<number | null>(null);
 const savingLinks = ref(false);
 
 watch(
-  () => room.round,
-  (round, previous) => {
-    if (round?.id !== previous?.id) {
-      linksDirty.value = false;
-    }
-    if (!round || linksDirty.value) return;
-    linksForm.jiraUrl = round.jiraUrl ?? '';
-    linksForm.confluenceUrl = round.confluenceUrl ?? '';
-    linksBaseVersion.value = round.linksVersion;
+  () => room.room,
+  (current) => {
+    if (!current || linksDirty.value) return;
+    linksForm.jiraUrl = current.jiraUrl ?? '';
+    linksForm.confluenceUrl = current.confluenceUrl ?? '';
+    linksBaseVersion.value = current.linksVersion;
   },
   { immediate: true },
 );
@@ -564,10 +561,7 @@ function retry(): void {
           />
         </div>
 
-        <div
-          v-if="room.round && !isArchived"
-          class="surface-card surface-card-lg px-[30px] py-[26px]"
-        >
+        <div v-if="!isArchived" class="surface-card surface-card-lg px-[30px] py-[26px]">
           <h2 class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
             {{ t('room.linksTitle') }}
           </h2>
