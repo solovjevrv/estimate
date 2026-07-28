@@ -68,7 +68,14 @@ export class TeamsService {
       return created;
     });
 
-    return { id: team.id, name: team.name, createdAt: team.createdAt, role: 'admin' };
+    // Создатель — единственный участник на момент создания
+    return {
+      id: team.id,
+      name: team.name,
+      createdAt: team.createdAt,
+      role: 'admin',
+      memberCount: 1,
+    };
   }
 
   async listForUser(actorId: string): Promise<TeamWithRole[]> {
@@ -204,7 +211,7 @@ export class TeamsService {
     return team;
   }
 
-  async joinByInvite(actorId: string, code: string): Promise<TeamWithRole> {
+  async joinByInvite(actorId: string, code: string): Promise<Team & { role: TeamRole }> {
     const team = await this.repository.findTeamByInviteCode(code);
     if (!team) {
       throw new NotFoundError('Приглашение не найдено');

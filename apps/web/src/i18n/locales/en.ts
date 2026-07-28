@@ -62,6 +62,7 @@ export default {
     cancel: 'Cancel',
     submit: 'Create',
     createError: 'Could not create the team. Please try again.',
+    memberCount: '{count} member | {count} members',
   },
   team: {
     roomsTitle: 'Rooms',

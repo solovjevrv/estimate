@@ -105,7 +105,12 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
             >
               {{ team.name.slice(0, 1).toUpperCase() }}
             </div>
-            <span class="truncate text-lg font-bold">{{ team.name }}</span>
+            <div class="min-w-0">
+              <span class="block truncate text-lg font-bold">{{ team.name }}</span>
+              <span class="text-muted text-[13.5px]">
+                {{ t('teams.memberCount', { count: team.memberCount }, team.memberCount) }}
+              </span>
+            </div>
           </div>
           <span
             class="badge-pill shrink-0"
