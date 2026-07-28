@@ -73,15 +73,16 @@ describe('каркас приложения', () => {
     await mountApp('/');
     document.documentElement.classList.remove('dark');
 
-    const toggle = document.body.querySelector('button[role="switch"]');
-    expect(toggle).not.toBeNull();
-    expect(toggle!.getAttribute('aria-checked')).toBe('false');
+    // Пока тема светлая, кнопка предлагает переключить на тёмную — и наоборот
+    const toDark = document.body.querySelector('button[aria-label="Тёмная тема"]');
+    expect(toDark).not.toBeNull();
 
-    (toggle as HTMLElement).click();
+    (toDark as HTMLElement).click();
     await vi.waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(true));
-    expect(toggle!.getAttribute('aria-checked')).toBe('true');
 
-    (toggle as HTMLElement).click();
+    const toLight = document.body.querySelector('button[aria-label="Светлая тема"]');
+    expect(toLight).not.toBeNull();
+    (toLight as HTMLElement).click();
     await vi.waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(false));
   });
 

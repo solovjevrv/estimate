@@ -138,16 +138,14 @@ async function logout(): Promise<void> {
               />
 
               <UTooltip :text="t(isDark ? 'nav.theme.light' : 'nav.theme.dark')">
-                <button
-                  type="button"
-                  role="switch"
-                  :aria-checked="isDark"
+                <UButton
+                  :icon="isDark ? 'i-lucide-moon' : 'i-lucide-sun'"
+                  size="sm"
+                  color="neutral"
+                  variant="subtle"
                   :aria-label="t(isDark ? 'nav.theme.light' : 'nav.theme.dark')"
-                  class="cursor-pointer"
                   @click="toggleTheme"
-                >
-                  <ThemeSwitchTrack :is-dark="isDark" />
-                </button>
+                />
               </UTooltip>
             </template>
 
