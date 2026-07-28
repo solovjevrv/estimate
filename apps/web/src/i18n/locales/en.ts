@@ -163,6 +163,7 @@ export default {
     startRound: 'Start round',
     starting: 'Starting…',
     startRoundError: 'Could not start the round. Please try again.',
+    roundRestarted: 'Round restarted',
     cancelRound: 'Cancel round',
     cancelRoundConfirmTitle: 'Cancel this vote?',
     cancelRoundConfirmText: 'Current votes from participants will be lost.',

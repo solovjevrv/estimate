@@ -200,11 +200,16 @@ const cancelConfirmOpen = ref(false);
 const revealConfirmOpen = ref(false);
 
 /** Смена раунда переиспользует один и тот же WS-запрос — сервер и отменяет текущий, и начинает следующий */
-async function onStartRound(): Promise<void> {
+async function onStartRound(options?: { silentRestart?: boolean }): Promise<void> {
   starting.value = true;
   try {
     await room.startNewRound(selectedDeck.value);
     cancelConfirmOpen.value = false;
+    // Без голосов раунд перезапускается без вопроса (см. onDeckActionClick) — новый раунд
+    // визуально неотличим от старого, поэтому без тоста клик выглядит так, будто ничего не произошло
+    if (options?.silentRestart) {
+      toast.add({ title: t('room.roundRestarted'), color: 'success', icon: 'i-lucide-refresh-cw' });
+    }
   } catch {
     toast.add({ title: t('room.startRoundError'), color: 'error' });
   } finally {
@@ -214,8 +219,12 @@ async function onStartRound(): Promise<void> {
 
 /** Раунд ещё не начат или уже вскрыт — терять нечего, спрашивать не о чем */
 function onDeckActionClick(): void {
-  if (roundPhase.value === 'voting' && votedCount.value > 0) {
-    cancelConfirmOpen.value = true;
+  if (roundPhase.value === 'voting') {
+    if (votedCount.value > 0) {
+      cancelConfirmOpen.value = true;
+    } else {
+      void onStartRound({ silentRestart: true });
+    }
   } else {
     void onStartRound();
   }
@@ -698,7 +707,7 @@ function retry(): void {
     >
       <template #footer="{ close }">
         <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-        <UButton color="error" :loading="starting" @click="onStartRound">
+        <UButton color="error" :loading="starting" @click="onStartRound()">
           {{ t('room.cancelRoundConfirm') }}
         </UButton>
       </template>

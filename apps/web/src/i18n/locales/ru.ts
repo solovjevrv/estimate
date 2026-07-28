@@ -165,6 +165,7 @@ export default {
     startRound: 'Начать раунд',
     starting: 'Запускаем…',
     startRoundError: 'Не удалось начать раунд. Попробуйте ещё раз.',
+    roundRestarted: 'Раунд перезапущен',
     cancelRound: 'Отменить раунд',
     cancelRoundConfirmTitle: 'Отменить голосование?',
     cancelRoundConfirmText: 'Текущие оценки участников будут потеряны.',

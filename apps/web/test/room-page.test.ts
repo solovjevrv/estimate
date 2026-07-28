@@ -994,6 +994,8 @@ describe('новый раунд и отмена раунда', () => {
     const started = socket.sent.find((s) => s.event === 'start_new_round');
     expect(started?.payload).toMatchObject({ fromRoundId: 'rnd1' });
     expect(document.body.textContent).not.toContain('Отменить голосование?');
+    // 7.23: тихий перезапуск визуально неотличим от старого раунда — тост подтверждает, что клик сработал
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Раунд перезапущен'));
   });
 
   it('отмена раунда с уже поставленными голосами требует подтверждения', async () => {
