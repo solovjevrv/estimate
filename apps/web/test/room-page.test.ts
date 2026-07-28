@@ -313,6 +313,62 @@ describe('вход в комнату', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
   });
 
+  it('после переподключения с протухшим токеном молча восстанавливает вход, если сессия ещё жива (7.16)', async () => {
+    socket.next = { state: roomState(), guestToken: null, participantId: 'u1' };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
+
+    // Сеть моргнула уже после того, как протух access-токен: хэндшейк видит гостя без имени
+    socket.nextError = { error: 'forbidden', message: 'Гостю нужно имя' };
+    socket.disconnect();
+    socket.connect();
+    // Выставляем «починенные» параметры для восстановительного входа заранее — он
+    // случится позже, после того как отработает silent-проверка сессии через /api/me
+    socket.nextError = null;
+    socket.next = { state: roomState(), guestToken: null, participantId: 'u1' };
+
+    await vi.waitFor(() =>
+      expect(socket.sent.filter((s) => s.event === 'join_room')).toHaveLength(2),
+    );
+    expect(wrapper.text()).toContain('Участники');
+  });
+
+  it('после переподключения с по-настоящему истёкшей сессией предлагает войти гостем (7.16)', async () => {
+    let authenticated = true;
+    const fetchImpl = vi.fn((url: string) => {
+      if (url === '/api/rooms/r1') return Promise.resolve(json(200, { room: room1 }));
+      if (url === '/api/me') {
+        return Promise.resolve(
+          authenticated
+            ? json(200, { user })
+            : json(401, { error: 'unauthorized', message: 'нет' }),
+        );
+      }
+      if (url === '/api/auth/refresh') {
+        return Promise.resolve(json(401, { error: 'unauthorized', message: 'нет' }));
+      }
+      if (url === '/api/auth/providers') {
+        return Promise.resolve(json(200, { providers: ['google', 'yandex'] }));
+      }
+      return Promise.resolve(json(404, { error: 'not_found', message: 'нет' }));
+    });
+    socket.next = { state: roomState(), guestToken: null, participantId: 'u1' };
+
+    const { wrapper } = await mountApp('/rooms/r1', fetchImpl);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
+
+    authenticated = false; // refresh-токен тоже протух — сессия закончилась по-настоящему
+    socket.nextError = { error: 'forbidden', message: 'Гостю нужно имя' };
+    socket.disconnect();
+    socket.connect();
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+  });
+
   it('после обрыва соединения бейдж показывает разрыв', async () => {
     socket.next = { state: roomState(), guestToken: null, participantId: 'u1' };
 

@@ -11,7 +11,13 @@ import type { FastifyInstance } from 'fastify';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app';
-import { ACCESS_COOKIE, REFRESH_COOKIE, TokenService, UsersRepository } from '../src/auth';
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  SessionsRepository,
+  TokenService,
+  UsersRepository,
+} from '../src/auth';
 import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
 
@@ -33,9 +39,23 @@ const authConfig: AuthConfig = {
   providers: { google: { clientId: 'test-client-id', clientSecret: 'test-client-secret' } },
 };
 
-/** Пара токенов для указанного экземпляра приложения */
+/**
+ * Пара токенов для указанного экземпляра приложения. `jti` не привязан к
+ * строке в `sessions` — годится там, где сама сессия дальше не проверяется
+ * (например, отдельная проверка типа токена на /api/me).
+ */
 function issue(instance: FastifyInstance, userId: string): { access: string; refresh: string } {
-  return new TokenService(instance.jwt, false).issue(userId);
+  return new TokenService(instance.jwt, false).issue(userId, randomUUID());
+}
+
+/** То же самое, но с настоящей строкой в `sessions` — нужна там, где идёт обмен через /api/auth/refresh */
+async function issueWithSession(
+  instance: FastifyInstance,
+  database: ReturnType<typeof createDb>['db'],
+  userId: string,
+): Promise<{ access: string; refresh: string }> {
+  const session = await new SessionsRepository(database).create(userId);
+  return new TokenService(instance.jwt, false).issue(userId, session.id);
 }
 
 function cookieHeader(name: string, value: string): string {
@@ -92,6 +112,37 @@ describeDb('аутентификация', () => {
       expect(second.id).toBe(first.id);
       expect(second.name).toBe('Новое Имя');
       expect(second.avatarUrl).toBeNull();
+    });
+
+    it('отмечает last_login_at при каждом входе, created_at не трогает (7.9)', async () => {
+      const providerId = `lastlogin-${suffix}`;
+      const created = await createUser({ providerId });
+      const [before] = await db.select().from(schema.users).where(eq(schema.users.id, created.id));
+      expect(before?.lastLoginAt).toBeTruthy();
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new UsersRepository(db).upsertFromOAuth('google', {
+        providerId,
+        email: `user-${suffix}@example.com`,
+        name: 'Тестовый Пользователь',
+        avatarUrl: 'https://example.com/avatar.png',
+      });
+
+      const [after] = await db.select().from(schema.users).where(eq(schema.users.id, created.id));
+      expect(after!.lastLoginAt.getTime()).toBeGreaterThan(before!.lastLoginAt.getTime());
+      expect(after!.createdAt.getTime()).toBe(before!.createdAt.getTime());
+    });
+
+    it('правка профиля обновляет updated_at, но не last_login_at (7.9)', async () => {
+      const user = await createUser({ providerId: `profile-touch-${suffix}` });
+      const [before] = await db.select().from(schema.users).where(eq(schema.users.id, user.id));
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+      await new UsersRepository(db).updateProfile(user.id, { name: 'Другое Имя', jobTitle: null });
+
+      const [after] = await db.select().from(schema.users).where(eq(schema.users.id, user.id));
+      expect(after!.updatedAt.getTime()).toBeGreaterThan(before!.updatedAt.getTime());
+      expect(after!.lastLoginAt.getTime()).toBe(before!.lastLoginAt.getTime());
     });
 
     it('одинаковый email у разных провайдеров даёт разных пользователей', async () => {
@@ -293,7 +344,7 @@ describeDb('аутентификация', () => {
   describe('POST /api/auth/refresh', () => {
     it('выдаёт новую пару токенов по refresh-куке', async () => {
       const user = await createUser({ providerId: `refresh-${suffix}` });
-      const { refresh } = issue(app, user.id);
+      const { refresh } = await issueWithSession(app, db, user.id);
 
       const res = await app.inject({
         method: 'POST',
@@ -328,6 +379,38 @@ describeDb('аутентификация', () => {
 
       expect(res.statusCode).toBe(401);
     });
+
+    it('без строки в sessions (например, после выхода на другом устройстве) отклоняется (7.6)', async () => {
+      const user = await createUser({ providerId: `refresh-no-session-${suffix}` });
+      const { refresh } = issue(app, user.id); // jti не заведён в sessions
+
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/auth/refresh',
+        headers: { cookie: cookieHeader(REFRESH_COOKIE, refresh) },
+      });
+
+      expect(res.statusCode).toBe(401);
+    });
+
+    it('повторное предъявление уже использованного refresh-токена отклоняется — обмен одноразовый (7.6)', async () => {
+      const user = await createUser({ providerId: `refresh-rotate-${suffix}` });
+      const { refresh } = await issueWithSession(app, db, user.id);
+
+      const first = await app.inject({
+        method: 'POST',
+        url: '/api/auth/refresh',
+        headers: { cookie: cookieHeader(REFRESH_COOKIE, refresh) },
+      });
+      expect(first.statusCode).toBe(200);
+
+      const second = await app.inject({
+        method: 'POST',
+        url: '/api/auth/refresh',
+        headers: { cookie: cookieHeader(REFRESH_COOKIE, refresh) },
+      });
+      expect(second.statusCode).toBe(401);
+    });
   });
 
   it('POST /api/auth/logout гасит обе куки', async () => {
@@ -336,6 +419,25 @@ describeDb('аутентификация', () => {
     expect(res.statusCode).toBe(204);
     expect(res.cookies.find((c) => c.name === ACCESS_COOKIE)?.value).toBe('');
     expect(res.cookies.find((c) => c.name === REFRESH_COOKIE)?.value).toBe('');
+  });
+
+  it('POST /api/auth/logout отзывает сессию: тот же refresh-токен после выхода не работает (7.6)', async () => {
+    const user = await createUser({ providerId: `logout-revokes-${suffix}` });
+    const { refresh } = await issueWithSession(app, db, user.id);
+
+    const logoutRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/logout',
+      headers: { cookie: cookieHeader(REFRESH_COOKIE, refresh) },
+    });
+    expect(logoutRes.statusCode).toBe(204);
+
+    const refreshRes = await app.inject({
+      method: 'POST',
+      url: '/api/auth/refresh',
+      headers: { cookie: cookieHeader(REFRESH_COOKIE, refresh) },
+    });
+    expect(refreshRes.statusCode).toBe(401);
   });
 
   it('GET /api/auth/providers перечисляет только настроенных провайдеров', async () => {
@@ -438,7 +540,7 @@ describeDb('аутентификация', () => {
     await secureApp.ready();
     try {
       const user = await createUser({ providerId: `secure-${suffix}` });
-      const { refresh } = issue(secureApp, user.id);
+      const { refresh } = await issueWithSession(secureApp, db, user.id);
 
       const res = await secureApp.inject({
         method: 'POST',
@@ -453,5 +555,42 @@ describeDb('аутентификация', () => {
     } finally {
       await secureApp.close();
     }
+  });
+
+  describe('rate limit на /api/auth/* (7.8)', () => {
+    // Свежий инстанс на каждый тест: у лимитера in-memory счётчик по IP+маршруту,
+    // не хотим, чтобы эти тесты делили бюджет с остальными в файле
+    const AUTH_RATE_LIMIT_MAX = 20; // должно совпадать с константой в src/auth/plugin.ts
+
+    it('после превышения лимита конкретного маршрута отвечает 429 в общем формате ошибок', async () => {
+      const limitedApp = buildApp({ db, auth: authConfig });
+      await limitedApp.ready();
+      try {
+        let last: Awaited<ReturnType<typeof limitedApp.inject>> | undefined;
+        for (let i = 0; i < AUTH_RATE_LIMIT_MAX + 1; i++) {
+          last = await limitedApp.inject({ method: 'GET', url: '/api/auth/providers' });
+        }
+        expect(last?.statusCode).toBe(429);
+        expect(last?.json()).toMatchObject({ error: 'too_many_requests' });
+      } finally {
+        await limitedApp.close();
+      }
+    });
+
+    it('исчерпанный лимит одного маршрута не трогает бюджет другого', async () => {
+      const limitedApp = buildApp({ db, auth: authConfig });
+      await limitedApp.ready();
+      try {
+        for (let i = 0; i < AUTH_RATE_LIMIT_MAX + 1; i++) {
+          await limitedApp.inject({ method: 'GET', url: '/api/auth/providers' });
+        }
+
+        const res = await limitedApp.inject({ method: 'POST', url: '/api/auth/logout' });
+
+        expect(res.statusCode).toBe(204);
+      } finally {
+        await limitedApp.close();
+      }
+    });
   });
 });

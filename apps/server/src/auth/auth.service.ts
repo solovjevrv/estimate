@@ -8,6 +8,7 @@ import {
 import { UnauthorizedError, ValidationError } from '../errors';
 
 import type { OAuthProfile } from './providers';
+import type { SessionsRepository } from './sessions.repository';
 import type { SessionTokens, TokenService } from './token.service';
 import type { UsersRepository } from './users.repository';
 
@@ -20,12 +21,14 @@ export interface Session {
 export class AuthService {
   constructor(
     private readonly users: UsersRepository,
+    private readonly sessions: SessionsRepository,
     private readonly tokens: TokenService,
   ) {}
 
   async completeOAuthLogin(provider: AuthProvider, profile: OAuthProfile): Promise<Session> {
     const user = await this.users.upsertFromOAuth(provider, profile);
-    return { user, tokens: this.tokens.issue(user.id) };
+    const session = await this.sessions.create(user.id);
+    return { user, tokens: this.tokens.issue(user.id, session.id) };
   }
 
   /** Профиль владельца access-токена; аккаунт мог быть удалён — тогда сессия недействительна */
@@ -38,16 +41,33 @@ export class AuthService {
   }
 
   /**
-   * Обмен refresh-токена на новую пару. Отзыва старого токена пока нет:
-   * он остаётся валидным до конца TTL (список сессий в БД — задача 7.6).
+   * Обмен refresh-токена на новую пару. Токен одноразовый: строка в `sessions`
+   * под его `jti` удаляется и заводится заново — повторное предъявление того
+   * же (например, украденного и уже использованного законным владельцем)
+   * токена ничего не даст, обмен отклонится (7.6).
    */
   async refresh(refreshToken: string | undefined): Promise<Session> {
-    const userId = refreshToken ? this.tokens.verify(refreshToken, 'refresh') : null;
-    const user = userId ? await this.users.findById(userId) : null;
-    if (!user) {
+    const parsed = refreshToken ? this.tokens.verifyRefresh(refreshToken) : null;
+    if (!parsed) {
       throw new UnauthorizedError('Сессия истекла');
     }
-    return { user, tokens: this.tokens.issue(user.id) };
+    const rotated = await this.sessions.rotate(parsed.jti, parsed.userId);
+    if (!rotated) {
+      throw new UnauthorizedError('Сессия истекла');
+    }
+    const user = await this.users.findById(parsed.userId);
+    if (!user) {
+      throw new UnauthorizedError();
+    }
+    return { user, tokens: this.tokens.issue(user.id, rotated.id) };
+  }
+
+  /** Выход: гасим сессию, к которой относится refresh-кука — остальные устройства не трогаем */
+  async logout(refreshToken: string | undefined): Promise<void> {
+    const parsed = refreshToken ? this.tokens.verifyRefresh(refreshToken) : null;
+    if (parsed) {
+      await this.sessions.revoke(parsed.jti);
+    }
   }
 
   /** Правка отображаемого имени и должности — оба поля сохраняются одним запросом со страницы профиля */

@@ -62,7 +62,9 @@ describeDb('комнаты', () => {
   const clients: Socket[] = [];
 
   function as(user: AuthUser): { cookie: string } {
-    return { cookie: `${ACCESS_COOKIE}=${new TokenService(app.jwt, false).issue(user.id).access}` };
+    return {
+      cookie: `${ACCESS_COOKIE}=${new TokenService(app.jwt, false).issue(user.id, randomUUID()).access}`,
+    };
   }
 
   async function newUser(label: string): Promise<AuthUser> {

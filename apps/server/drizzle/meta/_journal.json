@@ -64,6 +64,20 @@
       "when": 1785230285115,
       "tag": "0008_natural_silver_centurion",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785237878522,
+      "tag": "0009_far_titanium_man",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1785238765787,
+      "tag": "0010_volatile_dark_beast",
+      "breakpoints": true
     }
   ]
 }

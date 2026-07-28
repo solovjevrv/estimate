@@ -109,4 +109,9 @@ describe('профили OAuth-провайдеров', () => {
 
     await expect(OAUTH_PROVIDERS.google.fetchProfile('token')).rejects.toThrow(/email/);
   });
+
+  it('оба провайдера просят повторный выбор аккаунта на экране авторизации (7.19)', () => {
+    expect(OAUTH_PROVIDERS.google.authorizeParams).toEqual({ prompt: 'select_account' });
+    expect(OAUTH_PROVIDERS.yandex.authorizeParams).toEqual({ force_confirm: 'yes' });
+  });
 });

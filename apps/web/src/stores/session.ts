@@ -82,6 +82,7 @@ export const useSessionStore = defineStore('session', () => {
     providers,
     loaded,
     isAuthenticated,
+    load,
     ensureLoaded,
     loadProviders,
     updateProfile,

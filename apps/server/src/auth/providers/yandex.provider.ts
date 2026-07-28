@@ -7,6 +7,8 @@ export class YandexOAuthProvider extends OAuthProvider {
   readonly name: AuthProvider = 'yandex';
   readonly configuration: ProviderConfiguration = fastifyOauth2.YANDEX_CONFIGURATION;
   readonly scope = ['login:email', 'login:info', 'login:avatar'];
+  /** Аналог Google prompt=select_account у Яндекса (7.19) */
+  override readonly authorizeParams = { force_confirm: 'yes' };
 
   override async fetchProfile(accessToken: string): Promise<OAuthProfile> {
     const data = await this.fetchJson(

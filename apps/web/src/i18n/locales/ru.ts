@@ -146,6 +146,7 @@ export default {
     joining: 'Входим…',
     joinError: 'Не удалось войти в комнату. Попробуйте ещё раз.',
     retry: 'Повторить',
+    sessionExpired: 'Сессия истекла — войдите заново или продолжите как гость.',
     roleScrumMaster: 'Скрам-мастер',
     roleVoter: 'Голосующий',
     connected: 'Подключено',
