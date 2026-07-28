@@ -220,27 +220,6 @@ describeDb('комнаты', () => {
       expect((list.json() as { rooms: unknown[] }).rooms).toHaveLength(1);
     });
 
-    it('закрыть комнату может только скрам-мастер', async () => {
-      const owner = await newUser('close-owner');
-      const stranger = await newUser('close-stranger');
-      const roomId = await newRoom(owner);
-
-      const byStranger = await app.inject({
-        method: 'POST',
-        url: `/api/rooms/${roomId}/close`,
-        headers: as(stranger),
-      });
-      const byOwner = await app.inject({
-        method: 'POST',
-        url: `/api/rooms/${roomId}/close`,
-        headers: as(owner),
-      });
-
-      expect(byStranger.statusCode).toBe(403);
-      expect(byOwner.statusCode).toBe(200);
-      expect(byOwner.json()).toMatchObject({ room: { status: 'closed' } });
-    });
-
     it('список своих комнат показывает и личные, и командные, но только созданные мной', async () => {
       const owner = await newUser('mine-owner');
       const stranger = await newUser('mine-stranger');
@@ -557,23 +536,6 @@ describeDb('комнаты', () => {
       expect(ack).toMatchObject({ ok: false, error: 'forbidden' });
     });
 
-    it('в закрытой комнате голосовать нельзя', async () => {
-      const owner = await newUser('closed-owner');
-      const roomId = await newRoom(owner);
-      const master = connect(owner);
-      await joinRoom(master, roomId);
-      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
-      await app.inject({
-        method: 'POST',
-        url: `/api/rooms/${roomId}/close`,
-        headers: as(owner),
-      });
-
-      const ack = await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 5 });
-
-      expect(ack).toMatchObject({ ok: false, error: 'conflict' });
-    });
-
     it('вскрывать нечего, пока никто не проголосовал', async () => {
       const owner = await newUser('empty-owner');
       const roomId = await newRoom(owner);
@@ -646,20 +608,6 @@ describeDb('комнаты', () => {
       await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
 
       expect(await leaked).toBe('не пришло');
-    });
-
-    it('вскрыть карты в закрытой комнате нельзя', async () => {
-      const owner = await newUser('reveal-closed-owner');
-      const roomId = await newRoom(owner);
-      const master = connect(owner);
-      await joinRoom(master, roomId);
-      await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
-      await emit(master, WS_EVENTS.SUBMIT_VOTE, { value: 3 });
-      await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/close`, headers: as(owner) });
-
-      const ack = await emit(master, WS_EVENTS.REVEAL_CARDS);
-
-      expect(ack).toMatchObject({ ok: false, error: 'conflict' });
     });
 
     it('повторное вскрытие не меняет результат', async () => {

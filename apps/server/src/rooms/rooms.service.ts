@@ -128,18 +128,6 @@ export class RoomsService {
     return this.repository.listRoomsCreatedBy(actorId, archived);
   }
 
-  async closeRoom(actorId: string, roomId: string): Promise<Room> {
-    const room = await this.getRoom(roomId);
-    if ((await this.resolveRole(room, actorId)) !== 'scrum_master') {
-      throw new ForbiddenError('Закрыть комнату может только скрам-мастер');
-    }
-    const closed = await this.repository.closeRoom(roomId);
-    if (!closed) {
-      throw new NotFoundError('Комната не найдена');
-    }
-    return closed;
-  }
-
   /**
    * Архивация — единственный способ «убрать» комнату из основных списков. Настоящее
    * удаление доступно отдельным действием и только для уже заархивированной комнаты.
@@ -465,9 +453,6 @@ export class RoomsService {
       const room = await repo.lockRoom(roomId);
       if (!room) {
         throw new NotFoundError('Комната не найдена');
-      }
-      if (room.status === 'closed') {
-        throw new ConflictError('Комната закрыта');
       }
       if (room.archivedAt) {
         throw new ConflictError('Комната в архиве');

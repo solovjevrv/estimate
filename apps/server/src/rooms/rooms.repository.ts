@@ -65,15 +65,6 @@ export class RoomsRepository {
     return rows.map((row) => this.toRoom(row));
   }
 
-  async closeRoom(roomId: string): Promise<Room | null> {
-    const [row] = await this.db
-      .update(schema.rooms)
-      .set({ status: 'closed', revision: sql`${schema.rooms.revision} + 1` })
-      .where(eq(schema.rooms.id, roomId))
-      .returning();
-    return row ? this.toRoom(row) : null;
-  }
-
   /** Помечает комнату архивной: не удаляет, только прячет из основных списков и запрещает действия за столом */
   async archiveRoom(roomId: string): Promise<Room | null> {
     const [row] = await this.db

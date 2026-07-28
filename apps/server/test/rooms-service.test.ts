@@ -189,17 +189,6 @@ describe('RoomsService: голосование', () => {
     );
   });
 
-  it('в закрытой комнате голосовать нельзя', async () => {
-    const service = serviceWith({
-      ...votingRepo,
-      lockRoom: async () => ({ ...ROOM, status: 'closed' as const }),
-    });
-
-    await expect(service.submitVote(ROOM.id, VOTER, { value: 3 })).rejects.toBeInstanceOf(
-      ConflictError,
-    );
-  });
-
   it('исчезнувший раунд объясняется участнику, а не падает пятисоткой', async () => {
     const service = serviceWith({
       ...votingRepo,
