@@ -314,8 +314,6 @@ type Phase = 'loading' | 'notFound' | 'loadError' | 'naming' | 'joining' | 'join
 const phase = ref<Phase>('loading');
 const roomInfo = ref<Room | null>(null);
 const guestState = reactive({ name: readStoredGuestName() });
-/** Имя, с которым гость реально вошёл (обрезанное) — отдельно от поля формы */
-const joinedGuestName = ref('');
 
 /**
  * Растёт при каждом `load()`/размонтировании: асинхронные продолжения (запрос
@@ -401,7 +399,6 @@ async function onJoinAsGuest(event: FormSubmitEvent<{ name: string }>): Promise<
   const token = currentToken;
   const name = event.data.name.trim();
   storeGuestName(name);
-  joinedGuestName.value = name;
   phase.value = 'joining';
   try {
     await room.join(props.id, name);
@@ -500,9 +497,6 @@ function retry(): void {
           :can-archive="room.isScrumMaster && !isArchived"
           @archive="archiveOpen = true"
         />
-        <p class="text-muted text-sm">
-          {{ t('room.joinedAs', { name: session.user?.name ?? joinedGuestName }) }}
-        </p>
 
         <UAlert
           v-if="isArchived"

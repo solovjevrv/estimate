@@ -47,12 +47,21 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
   <div class="flex items-start justify-between gap-3">
     <div class="flex flex-wrap items-center gap-2.5">
       <h1 class="font-heading text-[28px] font-extrabold">{{ props.name }}</h1>
-      <span
-        class="badge-pill"
-        :class="props.connected ? 'badge-pill-primary' : 'badge-pill-neutral'"
-      >
-        {{ props.connected ? t('room.connected') : t('room.disconnected') }}
-      </span>
+      <UTooltip :text="props.connected ? t('room.connected') : t('room.disconnected')">
+        <!-- Не badge-pill: этот класс задаёт padding вне Tailwind-слоёв, поэтому
+             перебивает любые утилиты-переопределения padding независимо от специфичности -->
+        <span
+          class="flex size-8 items-center justify-center rounded-full"
+          :class="props.connected ? 'bg-[var(--ui-color-primary-500)]' : 'badge-pill-neutral'"
+          :aria-label="props.connected ? t('room.connected') : t('room.disconnected')"
+        >
+          <UIcon
+            :name="props.connected ? 'i-lucide-wifi' : 'i-lucide-wifi-off'"
+            class="size-5"
+            :style="{ color: props.connected ? 'white' : undefined, strokeWidth: '2.5px' }"
+          />
+        </span>
+      </UTooltip>
       <span v-if="props.archived" class="badge-pill badge-pill-neutral">
         {{ t('room.archived') }}
       </span>

@@ -145,7 +145,6 @@ export default {
     joining: 'Joining…',
     joinError: 'Could not join the room. Please try again.',
     retry: 'Retry',
-    joinedAs: 'You joined as “{name}”',
     roleScrumMaster: 'Scrum master',
     roleVoter: 'Voter',
     connected: 'Connected',
