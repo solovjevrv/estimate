@@ -50,10 +50,14 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
       <UTooltip :text="props.connected ? t('room.connected') : t('room.disconnected')">
         <span
           class="badge-pill flex size-7 items-center justify-center p-0"
-          :class="props.connected ? 'badge-pill-primary' : 'badge-pill-neutral'"
+          :class="props.connected ? 'bg-[var(--ui-color-primary-500)]' : 'badge-pill-neutral'"
           :aria-label="props.connected ? t('room.connected') : t('room.disconnected')"
         >
-          <UIcon :name="props.connected ? 'i-lucide-wifi' : 'i-lucide-wifi-off'" class="size-4" />
+          <UIcon
+            :name="props.connected ? 'i-lucide-wifi' : 'i-lucide-wifi-off'"
+            class="size-4"
+            :class="props.connected ? 'text-white' : ''"
+          />
         </span>
       </UTooltip>
       <span v-if="props.archived" class="badge-pill badge-pill-neutral">
