@@ -82,6 +82,16 @@ describeDb('API команд', () => {
     return members.filter((member) => member.role === 'admin').length;
   }
 
+  /** Текущий код приглашения команды глазами администратора */
+  async function inviteCodeOf(teamId: string, admin: AuthUser): Promise<string> {
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/teams/${teamId}`,
+      headers: as(admin),
+    });
+    return (res.json() as { inviteCode: string }).inviteCode;
+  }
+
   beforeAll(async () => {
     ({ db, pool } = createDb(databaseUrl as string));
     repository = new TeamsRepository(db);
@@ -379,15 +389,6 @@ describeDb('API команд', () => {
   });
 
   describe('приглашения', () => {
-    async function inviteCodeOf(teamId: string, admin: AuthUser): Promise<string> {
-      const res = await app.inject({
-        method: 'GET',
-        url: `/api/teams/${teamId}`,
-        headers: as(admin),
-      });
-      return (res.json() as { inviteCode: string }).inviteCode;
-    }
-
     it('по ссылке видно название команды без входа, а вступление требует входа', async () => {
       const admin = await newUser('invite-admin');
       const teamId = await newTeam(admin);
@@ -542,6 +543,22 @@ describeDb('API команд', () => {
       expect(await adminCount(teamId)).toBe(1);
     });
 
+    it('администратор может понизить другого администратора, если он не последний', async () => {
+      const admin1 = await newUser('demote-other-admin1');
+      const admin2 = await newUser('demote-other-admin2');
+      const teamId = await newTeam(admin1, [[admin2, 'admin']]);
+
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/teams/${teamId}/members/${admin2.id}`,
+        headers: as(admin1),
+        payload: { role: 'member' },
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(await adminCount(teamId)).toBe(1);
+    });
+
     it('неизвестная роль отклоняется валидацией', async () => {
       const admin = await newUser('badrole-admin');
       const teamId = await newTeam(admin);
@@ -650,6 +667,57 @@ describeDb('API команд', () => {
       });
 
       expect(byAdmin2.statusCode).toBe(204);
+    });
+
+    it('администратор может исключить другого администратора, если он не последний', async () => {
+      const admin1 = await newUser('kick-other-admin1');
+      const admin2 = await newUser('kick-other-admin2');
+      const teamId = await newTeam(admin1, [[admin2, 'admin']]);
+
+      const res = await app.inject({
+        method: 'DELETE',
+        url: `/api/teams/${teamId}/members/${admin2.id}`,
+        headers: as(admin1),
+      });
+
+      expect(res.statusCode).toBe(204);
+      expect(await adminCount(teamId)).toBe(1);
+    });
+
+    it('исключение участника аннулирует код приглашения — 7.11', async () => {
+      const admin = await newUser('kick-invite-admin');
+      const member = await newUser('kick-invite-member');
+      const teamId = await newTeam(admin, [[member, 'member']]);
+      const oldCode = await inviteCodeOf(teamId, admin);
+
+      const kick = await app.inject({
+        method: 'DELETE',
+        url: `/api/teams/${teamId}/members/${member.id}`,
+        headers: as(admin),
+      });
+      expect(kick.statusCode).toBe(204);
+
+      const newCode = await inviteCodeOf(teamId, admin);
+      expect(newCode).not.toBe(oldCode);
+
+      const old = await app.inject({ method: 'GET', url: `/api/invites/${oldCode}` });
+      expect(old.statusCode).toBe(404);
+    });
+
+    it('собственный выход из команды не меняет код приглашения', async () => {
+      const admin = await newUser('leave-invite-admin');
+      const member = await newUser('leave-invite-member');
+      const teamId = await newTeam(admin, [[member, 'member']]);
+      const oldCode = await inviteCodeOf(teamId, admin);
+
+      const leave = await app.inject({
+        method: 'DELETE',
+        url: `/api/teams/${teamId}/members/${member.id}`,
+        headers: as(member),
+      });
+      expect(leave.statusCode).toBe(204);
+
+      expect(await inviteCodeOf(teamId, admin)).toBe(oldCode);
     });
 
     it('гость может выйти из команды сам', async () => {
