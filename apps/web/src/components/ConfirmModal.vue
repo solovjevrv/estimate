@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { useI18n } from 'vue-i18n';
 
+import { MODAL_BUTTON_UI, MODAL_UI } from '../lib/modal-ui';
+
 const props = withDefaults(
   defineProps<{
     title: string;
@@ -23,11 +25,18 @@ const { t } = useI18n();
     v-model:open="open"
     :title="props.title"
     :description="props.description"
-    :ui="{ footer: 'justify-end' }"
+    :ui="{ ...MODAL_UI, footer: `${MODAL_UI.footer} justify-end gap-2.5` }"
   >
     <template #footer="{ close }">
-      <UButton color="neutral" variant="ghost" @click="close">{{ t('teams.cancel') }}</UButton>
-      <UButton :color="props.confirmColor" :loading="props.loading" @click="emit('confirm')">
+      <UButton color="neutral" variant="outline" :ui="MODAL_BUTTON_UI" @click="close">
+        {{ t('teams.cancel') }}
+      </UButton>
+      <UButton
+        :color="props.confirmColor"
+        :ui="MODAL_BUTTON_UI"
+        :loading="props.loading"
+        @click="emit('confirm')"
+      >
         {{ props.confirmLabel }}
       </UButton>
     </template>

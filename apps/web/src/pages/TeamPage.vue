@@ -16,6 +16,7 @@ import { useRouter } from 'vue-router';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
 import { ApiError } from '../lib/api';
+import { MODAL_BUTTON_UI, MODAL_UI } from '../lib/modal-ui';
 import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
 import { useRoomsStore } from '../stores/rooms';
 import { useSessionStore } from '../stores/session';
@@ -665,7 +666,7 @@ async function confirmDelete(): Promise<void> {
       @confirm="confirmDeleteRoom"
     />
 
-    <UModal v-model:open="createRoomOpen" :title="t('room.createTitle')">
+    <UModal v-model:open="createRoomOpen" :title="t('room.createTitle')" :ui="MODAL_UI">
       <template #body>
         <UForm
           :state="createRoomState"
@@ -683,11 +684,16 @@ async function confirmDelete(): Promise<void> {
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="createRoomOpen = false">
+          <div class="flex justify-end gap-2.5">
+            <UButton
+              color="neutral"
+              variant="outline"
+              :ui="MODAL_BUTTON_UI"
+              @click="createRoomOpen = false"
+            >
               {{ t('teams.cancel') }}
             </UButton>
-            <UButton type="submit" :loading="creatingRoom">
+            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="creatingRoom">
               {{ creatingRoom ? t('room.creating') : t('room.create') }}
             </UButton>
           </div>
@@ -695,7 +701,7 @@ async function confirmDelete(): Promise<void> {
       </template>
     </UModal>
 
-    <UModal v-model:open="renameOpen" :title="t('team.renameTitle')">
+    <UModal v-model:open="renameOpen" :title="t('team.renameTitle')" :ui="MODAL_UI">
       <template #body>
         <UForm :state="renameState" :validate="validateName" class="space-y-4" @submit="onRename">
           <UFormField :label="t('teams.nameLabel')" name="name">
@@ -708,11 +714,18 @@ async function confirmDelete(): Promise<void> {
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="renameOpen = false">
+          <div class="flex justify-end gap-2.5">
+            <UButton
+              color="neutral"
+              variant="outline"
+              :ui="MODAL_BUTTON_UI"
+              @click="renameOpen = false"
+            >
               {{ t('teams.cancel') }}
             </UButton>
-            <UButton type="submit" :loading="renaming">{{ t('team.rename') }}</UButton>
+            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="renaming">
+              {{ t('team.rename') }}
+            </UButton>
           </div>
         </UForm>
       </template>

@@ -4,6 +4,7 @@ import { computed, onMounted } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 
+import ThemeSwitchTrack from './components/ThemeSwitchTrack.vue';
 import { LOCALES, rememberLocale, type Locale } from './i18n';
 import { initTheme, theme, toggleTheme } from './lib/theme';
 import { useSessionStore } from './stores/session';
@@ -54,9 +55,10 @@ const userMenuItems = computed<DropdownMenuItem[][]>(() => [
   [
     {
       label: t('nav.themeLabel'),
-      icon: isDark.value ? 'i-lucide-moon' : 'i-lucide-sun',
+      icon: 'i-lucide-moon',
       type: 'checkbox',
       checked: isDark.value,
+      slot: 'theme',
       onUpdateChecked: () => toggleTheme(),
       onSelect: keepMenuOpen,
     },
@@ -141,19 +143,18 @@ async function logout(): Promise<void> {
                   role="switch"
                   :aria-checked="isDark"
                   :aria-label="t(isDark ? 'nav.theme.light' : 'nav.theme.dark')"
-                  class="relative h-[22px] w-[38px] cursor-pointer rounded-full transition-colors"
-                  :class="isDark ? 'bg-[var(--ui-color-primary-500)]' : 'bg-[var(--brand-border)]'"
+                  class="cursor-pointer"
                   @click="toggleTheme"
                 >
-                  <span
-                    class="absolute top-[2px] size-[18px] rounded-full bg-white transition-[left] duration-150"
-                    :class="isDark ? 'left-[18px]' : 'left-[2px]'"
-                  />
+                  <ThemeSwitchTrack :is-dark="isDark" />
                 </button>
               </UTooltip>
             </template>
 
             <UDropdownMenu v-if="session.isAuthenticated" :items="userMenuItems">
+              <template #theme-trailing>
+                <ThemeSwitchTrack :is-dark="isDark" />
+              </template>
               <button
                 type="button"
                 class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1"

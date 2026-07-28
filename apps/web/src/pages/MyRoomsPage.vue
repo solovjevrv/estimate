@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
+import { MODAL_BUTTON_UI, MODAL_UI } from '../lib/modal-ui';
 import { useRoomsStore } from '../stores/rooms';
 
 const { t, locale } = useI18n();
@@ -288,7 +289,7 @@ async function confirmDelete(): Promise<void> {
       </div>
     </template>
 
-    <UModal v-model:open="createOpen" :title="t('room.createTitle')">
+    <UModal v-model:open="createOpen" :title="t('room.createTitle')" :ui="MODAL_UI">
       <template #body>
         <UForm
           :state="createState"
@@ -306,11 +307,16 @@ async function confirmDelete(): Promise<void> {
             />
           </UFormField>
 
-          <div class="flex justify-end gap-2">
-            <UButton color="neutral" variant="ghost" @click="createOpen = false">
+          <div class="flex justify-end gap-2.5">
+            <UButton
+              color="neutral"
+              variant="outline"
+              :ui="MODAL_BUTTON_UI"
+              @click="createOpen = false"
+            >
               {{ t('teams.cancel') }}
             </UButton>
-            <UButton type="submit" :loading="creating">
+            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="creating">
               {{ creating ? t('room.creating') : t('room.create') }}
             </UButton>
           </div>
