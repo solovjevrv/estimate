@@ -206,7 +206,7 @@ describe('вход в комнату', () => {
     await wrapper.find('input').setValue('Мария');
     await wrapper.find('form').trigger('submit');
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Вы вошли как «Мария»'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
     const join = socket.sent.find((s) => s.event === 'join_room');
     expect(join?.payload).toMatchObject({ roomId: 'r1', guestName: 'Мария' });
   });
@@ -219,7 +219,7 @@ describe('вход в комнату', () => {
       makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Вы вошли как «Иван»'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
     expect(wrapper.text()).not.toContain('Представьтесь');
     const join = socket.sent.find((s) => s.event === 'join_room');
     expect(join?.payload).toMatchObject({ roomId: 'r1' });
@@ -292,7 +292,7 @@ describe('вход в комнату', () => {
     const retryButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Повторить');
     await retryButton!.trigger('click');
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Вы вошли как «Иван»'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
   });
 
   it('гостю после отказа входа «Повторить» возвращает к форме имени', async () => {
@@ -320,11 +320,14 @@ describe('вход в комнату', () => {
       '/rooms/r1',
       makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Подключено'));
+    // Бейдж соединения — иконка без текста (7.21), состояние проверяем по aria-label
+    await vi.waitFor(() => expect(wrapper.find('[aria-label="Подключено"]').exists()).toBe(true));
 
     socket.disconnect();
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Обрыв соединения'));
+    await vi.waitFor(() =>
+      expect(wrapper.find('[aria-label="Обрыв соединения"]').exists()).toBe(true),
+    );
   });
 
   it('быстрый переход между комнатами не показывает результат прежней', async () => {
@@ -352,7 +355,7 @@ describe('вход в комнату', () => {
 
     // Комната r1 ещё грузится (её ответ не пришёл), а пользователь уже ушёл в r2
     await router.push('/rooms/r2');
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Вы вошли как «Иван»'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
     expect(wrapper.text()).toContain('Ретро квартала');
 
     // Отставший ответ по r1 приходит последним — он не должен подменить экран r2
@@ -531,9 +534,7 @@ describe('выбор колоды и голосование', () => {
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Начать раунд'));
 
-    const tshirtTab = wrapper
-      .findAll('button')
-      .find((b) => b.text().trim() === 'Футболочные размеры');
+    const tshirtTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Футболки');
     await tshirtTab!.trigger('click');
 
     const activeRound = round({ deckType: 'tshirt' });
@@ -1370,7 +1371,7 @@ describe('выход из аккаунта на странице комнаты'
         'POST /api/auth/logout': () => json(200, {}),
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Вы вошли как «Иван»'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
     expect(socket.connected).toBe(true);
 
     // Меню пользователя телепортируется в document.body — ищем через реальный DOM

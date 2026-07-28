@@ -47,12 +47,15 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
   <div class="flex items-start justify-between gap-3">
     <div class="flex flex-wrap items-center gap-2.5">
       <h1 class="font-heading text-[28px] font-extrabold">{{ props.name }}</h1>
-      <span
-        class="badge-pill"
-        :class="props.connected ? 'badge-pill-primary' : 'badge-pill-neutral'"
-      >
-        {{ props.connected ? t('room.connected') : t('room.disconnected') }}
-      </span>
+      <UTooltip :text="props.connected ? t('room.connected') : t('room.disconnected')">
+        <span
+          class="badge-pill flex size-7 items-center justify-center p-0"
+          :class="props.connected ? 'badge-pill-primary' : 'badge-pill-neutral'"
+          :aria-label="props.connected ? t('room.connected') : t('room.disconnected')"
+        >
+          <UIcon :name="props.connected ? 'i-lucide-wifi' : 'i-lucide-wifi-off'" class="size-4" />
+        </span>
+      </UTooltip>
       <span v-if="props.archived" class="badge-pill badge-pill-neutral">
         {{ t('room.archived') }}
       </span>

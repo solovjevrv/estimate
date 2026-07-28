@@ -25,7 +25,7 @@ const emit = defineEmits<{ vote: [value: number]; reveal: [] }>();
         v-for="card in props.cards"
         :key="card"
         type="button"
-        class="font-heading flex h-[74px] w-[58px] items-center justify-center rounded-[12px] text-lg font-extrabold transition-[color,background-color,transform] duration-150 hover:-translate-y-1 active:scale-95"
+        class="font-heading flex h-[74px] w-[58px] cursor-pointer items-center justify-center rounded-[12px] text-lg font-extrabold transition-[color,background-color,transform] duration-150 hover:-translate-y-1 active:scale-95"
         :class="
           props.selectedValue === card
             ? 'bg-primary text-white'

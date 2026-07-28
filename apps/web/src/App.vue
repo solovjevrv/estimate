@@ -169,13 +169,13 @@ async function logout(): Promise<void> {
             <UDropdownMenu v-if="session.isAuthenticated" :items="userMenuItems">
               <button
                 type="button"
-                class="hover:bg-elevated flex items-center gap-2 rounded-md px-2 py-1"
+                class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1"
                 :aria-label="t('nav.userMenu')"
               >
                 <span class="flex flex-col items-end leading-tight">
                   <span class="text-sm font-bold">{{ session.user?.name }}</span>
                   <span class="text-primary text-[13px] font-semibold">{{
-                    session.user?.email
+                    session.user?.jobTitle ?? session.user?.email
                   }}</span>
                 </span>
                 <UAvatar
