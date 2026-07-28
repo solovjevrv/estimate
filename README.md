@@ -124,11 +124,14 @@
 ```bash
 docker compose -f docker-compose.prod.yml create certbot
 docker compose -f docker-compose.prod.yml run --rm -p 80:80 \
-  --entrypoint "certbot certonly --standalone -d pokerplan.solovyovdev.ru \
-  --email <email> --agree-tos --no-eff-email" certbot
+  --entrypoint "sh -c 'certbot certonly --standalone -d pokerplan.solovyovdev.ru \
+  --email <email> --agree-tos --no-eff-email && chown -R root:101 /etc/letsencrypt/live /etc/letsencrypt/archive \
+  && chmod -R g+rX /etc/letsencrypt/live /etc/letsencrypt/archive'" certbot
 ```
 
-- Продление автоматическое: сервис `certbot` проверяет сертификат дважды в сутки, nginx перечитывает его при периодическом reload.
+(`chown`/`chmod` в конце — сертификат по умолчанию `600 root:root`, а nginx в образе `nginx-unprivileged` работает под `uid/gid 101`; без этого шага nginx не сможет прочитать приватный ключ и не запустится)
+
+- Продление автоматическое: сервис `certbot` проверяет сертификат дважды в сутки и переприменяет тот же chown/chmod через `--deploy-hook`, nginx перечитывает сертификат при периодическом reload.
 
 ## Команды
 

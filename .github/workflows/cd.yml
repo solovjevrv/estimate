@@ -23,13 +23,15 @@ jobs:
       - name: Настройка SSH
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
         run: |
           mkdir -p ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
-          [ -s ~/.ssh/known_hosts ] || { echo "ssh-keyscan не вернул ключей"; exit 1; }
+          # Ключ сервера закреплён заранее (см. SSH_KNOWN_HOSTS) — без keyscan-а на
+          # каждый деплой, который слепо доверяет первому ответу сервера (TOFU)
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          [ -s ~/.ssh/known_hosts ] || { echo "SSH_KNOWN_HOSTS пуст"; exit 1; }
 
       - name: Деплой
         env:
