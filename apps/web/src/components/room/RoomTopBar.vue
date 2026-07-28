@@ -48,14 +48,16 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
     <div class="flex flex-wrap items-center gap-2.5">
       <h1 class="font-heading text-[28px] font-extrabold">{{ props.name }}</h1>
       <UTooltip :text="props.connected ? t('room.connected') : t('room.disconnected')">
+        <!-- Не badge-pill: этот класс задаёт padding вне Tailwind-слоёв, поэтому
+             перебивает любые утилиты-переопределения padding независимо от специфичности -->
         <span
-          class="badge-pill flex size-9 items-center justify-center p-0"
-          :class="props.connected ? 'bg-[var(--ui-color-primary-500)]' : 'badge-pill-neutral'"
+          class="flex size-8 items-center justify-center rounded-full"
+          :class="props.connected ? 'bg-[var(--ui-color-primary-400)]' : 'badge-pill-neutral'"
           :aria-label="props.connected ? t('room.connected') : t('room.disconnected')"
         >
           <UIcon
             :name="props.connected ? 'i-lucide-wifi' : 'i-lucide-wifi-off'"
-            class="size-8"
+            class="size-5"
             :style="{ color: props.connected ? 'white' : undefined, strokeWidth: '2.5px' }"
           />
         </span>
