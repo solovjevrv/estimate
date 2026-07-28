@@ -155,8 +155,14 @@ export const useRoomStore = defineStore('room', () => {
           });
         }
       });
-      active.on('disconnect', () => {
+      active.on('disconnect', (reason) => {
         connected.value = false;
+        // Сервер рвёт соединение сам, когда access-токен участника истёк (7.7) —
+        // единственная причина, на которую socket.io не переподключается сам.
+        // Новый хендшейк принесёт свежую куку, а дальше сработает connect выше.
+        if (reason === 'io server disconnect' && established) {
+          active.connect();
+        }
       });
     }
 
@@ -176,6 +182,26 @@ export const useRoomStore = defineStore('room', () => {
     established = false;
     state.value = null;
     participantId.value = null;
+    connected.value = false;
+  }
+
+  /**
+   * Разрывает сокет, не трогая показанный стол: нужен новый хендшейк (сервер
+   * узнаёт личность по куке заново), а не полный выход — тот сбросил бы
+   * `state`, и стол на экране на миг пропадал бы, хотя всё это время
+   * оставался актуальным. Используется при восстановлении входа после
+   * протухшего access-токена (7.7), когда следом сразу вызовут `join()`.
+   *
+   * `established` тоже сбрасываем: `join()` создаст новый сокет и повесит на
+   * него свой обработчик `connect`, который при `established === true` сам
+   * дёрнул бы `performJoin()` — тогда после реального подключения выполнились
+   * бы два параллельных входа (и от обработчика, и из `join()` явно). Флаг
+   * `join()` выставит обратно в `true` сам, как при самом первом входе.
+   */
+  function resetConnection(): void {
+    socket?.disconnect();
+    socket = null;
+    established = false;
     connected.value = false;
   }
 
@@ -278,6 +304,7 @@ export const useRoomStore = defineStore('room', () => {
     applyState,
     join,
     leave,
+    resetConnection,
     submitVote,
     revealCards,
     startNewRound,

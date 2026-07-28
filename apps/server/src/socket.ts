@@ -40,7 +40,22 @@ export class SocketGateway {
     });
 
     io.use((socket, next) => {
-      socket.data.userId = this.identify(app, socket.handshake.headers.cookie);
+      const session = this.identify(app, socket.handshake.headers.cookie);
+      socket.data.userId = session?.userId ?? null;
+
+      // Хендшейк проходит один раз на всё время жизни соединения, поэтому
+      // без этого таймера долгоживущая вкладка играла бы от имени пользователя
+      // и после того, как его access-токен истёк (7.7). Рвём соединение —
+      // клиент реагирует на `disconnect` c причиной 'io server disconnect' и
+      // переподключается, а хендшейк заново вычислит личность по свежей куке.
+      if (session) {
+        const timer = setTimeout(
+          () => socket.disconnect(true),
+          Math.max(0, session.expiresAt - Date.now()),
+        );
+        socket.once('disconnect', () => clearTimeout(timer));
+      }
+
       next();
     });
 
@@ -80,9 +95,12 @@ export class SocketGateway {
    * Подключение гостей не запрещаем: вход в комнату по ссылке без входа —
    * штатный сценарий, поэтому неопознанный пользователь просто остаётся гостем.
    */
-  private identify(app: FastifyInstance, cookieHeader: string | undefined): string | null {
+  private identify(
+    app: FastifyInstance,
+    cookieHeader: string | undefined,
+  ): { userId: string; expiresAt: number } | null {
     try {
-      return app.tokens?.readUserIdFromCookieHeader(cookieHeader) ?? null;
+      return app.tokens?.readAccessSessionFromCookieHeader(cookieHeader) ?? null;
     } catch (err) {
       app.log.warn({ err }, 'Socket.io: не удалось разобрать куку сессии');
       return null;

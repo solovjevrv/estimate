@@ -15,6 +15,8 @@ export interface SessionPayload {
    * запрос ради 15-минутного токена нет.
    */
   jti?: string;
+  /** Момент истечения (секунды Unix) — добавляется библиотекой при `sign()` с `expiresIn` */
+  exp?: number;
 }
 
 declare module '@fastify/jwt' {
@@ -93,13 +95,31 @@ export class TokenService {
     }
   }
 
-  /** Разбор сырого заголовка Cookie — нужен Socket.io, который не проходит через роутинг */
-  readUserIdFromCookieHeader(cookieHeader: string | undefined): string | null {
+  /**
+   * Разбор сырого заголовка Cookie — нужен Socket.io, который не проходит через роутинг.
+   * Возвращает и момент истечения токена: хендшейк происходит один раз на всё
+   * время жизни соединения, поэтому дальше сокет обязан сам знать, когда его
+   * куском выданная личность устареет (7.7).
+   */
+  readAccessSessionFromCookieHeader(
+    cookieHeader: string | undefined,
+  ): { userId: string; expiresAt: number } | null {
     if (!cookieHeader) {
       return null;
     }
     const token = this.readCookie(cookieHeader, ACCESS_COOKIE);
-    return token ? this.verify(token, 'access') : null;
+    if (!token) {
+      return null;
+    }
+    try {
+      const payload = this.jwt.verify<SessionPayload>(token);
+      if (payload.typ !== 'access' || typeof payload.sub !== 'string' || !payload.sub) {
+        return null;
+      }
+      return { userId: payload.sub, expiresAt: (payload.exp ?? 0) * 1000 };
+    } catch {
+      return null;
+    }
   }
 
   /** Свой разбор вместо @fastify/cookie: у сокета нет экземпляра Fastify под рукой */
