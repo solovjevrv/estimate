@@ -52,7 +52,7 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
              перебивает любые утилиты-переопределения padding независимо от специфичности -->
         <span
           class="flex size-8 items-center justify-center rounded-full"
-          :class="props.connected ? 'bg-[var(--ui-color-primary-400)]' : 'badge-pill-neutral'"
+          :class="props.connected ? 'bg-[var(--ui-color-primary-500)]' : 'badge-pill-neutral'"
           :aria-label="props.connected ? t('room.connected') : t('room.disconnected')"
         >
           <UIcon
