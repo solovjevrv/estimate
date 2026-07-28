@@ -128,28 +128,15 @@ export class TeamsService {
   }
 
   async rotateInviteCode(actorId: string, teamId: string): Promise<string> {
-    return this.inTransaction(teamId, actorId, 'admin', async (repo) => {
-      // Совпадение кодов почти невероятно, но новая попытка дешевле ошибки у пользователя
-      for (let attempt = 0; attempt < MAX_INVITE_ATTEMPTS; attempt++) {
-        try {
-          const code = await repo.updateInviteCode(teamId, TeamsRepository.generateInviteCode());
-          if (!code) {
-            throw new NotFoundError('Команда не найдена');
-          }
-          return code;
-        } catch (err) {
-          if (!isUniqueViolation(err) || attempt === MAX_INVITE_ATTEMPTS - 1) {
-            throw err;
-          }
-        }
-      }
-      throw new Error('Не удалось выпустить код приглашения');
-    });
+    return this.inTransaction(teamId, actorId, 'admin', async (repo) =>
+      this.rotateInviteCodeInTx(repo, teamId),
+    );
   }
 
   /**
-   * Смена роли участника. Понизить себя (единственного администратора)
-   * нельзя — иначе команда осталась бы без администратора вовсе.
+   * Смена роли участника. Понизить единственного администратора нельзя —
+   * иначе команда осталась бы без администратора вовсе (неважно, кто именно
+   * это делает: сам администратор или другой администратор его понижает).
    */
   async changeMemberRole(
     actorId: string,
@@ -165,7 +152,7 @@ export class TeamsService {
       if (target.role === role) {
         return { member: target, actorRole: actor.role };
       }
-      if (targetUserId === actorId && role !== 'admin') {
+      if (target.role === 'admin' && role !== 'admin') {
         const admins = members.filter((member) => member.role === 'admin').length;
         if (admins === 1) {
           throw new ConflictError('В команде должен остаться хотя бы один администратор');
@@ -180,7 +167,11 @@ export class TeamsService {
     });
   }
 
-  /** Исключение участника или собственный выход из команды */
+  /**
+   * Исключение участника или собственный выход из команды. Последнего
+   * администратора нельзя убрать ни самовыходом, ни решением другого
+   * администратора — команда не должна остаться без управления.
+   */
   async removeMember(actorId: string, teamId: string, targetUserId: string): Promise<void> {
     await this.inTransaction(teamId, actorId, 'guest', async (repo, actor, members) => {
       const target = members.find((member) => member.userId === targetUserId);
@@ -188,19 +179,42 @@ export class TeamsService {
         throw new NotFoundError('Участник не найден');
       }
 
-      if (targetUserId === actorId) {
-        // Выйти может каждый, но не последний администратор
-        const admins = members.filter((member) => member.role === 'admin').length;
-        if (actor.role === 'admin' && admins === 1) {
-          throw new ConflictError('Назначьте другого администратора или удалите команду');
-        }
-      } else if (actor.role !== 'admin') {
+      if (targetUserId !== actorId && actor.role !== 'admin') {
         // Составом команды управляет администратор: остальные только приглашают по ссылке
         throw new ForbiddenError('Исключать участников может только администратор');
       }
+      if (target.role === 'admin') {
+        const admins = members.filter((member) => member.role === 'admin').length;
+        if (admins === 1) {
+          throw new ConflictError('Назначьте другого администратора или удалите команду');
+        }
+      }
 
       await repo.deleteMember(teamId, targetUserId);
+
+      if (targetUserId !== actorId) {
+        // Исключённый мог сохранить ссылку-приглашение — прежний код для него аннулируем
+        await this.rotateInviteCodeInTx(repo, teamId);
+      }
     });
+  }
+
+  /** Совпадение кодов почти невероятно, но новая попытка дешевле ошибки у пользователя */
+  private async rotateInviteCodeInTx(repo: TeamsRepository, teamId: string): Promise<string> {
+    for (let attempt = 0; attempt < MAX_INVITE_ATTEMPTS; attempt++) {
+      try {
+        const code = await repo.updateInviteCode(teamId, TeamsRepository.generateInviteCode());
+        if (!code) {
+          throw new NotFoundError('Команда не найдена');
+        }
+        return code;
+      } catch (err) {
+        if (!isUniqueViolation(err) || attempt === MAX_INVITE_ATTEMPTS - 1) {
+          throw err;
+        }
+      }
+    }
+    throw new Error('Не удалось выпустить код приглашения');
   }
 
   async previewInvite(code: string): Promise<Team> {
