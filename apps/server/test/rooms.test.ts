@@ -19,7 +19,7 @@ import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
 import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { type Socket, io as createClient } from 'socket.io-client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app';
 import { ACCESS_COOKIE, TokenService, UsersRepository } from '../src/auth';
@@ -27,7 +27,7 @@ import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
 import { ConflictError } from '../src/errors';
 import type { ParticipantIdentity } from '../src/rooms';
-import { RoomsService } from '../src/rooms';
+import { RoomsRepository, RoomsService } from '../src/rooms';
 import { SocketGateway } from '../src/socket';
 import { TeamsRepository, TeamsService } from '../src/teams';
 
@@ -1037,6 +1037,74 @@ describeDb('комнаты', () => {
       });
 
       expect(updated.jiraUrl).toBe('https://jira.example.com/LEGACY');
+    });
+
+    it('снимок getState не рвётся, даже если чужой голос коммитится между внутренними запросами — 7.14', async () => {
+      const owner = await newUser('race-torn-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+      const guestA = asGuest('Успевший');
+      const guestB = asGuest('Опоздавший');
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(roomId, guestA, { value: 3 });
+
+      // Задерживаем только чтение голосов: submitVote его не вызывает,
+      // поэтому конкурентный голос гарантированно не попадёт под задержку сам
+      const originalListVotes = RoomsRepository.prototype.listVotes;
+      const spy = vi
+        .spyOn(RoomsRepository.prototype, 'listVotes')
+        .mockImplementationOnce(async function (this: RoomsRepository, roundId: string) {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          return originalListVotes.call(this, roundId);
+        });
+
+      try {
+        const pending = service.getState(roomId, [master, guestA, guestB]);
+        // Коммитится, пока getState ждёт внутри своей repeatable read транзакции
+        await service.submitVote(roomId, guestB, { value: 5 });
+        const state = await pending;
+
+        const votedIds = new Set(
+          state.participants.filter((p) => p.hasVoted).map((p) => p.participantId),
+        );
+        // Снимок зафиксирован до голоса guestB — тот не должен в нём появиться
+        expect(votedIds.has(guestA.participantId)).toBe(true);
+        expect(votedIds.has(guestB.participantId)).toBe(false);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('без repeatable read та же гонка отдаёт голос из будущего — 7.14 (контрольный тест)', async () => {
+      const owner = await newUser('race-torn-control-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+      const guestA = asGuest('Успевший');
+      const guestB = asGuest('Опоздавший');
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(roomId, guestA, { value: 3 });
+
+      // Тот же порядок запросов, что и в getState, но нарочно на read committed —
+      // без repeatable read каждый запрос внутри транзакции видит свежий коммит
+      const readWithDelay = db.transaction(
+        async (tx) => {
+          const repo = new RoomsRepository(tx);
+          const round = await repo.findCurrentRound(roomId);
+          if (!round) {
+            throw new Error('нет раунда');
+          }
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          return repo.listVotes(round.id);
+        },
+        { isolationLevel: 'read committed', accessMode: 'read only' },
+      );
+
+      await service.submitVote(roomId, guestB, { value: 5 });
+      const votes = await readWithDelay;
+
+      // В отличие от repeatable read, здесь голос guestB виден тому же чтению —
+      // это и есть рваный снимок, от которого защищает repeatable read в getState
+      expect(votes.some((vote) => vote.participantId === guestB.participantId)).toBe(true);
     });
   });
 });
