@@ -69,6 +69,22 @@ describe('каркас приложения', () => {
     expect(wrapper.text()).not.toContain('Выйти');
   });
 
+  it('переключатель темы в шапке гостя переключает светлую/тёмную', async () => {
+    await mountApp('/');
+    document.documentElement.classList.remove('dark');
+
+    const toggle = document.body.querySelector('button[role="switch"]');
+    expect(toggle).not.toBeNull();
+    expect(toggle!.getAttribute('aria-checked')).toBe('false');
+
+    (toggle as HTMLElement).click();
+    await vi.waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(true));
+    expect(toggle!.getAttribute('aria-checked')).toBe('true');
+
+    (toggle as HTMLElement).click();
+    await vi.waitFor(() => expect(document.documentElement.classList.contains('dark')).toBe(false));
+  });
+
   it('на странице входа показывает включённые способы входа', async () => {
     const wrapper = await mountApp('/login');
 
@@ -365,12 +381,6 @@ describe('меню пользователя: тема и язык', () => {
 
     const menuTrigger = document.body.querySelector('button[aria-label="Меню пользователя"]');
     (menuTrigger as HTMLElement).click();
-    await vi.waitFor(() => expect(document.body.textContent).toContain('Тема'));
-
-    const themeSubmenuTrigger = Array.from(
-      document.body.querySelectorAll('[role="menuitem"]'),
-    ).find((el) => el.textContent?.trim() === 'Тема');
-    (themeSubmenuTrigger as HTMLElement).click();
     await vi.waitFor(() => expect(document.body.textContent).toContain('Тёмная тема'));
 
     const darkOption = Array.from(document.body.querySelectorAll('[role="menuitemcheckbox"]')).find(

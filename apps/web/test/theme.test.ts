@@ -31,13 +31,13 @@ describe('тема оформления', () => {
     vi.restoreAllMocks();
   });
 
-  it('без сохранённого выбора работает по системному признаку', async () => {
+  it('без сохранённого выбора один раз смотрит на системный признак', async () => {
     stubMatchMedia(true);
     const { initTheme, theme } = await import('../src/lib/theme');
 
     initTheme();
 
-    expect(theme.value).toBe('system');
+    expect(theme.value).toBe('dark');
     expect(document.documentElement.classList.contains('dark')).toBe(true);
   });
 
@@ -68,19 +68,20 @@ describe('тема оформления', () => {
     expect(document.documentElement.classList.contains('dark')).toBe(false);
   });
 
-  it('в системном режиме реагирует на смену системного признака', async () => {
-    const media = stubMatchMedia(false);
-    const { initTheme, theme } = await import('../src/lib/theme');
+  it('toggleTheme переключает между светлой и тёмной', async () => {
+    stubMatchMedia(false);
+    const { initTheme, theme, toggleTheme } = await import('../src/lib/theme');
     initTheme();
-    expect(theme.value).toBe('system');
-    expect(document.documentElement.classList.contains('dark')).toBe(false);
+    expect(theme.value).toBe('light');
 
-    media.setMatches(true);
+    toggleTheme();
+    expect(theme.value).toBe('dark');
 
-    expect(document.documentElement.classList.contains('dark')).toBe(true);
+    toggleTheme();
+    expect(theme.value).toBe('light');
   });
 
-  it('недоступное хранилище не мешает работать на системной теме', async () => {
+  it('недоступное хранилище не мешает переключить тему', async () => {
     vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
       throw new Error('хранилище недоступно');
     });

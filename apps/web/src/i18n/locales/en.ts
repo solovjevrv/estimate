@@ -11,9 +11,8 @@ export default {
     language: 'Language',
     profile: 'Profile',
     userMenu: 'User menu',
-    themeLabel: 'Theme',
+    themeLabel: 'Dark theme',
     theme: {
-      system: 'System theme',
       light: 'Light theme',
       dark: 'Dark theme',
     },
