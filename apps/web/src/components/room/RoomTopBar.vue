@@ -49,14 +49,14 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
       <h1 class="font-heading text-[28px] font-extrabold">{{ props.name }}</h1>
       <UTooltip :text="props.connected ? t('room.connected') : t('room.disconnected')">
         <span
-          class="badge-pill flex size-7 items-center justify-center p-0"
+          class="badge-pill flex size-9 items-center justify-center p-0"
           :class="props.connected ? 'bg-[var(--ui-color-primary-500)]' : 'badge-pill-neutral'"
           :aria-label="props.connected ? t('room.connected') : t('room.disconnected')"
         >
           <UIcon
             :name="props.connected ? 'i-lucide-wifi' : 'i-lucide-wifi-off'"
-            class="size-4"
-            :style="props.connected ? 'color: white' : ''"
+            class="size-8"
+            :style="{ color: props.connected ? 'white' : undefined, strokeWidth: '2.5px' }"
           />
         </span>
       </UTooltip>
