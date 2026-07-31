@@ -47,6 +47,12 @@ test('вход → комната → гость → голосование → 
   await ownerPage.getByRole('button', { name: '5', exact: true }).click();
   await guestPage.getByRole('button', { name: '8', exact: true }).click();
 
+  // Голос гостя доезжает до владельца отдельной WS-рассылкой (room_state) — без
+  // этого ожидания клик по «Вскрыть карты» мог случиться раньше, чем локальный
+  // allVoted на странице владельца увидит второй голос, и вместо вскрытия
+  // открылась бы модалка подтверждения (с тем же текстом на кнопке)
+  await expect(ownerPage.getByText('Проголосовало: 2 из 2')).toBeVisible();
+
   // Проголосовали оба — скрам-мастер вскрывает без запроса подтверждения
   await ownerPage.getByRole('button', { name: 'Вскрыть карты' }).click();
 
