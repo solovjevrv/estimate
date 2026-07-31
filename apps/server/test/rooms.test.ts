@@ -268,6 +268,124 @@ describeDb('комнаты', () => {
     });
   });
 
+  describe('история раундов и статистика — 5.7/3.6', () => {
+    let service: RoomsService;
+
+    function asMaster(user: AuthUser): ParticipantIdentity {
+      return {
+        participantId: user.id,
+        userId: user.id,
+        name: user.name,
+        avatarUrl: null,
+        isGuest: false,
+        role: 'scrum_master',
+      };
+    }
+
+    beforeAll(() => {
+      service = RoomsService.forDatabase(db, authConfig.guestSecret);
+    });
+
+    it('история отдаёт вскрытые раунды с итогами, от последнего к первому', async () => {
+      const owner = await newUser('history-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(roomId, master, { value: 3 });
+      await service.revealCards(roomId, master);
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(roomId, master, { value: 8 });
+      await service.revealCards(roomId, master);
+      // Текущий раунд не вскрыт — в историю попадать не должен
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+
+      // Без входа: история открыта так же, как и сама комната
+      const res = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}/rounds` });
+
+      expect(res.statusCode).toBe(200);
+      const { rounds } = res.json() as {
+        rounds: Array<{ round: Round; result: RoundResult }>;
+      };
+      expect(rounds).toHaveLength(2);
+      expect(rounds.map((entry) => entry.round.seq)).toEqual([2, 1]);
+      expect(rounds[0]?.round.average).toBe(8);
+      expect(rounds[0]?.result.min).toBe(8);
+      expect(rounds[0]?.result.max).toBe(8);
+      expect(rounds[1]?.round.average).toBe(3);
+    });
+
+    it('раунд без единого голоса (голос ушёл каскадом вместе с аккаунтом) пропускается в истории', async () => {
+      const owner = await newUser('history-orphan-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+      const voter = await newUser('history-orphan-voter');
+
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(roomId, { ...asMaster(voter), role: 'voter' }, { value: 5 });
+      await service.revealCards(roomId, master);
+      // Единственный проголосовавший исчез — его голос ушёл каскадом вместе с ним
+      await db.delete(schema.users).where(eq(schema.users.id, voter.id));
+      userIds.splice(userIds.indexOf(voter.id), 1);
+
+      const res = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}/rounds` });
+
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { rounds: unknown[] }).rounds).toHaveLength(0);
+    });
+
+    it('история несуществующей комнаты — 404', async () => {
+      const res = await app.inject({ method: 'GET', url: `/api/rooms/${randomUUID()}/rounds` });
+
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('статистика считает вскрытые раунды по всем комнатам создателя, архивным и активным вместе', async () => {
+      const owner = await newUser('stats-owner');
+      const stranger = await newUser('stats-stranger');
+      const master = asMaster(owner);
+
+      const activeRoomId = await newRoom(owner, 'Активная комната для статистики');
+      await service.startNewRound(activeRoomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(activeRoomId, master, { value: 5 });
+      await service.revealCards(activeRoomId, master);
+
+      const archivedRoomId = await newRoom(owner, 'Архивная комната для статистики');
+      await service.startNewRound(archivedRoomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(archivedRoomId, master, { value: 13 });
+      await service.revealCards(archivedRoomId, master);
+      await service.archiveRoom(owner.id, archivedRoomId);
+
+      // Чужая комната не должна попасть в статистику владельца
+      const strangerRoomId = await newRoom(stranger, 'Чужая комната');
+      const strangerMaster = asMaster(stranger);
+      await service.startNewRound(strangerRoomId, strangerMaster, { deckType: 'fibonacci' });
+      await service.submitVote(strangerRoomId, strangerMaster, { value: 21 });
+      await service.revealCards(strangerRoomId, strangerMaster);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/rooms/stats',
+        headers: as(owner),
+      });
+
+      expect(res.statusCode).toBe(200);
+      const { stats } = res.json() as {
+        stats: { roundsPlayed: number; tasksEstimated: number; avgRoundDurationSec: number | null };
+      };
+      expect(stats.roundsPlayed).toBe(2);
+      expect(stats.tasksEstimated).toBe(2);
+      expect(stats.avgRoundDurationSec).not.toBeNull();
+      expect(stats.avgRoundDurationSec).toBeGreaterThanOrEqual(0);
+    });
+
+    it('статистика без входа — 401', async () => {
+      const res = await app.inject({ method: 'GET', url: '/api/rooms/stats' });
+
+      expect(res.statusCode).toBe(401);
+    });
+  });
+
   describe('архивация и удаление', () => {
     it('архивировать может только скрам-мастер, комната пропадает из списка', async () => {
       const owner = await newUser('archive-owner');
