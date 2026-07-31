@@ -6,6 +6,7 @@
 import type {
   JoinRoomPayload,
   JoinRoomResult,
+  KickParticipantPayload,
   ResetTimerPayload,
   RevealCardsPayload,
   RoomState,
@@ -36,6 +37,8 @@ const ACK_TIMEOUT_MS = 10_000;
 
 interface ServerToClientEvents {
   [WS_SERVER_EVENTS.ROOM_STATE]: (state: RoomState) => void;
+  /** Адресное событие только исключённому — приходит перед разрывом соединения */
+  [WS_SERVER_EVENTS.KICKED]: (payload: Record<string, never>) => void;
 }
 
 /**
@@ -59,6 +62,7 @@ interface ClientToServerEvents {
     ack: (r: WsAck<RoomTimerState>) => void,
   ) => void;
   [WS_EVENTS.RESET_TIMER]: (p: ResetTimerPayload, ack: (r: WsAck<RoomTimerState>) => void) => void;
+  [WS_EVENTS.KICK_PARTICIPANT]: (p: KickParticipantPayload, ack: (r: WsAck<null>) => void) => void;
 }
 
 export type PokerSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

@@ -68,4 +68,22 @@ export class RoomPresence {
     }
     return [...unique.values()];
   }
+
+  /**
+   * Все сокеты участника в комнате — один человек мог открыть несколько вкладок,
+   * и кик должен убрать его целиком, а не только одну из них.
+   */
+  socketIdsOf(roomId: string, participantId: string): string[] {
+    const room = this.participantsByRoom.get(roomId);
+    if (!room) {
+      return [];
+    }
+    const ids: string[] = [];
+    for (const [socketId, identity] of room) {
+      if (identity.participantId === participantId) {
+        ids.push(socketId);
+      }
+    }
+    return ids;
+  }
 }

@@ -226,6 +226,17 @@ export default {
     archivedToast: 'Room archived',
     archivedAlert: 'This room is archived: read-only.',
     archiveError: 'Could not archive the room. Please try again.',
+    kickButton: 'Remove',
+    kickMenuLabel: 'Actions for {name}',
+    kickConfirmTitle: 'Remove from the room?',
+    kickConfirmText:
+      '{name} will lose their seat at the table. They can rejoin using the same link.',
+    kickConfirmButton: 'Remove',
+    kickedParticipantToast: '{name} was removed from the room',
+    kickError: 'Could not remove the participant. Please try again.',
+    kickedNotice: 'The scrum master removed you from the room',
+    kickedMessage: 'The scrum master removed you from this room.',
+    rejoin: 'Rejoin',
   },
   myRooms: {
     title: 'My rooms',

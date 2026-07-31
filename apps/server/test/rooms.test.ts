@@ -859,6 +859,77 @@ describeDb('комнаты', () => {
     });
   });
 
+  describe('исключение участника из комнаты — 5.8', () => {
+    /** Ждёт адресное событие о собственном исключении */
+    function nextKicked(client: Socket): Promise<void> {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('kicked не пришёл')), ANSWER_TIMEOUT_MS);
+        client.once(WS_SERVER_EVENTS.KICKED, () => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    }
+
+    it('скрам-мастер исключает участника: тот получает kicked и пропадает у остальных', async () => {
+      const owner = await newUser('kick-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      const guestJoin = await join(guest, roomId, { guestName: 'Отпускник' });
+
+      const guestKicked = nextKicked(guest);
+      const masterSeesKick = nextState(master);
+      const ack = await emit(master, WS_EVENTS.KICK_PARTICIPANT, {
+        participantId: guestJoin.participantId,
+      });
+
+      expect(ack.ok).toBe(true);
+      await guestKicked;
+      expect((await masterSeesKick).participants).toHaveLength(1);
+    });
+
+    it('голосующий не может исключить участника', async () => {
+      const owner = await newUser('kick-forbidden-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      await joinRoom(guest, roomId, 'Обычный участник');
+
+      const ack = await emit(guest, WS_EVENTS.KICK_PARTICIPANT, {
+        participantId: owner.id,
+      });
+
+      expect(ack).toMatchObject({ ok: false, error: 'forbidden' });
+    });
+
+    it('нельзя исключить самого себя', async () => {
+      const owner = await newUser('kick-self-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+
+      const ack = await emit(master, WS_EVENTS.KICK_PARTICIPANT, { participantId: owner.id });
+
+      expect(ack).toMatchObject({ ok: false, error: 'forbidden' });
+    });
+
+    it('исключение уже отсутствующего участника не роняет запрос', async () => {
+      const owner = await newUser('kick-ghost-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+
+      const ack = await emit(master, WS_EVENTS.KICK_PARTICIPANT, {
+        participantId: randomUUID(),
+      });
+
+      expect(ack.ok).toBe(true);
+    });
+  });
+
   describe('таймер обсуждения', () => {
     it('новая комната отдаёт таймер по умолчанию: 5 минут, не запущен', async () => {
       const owner = await newUser('timer-default-owner');

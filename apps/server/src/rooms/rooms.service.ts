@@ -202,6 +202,18 @@ export class RoomsService {
     });
   }
 
+  /**
+   * Право исключить участника — только у скрам-мастера. Само исключение (поиск
+   * сокета участника и обрыв соединения) сервису не подвластно — он ничего не
+   * знает о сокетах, этим занимается шлюз.
+   */
+  async assertCanKick(roomId: string, identity: ParticipantIdentity): Promise<void> {
+    const room = await this.getRoom(roomId);
+    if ((await this.resolveRole(room, identity.userId)) !== 'scrum_master') {
+      throw new ForbiddenError('Исключать участников может только скрам-мастер');
+    }
+  }
+
   /** Таймер обсуждения — эфемерное состояние, но архив всё равно read-only */
   async assertRoomOpen(roomId: string): Promise<void> {
     const room = await this.getRoom(roomId);

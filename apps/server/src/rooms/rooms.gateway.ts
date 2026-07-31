@@ -3,6 +3,7 @@ import {
   WS_SERVER_EVENTS,
   type JoinRoomPayload,
   type JoinRoomResult,
+  type KickParticipantPayload,
   type ResetTimerPayload,
   type RoomState,
   type RoomTimerState,
@@ -132,6 +133,34 @@ export class RoomsGateway {
           // Ссылки на задачу правит любой участник — так решено в Epic 5
           await this.service.updateLinks(roomId, payload ?? {});
           await this.broadcastState(io, roomId);
+          return null;
+        });
+      });
+
+      socket.on(WS_EVENTS.KICK_PARTICIPANT, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<KickParticipantPayload>(args);
+        this.run(socket, log, ack, async () => {
+          const { roomId, identity } = this.requireSeat(socket);
+          const targetId = payload?.participantId;
+          if (!targetId) {
+            throw new ValidationError('Не указан участник');
+          }
+          if (targetId === identity.participantId) {
+            throw new ForbiddenError('Нельзя исключить самого себя');
+          }
+          await this.service.assertCanKick(roomId, identity);
+
+          // Кикнуть нужно все вкладки того же человека, а не одну — иначе
+          // призрак останется висеть под второй сессией
+          for (const targetSocketId of this.presence.socketIdsOf(roomId, targetId)) {
+            // Адресное событие — прежде чем рвать соединение, иначе клиент не
+            // отличит кик от разрыва по протухшему токену (7.7) и тихо
+            // переподключится тем же обработчиком. У каждого сокета своя
+            // приватная комната с именем-id (заводится Socket.IO сама) — так
+            // рассылка попадает ровно в него, без хранения самого объекта Socket.
+            io.to(targetSocketId).emit(WS_SERVER_EVENTS.KICKED, {});
+            io.sockets.sockets.get(targetSocketId)?.disconnect(true);
+          }
           return null;
         });
       });
