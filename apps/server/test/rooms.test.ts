@@ -42,6 +42,7 @@ const describeDb = databaseUrl ? describe : describe.skip;
 
 const authConfig: AuthConfig = {
   jwtSecret: 'секрет-для-тестов-длиннее-тридцати-двух-символов',
+  guestSecret: 'гостевой-секрет-для-тестов-длиннее-тридцати-двух',
   publicOrigin: 'http://localhost:3000',
   webOrigin: 'http://localhost:5173',
   cookieSecure: false,
@@ -151,7 +152,7 @@ describeDb('комнаты', () => {
     ({ db, pool } = createDb(databaseUrl as string));
     teamsService = TeamsService.forDatabase(db);
     app = buildApp({ db, auth: authConfig });
-    new SocketGateway({ corsOrigin: '*', guestSecret: authConfig.jwtSecret }).attach(app);
+    new SocketGateway({ corsOrigin: '*', guestSecret: authConfig.guestSecret }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
     port = (app.server.address() as AddressInfo).port;
   });
@@ -785,6 +786,27 @@ describeDb('комнаты', () => {
       });
     });
 
+    it('таймер обсуждения не работает в архивной комнате — 6.2', async () => {
+      const owner = await newUser('timer-archived-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+      await app.inject({
+        method: 'POST',
+        url: `/api/rooms/${roomId}/archive`,
+        headers: as(owner),
+      });
+
+      const started = await emit(master, WS_EVENTS.START_TIMER);
+      expect(started).toMatchObject({ ok: false, error: 'conflict' });
+
+      const paused = await emit(master, WS_EVENTS.PAUSE_TIMER);
+      expect(paused).toMatchObject({ ok: false, error: 'conflict' });
+
+      const reset = await emit(master, WS_EVENTS.RESET_TIMER, { durationSec: 600 });
+      expect(reset).toMatchObject({ ok: false, error: 'conflict' });
+    });
+
     it('произвольная длительность (не из пресетов) отклоняется', async () => {
       const owner = await newUser('timer-bad-duration-owner');
       const roomId = await newRoom(owner);
@@ -894,7 +916,7 @@ describeDb('комнаты', () => {
     }
 
     beforeAll(() => {
-      service = RoomsService.forDatabase(db, authConfig.jwtSecret);
+      service = RoomsService.forDatabase(db, authConfig.guestSecret);
     });
 
     it('голоса в момент вскрытия не расходятся с зафиксированным средним', async () => {

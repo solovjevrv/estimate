@@ -96,6 +96,7 @@ export class RoomsGateway {
         const { ack } = this.readArgs<undefined>(args);
         this.run<RoomTimerState>(socket, log, ack, async () => {
           const { roomId } = this.requireSeat(socket);
+          await this.service.assertRoomOpen(roomId);
           const state = this.timer.start(roomId);
           await this.broadcastState(io, roomId);
           return state;
@@ -106,6 +107,7 @@ export class RoomsGateway {
         const { ack } = this.readArgs<undefined>(args);
         this.run<RoomTimerState>(socket, log, ack, async () => {
           const { roomId } = this.requireSeat(socket);
+          await this.service.assertRoomOpen(roomId);
           const state = this.timer.pause(roomId);
           await this.broadcastState(io, roomId);
           return state;
@@ -116,6 +118,7 @@ export class RoomsGateway {
         const { payload, ack } = this.readArgs<ResetTimerPayload>(args);
         this.run<RoomTimerState>(socket, log, ack, async () => {
           const { roomId } = this.requireSeat(socket);
+          await this.service.assertRoomOpen(roomId);
           const state = this.timer.reset(roomId, payload?.durationSec);
           await this.broadcastState(io, roomId);
           return state;

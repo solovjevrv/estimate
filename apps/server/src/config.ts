@@ -1,3 +1,4 @@
+import { hkdfSync } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
@@ -11,6 +12,12 @@ export interface OAuthCredentials {
 export interface AuthConfig {
   /** Секрет для подписи JWT сессии */
   jwtSecret: string;
+  /**
+   * Секрет для подписи гостевых токенов комнаты — отдельный от jwtSecret (HKDF
+   * с доменной меткой), чтобы подпись одной схемы не могла совпасть с другой,
+   * даже если обе используют HMAC-SHA256 на одном мастер-секрете.
+   */
+  guestSecret: string;
   /** Внешний адрес самого сервера — из него собирается redirect_uri для OAuth */
   publicOrigin: string;
   /** Куда вернуть браузер после успешного входа */
@@ -52,6 +59,12 @@ function loadDotenv(): void {
 /** Минимальная длина секрета: 32 символа случайной строки (openssl rand -base64 48) */
 const MIN_JWT_SECRET_LENGTH = 32;
 
+/** Отдельный ключ для гостевых токенов, выведенный из общего секрета через HKDF */
+function deriveGuestSecret(jwtSecret: string): string {
+  const derived = hkdfSync('sha256', jwtSecret, '', 'poker:guest-session', 32);
+  return Buffer.from(derived).toString('base64url');
+}
+
 function loadAuthConfig(webOrigin: string, port: number): AuthConfig {
   const jwtSecret = process.env.JWT_SECRET;
   if (!jwtSecret || jwtSecret.length < MIN_JWT_SECRET_LENGTH) {
@@ -79,6 +92,7 @@ function loadAuthConfig(webOrigin: string, port: number): AuthConfig {
 
   return {
     jwtSecret,
+    guestSecret: deriveGuestSecret(jwtSecret),
     publicOrigin,
     webOrigin,
     cookieSecure: process.env.COOKIE_SECURE

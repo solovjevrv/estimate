@@ -1,3 +1,4 @@
+import fastifyHelmet from '@fastify/helmet';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import fp from 'fastify-plugin';
 
@@ -38,6 +39,11 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
 
   app.decorate('db', deps.db);
   new ErrorHandler().register(app);
+
+  // Базовая защита заголовками (clickjacking, MIME-sniffing и т.п.). CSP выключена:
+  // API отдаёт только JSON, а страница документации (Scalar, только вне прод) сама
+  // грузит инлайн-скрипты — точечная политика под неё не стоит сложности сейчас.
+  void app.register(fastifyHelmet, { contentSecurityPolicy: false });
 
   // Swagger видит только роуты, зарегистрированные после него, поэтому
   // документация подключается первой. Импорт динамический: на проде она
