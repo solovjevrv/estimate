@@ -10,6 +10,7 @@ export const WS_EVENTS = {
   START_TIMER: 'start_timer',
   PAUSE_TIMER: 'pause_timer',
   RESET_TIMER: 'reset_timer',
+  KICK_PARTICIPANT: 'kick_participant',
 } as const;
 
 export type WsEvent = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
@@ -20,6 +21,12 @@ export type WsEvent = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
  */
 export const WS_SERVER_EVENTS = {
   ROOM_STATE: 'room_state',
+  /**
+   * Адресное событие только исключённому — перед `disconnect`. Без него клиент
+   * не отличил бы кик от разрыва из-за протухшего токена (7.7) и тихо
+   * переподключился бы обратно тем же обработчиком.
+   */
+  KICKED: 'kicked',
 } as const;
 
 export type WsServerEvent = (typeof WS_SERVER_EVENTS)[keyof typeof WS_SERVER_EVENTS];
@@ -284,6 +291,10 @@ export interface StartRoundPayload {
    * так двойной клик и два скрам-мастера не создадут лишних раундов.
    */
   fromRoundId?: string | null;
+}
+
+export interface KickParticipantPayload {
+  participantId: string;
 }
 
 export interface UpdateLinksPayload {

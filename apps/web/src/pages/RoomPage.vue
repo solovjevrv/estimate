@@ -5,6 +5,7 @@ import {
   DECK_CARDS,
   GUEST_NAME_MAX_LENGTH,
   type DeckType,
+  type Participant,
   type Room,
   type RoundHistoryEntry,
   tshirtLabel,
@@ -58,6 +59,35 @@ async function onArchive(): Promise<void> {
     toast.add({ title: t('room.archiveError'), color: 'error' });
   } finally {
     archiving.value = false;
+  }
+}
+
+// --- Исключение участника скрам-мастером (5.8) ---
+const kickTarget = ref<Participant | null>(null);
+const kickConfirmOpen = ref(false);
+const kicking = ref(false);
+
+function onKickClick(participant: Participant): void {
+  kickTarget.value = participant;
+  kickConfirmOpen.value = true;
+}
+
+async function onKickConfirm(): Promise<void> {
+  const target = kickTarget.value;
+  if (!target) return;
+  kicking.value = true;
+  try {
+    await room.kickParticipant(target.participantId);
+    kickConfirmOpen.value = false;
+    toast.add({
+      title: t('room.kickedParticipantToast', { name: target.name }),
+      color: 'success',
+      icon: 'i-lucide-check',
+    });
+  } catch {
+    toast.add({ title: t('room.kickError'), color: 'error' });
+  } finally {
+    kicking.value = false;
   }
 }
 
@@ -247,6 +277,17 @@ watch(
   },
 );
 
+/** Скрам-мастер исключил именно этого участника — экран стола сменяем на отдельный, как при joinError */
+watch(
+  () => room.kickedOut,
+  (kicked) => {
+    if (kicked) {
+      phase.value = 'kicked';
+      toast.add({ title: t('room.kickedNotice'), color: 'warning' });
+    }
+  },
+);
+
 function revealedValueLabel(participantId: string): string | null {
   if (roundPhase.value !== 'revealed') return null;
   const value = votesByParticipant.value.get(participantId);
@@ -391,7 +432,8 @@ async function onSaveLinks(
   }
 }
 
-type Phase = 'loading' | 'notFound' | 'loadError' | 'naming' | 'joining' | 'joined' | 'joinError';
+type Phase =
+  'loading' | 'notFound' | 'loadError' | 'naming' | 'joining' | 'joined' | 'joinError' | 'kicked';
 
 const phase = ref<Phase>('loading');
 const roomInfo = ref<Room | null>(null);
@@ -612,8 +654,25 @@ function retry(): void {
 
       <template v-else-if="phase === 'joinError'">
         <UAlert color="error" variant="subtle" :description="t('room.joinError')" />
-        <UButton class="mt-3" color="neutral" variant="subtle" @click="retry">
+        <UButton
+          color="neutral"
+          variant="outline"
+          class="mt-3 rounded-[10px] px-4 py-[9px] text-[13.5px] font-bold"
+          @click="retry"
+        >
           {{ t('room.retry') }}
+        </UButton>
+      </template>
+
+      <template v-else-if="phase === 'kicked'">
+        <UAlert color="warning" variant="subtle" :description="t('room.kickedMessage')" />
+        <UButton
+          color="neutral"
+          variant="outline"
+          class="mt-3 rounded-[10px] px-4 py-[9px] text-[13.5px] font-bold"
+          @click="retry"
+        >
+          {{ t('room.rejoin') }}
         </UButton>
       </template>
 
@@ -780,6 +839,8 @@ function retry(): void {
               :round-status="roundPhase"
               :value-label="revealedValueLabel(p.participantId)"
               :is-winner="isWinnerParticipant(p.participantId)"
+              :can-kick="room.isScrumMaster && p.participantId !== room.participantId"
+              @kick="onKickClick(p)"
             />
           </div>
         </div>
@@ -869,6 +930,15 @@ function retry(): void {
       confirm-color="primary"
       :loading="revealing"
       @confirm="onReveal"
+    />
+
+    <ConfirmModal
+      v-model:open="kickConfirmOpen"
+      :title="t('room.kickConfirmTitle')"
+      :description="t('room.kickConfirmText', { name: kickTarget?.name ?? '' })"
+      :confirm-label="t('room.kickConfirmButton')"
+      :loading="kicking"
+      @confirm="onKickConfirm"
     />
   </section>
 </template>
