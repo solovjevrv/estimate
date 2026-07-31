@@ -63,6 +63,36 @@ importers:
         specifier: ~6.0.3
         version: 6.0.3
 
+  apps/load-test:
+    devDependencies:
+      '@fastify/jwt':
+        specifier: ^10.2.0
+        version: 10.2.0
+      '@poker/server':
+        specifier: workspace:*
+        version: link:../server
+      '@poker/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      '@types/node':
+        specifier: ^24.10.15
+        version: 24.10.15
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@types/pg@8.20.0)(pg@8.22.0)
+      fastify:
+        specifier: ^5.10.0
+        version: 5.10.0
+      socket.io-client:
+        specifier: ^4.8.3
+        version: 4.8.3
+      tsx:
+        specifier: ^4.23.1
+        version: 4.23.1
+      typescript:
+        specifier: ~6.0.3
+        version: 6.0.3
+
   apps/server:
     dependencies:
       '@fastify/cookie':
