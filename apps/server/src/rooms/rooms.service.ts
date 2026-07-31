@@ -6,7 +6,9 @@ import {
   type RoomRole,
   type RoomState,
   type RevealCardsPayload,
+  type RoomStats,
   type Round,
+  type RoundHistoryEntry,
   type RoundResult,
   type DeckType,
   type RoomTimerState,
@@ -55,6 +57,9 @@ const MAX_VOTE_VALUE = 1000;
 const MAX_LINK_LENGTH = 2000;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Хватает с большим запасом на реальные сценарии; пейджинг пока не нужен */
+const ROUND_HISTORY_LIMIT = 50;
 
 /** Внешние ключи голоса: по ним отличаем удалённый раунд от удалённого аккаунта */
 const VOTE_ROUND_FK = 'votes_round_id_rounds_id_fk';
@@ -126,6 +131,35 @@ export class RoomsService {
   /** И личные комнаты, и командные — всё, что пользователь создал сам */
   async listMyRooms(actorId: string, archived = false): Promise<Room[]> {
     return this.repository.listRoomsCreatedBy(actorId, archived);
+  }
+
+  /**
+   * История вскрытых раундов комнаты с их итогами — комната открыта по прямой
+   * ссылке, поэтому доступна так же, как и сама комната (без проверки роли).
+   */
+  async listRoundHistory(roomId: string): Promise<RoundHistoryEntry[]> {
+    await this.getRoom(roomId);
+    const rounds = await this.repository.listRevealedRounds(roomId, ROUND_HISTORY_LIMIT);
+    const entries = await Promise.all(
+      rounds.map(async (round) => {
+        const votes = await this.repository.listVotes(round.id);
+        return { round, votes };
+      }),
+    );
+    // Раунд без единого голоса при вскрытии невозможен (revealCards это проверяет),
+    // но со временем голос мог уйти каскадом вместе с удалённым аккаунтом (7.10) —
+    // summarize() на пустом массиве даёт NaN/Infinity, такой раунд лучше пропустить
+    return entries
+      .filter((entry) => entry.votes.length > 0)
+      .map((entry) => ({
+        round: entry.round,
+        result: this.summarize(entry.votes, entry.round, entry.round.average),
+      }));
+  }
+
+  /** Раундов сыграно, задач оценено и среднее время раунда — по всем комнатам пользователя */
+  async getMyStats(actorId: string): Promise<RoomStats> {
+    return this.repository.roomStats(actorId);
   }
 
   /**

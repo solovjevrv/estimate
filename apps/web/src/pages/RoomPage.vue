@@ -6,6 +6,7 @@ import {
   GUEST_NAME_MAX_LENGTH,
   type DeckType,
   type Room,
+  type RoundHistoryEntry,
   tshirtLabel,
 } from '@poker/shared';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
@@ -179,6 +180,72 @@ const departedVotes = computed(() => {
     .filter((v) => !presentIds.has(v.participantId))
     .map((v) => ({ participantId: v.participantId, name: v.name, valueLabel: cardLabel(v.value) }));
 });
+
+// --- История раундов: открыта так же, как и сама комната, отдельным REST-запросом (5.7) ---
+const historyEntries = ref<RoundHistoryEntry[]>([]);
+const historyLoading = ref(false);
+const historyFailed = ref(false);
+
+/** Для футболочных размеров у голоса своя буквенная подпись — раунды истории могли идти разными колодами */
+function historyCardLabel(value: number, deckType: DeckType): string {
+  return deckType === 'tshirt' ? tshirtLabel(value) : String(value);
+}
+
+function historyVotesText(entry: RoundHistoryEntry): string {
+  return [...entry.result.votes]
+    .sort((a, b) => a.value - b.value)
+    .map((vote) => historyCardLabel(vote.value, entry.round.deckType))
+    .join(', ');
+}
+
+/** Среднее — для футболочных размеров его не считают, показываем самое частое значение */
+function historyResultLabel(entry: RoundHistoryEntry): string {
+  if (entry.round.average !== null) {
+    return String(entry.round.average);
+  }
+  const counts = new Map<number, number>();
+  for (const vote of entry.result.votes) {
+    counts.set(vote.value, (counts.get(vote.value) ?? 0) + 1);
+  }
+  let best: number | null = null;
+  let bestCount = 0;
+  for (const [value, count] of counts) {
+    if (count > bestCount) {
+      best = value;
+      bestCount = count;
+    }
+  }
+  return best === null ? '—' : historyCardLabel(best, entry.round.deckType);
+}
+
+async function loadHistory(): Promise<void> {
+  const token = currentToken;
+  const roomId = props.id;
+  historyLoading.value = true;
+  historyFailed.value = false;
+  try {
+    const res = await api.get<{ rounds: RoundHistoryEntry[] }>(
+      `/api/rooms/${encodeURIComponent(roomId)}/rounds`,
+    );
+    // Пока запрос летел, могли перейти в другую комнату — её историю не подменяем
+    if (token !== currentToken) return;
+    historyEntries.value = res.rounds;
+  } catch {
+    if (token !== currentToken) return;
+    historyFailed.value = true;
+  } finally {
+    if (token === currentToken) historyLoading.value = false;
+  }
+}
+
+// Раунд стал вскрытым — рассылка room_state доходит до всех за столом, поэтому
+// историю обновляет каждый участник, а не только тот, кто нажал «Вскрыть карты»
+watch(
+  () => room.round?.status,
+  (status) => {
+    if (status === 'revealed') void loadHistory();
+  },
+);
 
 function revealedValueLabel(participantId: string): string | null {
   if (roundPhase.value !== 'revealed') return null;
@@ -378,6 +445,8 @@ async function load(): Promise<void> {
   }
   if (token !== currentToken) return;
   roomInfo.value = loadedRoom;
+  historyEntries.value = [];
+  void loadHistory();
 
   if (session.isAuthenticated) {
     await joinAsSelf();
@@ -729,6 +798,48 @@ function retry(): void {
           @vote="onVote"
           @reveal="onRevealClick"
         />
+
+        <div class="surface-card surface-card-lg px-[30px] py-[26px]">
+          <h2 class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
+            {{ t('room.historyTitle') }}
+          </h2>
+
+          <UAlert
+            v-if="historyFailed"
+            color="error"
+            variant="subtle"
+            :description="t('room.historyLoadError')"
+          />
+          <div v-else-if="historyLoading && historyEntries.length === 0" class="space-y-3">
+            <USkeleton class="h-12 w-full bg-[var(--brand-border)]" />
+            <USkeleton class="h-12 w-full bg-[var(--brand-border)]" />
+          </div>
+          <p v-else-if="historyEntries.length === 0" class="text-muted text-sm">
+            {{ t('room.historyEmpty') }}
+          </p>
+          <div v-else class="-mx-[30px]">
+            <div
+              v-for="entry in historyEntries"
+              :key="entry.round.id"
+              class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-[30px] py-[18px] first:border-t-0"
+            >
+              <div class="min-w-0">
+                <div class="text-[15px] font-bold">
+                  {{ t('room.historyRound', { seq: entry.round.seq }) }}
+                </div>
+                <div class="text-muted text-sm">
+                  {{ t('room.historyVotes', { votes: historyVotesText(entry) }) }}
+                </div>
+              </div>
+              <div class="flex shrink-0 items-center gap-2.5">
+                <span class="badge-pill badge-pill-neutral">
+                  {{ t('room.historyAgreement', { percent: entry.result.agreement }) }}
+                </span>
+                <span class="badge-pill badge-pill-primary">{{ historyResultLabel(entry) }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
       </template>
     </template>
 

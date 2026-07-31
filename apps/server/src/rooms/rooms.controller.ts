@@ -42,6 +42,15 @@ export class RoomsController {
     rooms: await this.service.listMyRooms(req.user.sub, req.query.archived === 'true'),
   });
 
+  readonly stats = async (req: FastifyRequest): Promise<unknown> => ({
+    stats: await this.service.getMyStats(req.user.sub),
+  });
+
+  /** История раундов открыта без входа — так же, как и сама комната */
+  readonly history = async (req: FastifyRequest<{ Params: RoomIdParams }>): Promise<unknown> => ({
+    rounds: await this.service.listRoundHistory(req.params.id),
+  });
+
   readonly listByTeam = async (
     req: FastifyRequest<{ Params: TeamIdParams; Querystring: ArchivedQuery }>,
   ): Promise<unknown> => ({
