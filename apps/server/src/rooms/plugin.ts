@@ -5,7 +5,13 @@ import fp from 'fastify-plugin';
 import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
 
-import type { ArchivedQuery, CreateRoomBody, RoomIdParams, TeamIdParams } from './rooms.controller';
+import type {
+  ArchivedQuery,
+  CreateRoomBody,
+  NameBody,
+  RoomIdParams,
+  TeamIdParams,
+} from './rooms.controller';
 import { RoomsController } from './rooms.controller';
 import { RoomsService } from './rooms.service';
 
@@ -20,6 +26,14 @@ const createRoomBody = {
     // Настоящий предел длины проверяет сервис после обрезки пробелов
     name: { type: 'string', minLength: 1, maxLength: ROOM_NAME_MAX_LENGTH + 100 },
     teamId: { type: ['string', 'null'], format: 'uuid' },
+  },
+} as const;
+
+const nameBody = {
+  type: 'object',
+  required: ['name'],
+  properties: {
+    name: { type: 'string', minLength: 1, maxLength: ROOM_NAME_MAX_LENGTH + 100 },
   },
 } as const;
 
@@ -283,6 +297,35 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
       },
     },
     controller.archive,
+  );
+
+  app.patch<{ Params: RoomIdParams; Body: NameBody }>(
+    '/api/rooms/:id',
+    {
+      preHandler: authenticate,
+      schema: {
+        tags: [DOCS_TAGS.rooms],
+        summary: 'Переименовать комнату',
+        description:
+          'Доступно скрам-мастеру (создателю или админу/владельцу команды). Доступно и для ' +
+          'уже заархивированной комнаты.',
+        security: [{ session: [] }],
+        params: idParams,
+        body: nameBody,
+        response: {
+          200: {
+            description: 'Комната переименована',
+            type: 'object',
+            properties: { room: roomResponse },
+          },
+          400: { description: 'Некорректное название', ...errorResponse },
+          401: { description: 'Требуется вход', ...errorResponse },
+          403: { description: 'Нужны права скрам-мастера', ...errorResponse },
+          404: { description: 'Комната не найдена', ...errorResponse },
+        },
+      },
+    },
+    controller.rename,
   );
 
   app.delete<{ Params: RoomIdParams }>(

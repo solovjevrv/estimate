@@ -4,6 +4,7 @@ import { useToast } from '@nuxt/ui/composables';
 import {
   DECK_CARDS,
   GUEST_NAME_MAX_LENGTH,
+  ROOM_NAME_MAX_LENGTH,
   type DeckType,
   type Participant,
   type Room,
@@ -20,6 +21,7 @@ import RoomTimerCard from '../components/room/RoomTimerCard.vue';
 import RoomTopBar from '../components/room/RoomTopBar.vue';
 import RoundResultPanel from '../components/room/RoundResultPanel.vue';
 import { ApiError, api } from '../lib/api';
+import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useRoomStore } from '../stores/room';
 import { useRoomsStore } from '../stores/rooms';
 import { useSessionStore } from '../stores/session';
@@ -59,6 +61,48 @@ async function onArchive(): Promise<void> {
     toast.add({ title: t('room.archiveError'), color: 'error' });
   } finally {
     archiving.value = false;
+  }
+}
+
+// --- Переименование комнаты (7.20) ---
+const renameOpen = ref(false);
+const renaming = ref(false);
+const renameState = reactive({ name: '' });
+
+// Открыли — подставляем текущее имя; закрыли — очищаем, чтобы не мигало старое
+watch(renameOpen, (open) => {
+  renameState.name = open ? (roomInfo.value?.name ?? '') : '';
+});
+
+function validateRoomName(s: { name: string }): FormError[] {
+  const errors: FormError[] = [];
+  const name = s.name.trim();
+  if (!name) {
+    errors.push({ name: 'name', message: t('room.renameNameRequired') });
+  } else if (name.length > ROOM_NAME_MAX_LENGTH) {
+    errors.push({
+      name: 'name',
+      message: t('room.renameNameTooLong', { max: ROOM_NAME_MAX_LENGTH }),
+    });
+  }
+  return errors;
+}
+
+async function onRename(event: FormSubmitEvent<{ name: string }>): Promise<void> {
+  renaming.value = true;
+  try {
+    const renamed = await roomsStore.rename(props.id, event.data.name.trim());
+    roomInfo.value = renamed;
+    const current = room.state;
+    if (current) {
+      room.applyState({ ...current, room: renamed });
+    }
+    renameOpen.value = false;
+    toast.add({ title: t('room.renamed'), color: 'success', icon: 'i-lucide-check' });
+  } catch {
+    toast.add({ title: t('room.renameError'), color: 'error' });
+  } finally {
+    renaming.value = false;
   }
 }
 
@@ -682,7 +726,9 @@ function retry(): void {
           :archived="isArchived"
           :connected="room.connected"
           :can-archive="room.isScrumMaster && !isArchived"
+          :can-rename="room.isScrumMaster"
           @archive="archiveOpen = true"
+          @rename="renameOpen = true"
         />
 
         <UAlert
@@ -912,6 +958,40 @@ function retry(): void {
       :loading="archiving"
       @confirm="onArchive"
     />
+
+    <UModal v-model:open="renameOpen" :title="t('room.renameTitle')" :ui="MODAL_UI">
+      <template #body>
+        <UForm
+          :state="renameState"
+          :validate="validateRoomName"
+          class="space-y-4"
+          @submit="onRename"
+        >
+          <UFormField :label="t('room.roomNameLabel')" name="name">
+            <UInput
+              v-model="renameState.name"
+              :maxlength="ROOM_NAME_MAX_LENGTH"
+              autofocus
+              class="w-full"
+              :ui="MODAL_INPUT_UI"
+            />
+          </UFormField>
+          <div class="flex justify-end gap-2.5">
+            <UButton
+              color="neutral"
+              variant="outline"
+              :ui="MODAL_BUTTON_UI"
+              @click="renameOpen = false"
+            >
+              {{ t('teams.cancel') }}
+            </UButton>
+            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="renaming">
+              {{ t('room.rename') }}
+            </UButton>
+          </div>
+        </UForm>
+      </template>
+    </UModal>
 
     <ConfirmModal
       v-model:open="cancelConfirmOpen"

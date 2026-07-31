@@ -59,7 +59,7 @@ describe('каркас приложения', () => {
     await vi.waitFor(() =>
       expect(wrapper.text()).toContain('Оценка спринта, которая проходит быстро и без спора'),
     );
-    expect(wrapper.text()).toContain('Играйте картами');
+    expect(wrapper.text()).toContain('Голосуйте картами');
   });
 
   it('гостю предлагает войти, а не выйти', async () => {
