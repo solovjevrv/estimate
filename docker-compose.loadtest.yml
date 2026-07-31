@@ -1,0 +1,62 @@
+# Локальная копия прод-сборки для нагрузочного тестирования (6.3). Отдельные
+# порты и отдельная БД — реальный прод и его данные не трогаются. web/nginx/
+# certbot намеренно не подняты: цель прогона — WS-шлюз/БД под нагрузкой, а не
+# TLS-терминация и раздача статики (см. docs/load-test-report.md).
+#
+# ВАЖНО: имя проекта Compose закреплено явно (`name:`), а не унаследовано от
+# имени директории. Без этого при запуске из того же каталога, что и основной
+# docker-compose.yml, оба файла получают один и тот же project name, и Compose
+# считает одноимённые сервисы («postgres») ОДНИМ и тем же — `up`/`down` этого
+# файла может пересоздать или снести dev-контейнер вместо своего собственного.
+# Ровно это и произошло при первом прогоне (см. PROGRESS_ARCHIVE.md, 6.3) —
+# имена сервисов здесь дополнительно уникальны (loadtest-*), но именно `name:`
+# ниже — единственная настоящая гарантия изоляции.
+name: poker-loadtest
+
+services:
+  loadtest-postgres:
+    image: postgres:18-alpine
+    container_name: poker-postgres-loadtest
+    environment:
+      POSTGRES_USER: loadtest
+      POSTGRES_PASSWORD: loadtest
+      POSTGRES_DB: loadtest
+    ports:
+      - '5433:5432'
+    volumes:
+      - loadtest_postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U loadtest -d loadtest']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  loadtest-server:
+    build:
+      context: .
+      dockerfile: apps/server/Dockerfile
+    image: poker-server-loadtest
+    container_name: poker-server-loadtest
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: postgres://loadtest:loadtest@loadtest-postgres:5432/loadtest
+      WEB_ORIGIN: http://localhost:3001
+      PUBLIC_ORIGIN: http://localhost:3001
+      JWT_SECRET: ${LOADTEST_JWT_SECRET:?нужен JWT_SECRET длиной от 32 символов — см. apps/load-test/README.md}
+      DOCS_ENABLED: 'false'
+    ports:
+      - '3001:3000'
+    depends_on:
+      loadtest-postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/health >/dev/null || exit 1']
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 5s
+
+volumes:
+  loadtest_postgres_data:
