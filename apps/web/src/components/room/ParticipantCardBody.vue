@@ -72,20 +72,14 @@ const { t } = useI18n();
       >
         <UIcon name="i-lucide-check" class="size-3.5 text-white" />
       </div>
-      <div
-        class="font-heading absolute -top-5 left-1/2 flex size-12 -translate-x-1/2 items-center justify-center rounded-full text-[15px] font-bold text-white"
+      <UAvatar
+        :src="props.participant.avatarUrl ?? undefined"
+        :alt="props.participant.name"
+        class="absolute -top-5 left-1/2 size-12 -translate-x-1/2"
         :class="teamAvatarColor(props.participant.participantId)"
+        :ui="{ fallback: 'font-heading text-[15px] font-bold text-white uppercase' }"
         style="box-shadow: 0 0 0 3px var(--brand-surface)"
-      >
-        {{
-          props.participant.name
-            .split(' ')
-            .map((word) => word.charAt(0))
-            .join('')
-            .slice(0, 2)
-            .toUpperCase()
-        }}
-      </div>
+      />
     </div>
     <div class="text-center">
       <p class="truncate text-sm font-bold">
