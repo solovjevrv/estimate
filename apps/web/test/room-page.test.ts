@@ -524,6 +524,37 @@ describe('стол участников', () => {
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
   });
+
+  it('участнику с аватаркой показывает изображение, без неё — инициалы (9.9)', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({
+            participantId: 'u1',
+            name: 'Иван',
+            role: 'scrum_master',
+            avatarUrl: 'https://example.com/avatar.png',
+          }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
+
+    const avatarImgs = wrapper.findAll('img');
+    expect(avatarImgs).toHaveLength(1);
+    expect(avatarImgs[0]!.attributes('src')).toBe('https://example.com/avatar.png');
+
+    const fallbacks = wrapper.findAll('[data-slot="fallback"]');
+    expect(fallbacks.some((el) => el.text() === 'М')).toBe(true);
+  });
 });
 
 describe('выбор колоды и голосование', () => {

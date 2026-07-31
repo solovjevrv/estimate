@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 
 /** Кольцо-«монета»: используется и для согласия (реальный % заполнения), и для
  * среднего/мин/макс (заполнение декоративное, всегда полное) — единый визуальный стиль. */
@@ -14,7 +14,24 @@ const props = withDefaults(
 
 const radius = 30;
 const circumference = 2 * Math.PI * radius;
-const dashOffset = computed(() => circumference * (1 - props.percent / 100));
+const targetOffset = computed(() => circumference * (1 - props.percent / 100));
+
+/**
+ * Кольцо монтируется уже с готовым значением — просто забиндить transition на
+ * computed недостаточно, CSS-переход играет только на ИЗМЕНЕНИЕ уже отрисованного
+ * значения. Стартуем с пустого кольца и переключаем на целевое значение кадром
+ * позже, чтобы transition реально сыграл при появлении (вскрытие карт), а не
+ * молча взял итоговое значение.
+ */
+const dashOffset = ref(circumference);
+watch(targetOffset, (value) => {
+  dashOffset.value = value;
+});
+onMounted(() => {
+  requestAnimationFrame(() => {
+    dashOffset.value = targetOffset.value;
+  });
+});
 </script>
 
 <template>
@@ -36,7 +53,7 @@ const dashOffset = computed(() => circumference * (1 - props.percent / 100));
           :r="radius"
           fill="none"
           stroke="currentColor"
-          class="text-primary"
+          class="text-primary transition-[stroke-dashoffset] duration-700 ease-out"
           stroke-width="8"
           stroke-linecap="round"
           :stroke-dasharray="circumference"
