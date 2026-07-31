@@ -1208,6 +1208,123 @@ describe('архивация комнаты', () => {
   });
 });
 
+describe('переименование комнаты (7.20)', () => {
+  it('голосующему пункт «Переименовать» в меню не показывается', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: 'tok',
+      participantId: 'g1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await wrapper.find('input').setValue('Мария');
+    await wrapper.find('form').trigger('submit');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунд ещё не начат'));
+
+    const menuTrigger = document.body.querySelector('button[aria-label="Меню комнаты"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Скопировать ссылку'));
+    expect(document.body.textContent).not.toContain('Переименовать');
+  });
+
+  it('скрам-мастер переименовывает комнату через меню, новое название сразу видно', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+    const renamedRoom: Room = { ...room1, revision: 2, name: 'Оценка нового спринта' };
+    const rename = vi.fn(() => json(200, { room: renamedRoom }));
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, {
+        'GET /api/rooms/r1': () => json(200, { room: room1 }),
+        'PATCH /api/rooms/r1': rename,
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+    expect(wrapper.text()).toContain('Планирование спринта');
+
+    const menuTrigger = document.body.querySelector('button[aria-label="Меню комнаты"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Переименовать'));
+    const renameItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Переименовать',
+    );
+    (renameItem as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Переименовать комнату'));
+
+    const dialog = document.body.querySelector('[role="dialog"]');
+    const input = dialog!.querySelector('input') as HTMLInputElement;
+    input.value = 'Оценка нового спринта';
+    input.dispatchEvent(new Event('input'));
+    const submitButton = Array.from(dialog!.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Переименовать',
+    );
+    submitButton!.click();
+
+    await vi.waitFor(() => expect(rename).toHaveBeenCalled());
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Оценка нового спринта'));
+    expect(wrapper.text()).not.toContain('Планирование спринта');
+  });
+
+  it('при ошибке переименования показывает уведомление', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+    const rename = vi.fn(() => json(500, { error: 'internal', message: 'Ошибка' }));
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, {
+        'GET /api/rooms/r1': () => json(200, { room: room1 }),
+        'PATCH /api/rooms/r1': rename,
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+
+    const menuTrigger = document.body.querySelector('button[aria-label="Меню комнаты"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Переименовать'));
+    const renameItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Переименовать',
+    );
+    (renameItem as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Переименовать комнату'));
+
+    const dialog = document.body.querySelector('[role="dialog"]');
+    const input = dialog!.querySelector('input') as HTMLInputElement;
+    input.value = 'Название с ошибкой';
+    input.dispatchEvent(new Event('input'));
+    const submitButton = Array.from(dialog!.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Переименовать',
+    );
+    submitButton!.click();
+
+    await vi.waitFor(() => expect(rename).toHaveBeenCalled());
+    await vi.waitFor(() =>
+      expect(document.body.textContent).toContain('Не удалось переименовать комнату'),
+    );
+  });
+});
+
 describe('исключение участника (5.8)', () => {
   it('скрам-мастеру доступно меню на чужой карточке, но не на своей', async () => {
     socket.next = {

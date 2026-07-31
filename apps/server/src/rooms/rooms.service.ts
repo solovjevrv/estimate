@@ -186,6 +186,25 @@ export class RoomsService {
     });
   }
 
+  /**
+   * Переименование — как и архивация, доступно только скрам-мастеру. В отличие
+   * от голосования, метаданные комнаты можно поправить и после архивации
+   * (например, задним числом уточнить название задачи в истории).
+   */
+  async renameRoom(actorId: string, roomId: string, rawName: string): Promise<Room> {
+    const name = this.normalizeName(rawName, ROOM_NAME_MAX_LENGTH, 'Название комнаты');
+    return this.withLockedRoom(roomId, async (repo, room, teams) => {
+      if ((await this.resolveRole(room, actorId, teams)) !== 'scrum_master') {
+        throw new ForbiddenError('Переименовать комнату может только скрам-мастер');
+      }
+      const updated = await repo.updateRoomName(roomId, name);
+      if (!updated) {
+        throw new NotFoundError('Комната не найдена');
+      }
+      return updated;
+    });
+  }
+
   /** Необратимо: раунды и голоса комнаты удаляются каскадом на уровне БД */
   async deleteRoomPermanently(actorId: string, roomId: string): Promise<void> {
     await this.withLockedRoom(roomId, async (repo, room, teams) => {

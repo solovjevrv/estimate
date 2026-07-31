@@ -510,6 +510,109 @@ describeDb('комнаты', () => {
     });
   });
 
+  describe('переименование — 7.20', () => {
+    it('переименовать может только скрам-мастер (создатель), чужой участник получает 403', async () => {
+      const owner = await newUser('rename-owner');
+      const stranger = await newUser('rename-stranger');
+      const roomId = await newRoom(owner, 'Старое название');
+
+      const byStranger = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(stranger),
+        payload: { name: 'Чужое переименование' },
+      });
+      expect(byStranger.statusCode).toBe(403);
+
+      const byOwner = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(owner),
+        payload: { name: 'Новое название' },
+      });
+      expect(byOwner.statusCode).toBe(200);
+      expect(byOwner.json()).toMatchObject({ room: { name: 'Новое название' } });
+
+      const direct = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}` });
+      expect(direct.json()).toMatchObject({ room: { name: 'Новое название' } });
+    });
+
+    it('администратор команды может переименовать командную комнату, обычный участник — нет', async () => {
+      const owner = await newUser('rename-team-owner');
+      const admin = await newUser('rename-team-admin');
+      const member = await newUser('rename-team-member');
+      const team = await teamsService.create(owner.id, `Команда ${randomUUID().slice(0, 8)}`);
+      teamIds.push(team.id);
+      await new TeamsRepository(db).insertMemberIfAbsent(team.id, admin.id, 'admin');
+      await new TeamsRepository(db).insertMemberIfAbsent(team.id, member.id, 'member');
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(owner),
+        payload: { name: 'Комната команды', teamId: team.id },
+      });
+      const roomId = (created.json() as { room: { id: string } }).room.id;
+      roomIds.push(roomId);
+
+      const byMember = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(member),
+        payload: { name: 'Переименовано участником' },
+      });
+      expect(byMember.statusCode).toBe(403);
+
+      const byAdmin = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(admin),
+        payload: { name: 'Переименовано администратором' },
+      });
+      expect(byAdmin.statusCode).toBe(200);
+    });
+
+    it('пустое и слишком длинное название отклоняются валидацией, архивную комнату переименовать можно', async () => {
+      const owner = await newUser('rename-validation-owner');
+      const roomId = await newRoom(owner, 'Комната для валидации');
+
+      const empty = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(owner),
+        payload: { name: '   ' },
+      });
+      expect(empty.statusCode).toBe(400);
+
+      const tooLong = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(owner),
+        payload: { name: 'а'.repeat(200) },
+      });
+      expect(tooLong.statusCode).toBe(400);
+
+      await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/archive`, headers: as(owner) });
+      const renameArchived = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(owner),
+        payload: { name: 'Переименовано после архивации' },
+      });
+      expect(renameArchived.statusCode).toBe(200);
+    });
+
+    it('несуществующая комната отвечает 404', async () => {
+      const owner = await newUser('rename-missing-owner');
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${randomUUID()}`,
+        headers: as(owner),
+        payload: { name: 'Название' },
+      });
+      expect(res.statusCode).toBe(404);
+    });
+  });
+
   describe('игровой цикл по WebSocket', () => {
     it('двое голосуют, скрам-мастер вскрывает карты и начинает новый раунд', async () => {
       const owner = await newUser('game-owner');

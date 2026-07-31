@@ -9,9 +9,10 @@ const props = defineProps<{
   archived: boolean;
   connected: boolean;
   canArchive: boolean;
+  canRename: boolean;
 }>();
 
-const emit = defineEmits<{ archive: [] }>();
+const emit = defineEmits<{ archive: []; rename: [] }>();
 
 const { t } = useI18n();
 const toast = useToast();
@@ -29,6 +30,11 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
   const groups: DropdownMenuItem[][] = [
     [{ label: t('room.copyLink'), icon: 'i-lucide-link', onSelect: () => void copyLink() }],
   ];
+  if (props.canRename) {
+    groups.push([
+      { label: t('room.rename'), icon: 'i-lucide-pencil', onSelect: () => emit('rename') },
+    ]);
+  }
   if (props.canArchive) {
     groups.push([
       {

@@ -82,6 +82,16 @@ export class RoomsRepository {
     return rows.length > 0;
   }
 
+  /** Переименование комнаты — метаданные, доступны и для уже заархивированной комнаты */
+  async updateRoomName(roomId: string, name: string): Promise<Room | null> {
+    const [row] = await this.db
+      .update(schema.rooms)
+      .set({ name, revision: sql`${schema.rooms.revision} + 1` })
+      .where(eq(schema.rooms.id, roomId))
+      .returning();
+    return row ? this.toRoom(row) : null;
+  }
+
   /** Отмечает, что за столом что-то изменилось: по этому номеру клиент отбрасывает отставшие рассылки */
   async bumpRevision(roomId: string): Promise<void> {
     await this.db
