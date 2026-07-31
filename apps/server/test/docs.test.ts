@@ -12,6 +12,7 @@ import { DOCS_PATH, OPENAPI_PATH } from '../src/http/openapi';
 
 const authConfig: AuthConfig = {
   jwtSecret: 'секрет-для-тестов-длиннее-тридцати-двух-символов',
+  guestSecret: 'гостевой-секрет-для-тестов-длиннее-тридцати-двух',
   publicOrigin: 'http://localhost:3000',
   webOrigin: 'http://localhost:5173',
   cookieSecure: false,

@@ -12,6 +12,7 @@ import { SocketGateway } from '../src/socket';
 
 const authConfig: AuthConfig = {
   jwtSecret: 'секрет-для-тестов-длиннее-тридцати-двух-символов',
+  guestSecret: 'гостевой-секрет-для-тестов-длиннее-тридцати-двух',
   publicOrigin: 'http://localhost:3000',
   webOrigin: 'http://localhost:5173',
   cookieSecure: false,
@@ -20,7 +21,7 @@ const authConfig: AuthConfig = {
 
 async function startApp(auth?: AuthConfig): Promise<{ app: FastifyInstance; port: number }> {
   const app = buildApp({ db: { execute: vi.fn() } as unknown as Db, auth });
-  new SocketGateway({ corsOrigin: '*', guestSecret: authConfig.jwtSecret }).attach(app);
+  new SocketGateway({ corsOrigin: '*', guestSecret: authConfig.guestSecret }).attach(app);
   await app.listen({ port: 0, host: '127.0.0.1' });
   return { app, port: (app.server.address() as AddressInfo).port };
 }

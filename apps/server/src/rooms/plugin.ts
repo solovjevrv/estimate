@@ -59,8 +59,8 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
     throw new Error('Роуты комнат требуют плагина аутентификации');
   }
 
-  // Секрет тот же, что и у сессии: гостевые токены выдаёт только сервер
-  const controller = new RoomsController(RoomsService.forDatabase(app.db, opts.auth.jwtSecret));
+  // Отдельный секрет гостевых токенов (выведен из jwtSecret) — их выдаёт только сервер
+  const controller = new RoomsController(RoomsService.forDatabase(app.db, opts.auth.guestSecret));
 
   app.post<{ Body: CreateRoomBody }>(
     '/api/rooms',
