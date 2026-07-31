@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { ROOM_NAME_MAX_LENGTH, type Room } from '@poker/shared';
+import { ROOM_NAME_MAX_LENGTH, type Room, type RoomStats } from '@poker/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
@@ -18,6 +18,7 @@ const rooms = useRoomsStore();
 const loading = ref(true);
 const loadFailed = ref(false);
 const list = ref<Room[]>([]);
+const roomStats = ref<RoomStats | null>(null);
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(locale.value);
@@ -30,12 +31,31 @@ function byStatus(status: Room['status']): Room[] {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-/** Числа-заглушки: агрегация раундов/задач по истории отложена (см. Epic 8) */
-const stats = computed(() => [
-  { label: t('myRooms.statsRounds') },
-  { label: t('myRooms.statsEstimated') },
-  { label: t('myRooms.statsAvgTime') },
-]);
+function formatAvgDuration(sec: number): string {
+  const total = Math.round(sec);
+  return t('myRooms.statsAvgTimeValue', {
+    minutes: Math.floor(total / 60),
+    seconds: total % 60,
+  });
+}
+
+// Статистика не критична для страницы — при её отсутствии/ошибке загрузки
+// показываем прочерк, но не блокируем список комнат
+const stats = computed(() => {
+  const placeholder = t('myRooms.statsPlaceholder');
+  const data = roomStats.value;
+  return [
+    { label: t('myRooms.statsRounds'), value: data ? String(data.roundsPlayed) : placeholder },
+    { label: t('myRooms.statsEstimated'), value: data ? String(data.tasksEstimated) : placeholder },
+    {
+      label: t('myRooms.statsAvgTime'),
+      value:
+        data && data.avgRoundDurationSec !== null
+          ? formatAvgDuration(data.avgRoundDurationSec)
+          : placeholder,
+    },
+  ];
+});
 
 const roomSections = computed(() => [
   {
@@ -65,6 +85,11 @@ async function load(): Promise<void> {
     loadFailed.value = true;
   } finally {
     loading.value = false;
+  }
+  try {
+    roomStats.value = await rooms.stats();
+  } catch {
+    roomStats.value = null;
   }
 }
 
@@ -196,7 +221,7 @@ async function confirmDelete(): Promise<void> {
             {{ stat.label }}
           </div>
           <div class="font-heading text-[28px] font-extrabold">
-            {{ t('myRooms.statsPlaceholder') }}
+            {{ stat.value }}
           </div>
         </div>
       </div>

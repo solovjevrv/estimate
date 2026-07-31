@@ -6,7 +6,9 @@ import {
   type RoomRole,
   type RoomState,
   type RevealCardsPayload,
+  type RoomStats,
   type Round,
+  type RoundHistoryEntry,
   type RoundResult,
   type DeckType,
   type RoomTimerState,
@@ -55,6 +57,9 @@ const MAX_VOTE_VALUE = 1000;
 const MAX_LINK_LENGTH = 2000;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Хватает с большим запасом на реальные сценарии; пейджинг пока не нужен */
+const ROUND_HISTORY_LIMIT = 50;
 
 /** Внешние ключи голоса: по ним отличаем удалённый раунд от удалённого аккаунта */
 const VOTE_ROUND_FK = 'votes_round_id_rounds_id_fk';
@@ -129,36 +134,91 @@ export class RoomsService {
   }
 
   /**
+   * История вскрытых раундов комнаты с их итогами — комната открыта по прямой
+   * ссылке, поэтому доступна так же, как и сама комната (без проверки роли).
+   */
+  async listRoundHistory(roomId: string): Promise<RoundHistoryEntry[]> {
+    await this.getRoom(roomId);
+    const rounds = await this.repository.listRevealedRounds(roomId, ROUND_HISTORY_LIMIT);
+    const entries = await Promise.all(
+      rounds.map(async (round) => {
+        const votes = await this.repository.listVotes(round.id);
+        return { round, votes };
+      }),
+    );
+    // Раунд без единого голоса при вскрытии невозможен (revealCards это проверяет),
+    // но со временем голос мог уйти каскадом вместе с удалённым аккаунтом (7.10) —
+    // summarize() на пустом массиве даёт NaN/Infinity, такой раунд лучше пропустить
+    return entries
+      .filter((entry) => entry.votes.length > 0)
+      .map((entry) => ({
+        round: entry.round,
+        result: this.summarize(entry.votes, entry.round, entry.round.average),
+      }));
+  }
+
+  /** Раундов сыграно, задач оценено и среднее время раунда — по всем комнатам пользователя */
+  async getMyStats(actorId: string): Promise<RoomStats> {
+    return this.repository.roomStats(actorId);
+  }
+
+  /**
    * Архивация — единственный способ «убрать» комнату из основных списков. Настоящее
    * удаление доступно отдельным действием и только для уже заархивированной комнаты.
+   *
+   * Роль проверяется под той же блокировкой строки комнаты, что и мутация — иначе
+   * между чтением роли и записью успело бы пройти чужое понижение/исключение из
+   * команды, и запрос выполнился бы уже от имени бывшего администратора.
    */
   async archiveRoom(actorId: string, roomId: string): Promise<Room> {
-    const room = await this.getRoom(roomId);
-    if ((await this.resolveRole(room, actorId)) !== 'scrum_master') {
-      throw new ForbiddenError('Архивировать комнату может только скрам-мастер');
-    }
-    if (room.archivedAt) {
-      throw new ConflictError('Комната уже в архиве');
-    }
-    const archived = await this.repository.archiveRoom(roomId);
-    if (!archived) {
-      throw new ConflictError('Комната уже в архиве');
-    }
-    return archived;
+    return this.withLockedRoom(roomId, async (repo, room, teams) => {
+      if ((await this.resolveRole(room, actorId, teams)) !== 'scrum_master') {
+        throw new ForbiddenError('Архивировать комнату может только скрам-мастер');
+      }
+      if (room.archivedAt) {
+        throw new ConflictError('Комната уже в архиве');
+      }
+      const archived = await repo.archiveRoom(roomId);
+      if (!archived) {
+        throw new ConflictError('Комната уже в архиве');
+      }
+      return archived;
+    });
   }
 
   /** Необратимо: раунды и голоса комнаты удаляются каскадом на уровне БД */
   async deleteRoomPermanently(actorId: string, roomId: string): Promise<void> {
+    await this.withLockedRoom(roomId, async (repo, room, teams) => {
+      if ((await this.resolveRole(room, actorId, teams)) !== 'scrum_master') {
+        throw new ForbiddenError('Удалить комнату может только скрам-мастер');
+      }
+      if (!room.archivedAt) {
+        throw new ConflictError('Сначала заархивируйте комнату');
+      }
+      const deleted = await repo.deleteArchivedRoom(roomId);
+      if (!deleted) {
+        throw new NotFoundError('Комната не найдена');
+      }
+    });
+  }
+
+  /**
+   * Право исключить участника — только у скрам-мастера. Само исключение (поиск
+   * сокета участника и обрыв соединения) сервису не подвластно — он ничего не
+   * знает о сокетах, этим занимается шлюз.
+   */
+  async assertCanKick(roomId: string, identity: ParticipantIdentity): Promise<void> {
     const room = await this.getRoom(roomId);
-    if ((await this.resolveRole(room, actorId)) !== 'scrum_master') {
-      throw new ForbiddenError('Удалить комнату может только скрам-мастер');
+    if ((await this.resolveRole(room, identity.userId)) !== 'scrum_master') {
+      throw new ForbiddenError('Исключать участников может только скрам-мастер');
     }
-    if (!room.archivedAt) {
-      throw new ConflictError('Сначала заархивируйте комнату');
-    }
-    const deleted = await this.repository.deleteArchivedRoom(roomId);
-    if (!deleted) {
-      throw new NotFoundError('Комната не найдена');
+  }
+
+  /** Таймер обсуждения — эфемерное состояние, но архив всё равно read-only */
+  async assertRoomOpen(roomId: string): Promise<void> {
+    const room = await this.getRoom(roomId);
+    if (room.archivedAt) {
+      throw new ConflictError('Комната в архиве');
     }
   }
 
@@ -211,11 +271,12 @@ export class RoomsService {
 
     const name = this.normalizeName(request.guestName ?? '', GUEST_NAME_MAX_LENGTH, 'Имя');
     // Идентификатор гостя виден всем за столом, поэтому личность подтверждает
-    // подписанный токен, а не сам идентификатор
-    const returning = this.guests.verify(request.guestToken);
+    // подписанный токен, а не сам идентификатор. Токен проверяется именно на
+    // эту комнату — токен другой комнаты сюда не подходит.
+    const returning = this.guests.verify(room.id, request.guestToken);
     const session = returning
-      ? { guestId: returning, token: this.guests.issue(returning) }
-      : this.guests.create();
+      ? { guestId: returning, token: this.guests.issue(room.id, returning) }
+      : this.guests.create(room.id);
 
     return {
       room,
@@ -426,13 +487,30 @@ export class RoomsService {
   /**
    * Действие над столом под блокировкой комнаты. Все изменения раундов и
    * голосов идут через неё, поэтому выполняются строго по очереди — так снята
-   * гонка между голосованием, вскрытием карт и сменой раунда.
+   * гонка между голосованием, вскрытием карт и сменой раунда. Архивная комната
+   * доступна только для чтения — сюда так не попасть.
+   */
+  private async inRoom<T>(
+    roomId: string,
+    action: (repo: RoomsRepository, room: Room, teams: TeamsRepository) => Promise<T>,
+  ): Promise<T> {
+    return this.withLockedRoom(roomId, async (repo, room, teams) => {
+      if (room.archivedAt) {
+        throw new ConflictError('Комната в архиве');
+      }
+      return action(repo, room, teams);
+    });
+  }
+
+  /**
+   * Комната под блокировкой строки, без проверки архивности — её решает вызывающий
+   * (у архивации и удаления архивной комнаты разные требования к этому флагу).
    *
    * Репозиторий команд тоже берётся от транзакции: иначе действие, уже
    * державшее соединение пула, просило бы из него второе — и при полном пуле
    * стол вставал бы намертво.
    */
-  private async inRoom<T>(
+  private async withLockedRoom<T>(
     roomId: string,
     action: (repo: RoomsRepository, room: Room, teams: TeamsRepository) => Promise<T>,
   ): Promise<T> {
@@ -441,9 +519,6 @@ export class RoomsService {
       const room = await repo.lockRoom(roomId);
       if (!room) {
         throw new NotFoundError('Комната не найдена');
-      }
-      if (room.archivedAt) {
-        throw new ConflictError('Комната в архиве');
       }
       return action(repo, room, new TeamsRepository(tx));
     });

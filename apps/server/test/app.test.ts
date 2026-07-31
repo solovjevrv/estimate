@@ -45,3 +45,17 @@ describe('GET /health', () => {
     expect(closeDb).toHaveBeenCalledOnce();
   });
 });
+
+describe('security-заголовки — 6.2', () => {
+  it('ответ несёт базовую защиту от clickjacking и MIME-sniffing', async () => {
+    const app = buildApp({ db: mockDb(async () => []) });
+    try {
+      const res = await app.inject({ method: 'GET', url: '/health' });
+
+      expect(res.headers['x-frame-options']).toBeDefined();
+      expect(res.headers['x-content-type-options']).toBe('nosniff');
+    } finally {
+      await app.close();
+    }
+  });
+});

@@ -1,5 +1,5 @@
 /** Создание и архивация комнат: личных (без команды) и от лица команды. */
-import type { Room } from '@poker/shared';
+import type { Room, RoomStats } from '@poker/shared';
 import { defineStore } from 'pinia';
 
 import { api } from '../lib/api';
@@ -27,5 +27,11 @@ export const useRoomsStore = defineStore('rooms', () => {
     await api.delete(`/api/rooms/${encodeURIComponent(roomId)}`);
   }
 
-  return { create, listMine, archive, remove };
+  /** Раундов сыграно, задач оценено и среднее время раунда — по всем своим комнатам */
+  async function stats(): Promise<RoomStats> {
+    const res = await api.get<{ stats: RoomStats }>('/api/rooms/stats');
+    return res.stats;
+  }
+
+  return { create, listMine, archive, remove, stats };
 });

@@ -48,6 +48,8 @@ export const useRoomStore = defineStore('room', () => {
   const state = ref<RoomState | null>(null);
   const participantId = ref<string | null>(null);
   const connected = ref(false);
+  /** Скрам-мастер исключил из комнаты именно этого участника — ставит UI на паузу для редиректа */
+  const kickedOut = ref(false);
 
   let socket: PokerSocket | null = null;
   /** Куда входим: держим отдельно, чтобы восстановить место за столом после реконнекта */
@@ -137,6 +139,7 @@ export const useRoomStore = defineStore('room', () => {
       state.value = null;
       participantId.value = null;
     }
+    kickedOut.value = false;
     target = { roomId, guestName };
     joinToken++;
 
@@ -145,6 +148,11 @@ export const useRoomStore = defineStore('room', () => {
 
     if (!active.hasListeners(WS_SERVER_EVENTS.ROOM_STATE)) {
       active.on(WS_SERVER_EVENTS.ROOM_STATE, applyState);
+      active.on(WS_SERVER_EVENTS.KICKED, () => {
+        // Приходит непосредственно перед disconnect — обработчик ниже должен
+        // успеть увидеть флаг и не принять кик за протухший токен (7.7)
+        kickedOut.value = true;
+      });
       active.on('connect', () => {
         connected.value = true;
         // Место за столом на сервере привязано к соединению: после обрыва входим заново.
@@ -160,7 +168,9 @@ export const useRoomStore = defineStore('room', () => {
         // Сервер рвёт соединение сам, когда access-токен участника истёк (7.7) —
         // единственная причина, на которую socket.io не переподключается сам.
         // Новый хендшейк принесёт свежую куку, а дальше сработает connect выше.
-        if (reason === 'io server disconnect' && established) {
+        // Кик скрам-мастером — та же самая причина отказа, но здесь реконнект
+        // не нужен: участника исключили осознанно, а не токен истёк сам собой.
+        if (reason === 'io server disconnect' && established && !kickedOut.value) {
           active.connect();
         }
       });
@@ -183,6 +193,7 @@ export const useRoomStore = defineStore('room', () => {
     state.value = null;
     participantId.value = null;
     connected.value = false;
+    kickedOut.value = false;
   }
 
   /**
@@ -283,6 +294,15 @@ export const useRoomStore = defineStore('room', () => {
     );
   }
 
+  /** Исключить участника из комнаты — доступно только скрам-мастеру, сервер это перепроверяет */
+  async function kickParticipant(targetParticipantId: string): Promise<void> {
+    await emitWithAck<typeof WS_EVENTS.KICK_PARTICIPANT, null>(
+      requireSocket(),
+      WS_EVENTS.KICK_PARTICIPANT,
+      { participantId: targetParticipantId },
+    );
+  }
+
   async function resetTimer(durationSec?: number): Promise<void> {
     await emitWithAck<typeof WS_EVENTS.RESET_TIMER, RoomTimerState>(
       requireSocket(),
@@ -295,6 +315,7 @@ export const useRoomStore = defineStore('room', () => {
     state,
     participantId,
     connected,
+    kickedOut,
     room,
     round,
     participants,
@@ -312,5 +333,6 @@ export const useRoomStore = defineStore('room', () => {
     startTimer,
     pauseTimer,
     resetTimer,
+    kickParticipant,
   };
 });

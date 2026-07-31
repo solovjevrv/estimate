@@ -19,7 +19,7 @@ async function main(): Promise<void> {
     { logger: true },
   );
 
-  new SocketGateway({ corsOrigin: config.webOrigin, guestSecret: config.auth.jwtSecret }).attach(
+  new SocketGateway({ corsOrigin: config.webOrigin, guestSecret: config.auth.guestSecret }).attach(
     app,
   );
 

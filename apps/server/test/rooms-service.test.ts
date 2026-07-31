@@ -351,7 +351,7 @@ describe('RoomsService: вход за стол', () => {
       roomId: ROOM.id,
       userId: null,
       guestName: '  Гость  ',
-      guestToken: new GuestSessions(GUEST_SECRET).issue('guest-42'),
+      guestToken: new GuestSessions(GUEST_SECRET).issue(ROOM.id, 'guest-42'),
     });
 
     expect(identity).toMatchObject({
@@ -481,14 +481,14 @@ describe('RoomsService: ссылки на задачу', () => {
 
 describe('RoomsService: архивация комнаты', () => {
   it('архивировать может только скрам-мастер', async () => {
-    const service = serviceWith({ findRoom: async () => ROOM });
+    const service = serviceWith({ lockRoom: async () => ROOM });
 
     await expect(service.archiveRoom('user-other', ROOM.id)).rejects.toBeInstanceOf(ForbiddenError);
   });
 
   it('владелец архивирует свою комнату', async () => {
     const archiveRoom = vi.fn(async () => ({ ...ROOM, archivedAt: new Date().toISOString() }));
-    const service = serviceWith({ findRoom: async () => ROOM, archiveRoom });
+    const service = serviceWith({ lockRoom: async () => ROOM, archiveRoom });
 
     const archived = await service.archiveRoom('user-owner', ROOM.id);
 
@@ -498,7 +498,7 @@ describe('RoomsService: архивация комнаты', () => {
 
   it('повторная архивация уже архивной комнаты отклоняется конфликтом', async () => {
     const archivedRoom: Room = { ...ROOM, archivedAt: new Date().toISOString() };
-    const service = serviceWith({ findRoom: async () => archivedRoom });
+    const service = serviceWith({ lockRoom: async () => archivedRoom });
 
     await expect(service.archiveRoom('user-owner', ROOM.id)).rejects.toBeInstanceOf(ConflictError);
   });
@@ -507,7 +507,7 @@ describe('RoomsService: архивация комнаты', () => {
     const teamRoom: Room = { ...ROOM, teamId: 'team-1', creatorId: 'someone-else' };
     const archiveRoom = vi.fn(async () => ({ ...teamRoom, archivedAt: new Date().toISOString() }));
     const service = serviceWith(
-      { findRoom: async () => teamRoom, archiveRoom },
+      { lockRoom: async () => teamRoom, archiveRoom },
       {
         findMembership: vi.fn(async () => ({
           teamId: 'team-1',
@@ -526,7 +526,7 @@ describe('RoomsService: архивация комнаты', () => {
 describe('RoomsService: настоящее удаление', () => {
   it('удалять может только скрам-мастер', async () => {
     const archivedRoom: Room = { ...ROOM, archivedAt: new Date().toISOString() };
-    const service = serviceWith({ findRoom: async () => archivedRoom });
+    const service = serviceWith({ lockRoom: async () => archivedRoom });
 
     await expect(service.deleteRoomPermanently('user-other', ROOM.id)).rejects.toBeInstanceOf(
       ForbiddenError,
@@ -534,7 +534,7 @@ describe('RoomsService: настоящее удаление', () => {
   });
 
   it('удалить можно только уже заархивированную комнату', async () => {
-    const service = serviceWith({ findRoom: async () => ROOM });
+    const service = serviceWith({ lockRoom: async () => ROOM });
 
     await expect(service.deleteRoomPermanently('user-owner', ROOM.id)).rejects.toBeInstanceOf(
       ConflictError,
@@ -544,7 +544,7 @@ describe('RoomsService: настоящее удаление', () => {
   it('заархивированную комнату скрам-мастер удаляет насовсем', async () => {
     const archivedRoom: Room = { ...ROOM, archivedAt: new Date().toISOString() };
     const deleteArchivedRoom = vi.fn(async () => true);
-    const service = serviceWith({ findRoom: async () => archivedRoom, deleteArchivedRoom });
+    const service = serviceWith({ lockRoom: async () => archivedRoom, deleteArchivedRoom });
 
     await service.deleteRoomPermanently('user-owner', ROOM.id);
 

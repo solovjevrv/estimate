@@ -3,6 +3,10 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
+  "exports": {
+    "./auth/testkit": "./src/auth/testkit.ts",
+    "./db": "./src/db/index.ts"
+  },
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "build": "tsup",
@@ -25,6 +29,7 @@
   },
   "dependencies": {
     "@fastify/cookie": "^11.1.2",
+    "@fastify/helmet": "^13.1.0",
     "@fastify/jwt": "^10.2.0",
     "@fastify/oauth2": "^8.2.0",
     "@fastify/rate-limit": "^11.1.0",

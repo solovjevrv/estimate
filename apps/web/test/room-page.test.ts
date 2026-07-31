@@ -524,6 +524,37 @@ describe('стол участников', () => {
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
   });
+
+  it('участнику с аватаркой показывает изображение, без неё — инициалы (9.9)', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({
+            participantId: 'u1',
+            name: 'Иван',
+            role: 'scrum_master',
+            avatarUrl: 'https://example.com/avatar.png',
+          }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
+
+    const avatarImgs = wrapper.findAll('img');
+    expect(avatarImgs).toHaveLength(1);
+    expect(avatarImgs[0]!.attributes('src')).toBe('https://example.com/avatar.png');
+
+    const fallbacks = wrapper.findAll('[data-slot="fallback"]');
+    expect(fallbacks.some((el) => el.text() === 'М')).toBe(true);
+  });
 });
 
 describe('выбор колоды и голосование', () => {
@@ -1174,6 +1205,130 @@ describe('архивация комнаты', () => {
     // Читаемо, но действия за столом больше не предлагаются
     expect(wrapper.text()).not.toContain('Ваша оценка');
     expect(wrapper.text()).not.toContain('Архивировать комнату');
+  });
+});
+
+describe('исключение участника (5.8)', () => {
+  it('скрам-мастеру доступно меню на чужой карточке, но не на своей', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
+
+    expect(document.body.querySelector('[aria-label="Действия с участником Мария"]')).toBeTruthy();
+    expect(document.body.querySelector('[aria-label="Действия с участником Иван"]')).toBeNull();
+  });
+
+  it('голосующему меню исключения недоступно ни на чьей карточке', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: 'tok',
+      participantId: 'g1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await wrapper.find('input').setValue('Мария');
+    await wrapper.find('form').trigger('submit');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Иван'));
+    expect(document.body.querySelector('[aria-label="Действия с участником Иван"]')).toBeNull();
+    expect(document.body.querySelector('[aria-label="Действия с участником Мария"]')).toBeNull();
+  });
+
+  it('клик по карточке → «Исключить» → подтверждение шлёт kick_participant', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
+
+    const trigger = document.body.querySelector('[aria-label="Действия с участником Мария"]');
+    (trigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Исключить'));
+    const kickItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Исключить',
+    );
+    (kickItem as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Исключить из комнаты?'));
+
+    const confirmButton = Array.from(
+      document.body.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [],
+    ).find((b) => b.textContent?.trim() === 'Исключить');
+    confirmButton!.click();
+
+    await vi.waitFor(() =>
+      expect(socket.sent.some((s) => s.event === 'kick_participant')).toBe(true),
+    );
+    const kick = socket.sent.find((s) => s.event === 'kick_participant');
+    expect(kick?.payload).toMatchObject({ participantId: 'g1' });
+  });
+
+  it('исключённый участник видит сообщение и не переподключается автоматически', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: 'tok',
+      participantId: 'g1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await wrapper.find('input').setValue('Мария');
+    await wrapper.find('form').trigger('submit');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Иван'));
+
+    const joinsBefore = socket.sent.filter((s) => s.event === 'join_room').length;
+
+    // Тот же порядок, что и на сервере: адресное kicked, затем разрыв с
+    // причиной 'io server disconnect' — той же, что и у протухшего токена (7.7)
+    socket.emitLocal(WS_SERVER_EVENTS.KICKED, {});
+    socket.emitLocal('disconnect', 'io server disconnect');
+
+    await vi.waitFor(() =>
+      expect(wrapper.text()).toContain('Скрам-мастер исключил вас из этой комнаты.'),
+    );
+    expect(wrapper.text()).toContain('Войти снова');
+    // Кик не должен вызвать тот же автореконнект, что и штатное истечение токена (7.7)
+    expect(socket.sent.filter((s) => s.event === 'join_room').length).toBe(joinsBefore);
   });
 });
 

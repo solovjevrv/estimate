@@ -19,7 +19,7 @@ import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
 import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { type Socket, io as createClient } from 'socket.io-client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app';
 import { ACCESS_COOKIE, TokenService, UsersRepository } from '../src/auth';
@@ -27,7 +27,7 @@ import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
 import { ConflictError } from '../src/errors';
 import type { ParticipantIdentity } from '../src/rooms';
-import { RoomsService } from '../src/rooms';
+import { RoomsRepository, RoomsService } from '../src/rooms';
 import { SocketGateway } from '../src/socket';
 import { TeamsRepository, TeamsService } from '../src/teams';
 
@@ -42,6 +42,7 @@ const describeDb = databaseUrl ? describe : describe.skip;
 
 const authConfig: AuthConfig = {
   jwtSecret: 'секрет-для-тестов-длиннее-тридцати-двух-символов',
+  guestSecret: 'гостевой-секрет-для-тестов-длиннее-тридцати-двух',
   publicOrigin: 'http://localhost:3000',
   webOrigin: 'http://localhost:5173',
   cookieSecure: false,
@@ -151,7 +152,7 @@ describeDb('комнаты', () => {
     ({ db, pool } = createDb(databaseUrl as string));
     teamsService = TeamsService.forDatabase(db);
     app = buildApp({ db, auth: authConfig });
-    new SocketGateway({ corsOrigin: '*', guestSecret: authConfig.jwtSecret }).attach(app);
+    new SocketGateway({ corsOrigin: '*', guestSecret: authConfig.guestSecret }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
     port = (app.server.address() as AddressInfo).port;
   });
@@ -264,6 +265,124 @@ describeDb('комнаты', () => {
       const res = await app.inject({ method: 'GET', url: `/api/rooms/${randomUUID()}` });
 
       expect(res.statusCode).toBe(404);
+    });
+  });
+
+  describe('история раундов и статистика — 5.7/3.6', () => {
+    let service: RoomsService;
+
+    function asMaster(user: AuthUser): ParticipantIdentity {
+      return {
+        participantId: user.id,
+        userId: user.id,
+        name: user.name,
+        avatarUrl: null,
+        isGuest: false,
+        role: 'scrum_master',
+      };
+    }
+
+    beforeAll(() => {
+      service = RoomsService.forDatabase(db, authConfig.guestSecret);
+    });
+
+    it('история отдаёт вскрытые раунды с итогами, от последнего к первому', async () => {
+      const owner = await newUser('history-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(roomId, master, { value: 3 });
+      await service.revealCards(roomId, master);
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(roomId, master, { value: 8 });
+      await service.revealCards(roomId, master);
+      // Текущий раунд не вскрыт — в историю попадать не должен
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+
+      // Без входа: история открыта так же, как и сама комната
+      const res = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}/rounds` });
+
+      expect(res.statusCode).toBe(200);
+      const { rounds } = res.json() as {
+        rounds: Array<{ round: Round; result: RoundResult }>;
+      };
+      expect(rounds).toHaveLength(2);
+      expect(rounds.map((entry) => entry.round.seq)).toEqual([2, 1]);
+      expect(rounds[0]?.round.average).toBe(8);
+      expect(rounds[0]?.result.min).toBe(8);
+      expect(rounds[0]?.result.max).toBe(8);
+      expect(rounds[1]?.round.average).toBe(3);
+    });
+
+    it('раунд без единого голоса (голос ушёл каскадом вместе с аккаунтом) пропускается в истории', async () => {
+      const owner = await newUser('history-orphan-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+      const voter = await newUser('history-orphan-voter');
+
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(roomId, { ...asMaster(voter), role: 'voter' }, { value: 5 });
+      await service.revealCards(roomId, master);
+      // Единственный проголосовавший исчез — его голос ушёл каскадом вместе с ним
+      await db.delete(schema.users).where(eq(schema.users.id, voter.id));
+      userIds.splice(userIds.indexOf(voter.id), 1);
+
+      const res = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}/rounds` });
+
+      expect(res.statusCode).toBe(200);
+      expect((res.json() as { rounds: unknown[] }).rounds).toHaveLength(0);
+    });
+
+    it('история несуществующей комнаты — 404', async () => {
+      const res = await app.inject({ method: 'GET', url: `/api/rooms/${randomUUID()}/rounds` });
+
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('статистика считает вскрытые раунды по всем комнатам создателя, архивным и активным вместе', async () => {
+      const owner = await newUser('stats-owner');
+      const stranger = await newUser('stats-stranger');
+      const master = asMaster(owner);
+
+      const activeRoomId = await newRoom(owner, 'Активная комната для статистики');
+      await service.startNewRound(activeRoomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(activeRoomId, master, { value: 5 });
+      await service.revealCards(activeRoomId, master);
+
+      const archivedRoomId = await newRoom(owner, 'Архивная комната для статистики');
+      await service.startNewRound(archivedRoomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(archivedRoomId, master, { value: 13 });
+      await service.revealCards(archivedRoomId, master);
+      await service.archiveRoom(owner.id, archivedRoomId);
+
+      // Чужая комната не должна попасть в статистику владельца
+      const strangerRoomId = await newRoom(stranger, 'Чужая комната');
+      const strangerMaster = asMaster(stranger);
+      await service.startNewRound(strangerRoomId, strangerMaster, { deckType: 'fibonacci' });
+      await service.submitVote(strangerRoomId, strangerMaster, { value: 21 });
+      await service.revealCards(strangerRoomId, strangerMaster);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: '/api/rooms/stats',
+        headers: as(owner),
+      });
+
+      expect(res.statusCode).toBe(200);
+      const { stats } = res.json() as {
+        stats: { roundsPlayed: number; tasksEstimated: number; avgRoundDurationSec: number | null };
+      };
+      expect(stats.roundsPlayed).toBe(2);
+      expect(stats.tasksEstimated).toBe(2);
+      expect(stats.avgRoundDurationSec).not.toBeNull();
+      expect(stats.avgRoundDurationSec).toBeGreaterThanOrEqual(0);
+    });
+
+    it('статистика без входа — 401', async () => {
+      const res = await app.inject({ method: 'GET', url: '/api/rooms/stats' });
+
+      expect(res.statusCode).toBe(401);
     });
   });
 
@@ -740,6 +859,77 @@ describeDb('комнаты', () => {
     });
   });
 
+  describe('исключение участника из комнаты — 5.8', () => {
+    /** Ждёт адресное событие о собственном исключении */
+    function nextKicked(client: Socket): Promise<void> {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('kicked не пришёл')), ANSWER_TIMEOUT_MS);
+        client.once(WS_SERVER_EVENTS.KICKED, () => {
+          clearTimeout(timer);
+          resolve();
+        });
+      });
+    }
+
+    it('скрам-мастер исключает участника: тот получает kicked и пропадает у остальных', async () => {
+      const owner = await newUser('kick-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      const guestJoin = await join(guest, roomId, { guestName: 'Отпускник' });
+
+      const guestKicked = nextKicked(guest);
+      const masterSeesKick = nextState(master);
+      const ack = await emit(master, WS_EVENTS.KICK_PARTICIPANT, {
+        participantId: guestJoin.participantId,
+      });
+
+      expect(ack.ok).toBe(true);
+      await guestKicked;
+      expect((await masterSeesKick).participants).toHaveLength(1);
+    });
+
+    it('голосующий не может исключить участника', async () => {
+      const owner = await newUser('kick-forbidden-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      await joinRoom(guest, roomId, 'Обычный участник');
+
+      const ack = await emit(guest, WS_EVENTS.KICK_PARTICIPANT, {
+        participantId: owner.id,
+      });
+
+      expect(ack).toMatchObject({ ok: false, error: 'forbidden' });
+    });
+
+    it('нельзя исключить самого себя', async () => {
+      const owner = await newUser('kick-self-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+
+      const ack = await emit(master, WS_EVENTS.KICK_PARTICIPANT, { participantId: owner.id });
+
+      expect(ack).toMatchObject({ ok: false, error: 'forbidden' });
+    });
+
+    it('исключение уже отсутствующего участника не роняет запрос', async () => {
+      const owner = await newUser('kick-ghost-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+
+      const ack = await emit(master, WS_EVENTS.KICK_PARTICIPANT, {
+        participantId: randomUUID(),
+      });
+
+      expect(ack.ok).toBe(true);
+    });
+  });
+
   describe('таймер обсуждения', () => {
     it('новая комната отдаёт таймер по умолчанию: 5 минут, не запущен', async () => {
       const owner = await newUser('timer-default-owner');
@@ -783,6 +973,27 @@ describeDb('комнаты', () => {
         endsAt: null,
         remainingSec: 600,
       });
+    });
+
+    it('таймер обсуждения не работает в архивной комнате — 6.2', async () => {
+      const owner = await newUser('timer-archived-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+      await app.inject({
+        method: 'POST',
+        url: `/api/rooms/${roomId}/archive`,
+        headers: as(owner),
+      });
+
+      const started = await emit(master, WS_EVENTS.START_TIMER);
+      expect(started).toMatchObject({ ok: false, error: 'conflict' });
+
+      const paused = await emit(master, WS_EVENTS.PAUSE_TIMER);
+      expect(paused).toMatchObject({ ok: false, error: 'conflict' });
+
+      const reset = await emit(master, WS_EVENTS.RESET_TIMER, { durationSec: 600 });
+      expect(reset).toMatchObject({ ok: false, error: 'conflict' });
     });
 
     it('произвольная длительность (не из пресетов) отклоняется', async () => {
@@ -894,7 +1105,7 @@ describeDb('комнаты', () => {
     }
 
     beforeAll(() => {
-      service = RoomsService.forDatabase(db, authConfig.jwtSecret);
+      service = RoomsService.forDatabase(db, authConfig.guestSecret);
     });
 
     it('голоса в момент вскрытия не расходятся с зафиксированным средним', async () => {
@@ -1037,6 +1248,74 @@ describeDb('комнаты', () => {
       });
 
       expect(updated.jiraUrl).toBe('https://jira.example.com/LEGACY');
+    });
+
+    it('снимок getState не рвётся, даже если чужой голос коммитится между внутренними запросами — 7.14', async () => {
+      const owner = await newUser('race-torn-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+      const guestA = asGuest('Успевший');
+      const guestB = asGuest('Опоздавший');
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(roomId, guestA, { value: 3 });
+
+      // Задерживаем только чтение голосов: submitVote его не вызывает,
+      // поэтому конкурентный голос гарантированно не попадёт под задержку сам
+      const originalListVotes = RoomsRepository.prototype.listVotes;
+      const spy = vi
+        .spyOn(RoomsRepository.prototype, 'listVotes')
+        .mockImplementationOnce(async function (this: RoomsRepository, roundId: string) {
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          return originalListVotes.call(this, roundId);
+        });
+
+      try {
+        const pending = service.getState(roomId, [master, guestA, guestB]);
+        // Коммитится, пока getState ждёт внутри своей repeatable read транзакции
+        await service.submitVote(roomId, guestB, { value: 5 });
+        const state = await pending;
+
+        const votedIds = new Set(
+          state.participants.filter((p) => p.hasVoted).map((p) => p.participantId),
+        );
+        // Снимок зафиксирован до голоса guestB — тот не должен в нём появиться
+        expect(votedIds.has(guestA.participantId)).toBe(true);
+        expect(votedIds.has(guestB.participantId)).toBe(false);
+      } finally {
+        spy.mockRestore();
+      }
+    });
+
+    it('без repeatable read та же гонка отдаёт голос из будущего — 7.14 (контрольный тест)', async () => {
+      const owner = await newUser('race-torn-control-owner');
+      const roomId = await newRoom(owner);
+      const master = asMaster(owner);
+      const guestA = asGuest('Успевший');
+      const guestB = asGuest('Опоздавший');
+      await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
+      await service.submitVote(roomId, guestA, { value: 3 });
+
+      // Тот же порядок запросов, что и в getState, но нарочно на read committed —
+      // без repeatable read каждый запрос внутри транзакции видит свежий коммит
+      const readWithDelay = db.transaction(
+        async (tx) => {
+          const repo = new RoomsRepository(tx);
+          const round = await repo.findCurrentRound(roomId);
+          if (!round) {
+            throw new Error('нет раунда');
+          }
+          await new Promise((resolve) => setTimeout(resolve, 150));
+          return repo.listVotes(round.id);
+        },
+        { isolationLevel: 'read committed', accessMode: 'read only' },
+      );
+
+      await service.submitVote(roomId, guestB, { value: 5 });
+      const votes = await readWithDelay;
+
+      // В отличие от repeatable read, здесь голос guestB виден тому же чтению —
+      // это и есть рваный снимок, от которого защищает repeatable read в getState
+      expect(votes.some((vote) => vote.participantId === guestB.participantId)).toBe(true);
     });
   });
 });

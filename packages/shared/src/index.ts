@@ -10,6 +10,7 @@ export const WS_EVENTS = {
   START_TIMER: 'start_timer',
   PAUSE_TIMER: 'pause_timer',
   RESET_TIMER: 'reset_timer',
+  KICK_PARTICIPANT: 'kick_participant',
 } as const;
 
 export type WsEvent = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
@@ -20,6 +21,12 @@ export type WsEvent = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
  */
 export const WS_SERVER_EVENTS = {
   ROOM_STATE: 'room_state',
+  /**
+   * Адресное событие только исключённому — перед `disconnect`. Без него клиент
+   * не отличил бы кик от разрыва из-за протухшего токена (7.7) и тихо
+   * переподключился бы обратно тем же обработчиком.
+   */
+  KICKED: 'kicked',
 } as const;
 
 export type WsServerEvent = (typeof WS_SERVER_EVENTS)[keyof typeof WS_SERVER_EVENTS];
@@ -187,6 +194,25 @@ export interface RoundResult {
   votes: RevealedVote[];
 }
 
+/** Один прошлый раунд комнаты (вскрытый) вместе со своими итогами — для истории на странице комнаты */
+export interface RoundHistoryEntry {
+  round: Round;
+  result: RoundResult;
+}
+
+/**
+ * Агрегированная статистика по всем комнатам пользователя (архивным и активным
+ * вместе — тем же набором, что отдаёт `GET /api/rooms`) — для «Мои комнаты».
+ */
+export interface RoomStats {
+  /** Вскрытых раундов по всем комнатам */
+  roundsPlayed: number;
+  /** Комнат (задач) хотя бы с одним вскрытым раундом — комната заводится под одну задачу (7.25) */
+  tasksEstimated: number;
+  /** Среднее время от старта раунда до вскрытия карт, секунды; null — вскрытых раундов ещё не было */
+  avgRoundDurationSec: number | null;
+}
+
 /**
  * Общий таймер обсуждения раунда. Живёт в памяти процесса на комнату (как
  * присутствие участников), а не в базе — это сиюминутное состояние стола.
@@ -265,6 +291,10 @@ export interface StartRoundPayload {
    * так двойной клик и два скрам-мастера не создадут лишних раундов.
    */
   fromRoundId?: string | null;
+}
+
+export interface KickParticipantPayload {
+  participantId: string;
 }
 
 export interface UpdateLinksPayload {

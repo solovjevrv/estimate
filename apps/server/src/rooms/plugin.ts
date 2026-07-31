@@ -42,6 +42,63 @@ const roomsResponse = {
   properties: { rooms: { type: 'array', items: roomResponse } },
 } as const;
 
+const roomStatsResponse = {
+  type: 'object',
+  properties: {
+    roundsPlayed: { type: 'integer' },
+    tasksEstimated: { type: 'integer' },
+    avgRoundDurationSec: { type: ['number', 'null'] },
+  },
+} as const;
+
+const roundResponse = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    roomId: { type: 'string' },
+    seq: { type: 'integer' },
+    deckType: { type: 'string' },
+    status: { type: 'string' },
+    average: { type: ['number', 'null'] },
+    createdAt: { type: 'string' },
+    revealedAt: { type: ['string', 'null'] },
+  },
+} as const;
+
+const roundResultResponse = {
+  type: 'object',
+  properties: {
+    average: { type: ['number', 'null'] },
+    min: { type: 'number' },
+    max: { type: 'number' },
+    agreement: { type: 'number' },
+    votes: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: {
+          participantId: { type: 'string' },
+          name: { type: 'string' },
+          value: { type: 'number' },
+        },
+      },
+    },
+  },
+} as const;
+
+const roundHistoryResponse = {
+  type: 'object',
+  properties: {
+    rounds: {
+      type: 'array',
+      items: {
+        type: 'object',
+        properties: { round: roundResponse, result: roundResultResponse },
+      },
+    },
+  },
+} as const;
+
 // coerceTypes выключен глобально, поэтому булево из строки запроса не собрать
 // схемой — принимаем строку 'true'/'false' и разбираем её в контроллере
 const archivedQuery = {
@@ -59,8 +116,8 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
     throw new Error('Роуты комнат требуют плагина аутентификации');
   }
 
-  // Секрет тот же, что и у сессии: гостевые токены выдаёт только сервер
-  const controller = new RoomsController(RoomsService.forDatabase(app.db, opts.auth.jwtSecret));
+  // Отдельный секрет гостевых токенов (выведен из jwtSecret) — их выдаёт только сервер
+  const controller = new RoomsController(RoomsService.forDatabase(app.db, opts.auth.guestSecret));
 
   app.post<{ Body: CreateRoomBody }>(
     '/api/rooms',
@@ -108,6 +165,25 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
     controller.get,
   );
 
+  app.get<{ Params: RoomIdParams }>(
+    '/api/rooms/:id/rounds',
+    {
+      schema: {
+        tags: [DOCS_TAGS.rooms],
+        summary: 'История раундов комнаты',
+        description:
+          'Вскрытые раунды комнаты с итогами, от последнего к первому. Открыта без входа — ' +
+          'так же, как и сама комната.',
+        params: idParams,
+        response: {
+          200: { description: 'История раундов', ...roundHistoryResponse },
+          404: { description: 'Комната не найдена', ...errorResponse },
+        },
+      },
+    },
+    controller.history,
+  );
+
   app.get<{ Querystring: ArchivedQuery }>(
     '/api/rooms',
     {
@@ -127,6 +203,30 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
       },
     },
     controller.listMine,
+  );
+
+  app.get(
+    '/api/rooms/stats',
+    {
+      preHandler: authenticate,
+      schema: {
+        tags: [DOCS_TAGS.rooms],
+        summary: 'Статистика по своим комнатам',
+        description:
+          'Раундов сыграно, задач оценено (комнат хотя бы с одним вскрытым раундом) и ' +
+          'среднее время раунда — по всем комнатам пользователя, архивным и активным вместе.',
+        security: [{ session: [] }],
+        response: {
+          200: {
+            description: 'Статистика',
+            type: 'object',
+            properties: { stats: roomStatsResponse },
+          },
+          401: { description: 'Требуется вход', ...errorResponse },
+        },
+      },
+    },
+    controller.stats,
   );
 
   app.get<{ Params: TeamIdParams; Querystring: ArchivedQuery }>(

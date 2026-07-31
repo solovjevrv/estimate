@@ -1,4 +1,4 @@
-import type { DeckType, Room, Round } from '@poker/shared';
+import type { DeckType, Room, RoomStats, Round } from '@poker/shared';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 
@@ -222,6 +222,45 @@ export class RoomsRepository {
       .where(eq(schema.users.id, userId))
       .limit(1);
     return Boolean(row);
+  }
+
+  /** Вскрытые раунды комнаты, от последнего к первому — для истории на странице комнаты */
+  async listRevealedRounds(roomId: string, limit: number): Promise<Round[]> {
+    const rows = await this.db
+      .select()
+      .from(schema.rounds)
+      .where(and(eq(schema.rounds.roomId, roomId), eq(schema.rounds.status, 'revealed')))
+      .orderBy(desc(schema.rounds.seq))
+      .limit(limit);
+    return rows.map((row) => this.toRound(row));
+  }
+
+  /**
+   * Статистика по вскрытым раундам всех комнат создателя (архивным и активным
+   * вместе). Задач оценено — комнат хотя бы с одним вскрытым раундом: комната
+   * заводится под одну задачу (7.25), поэтому задача = комната.
+   */
+  async roomStats(creatorId: string): Promise<RoomStats> {
+    const [row] = await this.db
+      .select({
+        roundsPlayed: sql<string>`count(*)`,
+        tasksEstimated: sql<string>`count(distinct ${schema.rounds.roomId})`,
+        avgRoundDurationSec: sql<
+          string | null
+        >`avg(extract(epoch from (${schema.rounds.revealedAt} - ${schema.rounds.createdAt})))`,
+      })
+      .from(schema.rounds)
+      .innerJoin(schema.rooms, eq(schema.rooms.id, schema.rounds.roomId))
+      .where(and(eq(schema.rooms.creatorId, creatorId), eq(schema.rounds.status, 'revealed')));
+
+    return {
+      roundsPlayed: Number(row?.roundsPlayed ?? 0),
+      tasksEstimated: Number(row?.tasksEstimated ?? 0),
+      avgRoundDurationSec:
+        row?.avgRoundDurationSec === null || row?.avgRoundDurationSec === undefined
+          ? null
+          : Number(row.avgRoundDurationSec),
+    };
   }
 
   /** Все комнаты, которые создал пользователь — личные и командные вместе */
