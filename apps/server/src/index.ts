@@ -1,6 +1,7 @@
 import { buildApp } from './app';
 import { loadConfig } from './config';
 import { createDb } from './db';
+import { RoomsService } from './rooms';
 import { SocketGateway } from './socket';
 
 async function main(): Promise<void> {
@@ -19,9 +20,8 @@ async function main(): Promise<void> {
     { logger: true },
   );
 
-  new SocketGateway({ corsOrigin: config.webOrigin, guestSecret: config.auth.guestSecret }).attach(
-    app,
-  );
+  const roomsService = RoomsService.forDatabase(db, config.auth.guestSecret);
+  new SocketGateway(roomsService, { corsOrigin: config.webOrigin }).attach(app);
 
   // Одна неудачная операция не должна уносить процесс вместе со всеми комнатами
   process.on('unhandledRejection', (reason) => {

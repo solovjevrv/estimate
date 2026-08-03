@@ -151,8 +151,15 @@ describeDb('комнаты', () => {
   beforeAll(async () => {
     ({ db, pool } = createDb(databaseUrl as string));
     teamsService = TeamsService.forDatabase(db);
-    app = buildApp({ db, auth: authConfig });
-    new SocketGateway({ corsOrigin: '*', guestSecret: authConfig.guestSecret }).attach(app);
+    // Файл гоняет десятки запросов на комнаты с одного IP — реальный лимит (7.34)
+    // тут же и словил бы этот тестовый трафик, поэтому он тут завышен
+    app = buildApp({
+      db,
+      auth: authConfig,
+      roomsRateLimit: { max: 10_000, timeWindow: '1 minute' },
+    });
+    const roomsService = RoomsService.forDatabase(db, authConfig.guestSecret);
+    new SocketGateway(roomsService, { corsOrigin: '*' }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
     port = (app.server.address() as AddressInfo).port;
   });

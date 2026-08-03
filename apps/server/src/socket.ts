@@ -25,13 +25,18 @@ declare module 'fastify' {
 export interface SocketGatewayOptions {
   /** Origin дев-фронта для CORS */
   corsOrigin: string;
-  /** Секрет подписи гостевых токенов — тот же, что и у сессии */
-  guestSecret: string;
 }
 
-/** Socket.io поверх HTTP-сервера Fastify вместе с событиями игрового стола */
+/**
+ * Socket.io поверх HTTP-сервера Fastify вместе с событиями игрового стола.
+ * `RoomsService` приходит готовым снаружи (не строится из `app.db` внутри
+ * `attach()`), чтобы шлюз можно было юнит-тестировать без реальной БД (7.31).
+ */
 export class SocketGateway {
-  constructor(private readonly options: SocketGatewayOptions) {}
+  constructor(
+    private readonly service: RoomsService,
+    private readonly options: SocketGatewayOptions,
+  ) {}
 
   attach(app: FastifyInstance): PokerServer {
     const io: PokerServer = new Server(app.server, {
@@ -59,10 +64,7 @@ export class SocketGateway {
       next();
     });
 
-    new RoomsGateway(RoomsService.forDatabase(app.db, this.options.guestSecret)).register(
-      io,
-      app.log,
-    );
+    new RoomsGateway(this.service).register(io, app.log);
 
     io.on('connection', (socket) => {
       app.log.info({ socketId: socket.id, userId: socket.data.userId }, 'Socket.io: подключение');
