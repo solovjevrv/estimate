@@ -1,11 +1,13 @@
 import { buildApp } from './app';
 import { loadConfig } from './config';
 import { createDb } from './db';
+import { attachSentryErrorHandler, initSentry } from './monitoring';
 import { RoomsService } from './rooms';
 import { SocketGateway } from './socket';
 
 async function main(): Promise<void> {
   const config = loadConfig();
+  const sentryEnabled = initSentry(config.sentryDsn);
   const { db, pool } = createDb(config.databaseUrl);
 
   const app = buildApp(
@@ -19,6 +21,9 @@ async function main(): Promise<void> {
     },
     { logger: true },
   );
+  if (sentryEnabled) {
+    attachSentryErrorHandler(app);
+  }
 
   const roomsService = RoomsService.forDatabase(db, config.auth.guestSecret);
   new SocketGateway(roomsService, { corsOrigin: config.webOrigin }).attach(app);

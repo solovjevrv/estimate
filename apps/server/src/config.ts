@@ -37,6 +37,8 @@ export interface Config {
   /** Документация API: на проде карта эндпоинтов наружу не отдаётся */
   docsEnabled: boolean;
   auth: AuthConfig;
+  /** DSN проекта Sentry; не задан — мониторинг ошибок/логов выключен */
+  sentryDsn?: string;
 }
 
 /**
@@ -126,5 +128,6 @@ export function loadConfig(): Config {
     // По умолчанию документация есть везде, кроме продакшена; флагом можно переопределить
     docsEnabled: process.env.DOCS_ENABLED ? process.env.DOCS_ENABLED === 'true' : !isProduction,
     auth: loadAuthConfig(webOrigin, port),
+    sentryDsn: process.env.SENTRY_DSN || undefined,
   };
 }
