@@ -723,6 +723,7 @@ function retry(): void {
       <template v-else-if="phase === 'joined'">
         <RoomTopBar
           :name="roomInfo.name"
+          :team-id="roomInfo.teamId"
           :archived="isArchived"
           :connected="room.connected"
           :can-archive="room.isScrumMaster && !isArchived"

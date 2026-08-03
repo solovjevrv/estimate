@@ -152,6 +152,8 @@ export default {
     roleVoter: 'Voter',
     connected: 'Connected',
     disconnected: 'Connection lost',
+    teamRoomSubtitle: 'Team room',
+    personalRoomSubtitle: 'Personal room',
     participantsTitle: 'Participants',
     invite: 'Invite',
     noRoundYet: 'The round hasn’t started yet.',
@@ -295,7 +297,6 @@ export default {
   footer: {
     copyright: '© {year} solovjevrv',
     support: 'Support',
-    license: 'MIT License',
     build: 'Build {version}',
   },
 };

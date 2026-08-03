@@ -154,6 +154,8 @@ export default {
     roleVoter: 'Голосующий',
     connected: 'Подключено',
     disconnected: 'Обрыв соединения',
+    teamRoomSubtitle: 'Командная комната',
+    personalRoomSubtitle: 'Личная комната',
     participantsTitle: 'Участники',
     invite: 'Пригласить',
     noRoundYet: 'Раунд ещё не начат.',
@@ -296,7 +298,6 @@ export default {
   footer: {
     copyright: '© {year} solovjevrv',
     support: 'Поддержка',
-    license: 'Лицензия MIT',
     build: 'Сборка {version}',
   },
 };
