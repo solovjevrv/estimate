@@ -64,6 +64,7 @@ export default {
     memberCount: '{count} member | {count} members',
   },
   team: {
+    pageTitle: 'Team',
     roomsTitle: 'Rooms',
     roomsActive: 'Active',
     tabArchive: 'Archive',
@@ -124,6 +125,7 @@ export default {
     archiveDeleteError: 'Could not delete the room',
   },
   invite: {
+    pageTitle: 'Invite',
     lead: 'You are invited to the team “{name}”.',
     join: 'Join',
     joinAndLogin: 'Sign in and join',
@@ -133,6 +135,7 @@ export default {
     loadError: 'Could not open the invite. Please try again later.',
   },
   room: {
+    pageTitle: 'Room',
     notFound: 'Room not found.',
     loadError: 'Could not load the room. Try refreshing the page.',
     nameTitle: 'Introduce yourself',

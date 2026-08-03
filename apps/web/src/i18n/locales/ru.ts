@@ -65,6 +65,7 @@ export default {
     memberCount: '{count} участник | {count} участника | {count} участников',
   },
   team: {
+    pageTitle: 'Команда',
     roomsTitle: 'Комнаты',
     roomsActive: 'Активные',
     tabArchive: 'Архив',
@@ -126,6 +127,7 @@ export default {
     archiveDeleteError: 'Не удалось удалить комнату',
   },
   invite: {
+    pageTitle: 'Приглашение',
     lead: 'Вас приглашают в команду «{name}».',
     join: 'Вступить',
     joinAndLogin: 'Войти и вступить',
@@ -135,6 +137,7 @@ export default {
     loadError: 'Не удалось открыть приглашение. Попробуйте позже.',
   },
   room: {
+    pageTitle: 'Комната',
     notFound: 'Комната не найдена.',
     loadError: 'Не удалось загрузить комнату. Попробуйте обновить страницу.',
     nameTitle: 'Представьтесь',

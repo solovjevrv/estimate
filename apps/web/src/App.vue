@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui';
-import { computed, onMounted } from 'vue';
+import { computed, onMounted, watchEffect } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 
@@ -30,6 +30,13 @@ const isDark = computed(() => theme.value === 'dark');
 const currentYear = new Date().getFullYear();
 const supportEmail = 'solovjevrv@gmail.com';
 const appVersion = __APP_VERSION__;
+
+// Заголовок вкладки и lang зависят и от роута, и от языка — считаем вместе,
+// иначе смена языка без навигации оставила бы заголовок на старом языке
+watchEffect(() => {
+  document.title = `EstiMate | ${t(route.meta.titleKey ?? 'nav.home')}`;
+  document.documentElement.lang = locale.value;
+});
 
 const languageLabels: Record<Locale, string> = {
   ru: 'Русский',
