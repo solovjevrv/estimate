@@ -11,6 +11,7 @@ export const WS_EVENTS = {
   PAUSE_TIMER: 'pause_timer',
   RESET_TIMER: 'reset_timer',
   KICK_PARTICIPANT: 'kick_participant',
+  SEND_REACTION: 'send_reaction',
 } as const;
 
 export type WsEvent = (typeof WS_EVENTS)[keyof typeof WS_EVENTS];
@@ -245,6 +246,49 @@ export interface ResetTimerPayload {
   durationSec?: number;
 }
 
+/** Фиксированный набор эмодзи-реакций (10.10) — свободный выбор эмодзи не делаем */
+export const REACTION_EMOJIS = [
+  '👍',
+  '👎',
+  '😲',
+  '😐',
+  '😂',
+  '😢',
+  '🤔',
+  '🔥',
+  '😱',
+  '🙄',
+  '🎉',
+  '💯',
+  '🤯',
+  '🙌',
+  '😅',
+  '🚀',
+  '👀',
+  '🧐',
+  '☕',
+  '🐢',
+] as const;
+
+export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
+
+/**
+ * Реакция одного участника на карточку другого. Живёт в памяти процесса на
+ * комнату (как таймер/присутствие), а не в базе — сбрасывается с новым раундом.
+ * Одна пара (from, to) может держать только одну активную реакцию — новая
+ * реакцию от того же автора тому же адресату заменяет предыдущую.
+ */
+export interface Reaction {
+  fromParticipantId: string;
+  toParticipantId: string;
+  emoji: ReactionEmoji;
+}
+
+export interface SendReactionPayload {
+  targetParticipantId: string;
+  emoji: ReactionEmoji;
+}
+
 /** Полный снимок комнаты — то, что видит участник */
 export interface RoomState {
   room: Room;
@@ -253,6 +297,7 @@ export interface RoomState {
   /** Заполняется только после вскрытия карт */
   result: RoundResult | null;
   timer: RoomTimerState;
+  reactions: Reaction[];
 }
 
 export interface JoinRoomPayload {

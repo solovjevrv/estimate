@@ -249,6 +249,9 @@ export default {
     kickedNotice: 'The scrum master removed you from the room',
     kickedMessage: 'The scrum master removed you from this room.',
     rejoin: 'Rejoin',
+    reactionTriggerLabel: 'React to {name}',
+    reactionBadgeLabel: 'Reaction {emoji}, given by: {count}',
+    reactionError: 'Could not send the reaction. Please try again.',
   },
   myRooms: {
     title: 'My rooms',

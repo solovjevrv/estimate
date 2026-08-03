@@ -1,4 +1,5 @@
 import {
+  REACTION_EMOJIS,
   WS_EVENTS,
   WS_SERVER_EVENTS,
   type JoinRoomPayload,
@@ -10,6 +11,7 @@ import {
   type RevealCardsPayload,
   type Round,
   type RoundResult,
+  type SendReactionPayload,
   type StartRoundPayload,
   type SubmitVotePayload,
   type UpdateLinksPayload,
@@ -22,6 +24,7 @@ import { AppError, ForbiddenError, ValidationError } from '../errors';
 import type { PokerServer } from '../socket';
 
 import { RoomPresence, type ParticipantIdentity } from './presence';
+import { RoomReactions } from './room-reactions';
 import { RoomTimer } from './room-timer';
 import type { RoomsService } from './rooms.service';
 
@@ -47,6 +50,7 @@ export class RoomsGateway {
     private readonly service: RoomsService,
     private readonly presence = new RoomPresence(),
     private readonly timer = new RoomTimer(),
+    private readonly reactions = new RoomReactions(),
   ) {}
 
   register(io: PokerServer, log: FastifyBaseLogger): void {
@@ -86,8 +90,9 @@ export class RoomsGateway {
             identity,
             payload as StartRoundPayload,
           );
-          // Новая задача — таймер обсуждения предыдущей ей не нужен
+          // Новая задача — таймер обсуждения и реакции на прошлой ей не нужны
           this.timer.reset(roomId);
+          this.reactions.clear(roomId);
           await this.broadcastState(io, roomId);
           return round;
         });
@@ -165,12 +170,40 @@ export class RoomsGateway {
         });
       });
 
+      socket.on(WS_EVENTS.SEND_REACTION, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<SendReactionPayload>(args);
+        this.run(socket, log, ack, async () => {
+          const { roomId, identity } = this.requireSeat(socket);
+          const targetId = payload?.targetParticipantId;
+          if (!targetId) {
+            throw new ValidationError('Не указан участник');
+          }
+          if (targetId === identity.participantId) {
+            throw new ForbiddenError('Нельзя отправить реакцию самому себе');
+          }
+          const emoji = payload?.emoji;
+          if (!emoji || !(REACTION_EMOJIS as readonly string[]).includes(emoji)) {
+            throw new ValidationError('Недопустимый эмодзи');
+          }
+          // Адресат должен реально сидеть за столом — иначе реакции на случайные
+          // id копились бы в памяти комнаты без ограничения и без возможности очистки
+          const targetSeated = this.presence.list(roomId).some((p) => p.participantId === targetId);
+          if (!targetSeated) {
+            throw new ValidationError('Участник не найден в комнате');
+          }
+          this.reactions.toggle(roomId, identity.participantId, targetId, emoji);
+          await this.broadcastState(io, roomId);
+          return null;
+        });
+      });
+
       socket.on('disconnect', () => {
         const roomId = this.presence.leave(socket.id);
         if (roomId) {
-          // Стол опустел — сиюминутному состоянию таймера дальше жить незачем
+          // Стол опустел — сиюминутному состоянию таймера и реакций дальше жить незачем
           if (this.presence.list(roomId).length === 0) {
             this.timer.clear(roomId);
+            this.reactions.clear(roomId);
           }
           this.broadcastState(io, roomId).catch((err: unknown) => {
             log.warn({ err, roomId }, 'Не удалось разослать состояние после выхода участника');
@@ -206,10 +239,11 @@ export class RoomsGateway {
     this.presence.join(payload.roomId, socket.id, identity);
 
     if (previousRoom && previousRoom !== payload.roomId) {
-      // Прошлая комната опустела — сиюминутному состоянию таймера дальше жить незачем
+      // Прошлая комната опустела — сиюминутному состоянию таймера и реакций дальше жить незачем
       // (как и при disconnect ниже: без этого запись в RoomTimer осталась бы навсегда)
       if (this.presence.list(previousRoom).length === 0) {
         this.timer.clear(previousRoom);
+        this.reactions.clear(previousRoom);
       }
       await this.broadcastState(io, previousRoom);
     }
@@ -243,6 +277,7 @@ export class RoomsGateway {
         roomId,
         this.presence.list(roomId),
         this.timer.get(roomId),
+        this.reactions.list(roomId),
       );
       io.to(roomId).emit(WS_SERVER_EVENTS.ROOM_STATE, state);
       return state;

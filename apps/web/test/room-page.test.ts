@@ -52,6 +52,7 @@ function roomState(overrides: Partial<RoomState> = {}): RoomState {
       endsAt: null,
       remainingSec: TIMER_DEFAULT_DURATION_SEC,
     },
+    reactions: [],
     ...overrides,
   };
 }
@@ -1475,6 +1476,172 @@ describe('исключение участника (5.8)', () => {
     expect(wrapper.text()).toContain('Войти снова');
     // Кик не должен вызвать тот же автореконнект, что и штатное истечение токена (7.7)
     expect(socket.sent.filter((s) => s.event === 'join_room').length).toBe(joinsBefore);
+  });
+});
+
+describe('реакции-эмодзи на карточке участника (10.10)', () => {
+  it('реакцию можно поставить только на чужую карточку, не на свою', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
+
+    expect(
+      document.body.querySelector('[aria-label="Поставить реакцию участнику Иван"]'),
+    ).toBeNull();
+    expect(
+      document.body.querySelector('[aria-label="Поставить реакцию участнику Мария"]'),
+    ).not.toBeNull();
+  });
+
+  it('клик по эмодзи в пикере шлёт send_reaction с адресатом и выбранным эмодзи', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
+
+    const trigger = document.body.querySelector('[aria-label="Поставить реакцию участнику Мария"]');
+    (trigger as HTMLElement).click();
+    await vi.waitFor(() => {
+      const buttons = Array.from(document.body.querySelectorAll('button'));
+      const found = buttons.find((b) => b.getAttribute('aria-label') === '👍');
+      expect(found).not.toBeUndefined();
+    });
+
+    const emojiButton = Array.from(document.body.querySelectorAll('button')).find(
+      (b) => b.getAttribute('aria-label') === '👍',
+    );
+    (emojiButton as HTMLElement).click();
+
+    await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'send_reaction')).toBe(true));
+    const sent = socket.sent.find((s) => s.event === 'send_reaction');
+    expect(sent?.payload).toMatchObject({ targetParticipantId: 'g1', emoji: '👍' });
+  });
+
+  it('полученная реакция видна на карточке участника', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+        reactions: [{ fromParticipantId: 'u1', toParticipantId: 'g1', emoji: '😂' }],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('😂'));
+  });
+
+  it('одинаковая реакция от разных участников схлопывается в одну со счётчиком', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+          participant({ participantId: 'g2', name: 'Пётр', isGuest: true, role: 'voter' }),
+        ],
+        reactions: [
+          { fromParticipantId: 'u1', toParticipantId: 'g1', emoji: '👍' },
+          { fromParticipantId: 'g2', toParticipantId: 'g1', emoji: '👍' },
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+
+    // Одна карточка «👍» со счётчиком 2, а не два отдельных значка
+    await vi.waitFor(() => expect(wrapper.find('[title="Иван, Пётр"]').exists()).toBe(true));
+    const badge = wrapper.find('[title="Иван, Пётр"]');
+    expect(badge.text()).toContain('👍');
+    expect(badge.text()).toContain('2');
+  });
+
+  it('клик по чужому бейджу реакции ставит ту же реакцию от лица кликнувшего (Telegram-style)', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+          participant({ participantId: 'g2', name: 'Пётр', isGuest: true, role: 'voter' }),
+        ],
+        // Реакцию уже поставил Пётр — сам Иван (текущий пользователь) её ещё не ставил
+        reactions: [{ fromParticipantId: 'g2', toParticipantId: 'g1', emoji: '👍' }],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.find('[title="Пётр"]').exists()).toBe(true));
+
+    await wrapper.find('[title="Пётр"]').trigger('click');
+
+    await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'send_reaction')).toBe(true));
+    const sent = socket.sent.find((s) => s.event === 'send_reaction');
+    expect(sent?.payload).toMatchObject({ targetParticipantId: 'g1', emoji: '👍' });
+  });
+
+  it('на своей карточке бейдж полученной реакции не кликабелен', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+        reactions: [{ fromParticipantId: 'g1', toParticipantId: 'u1', emoji: '🔥' }],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.find('[title="Мария"]').exists()).toBe(true));
+
+    await wrapper.find('[title="Мария"]').trigger('click');
+
+    expect(socket.sent.some((s) => s.event === 'send_reaction')).toBe(false);
   });
 });
 

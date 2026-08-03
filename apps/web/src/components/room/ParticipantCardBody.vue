@@ -1,8 +1,22 @@
 <script setup lang="ts">
-import type { Participant } from '@poker/shared';
+import { REACTION_EMOJIS, type Participant, type ReactionEmoji } from '@poker/shared';
 import { useI18n } from 'vue-i18n';
 
 import { teamAvatarColor } from '../../lib/team-roles';
+
+/**
+ * Одна и та же реакция от нескольких участников схлопнута в одну запись со
+ * счётчиком (как реакции на сообщение в Telegram) — иначе бейджи не
+ * помещались бы под карточкой при десятке участников.
+ */
+export interface ReceivedReaction {
+  emoji: ReactionEmoji;
+  count: number;
+  /** Имена отправителей — для подсказки при наведении */
+  fromNames: string[];
+  /** Среди отправителей — сам смотрящий: клик по бейджу снимет реакцию, а не добавит вторую */
+  reactedByMe: boolean;
+}
 
 const props = defineProps<{
   participant: Participant;
@@ -12,9 +26,28 @@ const props = defineProps<{
   /** Подпись значения после вскрытия; null — раунда не было или участник не голосовал */
   valueLabel: string | null;
   isWinner: boolean;
+  receivedReactions: ReceivedReaction[];
 }>();
 
+const emit = defineEmits<{ react: [emoji: ReactionEmoji] }>();
+
 const { t } = useI18n();
+
+function onPickEmoji(emoji: ReactionEmoji, close: () => void): void {
+  emit('react', emoji);
+  close();
+}
+
+/**
+ * Клик по уже существующему бейджу — как реакция на сообщение в Telegram:
+ * у кого её ещё нет — ставит; у кого уже есть — снимает (сервер решает сам,
+ * какая это из двух веток, по паре «автор → адресат»). На своей карточке
+ * бейджи не кликабельны — самому себе реакцию не поставить.
+ */
+function onBadgeClick(emoji: ReactionEmoji): void {
+  if (props.isSelf) return;
+  emit('react', emoji);
+}
 </script>
 
 <template>
@@ -27,16 +60,13 @@ const { t } = useI18n();
         class="relative size-full transition-transform duration-500 ease-out [transform-style:preserve-3d]"
         :style="props.roundStatus === 'revealed' ? 'transform: rotateY(180deg)' : ''"
       >
-        <!-- Лицо карты: состояние голосования (не вскрыто). В тёмной теме заливка --brand-border
-             сама по себе достаточно контрастна к фону страницы — там всё было в порядке. В
-             светлой контраста не хватает, поэтому добавляем тонкую обводку явного контрастного
-             тона (--brand-ink2, приглушённая прозрачностью); в тёмной обводка не нужна. -->
+        <!-- Лицо карты: состояние голосования (не вскрыто). -->
         <div
           class="absolute inset-0 flex items-center justify-center rounded-[14px] [backface-visibility:hidden]"
           :class="
             props.roundStatus === 'voting' && props.participant.hasVoted
               ? 'bg-[var(--brand-primary-soft-bg)] shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]'
-              : 'bg-[var(--brand-border)] border-[1.5px] border-[var(--brand-ink2)]/45 dark:border-transparent'
+              : 'bg-[var(--brand-border)]'
           "
         >
           <template v-if="props.roundStatus === 'voting'">
@@ -57,7 +87,7 @@ const { t } = useI18n();
           :class="
             props.isWinner
               ? 'bg-[var(--brand-primary-soft-bg)] shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]'
-              : 'bg-[var(--brand-surface)] shadow-[var(--brand-shadow-card)] border-[1.5px] border-[var(--brand-ink2)]/45 dark:border-transparent'
+              : 'bg-[var(--brand-surface)] shadow-[var(--brand-shadow-card)]'
           "
         >
           <span class="font-heading text-[28px] font-extrabold text-[var(--brand-primary-text)]">
@@ -72,6 +102,62 @@ const { t } = useI18n();
       >
         <UIcon name="i-lucide-check" class="size-3.5 text-white" />
       </div>
+      <!-- Реакции, полученные этой карточкой (10.10) — противоположный угол от бейджа голосования.
+           Каждая уникальная реакция — свой отдельный бейдж (не общий контейнер на всех), как
+           реакции на сообщение в Telegram; одинаковые от нескольких участников схлопнуты в один
+           бейдж со счётчиком. На чужой карточке бейдж кликабелен: у кого реакции ещё нет —
+           ставит её тем же эмодзи, у кого уже есть своя — снимает (выделена рамкой). -->
+      <div
+        v-if="props.receivedReactions.length > 0"
+        class="absolute bottom-[-10px] left-[-8px] flex max-w-[130px] flex-wrap gap-1"
+      >
+        <button
+          v-for="reaction in props.receivedReactions"
+          :key="reaction.emoji"
+          type="button"
+          :title="reaction.fromNames.join(', ')"
+          :aria-label="
+            t('room.reactionBadgeLabel', { emoji: reaction.emoji, count: reaction.count })
+          "
+          class="border-[var(--brand-ink2)]/45 flex items-center gap-0.5 rounded-full border-[1.5px] bg-[var(--brand-surface)] px-1.5 py-0.5 text-xl leading-none shadow-[var(--brand-shadow-card)] dark:border-transparent"
+          :class="[
+            reaction.reactedByMe ? 'shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]' : '',
+            !props.isSelf ? 'hover:bg-[var(--brand-border)] cursor-pointer' : 'cursor-default',
+          ]"
+          @click.stop="onBadgeClick(reaction.emoji)"
+        >
+          {{ reaction.emoji }}
+          <span v-if="reaction.count > 1" class="text-muted text-xs leading-none font-bold">
+            {{ reaction.count }}
+          </span>
+        </button>
+      </div>
+      <!-- Отправить реакцию — доступно на чужой карточке в любой момент раунда (10.10) -->
+      <UPopover v-if="!props.isSelf" :content="{ side: 'top' }">
+        <button
+          type="button"
+          class="border-[var(--brand-ink2)]/45 absolute -top-1 -right-1 flex size-[22px] cursor-pointer items-center justify-center rounded-full border-[1.5px] bg-[var(--brand-surface)] shadow-[var(--brand-shadow-card)] dark:border-transparent"
+          :aria-label="t('room.reactionTriggerLabel', { name: participant.name })"
+          @click.stop
+        >
+          <UIcon name="i-lucide-smile-plus" class="size-3.5" style="color: var(--brand-ink2)" />
+        </button>
+
+        <template #content="{ close }">
+          <div class="grid grid-cols-5 gap-1 p-2">
+            <button
+              v-for="emoji in REACTION_EMOJIS"
+              :key="emoji"
+              type="button"
+              class="hover:bg-[var(--brand-border)] flex size-8 cursor-pointer items-center justify-center rounded-[8px] text-xl"
+              :aria-label="emoji"
+              @click.stop="onPickEmoji(emoji, close)"
+            >
+              {{ emoji }}
+            </button>
+          </div>
+        </template>
+      </UPopover>
       <UAvatar
         :src="props.participant.avatarUrl ?? undefined"
         :alt="props.participant.name"

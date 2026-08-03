@@ -1040,6 +1040,147 @@ describeDb('комнаты', () => {
     });
   });
 
+  describe('реакции-эмодзи на карточке участника — 10.10', () => {
+    it('участник ставит реакцию другому — она видна всем в комнате', async () => {
+      const owner = await newUser('reaction-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      const guestJoin = await join(guest, roomId, { guestName: 'Реагирующий' });
+
+      const guestSeesReaction = nextState(guest);
+      const ack = await emit(master, WS_EVENTS.SEND_REACTION, {
+        targetParticipantId: guestJoin.participantId,
+        emoji: '👍',
+      });
+
+      expect(ack.ok).toBe(true);
+      const state = await guestSeesReaction;
+      expect(state.reactions).toEqual([
+        { fromParticipantId: owner.id, toParticipantId: guestJoin.participantId, emoji: '👍' },
+      ]);
+    });
+
+    it('повторная реакция того же автора тому же адресату заменяет предыдущую', async () => {
+      const owner = await newUser('reaction-replace-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      const guestJoin = await join(guest, roomId, { guestName: 'Реагирующий' });
+
+      const firstBroadcast = nextState(guest);
+      await emit(master, WS_EVENTS.SEND_REACTION, {
+        targetParticipantId: guestJoin.participantId,
+        emoji: '👍',
+      });
+      // Ждём, пока гость реально получит первую рассылку, прежде чем слушать вторую —
+      // иначе `nextState` ниже может поймать ещё не доставленную первую рассылку
+      await firstBroadcast;
+
+      const replaced = nextState(guest);
+      await emit(master, WS_EVENTS.SEND_REACTION, {
+        targetParticipantId: guestJoin.participantId,
+        emoji: '😂',
+      });
+
+      expect((await replaced).reactions).toEqual([
+        { fromParticipantId: owner.id, toParticipantId: guestJoin.participantId, emoji: '😂' },
+      ]);
+    });
+
+    it('повторная присылка уже стоящей реакции снимает её (клик по своему бейджу в UI)', async () => {
+      const owner = await newUser('reaction-toggle-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      const guestJoin = await join(guest, roomId, { guestName: 'Реагирующий' });
+
+      const firstBroadcast = nextState(guest);
+      await emit(master, WS_EVENTS.SEND_REACTION, {
+        targetParticipantId: guestJoin.participantId,
+        emoji: '👍',
+      });
+      await firstBroadcast;
+
+      const afterToggleOff = nextState(guest);
+      await emit(master, WS_EVENTS.SEND_REACTION, {
+        targetParticipantId: guestJoin.participantId,
+        emoji: '👍',
+      });
+
+      expect((await afterToggleOff).reactions).toEqual([]);
+    });
+
+    it('нельзя отправить реакцию самому себе', async () => {
+      const owner = await newUser('reaction-self-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+
+      const ack = await emit(master, WS_EVENTS.SEND_REACTION, {
+        targetParticipantId: owner.id,
+        emoji: '👍',
+      });
+
+      expect(ack).toMatchObject({ ok: false, error: 'forbidden' });
+    });
+
+    it('недопустимый эмодзи отклоняется', async () => {
+      const owner = await newUser('reaction-invalid-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      const guestJoin = await join(guest, roomId, { guestName: 'Реагирующий' });
+
+      const ack = await emit(master, WS_EVENTS.SEND_REACTION, {
+        targetParticipantId: guestJoin.participantId,
+        emoji: '🍕',
+      });
+
+      expect(ack).toMatchObject({ ok: false, error: 'bad_request' });
+    });
+
+    it('реакция на отсутствующего в комнате участника отклоняется', async () => {
+      const owner = await newUser('reaction-ghost-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      await joinRoom(master, roomId);
+
+      const ack = await emit(master, WS_EVENTS.SEND_REACTION, {
+        targetParticipantId: randomUUID(),
+        emoji: '👍',
+      });
+
+      expect(ack).toMatchObject({ ok: false, error: 'bad_request' });
+    });
+
+    it('новый раунд сбрасывает реакции прошлого', async () => {
+      const owner = await newUser('reaction-round-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(owner);
+      const guest = connect();
+      await joinRoom(master, roomId);
+      const guestJoin = await join(guest, roomId, { guestName: 'Реагирующий' });
+
+      const firstBroadcast = nextState(guest);
+      await emit(master, WS_EVENTS.SEND_REACTION, {
+        targetParticipantId: guestJoin.participantId,
+        emoji: '👍',
+      });
+      await firstBroadcast;
+
+      const afterNewRound = nextState(guest);
+      const ack = await emit<Round>(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
+
+      expect(ack.ok).toBe(true);
+      expect((await afterNewRound).reactions).toEqual([]);
+    });
+  });
+
   describe('таймер обсуждения', () => {
     it('новая комната отдаёт таймер по умолчанию: 5 минут, не запущен', async () => {
       const owner = await newUser('timer-default-owner');
