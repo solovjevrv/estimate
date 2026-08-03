@@ -58,10 +58,20 @@ if ! curl -fsS http://localhost/health >/dev/null; then
   exit 1
 fi
 
-# Проверка TLS без -k: ловит в том числе просроченный/битый сертификат
+# Проверка TLS без -k: ловит в том числе просроченный/битый сертификат.
+# Резолвим на localhost намеренно — проверяем ориджин напрямую, Cloudflare
+# (для estimate.solovyovdev.ru) тут не участвует
+if ! curl -fsS --resolve estimate.solovyovdev.ru:2053:127.0.0.1 \
+  https://estimate.solovyovdev.ru:2053/health >/dev/null; then
+  echo "ОШИБКА: HTTPS-эндпоинт estimate.solovyovdev.ru не прошёл проверку (сертификат?)"
+  $COMPOSE logs --tail 40 web certbot
+  exit 1
+fi
+
+# Старый домен пока не снесён — тот же смысл проверки, что и выше
 if ! curl -fsS --resolve pokerplan.solovyovdev.ru:3000:127.0.0.1 \
   https://pokerplan.solovyovdev.ru:3000/health >/dev/null; then
-  echo "ОШИБКА: HTTPS-эндпоинт не прошёл проверку (сертификат?)"
+  echo "ОШИБКА: HTTPS-эндпоинт pokerplan.solovyovdev.ru не прошёл проверку (сертификат?)"
   $COMPOSE logs --tail 40 web certbot
   exit 1
 fi

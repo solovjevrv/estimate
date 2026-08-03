@@ -9,12 +9,26 @@ import {
 
 import { useSessionStore } from '../stores/session';
 
+/** Ключ i18n для заголовка вкладки — только литералы, чтобы t() проверялся по схеме */
+type TitleKey =
+  | 'nav.home'
+  | 'login.title'
+  | 'teams.title'
+  | 'myRooms.title'
+  | 'nav.profile'
+  | 'team.pageTitle'
+  | 'invite.pageTitle'
+  | 'room.pageTitle'
+  | 'notFound.title';
+
 declare module 'vue-router' {
   interface RouteMeta {
     /** Страница только для вошедших: гостя уводим на вход */
     requiresAuth?: boolean;
     /** Страница только для гостей: вошедшего уводим на главную */
     guestOnly?: boolean;
+    /** Заголовок вкладки: `EstiMate | ${t(titleKey)}` — см. App.vue */
+    titleKey: TitleKey;
   }
 }
 
@@ -23,37 +37,38 @@ export const routes: RouteRecordRaw[] = [
     path: '/',
     name: 'home',
     component: () => import('../pages/HomePage.vue'),
+    meta: { titleKey: 'nav.home' },
   },
   {
     path: '/login',
     name: 'login',
     component: () => import('../pages/LoginPage.vue'),
-    meta: { guestOnly: true },
+    meta: { guestOnly: true, titleKey: 'login.title' },
   },
   {
     path: '/teams',
     name: 'teams',
     component: () => import('../pages/TeamsPage.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, titleKey: 'teams.title' },
   },
   {
     path: '/my-rooms',
     name: 'my-rooms',
     component: () => import('../pages/MyRoomsPage.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, titleKey: 'myRooms.title' },
   },
   {
     path: '/profile',
     name: 'profile',
     component: () => import('../pages/ProfilePage.vue'),
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, titleKey: 'nav.profile' },
   },
   {
     path: '/teams/:id',
     name: 'team',
     component: () => import('../pages/TeamPage.vue'),
     props: true,
-    meta: { requiresAuth: true },
+    meta: { requiresAuth: true, titleKey: 'team.pageTitle' },
   },
   {
     // Приглашение открывается и гостю: сначала показываем, куда зовут, а вход
@@ -62,6 +77,7 @@ export const routes: RouteRecordRaw[] = [
     name: 'invite',
     component: () => import('../pages/InvitePage.vue'),
     props: true,
+    meta: { titleKey: 'invite.pageTitle' },
   },
   {
     // Вход по прямой ссылке доступен и гостю — он представится именем на месте
@@ -69,11 +85,13 @@ export const routes: RouteRecordRaw[] = [
     name: 'room',
     component: () => import('../pages/RoomPage.vue'),
     props: true,
+    meta: { titleKey: 'room.pageTitle' },
   },
   {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => import('../pages/NotFoundPage.vue'),
+    meta: { titleKey: 'notFound.title' },
   },
 ];
 

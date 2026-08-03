@@ -108,6 +108,32 @@ describe('каркас приложения', () => {
   });
 });
 
+describe('заголовок вкладки и lang', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('на главной ставит заголовок «EstiMate | Главная»', async () => {
+    await mountApp('/');
+    expect(document.title).toBe('EstiMate | Главная');
+  });
+
+  it('на странице входа ставит заголовок «EstiMate | Вход»', async () => {
+    await mountApp('/login');
+    expect(document.title).toBe('EstiMate | Вход');
+  });
+
+  it('на неизвестном адресе показывает заголовок «не найдено»', async () => {
+    await mountApp('/такого-нет');
+    expect(document.title).toBe('EstiMate | Страница не найдена');
+  });
+
+  it('document.documentElement.lang соответствует выбранному языку', async () => {
+    await mountApp('/');
+    expect(document.documentElement.lang).toBe('ru');
+  });
+});
+
 describe('выход из аккаунта', () => {
   afterEach(() => {
     vi.unstubAllGlobals();

@@ -27,8 +27,8 @@ services:
       NODE_ENV: production
       PORT: 3000
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      WEB_ORIGIN: ${WEB_ORIGIN:-https://pokerplan.solovyovdev.ru:3000}
-      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://pokerplan.solovyovdev.ru:3000}
+      WEB_ORIGIN: ${WEB_ORIGIN:-https://estimate.solovyovdev.ru}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://estimate.solovyovdev.ru}
       JWT_SECRET: ${JWT_SECRET:?}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
@@ -57,6 +57,9 @@ services:
       # nginx-unprivileged слушает 8080 внутри контейнера (не может биндиться на 80)
       - '80:8080'
       - '3000:3000'
+      # estimate.solovyovdev.ru за Cloudflare (переезд): Origin Rule шлёт сюда,
+      # порт выбран, чтобы не пересекаться с 443/8443 (заняты VPN на этом же сервере)
+      - '2053:2053'
     volumes:
       - letsencrypt:/etc/letsencrypt:ro
       - certbot_www:/var/www/certbot:ro
@@ -73,12 +76,21 @@ services:
       start_period: 5s
 
   certbot:
-    image: certbot/certbot
+    # Образ содержит и обычный certbot, и плагин dns-cloudflare (нужен для
+    # estimate.solovyovdev.ru — DNS-01, домен теперь за Cloudflare-прокси).
+    # Продление старого сертификата (webroot) продолжает работать тем же образом
+    image: certbot/dns-cloudflare
     restart: unless-stopped
     volumes:
       - letsencrypt:/etc/letsencrypt
       - certbot_www:/var/www/certbot
-    # Продление по webroot дважды в сутки; первый выпуск делается отдельной командой (см. README).
+      # Токен только на чтение; создаётся CD на сервере, в git не попадает (см. cd.yml)
+      - ./cloudflare.ini:/etc/cloudflare/cloudflare.ini:ro
+    # Продление дважды в сутки. Без флагов авторизации: certbot renew берёт
+    # способ (webroot/dns-cloudflare) и путь/креды из сохранённого renewal-конфига
+    # каждого сертификата — передать --webroot здесь означало бы навязать его
+    # ВСЕМ сертификатам разом, включая dns-cloudflare, и сломать его продление.
+    # Первый выпуск обоих сертификатов — отдельной командой (см. README).
     # web работает под uid/gid 101 (nginx-unprivileged) и не может прочитать root:600 приватный
     # ключ, который пишет certbot, — поэтому при старте и после каждого продления (--deploy-hook)
     # отдаём группе 101 право на чтение
@@ -86,7 +98,7 @@ services:
       /bin/sh -c 'trap exit TERM;
       fix() { chown -R root:101 /etc/letsencrypt/live /etc/letsencrypt/archive; chmod -R g+rX /etc/letsencrypt/live /etc/letsencrypt/archive; };
       fix;
-      while :; do certbot renew --webroot -w /var/www/certbot --quiet --deploy-hook "chown -R root:101 /etc/letsencrypt/live /etc/letsencrypt/archive && chmod -R g+rX /etc/letsencrypt/live /etc/letsencrypt/archive"; sleep 12h & wait $${!}; done'
+      while :; do certbot renew --quiet --deploy-hook "chown -R root:101 /etc/letsencrypt/live /etc/letsencrypt/archive && chmod -R g+rX /etc/letsencrypt/live /etc/letsencrypt/archive"; sleep 12h & wait $${!}; done'
 
 volumes:
   postgres_data:
