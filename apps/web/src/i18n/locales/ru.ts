@@ -250,6 +250,9 @@ export default {
     kickedNotice: 'Скрам-мастер исключил вас из комнаты',
     kickedMessage: 'Скрам-мастер исключил вас из этой комнаты.',
     rejoin: 'Войти снова',
+    reactionTriggerLabel: 'Поставить реакцию участнику {name}',
+    reactionBadgeLabel: 'Реакция {emoji}, поставили: {count}',
+    reactionError: 'Не удалось отправить реакцию. Попробуйте ещё раз.',
   },
   myRooms: {
     title: 'Мои комнаты',

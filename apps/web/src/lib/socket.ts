@@ -13,6 +13,7 @@ import type {
   RoomTimerState,
   Round,
   RoundResult,
+  SendReactionPayload,
   StartRoundPayload,
   SubmitVotePayload,
   UpdateLinksPayload,
@@ -63,6 +64,7 @@ interface ClientToServerEvents {
   ) => void;
   [WS_EVENTS.RESET_TIMER]: (p: ResetTimerPayload, ack: (r: WsAck<RoomTimerState>) => void) => void;
   [WS_EVENTS.KICK_PARTICIPANT]: (p: KickParticipantPayload, ack: (r: WsAck<null>) => void) => void;
+  [WS_EVENTS.SEND_REACTION]: (p: SendReactionPayload, ack: (r: WsAck<null>) => void) => void;
 }
 
 export type PokerSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

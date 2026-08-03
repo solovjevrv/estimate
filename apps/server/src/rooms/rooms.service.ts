@@ -2,6 +2,7 @@ import {
   GUEST_NAME_MAX_LENGTH,
   ROOM_NAME_MAX_LENGTH,
   type Participant,
+  type Reaction,
   type Room,
   type RoomRole,
   type RoomState,
@@ -341,6 +342,7 @@ export class RoomsService {
       endsAt: null,
       remainingSec: TIMER_DEFAULT_DURATION_SEC,
     },
+    reactions: Reaction[] = [],
   ): Promise<RoomState> {
     const { room, round, votes } = await this.db.transaction(
       async (tx) => {
@@ -374,6 +376,7 @@ export class RoomsService {
       // Оценки видны только после вскрытия карт
       result: round?.status === 'revealed' ? this.summarize(votes, round, round.average) : null,
       timer,
+      reactions,
     };
   }
 

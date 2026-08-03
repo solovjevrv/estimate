@@ -1,10 +1,10 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui';
-import type { Participant } from '@poker/shared';
+import type { Participant, ReactionEmoji } from '@poker/shared';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import ParticipantCardBody from './ParticipantCardBody.vue';
+import ParticipantCardBody, { type ReceivedReaction } from './ParticipantCardBody.vue';
 
 const props = defineProps<{
   participant: Participant;
@@ -16,9 +16,10 @@ const props = defineProps<{
   isWinner: boolean;
   /** Меню исключения — открывается по клику на карточку; решает вызывающий (скрам-мастер и не на себе) */
   canKick: boolean;
+  receivedReactions: ReceivedReaction[];
 }>();
 
-const emit = defineEmits<{ kick: [] }>();
+const emit = defineEmits<{ kick: []; react: [emoji: ReactionEmoji] }>();
 
 const { t } = useI18n();
 
@@ -51,6 +52,8 @@ const menuItems = computed<DropdownMenuItem[][]>(() => [
       :round-status="roundStatus"
       :value-label="valueLabel"
       :is-winner="isWinner"
+      :received-reactions="receivedReactions"
+      @react="emit('react', $event)"
     />
   </UDropdownMenu>
   <ParticipantCardBody
@@ -60,5 +63,7 @@ const menuItems = computed<DropdownMenuItem[][]>(() => [
     :round-status="roundStatus"
     :value-label="valueLabel"
     :is-winner="isWinner"
+    :received-reactions="receivedReactions"
+    @react="emit('react', $event)"
   />
 </template>

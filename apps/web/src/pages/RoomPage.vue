@@ -7,6 +7,7 @@ import {
   ROOM_NAME_MAX_LENGTH,
   type DeckType,
   type Participant,
+  type ReactionEmoji,
   type Room,
   type RoundHistoryEntry,
   tshirtLabel,
@@ -17,6 +18,7 @@ import { useI18n } from 'vue-i18n';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import DeckBar from '../components/room/DeckBar.vue';
 import ParticipantCard from '../components/room/ParticipantCard.vue';
+import type { ReceivedReaction } from '../components/room/ParticipantCardBody.vue';
 import RoomTimerCard from '../components/room/RoomTimerCard.vue';
 import RoomTopBar from '../components/room/RoomTopBar.vue';
 import RoundResultPanel from '../components/room/RoundResultPanel.vue';
@@ -132,6 +134,45 @@ async function onKickConfirm(): Promise<void> {
     toast.add({ title: t('room.kickError'), color: 'error' });
   } finally {
     kicking.value = false;
+  }
+}
+
+// --- Реакции-эмодзи на карточке участника (10.10) ---
+/**
+ * Одинаковые реакции разных участников схлопываются в одну со счётчиком (как
+ * реакции на сообщение в Telegram) — иначе при десятке участников бейджи не
+ * поместились бы под карточкой шириной 130px. Набор эмодзи фиксирован
+ * (`REACTION_EMOJIS`), поэтому уникальных групп на карточке не больше его длины.
+ */
+function receivedReactionsFor(participantId: string): ReceivedReaction[] {
+  const forParticipant = room.reactions.filter((r) => r.toParticipantId === participantId);
+  const byEmoji = new Map<
+    ReceivedReaction['emoji'],
+    { fromNames: string[]; reactedByMe: boolean }
+  >();
+  for (const r of forParticipant) {
+    const fromName =
+      room.participants.find((p) => p.participantId === r.fromParticipantId)?.name ?? '';
+    const group = byEmoji.get(r.emoji) ?? { fromNames: [], reactedByMe: false };
+    group.fromNames.push(fromName);
+    if (r.fromParticipantId === room.participantId) {
+      group.reactedByMe = true;
+    }
+    byEmoji.set(r.emoji, group);
+  }
+  return Array.from(byEmoji.entries()).map(([emoji, { fromNames, reactedByMe }]) => ({
+    emoji,
+    count: fromNames.length,
+    fromNames,
+    reactedByMe,
+  }));
+}
+
+async function onReactClick(participant: Participant, emoji: ReactionEmoji): Promise<void> {
+  try {
+    await room.sendReaction(participant.participantId, emoji);
+  } catch {
+    toast.add({ title: t('room.reactionError'), color: 'error' });
   }
 }
 
@@ -887,7 +928,9 @@ function retry(): void {
               :value-label="revealedValueLabel(p.participantId)"
               :is-winner="isWinnerParticipant(p.participantId)"
               :can-kick="room.isScrumMaster && p.participantId !== room.participantId"
+              :received-reactions="receivedReactionsFor(p.participantId)"
               @kick="onKickClick(p)"
+              @react="onReactClick(p, $event)"
             />
           </div>
         </div>
