@@ -13,6 +13,9 @@ git fetch origin "$BRANCH"
 git reset --hard "origin/$BRANCH"
 
 echo "== Собираю образы (последовательно: на сервере 2 ГБ RAM) =="
+# Короткий хэш коммита — для футера фронта (build arg APP_VERSION, см. docker-compose.prod.yml)
+export APP_VERSION
+APP_VERSION="$(git rev-parse --short HEAD)"
 $COMPOSE build server
 $COMPOSE build web
 

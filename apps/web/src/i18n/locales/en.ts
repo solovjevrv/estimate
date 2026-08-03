@@ -289,4 +289,10 @@ export default {
     saved: 'Profile updated',
     saveError: 'Could not save the profile. Please try again.',
   },
+  footer: {
+    copyright: '© {year} solovjevrv',
+    support: 'Support',
+    license: 'MIT License',
+    build: 'Build {version}',
+  },
 };

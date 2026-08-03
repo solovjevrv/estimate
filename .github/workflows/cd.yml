@@ -33,6 +33,37 @@ jobs:
           printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
           [ -s ~/.ssh/known_hosts ] || { echo "SSH_KNOWN_HOSTS пуст"; exit 1; }
 
+      - name: Обновление .env на сервере
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          POSTGRES_USER: ${{ secrets.POSTGRES_USER }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          POSTGRES_DB: ${{ secrets.POSTGRES_DB }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          YANDEX_CLIENT_ID: ${{ secrets.YANDEX_CLIENT_ID }}
+          YANDEX_CLIENT_SECRET: ${{ secrets.YANDEX_CLIENT_SECRET }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+        run: |
+          # GitHub Secrets — источник правды; .env на сервере перезаписывается
+          # каждым деплоем. printf трактует значение как данные, а не shell-код —
+          # безопасно, даже если в секрете случайно окажутся `$()`/бэктики (в
+          # отличие от heredoc, где такое раскрылось бы на раннере)
+          {
+            printf 'POSTGRES_USER=%s\n' "$POSTGRES_USER"
+            printf 'POSTGRES_PASSWORD=%s\n' "$POSTGRES_PASSWORD"
+            printf 'POSTGRES_DB=%s\n' "$POSTGRES_DB"
+            printf 'JWT_SECRET=%s\n' "$JWT_SECRET"
+            printf 'GOOGLE_CLIENT_ID=%s\n' "$GOOGLE_CLIENT_ID"
+            printf 'GOOGLE_CLIENT_SECRET=%s\n' "$GOOGLE_CLIENT_SECRET"
+            printf 'YANDEX_CLIENT_ID=%s\n' "$YANDEX_CLIENT_ID"
+            printf 'YANDEX_CLIENT_SECRET=%s\n' "$YANDEX_CLIENT_SECRET"
+            printf 'SENTRY_DSN=%s\n' "$SENTRY_DSN"
+          } | ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=10 \
+            "$SSH_USER@$SSH_HOST" 'cat > ~/poker-planing/.env && chmod 600 ~/poker-planing/.env'
+
       - name: Деплой
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}

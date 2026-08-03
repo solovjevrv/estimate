@@ -290,4 +290,10 @@ export default {
     saved: 'Профиль обновлён',
     saveError: 'Не удалось сохранить профиль. Попробуйте ещё раз.',
   },
+  footer: {
+    copyright: '© {year} solovjevrv',
+    support: 'Поддержка',
+    license: 'Лицензия MIT',
+    build: 'Сборка {version}',
+  },
 };
