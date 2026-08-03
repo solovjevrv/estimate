@@ -26,10 +26,15 @@ import type { Db } from '../db';
 import { isForeignKeyViolation, isUniqueViolation } from '../db/errors';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
 import { TeamsRepository } from '../teams';
+import type { DbExecutor as TeamsDbExecutor } from '../teams/teams.repository';
 
 import { GuestSessions } from './guest-sessions';
 import type { ParticipantIdentity } from './presence';
-import { RoomsRepository, type VoteRecord } from './rooms.repository';
+import {
+  type DbExecutor as RoomsDbExecutor,
+  RoomsRepository,
+  type VoteRecord,
+} from './rooms.repository';
 
 export interface CreateRoomInput {
   name: string;
@@ -77,6 +82,17 @@ export class RoomsService {
     private readonly teams: TeamsRepository,
     private readonly users: UsersRepository,
     private readonly guests: GuestSessions,
+    /**
+     * Репозитории для действий под транзакцией (`getState`/`withLockedRoom`) —
+     * фабрики, а не прямой `new RoomsRepository(tx)`, чтобы в юнит-тестах можно
+     * было подменить их моками и не поднимать реальную БД (7.30).
+     */
+    private readonly createRoomsRepository: (executor: RoomsDbExecutor) => RoomsRepository = (
+      executor,
+    ) => new RoomsRepository(executor),
+    private readonly createTeamsRepository: (executor: TeamsDbExecutor) => TeamsRepository = (
+      executor,
+    ) => new TeamsRepository(executor),
   ) {}
 
   static forDatabase(db: Db, guestSecret: string): RoomsService {
@@ -328,7 +344,7 @@ export class RoomsService {
   ): Promise<RoomState> {
     const { room, round, votes } = await this.db.transaction(
       async (tx) => {
-        const repo = new RoomsRepository(tx);
+        const repo = this.createRoomsRepository(tx);
         const found = await repo.findRoom(roomId);
         if (!found) {
           throw new NotFoundError('Комната не найдена');
@@ -534,12 +550,12 @@ export class RoomsService {
     action: (repo: RoomsRepository, room: Room, teams: TeamsRepository) => Promise<T>,
   ): Promise<T> {
     return this.db.transaction(async (tx) => {
-      const repo = new RoomsRepository(tx);
+      const repo = this.createRoomsRepository(tx);
       const room = await repo.lockRoom(roomId);
       if (!room) {
         throw new NotFoundError('Комната не найдена');
       }
-      return action(repo, room, new TeamsRepository(tx));
+      return action(repo, room, this.createTeamsRepository(tx));
     });
   }
 

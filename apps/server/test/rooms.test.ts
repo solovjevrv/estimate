@@ -151,8 +151,15 @@ describeDb('комнаты', () => {
   beforeAll(async () => {
     ({ db, pool } = createDb(databaseUrl as string));
     teamsService = TeamsService.forDatabase(db);
-    app = buildApp({ db, auth: authConfig });
-    new SocketGateway({ corsOrigin: '*', guestSecret: authConfig.guestSecret }).attach(app);
+    // Файл гоняет десятки запросов на комнаты с одного IP — реальный лимит (7.34)
+    // тут же и словил бы этот тестовый трафик, поэтому он тут завышен
+    app = buildApp({
+      db,
+      auth: authConfig,
+      roomsRateLimit: { max: 10_000, timeWindow: '1 minute' },
+    });
+    const roomsService = RoomsService.forDatabase(db, authConfig.guestSecret);
+    new SocketGateway(roomsService, { corsOrigin: '*' }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
     port = (app.server.address() as AddressInfo).port;
   });
@@ -1419,6 +1426,49 @@ describeDb('комнаты', () => {
       // В отличие от repeatable read, здесь голос guestB виден тому же чтению —
       // это и есть рваный снимок, от которого защищает repeatable read в getState
       expect(votes.some((vote) => vote.participantId === guestB.participantId)).toBe(true);
+    });
+  });
+
+  describe('rate limit на /api/rooms/* (7.34)', () => {
+    // Свежий инстанс на каждый тест (без переопределения лимита) — у общего
+    // `app` файла лимит завышен нарочно (см. beforeAll), эти тесты проверяют
+    // настоящий production-порог
+    const ROOMS_RATE_LIMIT_MAX = 30; // должно совпадать с константой в src/rooms/plugin.ts
+
+    it('после превышения лимита конкретного маршрута отвечает 429 в общем формате ошибок', async () => {
+      const limitedApp = buildApp({ db, auth: authConfig });
+      await limitedApp.ready();
+      try {
+        const url = `/api/rooms/${randomUUID()}`;
+        let last: Awaited<ReturnType<typeof limitedApp.inject>> | undefined;
+        for (let i = 0; i < ROOMS_RATE_LIMIT_MAX + 1; i++) {
+          last = await limitedApp.inject({ method: 'GET', url });
+        }
+        expect(last?.statusCode).toBe(429);
+        expect(last?.json()).toMatchObject({ error: 'too_many_requests' });
+      } finally {
+        await limitedApp.close();
+      }
+    });
+
+    it('исчерпанный лимит одного маршрута не трогает бюджет другого', async () => {
+      const limitedApp = buildApp({ db, auth: authConfig });
+      await limitedApp.ready();
+      try {
+        // Один и тот же роут /api/rooms/:id делит бюджет независимо от id в пути
+        for (let i = 0; i < ROOMS_RATE_LIMIT_MAX + 1; i++) {
+          await limitedApp.inject({ method: 'GET', url: `/api/rooms/${randomUUID()}` });
+        }
+
+        const res = await limitedApp.inject({
+          method: 'GET',
+          url: `/api/rooms/${randomUUID()}/rounds`,
+        });
+
+        expect(res.statusCode).not.toBe(429);
+      } finally {
+        await limitedApp.close();
+      }
     });
   });
 });

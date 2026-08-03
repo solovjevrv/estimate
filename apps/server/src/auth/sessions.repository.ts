@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, lt } from 'drizzle-orm';
 
 import type { Db } from '../db';
 import { schema } from '../db';
@@ -53,5 +53,14 @@ export class SessionsRepository {
   /** Выход: гасим ровно эту сессию, остальные устройства пользователя не трогаем */
   async revoke(jti: string): Promise<void> {
     await this.db.delete(schema.sessions).where(eq(schema.sessions.id, jti));
+  }
+
+  /** Чистка строк, чей refresh-токен всё равно уже не пройдёт проверку (7.29) */
+  async deleteExpired(now: Date = new Date()): Promise<number> {
+    const deleted = await this.db
+      .delete(schema.sessions)
+      .where(lt(schema.sessions.expiresAt, now))
+      .returning({ id: schema.sessions.id });
+    return deleted.length;
   }
 }

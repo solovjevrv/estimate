@@ -164,14 +164,22 @@ export interface Round {
   revealedAt: string | null;
 }
 
-/** Участник за столом: авторизованный пользователь или гость на один сеанс */
-export interface Participant {
+/**
+ * Публичная личность участника за столом — общий костяк для клиентского
+ * `Participant` и серверного `ParticipantIdentity` (7.33): поля выносятся сюда,
+ * а не дублируются в обоих местах, чтобы не разойтись при будущих правках.
+ */
+export interface ParticipantProfile {
   /** id пользователя либо сессионный id гостя */
   participantId: string;
   name: string;
   avatarUrl: string | null;
   isGuest: boolean;
   role: RoomRole;
+}
+
+/** Участник за столом: авторизованный пользователь или гость на один сеанс */
+export interface Participant extends ParticipantProfile {
   /** Проголосовал ли в текущем раунде; сама оценка до вскрытия не видна */
   hasVoted: boolean;
 }

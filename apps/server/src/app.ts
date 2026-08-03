@@ -2,12 +2,12 @@ import fastifyHelmet from '@fastify/helmet';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import fp from 'fastify-plugin';
 
-import { authPlugin } from './auth';
+import { authPlugin, sessionCleanupPlugin } from './auth';
 import type { AuthConfig } from './config';
 import type { Db } from './db';
 import { ErrorHandler } from './http/error-handler';
 import { healthPlugin } from './http/health.plugin';
-import { roomsPlugin } from './rooms';
+import { roomsPlugin, type RoomsRateLimitOptions } from './rooms';
 import { teamsPlugin } from './teams';
 
 declare module 'fastify' {
@@ -24,6 +24,8 @@ export interface AppDeps {
   auth?: AuthConfig;
   /** Документация OpenAPI: включена везде, кроме продакшена */
   docsEnabled?: boolean;
+  /** Переопределение лимита /api/rooms/* — нужно интеграционным тестам (7.34) */
+  roomsRateLimit?: RoomsRateLimitOptions;
 }
 
 export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): FastifyInstance {
@@ -69,9 +71,10 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
 
   if (deps.auth) {
     void app.register(authPlugin, { auth: deps.auth });
+    void app.register(sessionCleanupPlugin);
     // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией
     void app.register(teamsPlugin);
-    void app.register(roomsPlugin, { auth: deps.auth });
+    void app.register(roomsPlugin, { auth: deps.auth, rateLimit: deps.roomsRateLimit });
   }
 
   if (deps.closeDb) {

@@ -78,6 +78,13 @@
       "when": 1785238765787,
       "tag": "0010_volatile_dark_beast",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1785746070525,
+      "tag": "0011_narrow_sandman",
+      "breakpoints": true
     }
   ]
 }

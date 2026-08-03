@@ -56,10 +56,21 @@ const timeLabel = computed(() => {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 });
 
-const progressDeg = computed(() => {
+/**
+ * SVG-кольцо, а не conic-gradient: background-image (которым красился конус)
+ * не входит в анимируемые CSS-свойства спецификации, поэтому transition на
+ * него был мёртвым кодом — кольцо дёргалось на каждый тик вместо плавного
+ * уменьшения (7.38). stroke-dashoffset анимируется штатно (см. StatRing.vue).
+ */
+const RING_RADIUS = 34;
+const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
+
+const progressFraction = computed(() => {
   if (props.timer.durationSec === 0) return 0;
-  return (remainingSec.value / props.timer.durationSec) * 360;
+  return remainingSec.value / props.timer.durationSec;
 });
+
+const dashOffset = computed(() => RING_CIRCUMFERENCE * (1 - progressFraction.value));
 
 // Время истекло, но пока никто не поставил на паузу/не сбросил — держим на нуле
 // и меняем цвет кольца, а не выключаем сами: сброс/пауза — решение участника
@@ -83,14 +94,31 @@ function onToggleClick(): void {
 
 <template>
   <div class="surface-card surface-card-lg flex flex-wrap items-center gap-4 px-[30px] py-[26px]">
-    <div
-      class="relative flex size-[76px] shrink-0 items-center justify-center rounded-full transition-[background] duration-300"
-      :style="{
-        background: `conic-gradient(${ringColor} ${progressDeg}deg, var(--brand-border) 0deg)`,
-      }"
-    >
+    <div class="relative flex size-[76px] shrink-0 items-center justify-center">
+      <svg viewBox="0 0 76 76" class="absolute inset-0 -rotate-90">
+        <circle
+          cx="38"
+          cy="38"
+          :r="RING_RADIUS"
+          fill="none"
+          stroke="var(--brand-border)"
+          stroke-width="8"
+        />
+        <circle
+          cx="38"
+          cy="38"
+          :r="RING_RADIUS"
+          fill="none"
+          stroke-width="8"
+          stroke-linecap="round"
+          class="transition-[stroke-dashoffset,stroke] duration-300"
+          :stroke="ringColor"
+          :stroke-dasharray="RING_CIRCUMFERENCE"
+          :stroke-dashoffset="dashOffset"
+        />
+      </svg>
       <div
-        class="flex size-[60px] items-center justify-center rounded-full bg-[var(--brand-surface)]"
+        class="relative flex size-[60px] items-center justify-center rounded-full bg-[var(--brand-surface)]"
       >
         <span class="font-heading text-[14.5px] font-extrabold" :style="{ color: ringColor }">
           {{ timeLabel }}

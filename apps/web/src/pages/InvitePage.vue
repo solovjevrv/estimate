@@ -67,10 +67,13 @@ async function act(): Promise<void> {
 
 <template>
   <section class="mx-auto max-w-md space-y-6">
-    <div v-if="loading" class="surface-card space-y-4 p-[30px] text-center">
+    <div
+      v-if="loading"
+      class="surface-card surface-card-lg space-y-4 px-[30px] py-[26px] text-center"
+    >
       <USkeleton class="mx-auto size-8 rounded-full bg-[var(--brand-border)]" />
       <USkeleton class="mx-auto h-5 w-2/3 bg-[var(--brand-border)]" />
-      <USkeleton class="h-10 w-full rounded-[11px] bg-[var(--brand-border)]" />
+      <USkeleton class="h-11 w-full rounded-[11px] bg-[var(--brand-border)]" />
     </div>
 
     <UAlert
@@ -86,24 +89,27 @@ async function act(): Promise<void> {
       :description="t('invite.loadError')"
     />
 
-    <UCard v-else>
-      <div class="space-y-4 text-center">
-        <UIcon name="i-lucide-users" class="text-primary mx-auto size-8" />
-        <p class="text-lg">{{ t('invite.lead', { name: teamName }) }}</p>
+    <div v-else class="surface-card surface-card-lg space-y-4 px-[30px] py-[26px] text-center">
+      <UIcon name="i-lucide-users" class="text-primary mx-auto size-8" />
+      <p class="text-[17px] font-semibold">{{ t('invite.lead', { name: teamName }) }}</p>
 
-        <UAlert
-          v-if="joinFailed"
-          color="error"
-          variant="subtle"
-          :description="t('invite.joinError')"
-        />
+      <UAlert
+        v-if="joinFailed"
+        color="error"
+        variant="subtle"
+        :description="t('invite.joinError')"
+      />
 
-        <UButton block :loading="joining" @click="act">
-          <template v-if="joining">{{ t('invite.joining') }}</template>
-          <template v-else-if="session.isAuthenticated">{{ t('invite.join') }}</template>
-          <template v-else>{{ t('invite.joinAndLogin') }}</template>
-        </UButton>
-      </div>
-    </UCard>
+      <UButton
+        block
+        :loading="joining"
+        class="rounded-[11px] py-3 text-[15px] font-bold"
+        @click="act"
+      >
+        <template v-if="joining">{{ t('invite.joining') }}</template>
+        <template v-else-if="session.isAuthenticated">{{ t('invite.join') }}</template>
+        <template v-else>{{ t('invite.joinAndLogin') }}</template>
+      </UButton>
+    </div>
   </section>
 </template>
