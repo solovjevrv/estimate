@@ -440,6 +440,35 @@ describe('вход в комнату', () => {
   });
 });
 
+describe('подзаголовок «Командная/Личная комната» (10.5)', () => {
+  it('у комнаты без команды показывает «Личная комната»', async () => {
+    socket.next = { state: roomState(), guestToken: null, participantId: 'u1' };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
+    expect(wrapper.text()).toContain('Личная комната');
+    expect(wrapper.text()).not.toContain('Командная комната');
+  });
+
+  it('у комнаты команды показывает «Командная комната»', async () => {
+    const teamRoom: Room = { ...room1, teamId: 't1' };
+    socket.next = { state: roomState({ room: teamRoom }), guestToken: null, participantId: 'u1' };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: teamRoom }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
+    expect(wrapper.text()).toContain('Командная комната');
+    expect(wrapper.text()).not.toContain('Личная комната');
+  });
+});
+
 describe('стол участников', () => {
   it('без раунда показывает список без статуса голосования', async () => {
     socket.next = {

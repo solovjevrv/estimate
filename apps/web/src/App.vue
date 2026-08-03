@@ -202,20 +202,6 @@ async function logout(): Promise<void> {
             <a :href="`mailto:${supportEmail}`" class="hover:text-highlighted">{{
               t('footer.support')
             }}</a>
-            <a
-              href="https://github.com/solovjevrv/poker-planing/blob/main/LICENSE"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="hover:text-highlighted"
-              >{{ t('footer.license') }}</a
-            >
-            <a
-              href="https://github.com/solovjevrv/poker-planing"
-              target="_blank"
-              rel="noopener noreferrer"
-              class="hover:text-highlighted"
-              >GitHub</a
-            >
             <span>{{ t('footer.build', { version: appVersion }) }}</span>
           </div>
         </div>
