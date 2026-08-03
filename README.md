@@ -133,6 +133,33 @@ docker compose -f docker-compose.prod.yml run --rm -p 80:80 \
 
 - Продление автоматическое: сервис `certbot` проверяет сертификат дважды в сутки и переприменяет тот же chown/chmod через `--deploy-hook`, nginx перечитывает сертификат при периодическом reload.
 
+### Переезд на estimate.solovyovdev.ru (в процессе)
+
+Новый домен — за Cloudflare-прокси (443/8443 на сервере заняты VPN, поэтому не SNI-роутер, а
+отдельный origin-порт). В Cloudflare: Origin Rule перенаправляет `estimate.solovyovdev.ru` на
+origin-порт `2053`, SSL/TLS режим — Full (strict). Сертификат — DNS-01 через API Cloudflare
+(`certbot/dns-cloudflare`, токен в `cloudflare.ini` рядом с `.env`, тоже пишется CD и не
+попадает в git), поэтому порт 80/webroot для этого домена не нужен вообще.
+
+**Первый выпуск — отдельной командой, строго до того, как задеплоен `nginx.conf` с новым
+server-блоком** (иначе nginx откажется стартовать: ссылается на ещё не существующий
+сертификат — и уронит заодно и текущий `pokerplan`, это один процесс nginx на оба домена):
+
+```bash
+docker compose -f docker-compose.prod.yml run --rm \
+  certbot certonly --dns-cloudflare \
+  --dns-cloudflare-credentials /etc/cloudflare/cloudflare.ini \
+  -d estimate.solovyovdev.ru \
+  --email <email> --agree-tos --no-eff-email \
+  && docker compose -f docker-compose.prod.yml exec certbot sh -c \
+  'chown -R root:101 /etc/letsencrypt/live /etc/letsencrypt/archive && chmod -R g+rX /etc/letsencrypt/live /etc/letsencrypt/archive'
+```
+
+Продление — тем же циклом `certbot renew`, что и у старого домена (см. выше): certbot сам
+помнит способ для каждого сертификата по отдельности, ничего указывать не нужно.
+
+После подтверждённого переезда — старый домен и его блок в `nginx.conf` убираются отдельным PR.
+
 ## Команды
 
 ```bash
