@@ -27,8 +27,8 @@ services:
       NODE_ENV: production
       PORT: 3000
       DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      WEB_ORIGIN: ${WEB_ORIGIN:-https://pokerplan.solovyovdev.ru:3000}
-      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://pokerplan.solovyovdev.ru:3000}
+      WEB_ORIGIN: ${WEB_ORIGIN:-https://estimate.solovyovdev.ru}
+      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://estimate.solovyovdev.ru}
       JWT_SECRET: ${JWT_SECRET:?}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
