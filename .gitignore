@@ -22,6 +22,7 @@ test-results/
 .env.*
 !.env.example
 credentials.md
+cloudflare.ini
 
 # Локальные файлы агента (в репозиторий не попадают)
 claude.md
