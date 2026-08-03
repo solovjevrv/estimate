@@ -15,6 +15,10 @@ export interface CreateRoomBody {
   teamId?: string | null;
 }
 
+export interface NameBody {
+  name: string;
+}
+
 export interface ArchivedQuery {
   archived?: 'true' | 'false';
 }
@@ -63,6 +67,12 @@ export class RoomsController {
 
   readonly archive = async (req: FastifyRequest<{ Params: RoomIdParams }>): Promise<unknown> => ({
     room: await this.service.archiveRoom(req.user.sub, req.params.id),
+  });
+
+  readonly rename = async (
+    req: FastifyRequest<{ Params: RoomIdParams; Body: NameBody }>,
+  ): Promise<unknown> => ({
+    room: await this.service.renameRoom(req.user.sub, req.params.id, req.body.name),
   });
 
   readonly remove = async (

@@ -60,10 +60,13 @@ export const sessions = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: 'cascade' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    /** Совпадает с TTL refresh-токена — по нему можно чистить протухшие строки */
+    /** Совпадает с TTL refresh-токена — по нему можно чистить протухшие строки (7.29) */
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
   },
-  (t) => [index('sessions_user_id_idx').on(t.userId)],
+  (t) => [
+    index('sessions_user_id_idx').on(t.userId),
+    index('sessions_expires_at_idx').on(t.expiresAt),
+  ],
 );
 
 export const teams = pgTable('teams', {

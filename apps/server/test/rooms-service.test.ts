@@ -616,3 +616,45 @@ describe('RoomsService: архивная комната блокирует де�
     );
   });
 });
+
+/**
+ * getState заводит свой RoomsRepository прямо внутри транзакции — раньше это
+ * значило, что метод нельзя было проверить без реальной БД. Фабрика в
+ * конструкторе (7.30) позволяет подменить репозиторий заглушкой напрямую,
+ * без глобального vi.spyOn(RoomsRepository.prototype, ...) и без БД.
+ */
+describe('RoomsService.getState (7.30)', () => {
+  it('строит снимок стола из данных репозитория без обращения к БД', async () => {
+    const db = {
+      transaction: async (fn: (tx: unknown) => Promise<unknown>) => fn({}),
+    } as unknown as Db;
+
+    const fakeRepo: Partial<RoomsRepository> = {
+      findRoom: vi.fn(async () => ROOM),
+      findCurrentRound: vi.fn(async () => ROUND),
+      listVotes: vi.fn(async () => [{ participantId: VOTER.participantId, name: null, value: 5 }]),
+    };
+
+    const service = new RoomsService(
+      db,
+      new RoomsRepository(db),
+      new TeamsRepository(db),
+      {} as UsersRepository,
+      new GuestSessions(GUEST_SECRET),
+      () => fakeRepo as RoomsRepository,
+    );
+
+    const state = await service.getState(ROOM.id, [VOTER, MASTER]);
+
+    expect(fakeRepo.findRoom).toHaveBeenCalledWith(ROOM.id);
+    expect(state.room).toEqual(ROOM);
+    expect(state.participants.find((p) => p.participantId === VOTER.participantId)?.hasVoted).toBe(
+      true,
+    );
+    expect(state.participants.find((p) => p.participantId === MASTER.participantId)?.hasVoted).toBe(
+      false,
+    );
+    // Раунд ещё голосуется — оценки не раскрываются
+    expect(state.result).toBeNull();
+  });
+});

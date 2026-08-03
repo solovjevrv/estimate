@@ -1,4 +1,4 @@
-export { roomsPlugin } from './plugin';
+export { roomsPlugin, type RoomsPluginOptions, type RoomsRateLimitOptions } from './plugin';
 export { GuestSessions } from './guest-sessions';
 export { RoomPresence, type ParticipantIdentity } from './presence';
 export { RoomsGateway } from './rooms.gateway';

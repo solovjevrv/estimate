@@ -27,11 +27,19 @@ export const useRoomsStore = defineStore('rooms', () => {
     await api.delete(`/api/rooms/${encodeURIComponent(roomId)}`);
   }
 
+  /** Переименовать комнату (только скрам-мастер). Доступно и для архивной комнаты. */
+  async function rename(roomId: string, name: string): Promise<Room> {
+    const res = await api.patch<{ room: Room }>(`/api/rooms/${encodeURIComponent(roomId)}`, {
+      name,
+    });
+    return res.room;
+  }
+
   /** Раундов сыграно, задач оценено и среднее время раунда — по всем своим комнатам */
   async function stats(): Promise<RoomStats> {
     const res = await api.get<{ stats: RoomStats }>('/api/rooms/stats');
     return res.stats;
   }
 
-  return { create, listMine, archive, remove, stats };
+  return { create, listMine, archive, remove, rename, stats };
 });

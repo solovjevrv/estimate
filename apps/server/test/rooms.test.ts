@@ -151,8 +151,15 @@ describeDb('комнаты', () => {
   beforeAll(async () => {
     ({ db, pool } = createDb(databaseUrl as string));
     teamsService = TeamsService.forDatabase(db);
-    app = buildApp({ db, auth: authConfig });
-    new SocketGateway({ corsOrigin: '*', guestSecret: authConfig.guestSecret }).attach(app);
+    // Файл гоняет десятки запросов на комнаты с одного IP — реальный лимит (7.34)
+    // тут же и словил бы этот тестовый трафик, поэтому он тут завышен
+    app = buildApp({
+      db,
+      auth: authConfig,
+      roomsRateLimit: { max: 10_000, timeWindow: '1 minute' },
+    });
+    const roomsService = RoomsService.forDatabase(db, authConfig.guestSecret);
+    new SocketGateway(roomsService, { corsOrigin: '*' }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
     port = (app.server.address() as AddressInfo).port;
   });
@@ -507,6 +514,109 @@ describeDb('комнаты', () => {
       const ack = await emit(master, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' });
 
       expect(ack).toMatchObject({ ok: false, error: 'conflict' });
+    });
+  });
+
+  describe('переименование — 7.20', () => {
+    it('переименовать может только скрам-мастер (создатель), чужой участник получает 403', async () => {
+      const owner = await newUser('rename-owner');
+      const stranger = await newUser('rename-stranger');
+      const roomId = await newRoom(owner, 'Старое название');
+
+      const byStranger = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(stranger),
+        payload: { name: 'Чужое переименование' },
+      });
+      expect(byStranger.statusCode).toBe(403);
+
+      const byOwner = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(owner),
+        payload: { name: 'Новое название' },
+      });
+      expect(byOwner.statusCode).toBe(200);
+      expect(byOwner.json()).toMatchObject({ room: { name: 'Новое название' } });
+
+      const direct = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}` });
+      expect(direct.json()).toMatchObject({ room: { name: 'Новое название' } });
+    });
+
+    it('администратор команды может переименовать командную комнату, обычный участник — нет', async () => {
+      const owner = await newUser('rename-team-owner');
+      const admin = await newUser('rename-team-admin');
+      const member = await newUser('rename-team-member');
+      const team = await teamsService.create(owner.id, `Команда ${randomUUID().slice(0, 8)}`);
+      teamIds.push(team.id);
+      await new TeamsRepository(db).insertMemberIfAbsent(team.id, admin.id, 'admin');
+      await new TeamsRepository(db).insertMemberIfAbsent(team.id, member.id, 'member');
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(owner),
+        payload: { name: 'Комната команды', teamId: team.id },
+      });
+      const roomId = (created.json() as { room: { id: string } }).room.id;
+      roomIds.push(roomId);
+
+      const byMember = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(member),
+        payload: { name: 'Переименовано участником' },
+      });
+      expect(byMember.statusCode).toBe(403);
+
+      const byAdmin = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(admin),
+        payload: { name: 'Переименовано администратором' },
+      });
+      expect(byAdmin.statusCode).toBe(200);
+    });
+
+    it('пустое и слишком длинное название отклоняются валидацией, архивную комнату переименовать можно', async () => {
+      const owner = await newUser('rename-validation-owner');
+      const roomId = await newRoom(owner, 'Комната для валидации');
+
+      const empty = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(owner),
+        payload: { name: '   ' },
+      });
+      expect(empty.statusCode).toBe(400);
+
+      const tooLong = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(owner),
+        payload: { name: 'а'.repeat(200) },
+      });
+      expect(tooLong.statusCode).toBe(400);
+
+      await app.inject({ method: 'POST', url: `/api/rooms/${roomId}/archive`, headers: as(owner) });
+      const renameArchived = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${roomId}`,
+        headers: as(owner),
+        payload: { name: 'Переименовано после архивации' },
+      });
+      expect(renameArchived.statusCode).toBe(200);
+    });
+
+    it('несуществующая комната отвечает 404', async () => {
+      const owner = await newUser('rename-missing-owner');
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/rooms/${randomUUID()}`,
+        headers: as(owner),
+        payload: { name: 'Название' },
+      });
+      expect(res.statusCode).toBe(404);
     });
   });
 
@@ -1316,6 +1426,49 @@ describeDb('комнаты', () => {
       // В отличие от repeatable read, здесь голос guestB виден тому же чтению —
       // это и есть рваный снимок, от которого защищает repeatable read в getState
       expect(votes.some((vote) => vote.participantId === guestB.participantId)).toBe(true);
+    });
+  });
+
+  describe('rate limit на /api/rooms/* (7.34)', () => {
+    // Свежий инстанс на каждый тест (без переопределения лимита) — у общего
+    // `app` файла лимит завышен нарочно (см. beforeAll), эти тесты проверяют
+    // настоящий production-порог
+    const ROOMS_RATE_LIMIT_MAX = 30; // должно совпадать с константой в src/rooms/plugin.ts
+
+    it('после превышения лимита конкретного маршрута отвечает 429 в общем формате ошибок', async () => {
+      const limitedApp = buildApp({ db, auth: authConfig });
+      await limitedApp.ready();
+      try {
+        const url = `/api/rooms/${randomUUID()}`;
+        let last: Awaited<ReturnType<typeof limitedApp.inject>> | undefined;
+        for (let i = 0; i < ROOMS_RATE_LIMIT_MAX + 1; i++) {
+          last = await limitedApp.inject({ method: 'GET', url });
+        }
+        expect(last?.statusCode).toBe(429);
+        expect(last?.json()).toMatchObject({ error: 'too_many_requests' });
+      } finally {
+        await limitedApp.close();
+      }
+    });
+
+    it('исчерпанный лимит одного маршрута не трогает бюджет другого', async () => {
+      const limitedApp = buildApp({ db, auth: authConfig });
+      await limitedApp.ready();
+      try {
+        // Один и тот же роут /api/rooms/:id делит бюджет независимо от id в пути
+        for (let i = 0; i < ROOMS_RATE_LIMIT_MAX + 1; i++) {
+          await limitedApp.inject({ method: 'GET', url: `/api/rooms/${randomUUID()}` });
+        }
+
+        const res = await limitedApp.inject({
+          method: 'GET',
+          url: `/api/rooms/${randomUUID()}/rounds`,
+        });
+
+        expect(res.statusCode).not.toBe(429);
+      } finally {
+        await limitedApp.close();
+      }
     });
   });
 });
