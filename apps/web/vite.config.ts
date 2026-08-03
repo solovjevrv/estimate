@@ -16,6 +16,9 @@ export default defineConfig({
     __VUE_I18N_FULL_INSTALL__: 'false',
     __VUE_I18N_LEGACY_API__: 'false',
     __INTLIFY_PROD_DEVTOOLS__: 'false',
+    // Короткий git-хэш сборки для футера (CD прокидывает через APP_VERSION,
+    // см. Dockerfile/docker-compose.prod.yml); локально — просто 'dev'
+    __APP_VERSION__: JSON.stringify(process.env.APP_VERSION ?? 'dev'),
   },
   server: {
     port: 5173,

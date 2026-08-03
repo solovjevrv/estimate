@@ -10,6 +10,10 @@ RUN pnpm install --frozen-lockfile --filter @poker/web
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY apps/web apps/web
+# Короткий git-хэш для футера (см. vite.config.ts) — передаётся сборкой,
+# без него (локальная сборка без --build-arg) в футере будет 'dev'
+ARG APP_VERSION=dev
+ENV APP_VERSION=$APP_VERSION
 RUN pnpm --filter @poker/web build
 
 FROM nginxinc/nginx-unprivileged:alpine

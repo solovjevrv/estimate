@@ -17,7 +17,10 @@ export default tseslint.config(
   },
   {
     files: ['apps/web/**/*.{ts,vue}'],
-    languageOptions: { globals: globals.browser },
+    languageOptions: {
+      // __APP_VERSION__ — build-time define из vite.config.ts (см. env.d.ts)
+      globals: { ...globals.browser, __APP_VERSION__: 'readonly' },
+    },
   },
   {
     files: ['apps/server/**/*.ts'],
