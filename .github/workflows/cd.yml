@@ -64,18 +64,6 @@ jobs:
           } | ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=10 \
             "$SSH_USER@$SSH_HOST" 'cat > ~/poker-planing/.env && chmod 600 ~/poker-planing/.env'
 
-      - name: Обновление cloudflare.ini на сервере
-        env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
-          SSH_USER: ${{ secrets.SSH_USER }}
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: |
-          # Креды плагина certbot dns-cloudflare (DNS-01 для estimate.solovyovdev.ru,
-          # см. docker-compose.prod.yml). certbot сам проверяет права файла — без 600 откажется
-          printf 'dns_cloudflare_api_token = %s\n' "$CLOUDFLARE_API_TOKEN" \
-            | ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=10 \
-              "$SSH_USER@$SSH_HOST" 'cat > ~/poker-planing/cloudflare.ini && chmod 600 ~/poker-planing/cloudflare.ini'
-
       - name: Деплой
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
