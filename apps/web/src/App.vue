@@ -27,6 +27,10 @@ const language = computed({
 
 const isDark = computed(() => theme.value === 'dark');
 
+const currentYear = new Date().getFullYear();
+const supportEmail = 'solovjevrv@gmail.com';
+const appVersion = __APP_VERSION__;
+
 const languageLabels: Record<Locale, string> = {
   ru: 'Русский',
   en: 'English',
@@ -181,6 +185,34 @@ async function logout(): Promise<void> {
       <main class="mx-auto w-full max-w-[73.75rem] flex-1 px-4 py-14">
         <RouterView />
       </main>
+
+      <footer class="border-default border-t" style="background-color: var(--brand-surface)">
+        <div
+          class="text-muted mx-auto flex w-full max-w-[73.75rem] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-6 text-[13px]"
+        >
+          <span>{{ t('footer.copyright', { year: currentYear }) }}</span>
+          <div class="flex flex-wrap items-center gap-x-6 gap-y-2">
+            <a :href="`mailto:${supportEmail}`" class="hover:text-highlighted">{{
+              t('footer.support')
+            }}</a>
+            <a
+              href="https://github.com/solovjevrv/poker-planing/blob/main/LICENSE"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="hover:text-highlighted"
+              >{{ t('footer.license') }}</a
+            >
+            <a
+              href="https://github.com/solovjevrv/poker-planing"
+              target="_blank"
+              rel="noopener noreferrer"
+              class="hover:text-highlighted"
+              >GitHub</a
+            >
+            <span>{{ t('footer.build', { version: appVersion }) }}</span>
+          </div>
+        </div>
+      </footer>
     </div>
   </UApp>
 </template>
