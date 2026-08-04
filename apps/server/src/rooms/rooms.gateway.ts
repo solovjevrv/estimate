@@ -178,9 +178,6 @@ export class RoomsGateway {
           if (!targetId) {
             throw new ValidationError('Не указан участник');
           }
-          if (targetId === identity.participantId) {
-            throw new ForbiddenError('Нельзя отправить реакцию самому себе');
-          }
           const emoji = payload?.emoji;
           if (!emoji || !(REACTION_EMOJIS as readonly string[]).includes(emoji)) {
             throw new ValidationError('Недопустимый эмодзи');

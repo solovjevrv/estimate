@@ -218,7 +218,7 @@ watch(
         flyingReactionsByParticipant[r.toParticipantId] = (
           flyingReactionsByParticipant[r.toParticipantId] ?? []
         ).filter((f) => f.id !== id);
-      }, 1500);
+      }, 1900);
     }
   },
 );
