@@ -122,8 +122,8 @@ describe('страница «Мои комнаты»', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось загрузить комнаты'));
   });
 
-  it('не показывает пагинацию, пока комнат 10 или меньше', async () => {
-    const rooms = Array.from({ length: 10 }, (_, i) => ({
+  it('не показывает пагинацию, пока комнат 5 или меньше', async () => {
+    const rooms = Array.from({ length: 5 }, (_, i) => ({
       ...activeRoom,
       id: `r${i}`,
       name: `Комната ${i}`,
@@ -133,13 +133,13 @@ describe('страница «Мои комнаты»', () => {
       makeFetch({ 'GET /api/rooms?archived=false': () => json(200, { rooms }) }),
     );
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Комната 9'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Комната 4'));
     const pageTwoButton = wrapper.findAll('button').find((b) => b.text().trim() === '2');
     expect(pageTwoButton).toBeUndefined();
   });
 
-  it('при более чем 10 активных комнатах показывает пагинацию и листает страницы', async () => {
-    const rooms = Array.from({ length: 15 }, (_, i) => ({
+  it('при более чем 5 активных комнатах показывает пагинацию и листает страницы', async () => {
+    const rooms = Array.from({ length: 8 }, (_, i) => ({
       ...activeRoom,
       id: `r${i}`,
       name: `Комната ${i}`,
@@ -149,16 +149,16 @@ describe('страница «Мои комнаты»', () => {
       makeFetch({ 'GET /api/rooms?archived=false': () => json(200, { rooms }) }),
     );
 
-    // Сортировка — свежие сверху, свежая это i=14 ("Комната 14"), первая страница — 14..5
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Комната 14'));
-    expect(wrapper.text()).not.toContain('Комната 4');
+    // Сортировка — свежие сверху, свежая это i=7 ("Комната 7"), первая страница — 7..3
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Комната 7'));
+    expect(wrapper.text()).not.toContain('Комната 2');
 
     const pageTwoButton = wrapper.findAll('button').find((b) => b.text().trim() === '2');
     expect(pageTwoButton).toBeTruthy();
     await pageTwoButton!.trigger('click');
 
-    expect(wrapper.text()).toContain('Комната 4');
-    expect(wrapper.text()).not.toContain('Комната 14');
+    expect(wrapper.text()).toContain('Комната 2');
+    expect(wrapper.text()).not.toContain('Комната 7');
   });
 
   it('открывает архив и удаляет комнату навсегда', async () => {

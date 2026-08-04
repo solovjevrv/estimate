@@ -15,7 +15,7 @@ export interface PagedList<T> {
   reset: () => void;
 }
 
-export function usePagedList<T>(source: ComputedRef<T[]>, pageSize = 10): PagedList<T> {
+export function usePagedList<T>(source: ComputedRef<T[]>, pageSize = 5): PagedList<T> {
   const page = ref(1);
   const total = computed(() => source.value.length);
   const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));

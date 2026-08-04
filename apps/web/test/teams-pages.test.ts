@@ -491,8 +491,8 @@ describe('дашборд команды', () => {
     expect(wrapper.text()).not.toContain('Планирование спринта');
   });
 
-  it('при более чем 10 активных комнатах команды показывает пагинацию и листает страницы', async () => {
-    const rooms = Array.from({ length: 15 }, (_, i) => ({
+  it('при более чем 5 активных комнатах команды показывает пагинацию и листает страницы', async () => {
+    const rooms = Array.from({ length: 8 }, (_, i) => ({
       ...activeRoom,
       id: `ar${i}`,
       name: `Комната ${i}`,
@@ -506,16 +506,16 @@ describe('дашборд команды', () => {
       }),
     );
 
-    // Свежая сверху — i=14 ("Комната 14"), первая страница — 14..5
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Комната 14'));
-    expect(wrapper.text()).not.toContain('Комната 4');
+    // Свежая сверху — i=7 ("Комната 7"), первая страница — 7..3
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Комната 7'));
+    expect(wrapper.text()).not.toContain('Комната 2');
 
     const pageTwoButton = wrapper.findAll('button').find((b) => b.text().trim() === '2');
     expect(pageTwoButton).toBeTruthy();
     await pageTwoButton!.trigger('click');
 
-    expect(wrapper.text()).toContain('Комната 4');
-    expect(wrapper.text()).not.toContain('Комната 14');
+    expect(wrapper.text()).toContain('Комната 2');
+    expect(wrapper.text()).not.toContain('Комната 7');
   });
 
   it('ошибка загрузки комнат не прячет команду', async () => {
