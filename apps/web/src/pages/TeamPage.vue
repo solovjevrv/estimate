@@ -15,6 +15,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
+import { usePagedList } from '../composables/use-paged-list';
 import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
@@ -85,6 +86,9 @@ const archiveTabRooms = computed(() =>
   ),
 );
 
+const activeRoomsPaging = usePagedList(computed(() => teamRooms.active));
+const archiveTabPaging = usePagedList(archiveTabRooms);
+
 /** Код приходит только администратору — по нему и показываем блок приглашения */
 const inviteUrl = computed(() =>
   overview.value?.inviteCode
@@ -112,6 +116,8 @@ async function load(): Promise<void> {
   archiveLoaded = false;
   archiveFailed.value = false;
   teamRooms.reset();
+  activeRoomsPaging.reset();
+  archiveTabPaging.reset();
   try {
     await teams.loadTeam(props.id);
     // Дашборд команды: комнаты тянем следом, их ошибку ловим отдельно ниже
@@ -143,6 +149,7 @@ async function selectRoomsTab(tab: 'active' | 'archive'): Promise<void> {
     archiveFailed.value = false;
     try {
       await teamRooms.loadArchived(props.id);
+      archiveTabPaging.reset();
       archiveLoaded = true;
     } catch {
       archiveFailed.value = true;
@@ -439,11 +446,14 @@ async function confirmDelete(): Promise<void> {
           :description="t('team.roomsError')"
         />
         <template v-else-if="roomsTab === 'active'">
-          <p v-if="teamRooms.active.length === 0" class="text-muted px-4 pb-5 sm:px-[30px] text-sm">
+          <p
+            v-if="activeRoomsPaging.total.value === 0"
+            class="text-muted px-4 pb-5 sm:px-[30px] text-sm"
+          >
             {{ t('team.roomsEmpty') }}
           </p>
           <RouterLink
-            v-for="room in teamRooms.active"
+            v-for="room in activeRoomsPaging.items.value"
             :key="room.id"
             :to="{ name: 'room', params: { id: room.id } }"
             class="border-default hover:bg-elevated/50 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
@@ -454,6 +464,16 @@ async function confirmDelete(): Promise<void> {
               <span class="badge-pill badge-pill-primary">{{ t('team.roomActive') }}</span>
             </div>
           </RouterLink>
+          <div
+            v-if="activeRoomsPaging.total.value > activeRoomsPaging.pageSize"
+            class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
+          >
+            <UPagination
+              v-model:page="activeRoomsPaging.page.value"
+              :total="activeRoomsPaging.total.value"
+              :items-per-page="activeRoomsPaging.pageSize"
+            />
+          </div>
         </template>
         <template v-else>
           <!-- Ошибка тянет только заархивированную часть (доступна лишь администратору) —
@@ -471,13 +491,13 @@ async function confirmDelete(): Promise<void> {
           </div>
           <template v-else>
             <p
-              v-if="archiveTabRooms.length === 0"
+              v-if="archiveTabPaging.total.value === 0"
               class="text-muted px-4 pb-5 sm:px-[30px] text-sm"
             >
               {{ t('team.archiveEmpty') }}
             </p>
             <div
-              v-for="room in archiveTabRooms"
+              v-for="room in archiveTabPaging.items.value"
               :key="room.id"
               class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
             >
@@ -501,6 +521,16 @@ async function confirmDelete(): Promise<void> {
                   {{ t('team.archiveDeleteRoom') }}
                 </UButton>
               </div>
+            </div>
+            <div
+              v-if="archiveTabPaging.total.value > archiveTabPaging.pageSize"
+              class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
+            >
+              <UPagination
+                v-model:page="archiveTabPaging.page.value"
+                :total="archiveTabPaging.total.value"
+                :items-per-page="archiveTabPaging.pageSize"
+              />
             </div>
           </template>
         </template>

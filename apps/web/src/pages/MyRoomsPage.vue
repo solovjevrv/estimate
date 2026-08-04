@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
+import { usePagedList } from '../composables/use-paged-list';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useRoomsStore } from '../stores/rooms';
 
@@ -57,20 +58,25 @@ const stats = computed(() => {
   ];
 });
 
+const activeRooms = computed(() => byStatus('active'));
+const closedRooms = computed(() => byStatus('closed'));
+const activePaging = usePagedList(activeRooms);
+const closedPaging = usePagedList(closedRooms);
+
 const roomSections = computed(() => [
   {
     key: 'active',
     title: t('myRooms.active'),
     badge: t('myRooms.roomActive'),
     color: 'primary' as const,
-    rooms: byStatus('active'),
+    paging: activePaging,
   },
   {
     key: 'closed',
     title: t('myRooms.closed'),
     badge: t('myRooms.roomClosed'),
     color: 'neutral' as const,
-    rooms: byStatus('closed'),
+    paging: closedPaging,
   },
 ]);
 
@@ -81,6 +87,8 @@ async function load(): Promise<void> {
   loadFailed.value = false;
   try {
     list.value = await rooms.listMine(false);
+    activePaging.reset();
+    closedPaging.reset();
   } catch {
     loadFailed.value = true;
   } finally {
@@ -131,6 +139,8 @@ const archiveOpen = ref(false);
 const archiveLoading = ref(false);
 const archiveFailed = ref(false);
 const archived = ref<Room[]>([]);
+const archivedComputed = computed(() => archived.value);
+const archivePaging = usePagedList(archivedComputed);
 let archiveLoaded = false;
 
 async function toggleArchive(): Promise<void> {
@@ -140,6 +150,7 @@ async function toggleArchive(): Promise<void> {
     archiveFailed.value = false;
     try {
       archived.value = await rooms.listMine(true);
+      archivePaging.reset();
       archiveLoaded = true;
     } catch {
       archiveFailed.value = true;
@@ -230,14 +241,14 @@ async function confirmDelete(): Promise<void> {
         {{ t('myRooms.empty') }}
       </p>
       <div v-else class="surface-card overflow-hidden">
-        <div v-for="section in roomSections" v-show="section.rooms.length" :key="section.key">
+        <div v-for="section in roomSections" v-show="section.paging.total.value" :key="section.key">
           <h3
             class="text-muted px-4 py-5 sm:px-[30px] text-[13px] font-bold tracking-[0.03em] uppercase"
           >
             {{ section.title }}
           </h3>
           <RouterLink
-            v-for="room in section.rooms"
+            v-for="room in section.paging.items.value"
             :key="room.id"
             :to="{ name: 'room', params: { id: room.id } }"
             class="border-default hover:bg-elevated/50 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[22px] sm:px-[30px]"
@@ -255,6 +266,16 @@ async function confirmDelete(): Promise<void> {
               >
             </div>
           </RouterLink>
+          <div
+            v-if="section.paging.total.value > section.paging.pageSize"
+            class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
+          >
+            <UPagination
+              v-model:page="section.paging.page.value"
+              :total="section.paging.total.value"
+              :items-per-page="section.paging.pageSize"
+            />
+          </div>
         </div>
       </div>
 
@@ -281,37 +302,51 @@ async function confirmDelete(): Promise<void> {
           <div v-else-if="archiveLoading" class="text-muted flex justify-center pb-5">
             <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
           </div>
-          <p v-else-if="archived.length === 0" class="text-muted px-4 pb-5 text-sm sm:px-[30px]">
+          <p
+            v-else-if="archivePaging.total.value === 0"
+            class="text-muted px-4 pb-5 text-sm sm:px-[30px]"
+          >
             {{ t('myRooms.archiveEmpty') }}
           </p>
-          <div
-            v-for="room in archived"
-            v-else
-            :key="room.id"
-            class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
-          >
-            <RouterLink
-              :to="{ name: 'room', params: { id: room.id } }"
-              class="min-w-28 flex-1 truncate text-[15.5px] font-bold"
+          <template v-else>
+            <div
+              v-for="room in archivePaging.items.value"
+              :key="room.id"
+              class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
             >
-              {{ room.name }}
-            </RouterLink>
-            <div class="flex shrink-0 items-center gap-3">
-              <span v-if="room.teamId" class="badge-pill badge-pill-neutral">{{
-                t('myRooms.teamBadge')
-              }}</span>
-              <span class="text-muted text-[13.5px]">{{ formatDate(room.createdAt) }}</span>
-              <UButton
-                icon="i-lucide-trash-2"
-                color="error"
-                variant="ghost"
-                size="sm"
-                @click="askDelete(room)"
+              <RouterLink
+                :to="{ name: 'room', params: { id: room.id } }"
+                class="min-w-28 flex-1 truncate text-[15.5px] font-bold"
               >
-                {{ t('myRooms.deleteRoom') }}
-              </UButton>
+                {{ room.name }}
+              </RouterLink>
+              <div class="flex shrink-0 items-center gap-3">
+                <span v-if="room.teamId" class="badge-pill badge-pill-neutral">{{
+                  t('myRooms.teamBadge')
+                }}</span>
+                <span class="text-muted text-[13.5px]">{{ formatDate(room.createdAt) }}</span>
+                <UButton
+                  icon="i-lucide-trash-2"
+                  color="error"
+                  variant="ghost"
+                  size="sm"
+                  @click="askDelete(room)"
+                >
+                  {{ t('myRooms.deleteRoom') }}
+                </UButton>
+              </div>
             </div>
-          </div>
+            <div
+              v-if="archivePaging.total.value > archivePaging.pageSize"
+              class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
+            >
+              <UPagination
+                v-model:page="archivePaging.page.value"
+                :total="archivePaging.total.value"
+                :items-per-page="archivePaging.pageSize"
+              />
+            </div>
+          </template>
         </template>
       </div>
     </template>
