@@ -133,6 +133,27 @@ docker compose -f docker-compose.prod.yml run --rm -p 80:80 \
 
 - Продление автоматическое: сервис `certbot` проверяет сертификат дважды в сутки и переприменяет тот же chown/chmod через `--deploy-hook`, nginx перечитывает сертификат при периодическом reload.
 
+### Бэкапы БД
+
+Сервис `db-backup` раз в сутки снимает `pg_dump -Fc` в volume `postgres_backups`, хранит 14 дней
+(старше — удаляются). **Только локально на том же сервере** — не защищает от потери самого сервера
+или диска, только от порчи данных багом/миграцией/человеческой ошибкой. Если объём данных вырастет
+настолько, что важна защита от потери сервера целиком — переносить снятие бэкапов вовне (S3-совместимое
+хранилище и т.п.).
+
+Список бэкапов:
+
+```bash
+docker compose -f docker-compose.prod.yml exec db-backup ls -lh /backups
+```
+
+Восстановление (осторожно — перезаписывает текущую БД):
+
+```bash
+docker compose -f docker-compose.prod.yml exec -T db-backup \
+  pg_restore -h postgres -U "$POSTGRES_USER" -d "$POSTGRES_DB" --clean --if-exists /backups/<имя_файла>.dump
+```
+
 ### История: переезд с pokerplan.solovyovdev.ru:3000
 
 Раньше 443/8443 на сервере были заняты VPN-панелью (x-ui/xray), поэтому пробовали Cloudflare-прокси
