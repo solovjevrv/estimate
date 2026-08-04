@@ -106,6 +106,16 @@ describe('каркас приложения', () => {
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Страница не найдена'));
   });
+
+  it('футер не содержит ссылок на лицензию и GitHub (10.6)', async () => {
+    const wrapper = await mountApp('/');
+
+    expect(wrapper.text()).toContain('Поддержка');
+    expect(wrapper.find('a[href*="LICENSE"]').exists()).toBe(false);
+    expect(wrapper.find('a[href="https://github.com/solovjevrv/poker-planing"]').exists()).toBe(
+      false,
+    );
+  });
 });
 
 describe('заголовок вкладки и lang', () => {

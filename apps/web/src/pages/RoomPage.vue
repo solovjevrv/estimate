@@ -7,6 +7,7 @@ import {
   ROOM_NAME_MAX_LENGTH,
   type DeckType,
   type Participant,
+  type ReactionEmoji,
   type Room,
   type RoundHistoryEntry,
   tshirtLabel,
@@ -17,6 +18,7 @@ import { useI18n } from 'vue-i18n';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import DeckBar from '../components/room/DeckBar.vue';
 import ParticipantCard from '../components/room/ParticipantCard.vue';
+import type { ReceivedReaction } from '../components/room/ParticipantCardBody.vue';
 import RoomTimerCard from '../components/room/RoomTimerCard.vue';
 import RoomTopBar from '../components/room/RoomTopBar.vue';
 import RoundResultPanel from '../components/room/RoundResultPanel.vue';
@@ -135,6 +137,45 @@ async function onKickConfirm(): Promise<void> {
   }
 }
 
+// --- Реакции-эмодзи на карточке участника (10.10) ---
+/**
+ * Одинаковые реакции разных участников схлопываются в одну со счётчиком (как
+ * реакции на сообщение в Telegram) — иначе при десятке участников бейджи не
+ * поместились бы под карточкой шириной 130px. Набор эмодзи фиксирован
+ * (`REACTION_EMOJIS`), поэтому уникальных групп на карточке не больше его длины.
+ */
+function receivedReactionsFor(participantId: string): ReceivedReaction[] {
+  const forParticipant = room.reactions.filter((r) => r.toParticipantId === participantId);
+  const byEmoji = new Map<
+    ReceivedReaction['emoji'],
+    { fromNames: string[]; reactedByMe: boolean }
+  >();
+  for (const r of forParticipant) {
+    const fromName =
+      room.participants.find((p) => p.participantId === r.fromParticipantId)?.name ?? '';
+    const group = byEmoji.get(r.emoji) ?? { fromNames: [], reactedByMe: false };
+    group.fromNames.push(fromName);
+    if (r.fromParticipantId === room.participantId) {
+      group.reactedByMe = true;
+    }
+    byEmoji.set(r.emoji, group);
+  }
+  return Array.from(byEmoji.entries()).map(([emoji, { fromNames, reactedByMe }]) => ({
+    emoji,
+    count: fromNames.length,
+    fromNames,
+    reactedByMe,
+  }));
+}
+
+async function onReactClick(participant: Participant, emoji: ReactionEmoji): Promise<void> {
+  try {
+    await room.sendReaction(participant.participantId, emoji);
+  } catch {
+    toast.add({ title: t('room.reactionError'), color: 'error' });
+  }
+}
+
 /**
  * Таймером управляет любой участник (решение 27.07.2026) — прав здесь не
  * проверяем, сервер тоже их не проверяет. Актуальное состояние приходит
@@ -183,6 +224,20 @@ const deckOptions = computed<Array<{ label: string; value: DeckType }>>(() => [
 const selectedDeck = ref<DeckType>('fibonacci');
 const starting = ref(false);
 const revealing = ref(false);
+
+/**
+ * Пока раунд идёт (или уже вскрыт), «Шкала оценки» выбирает не заготовку для
+ * следующего раунда, а фактическую колоду текущего — держим выбор в синхроне
+ * с раундом, а не только с последним кликом, иначе после переподключения или
+ * запуска раунда другим скрам-мастером подсветка показывала бы не ту колоду.
+ */
+watch(
+  () => room.round?.deckType,
+  (deckType) => {
+    if (deckType) selectedDeck.value = deckType;
+  },
+  { immediate: true },
+);
 
 const deckCards = computed<readonly number[]>(
   () => DECK_CARDS[room.round?.deckType ?? 'fibonacci'],
@@ -354,12 +409,26 @@ const deckCardButtonLabel = computed(() => {
 
 const cancelConfirmOpen = ref(false);
 const revealConfirmOpen = ref(false);
+/** Колода, выбранная кликом по «Шкале оценки» во время активного раунда — ждёт
+ * подтверждения в cancelConfirmOpen, поэтому не пишем её сразу в selectedDeck
+ * (иначе при отказе от подтверждения подсветка осталась бы на новой колоде,
+ * хотя раунд по факту не поменялся). */
+const pendingDeckChange = ref<DeckType | null>(null);
+
+// Модалка отмены раунда переиспользуется и для смены шкалы — при любом её закрытии
+// (подтвердили или отказались) отложенный выбор больше не нужен
+watch(cancelConfirmOpen, (open) => {
+  if (!open) pendingDeckChange.value = null;
+});
 
 /** Смена раунда переиспользует один и тот же WS-запрос — сервер и отменяет текущий, и начинает следующий */
-async function onStartRound(options?: { silentRestart?: boolean }): Promise<void> {
+async function onStartRound(options?: {
+  silentRestart?: boolean;
+  deckType?: DeckType;
+}): Promise<void> {
   starting.value = true;
   try {
-    await room.startNewRound(selectedDeck.value);
+    await room.startNewRound(options?.deckType ?? selectedDeck.value);
     cancelConfirmOpen.value = false;
     // Без голосов раунд перезапускается без вопроса (см. onDeckActionClick) — новый раунд
     // визуально неотличим от старого, поэтому без тоста клик выглядит так, будто ничего не произошло
@@ -384,6 +453,27 @@ function onDeckActionClick(): void {
   } else {
     void onStartRound();
   }
+}
+
+/**
+ * Раньше клик по «Шкале оценки» во время раунда только менял локальный выбор
+ * без следа на самом раунде — участник видел прежнюю колоду и не понимал,
+ * что клик вообще что-то сделал. Теперь смена колоды при активном раунде
+ * реально его перезапускает (тот же WS-запрос, что и «Отменить раунд»/«Новый
+ * раунд»), с тем же правилом — спрашивать подтверждение только если есть,
+ * что терять.
+ */
+function onDeckOptionClick(value: DeckType): void {
+  if (roundPhase.value === 'none' || room.round?.deckType === value) {
+    selectedDeck.value = value;
+    return;
+  }
+  if (roundPhase.value === 'voting' && votedCount.value > 0) {
+    pendingDeckChange.value = value;
+    cancelConfirmOpen.value = true;
+    return;
+  }
+  void onStartRound({ deckType: value, silentRestart: roundPhase.value === 'voting' });
 }
 
 async function onVote(value: number): Promise<void> {
@@ -651,7 +741,7 @@ function retry(): void {
 
     <div v-else-if="phase === 'loading'" class="space-y-6">
       <USkeleton class="h-9 w-1/3 bg-[var(--brand-border)]" />
-      <div class="surface-card surface-card-lg space-y-4 px-[30px] py-[26px]">
+      <div class="surface-card surface-card-lg space-y-4 px-4 py-5 sm:px-[30px] sm:py-[26px]">
         <USkeleton class="h-5 w-1/4 bg-[var(--brand-border)]" />
         <USkeleton class="h-11 w-full rounded-[11px] bg-[var(--brand-border)]" />
       </div>
@@ -664,7 +754,7 @@ function retry(): void {
 
       <div
         v-if="phase === 'naming'"
-        class="surface-card surface-card-lg max-w-sm px-[30px] py-[26px]"
+        class="surface-card surface-card-lg max-w-sm px-4 py-5 sm:px-[30px] sm:py-[26px]"
       >
         <h2 class="mb-[18px] text-[17px] font-bold">{{ t('room.nameTitle') }}</h2>
         <UForm
@@ -723,6 +813,7 @@ function retry(): void {
       <template v-else-if="phase === 'joined'">
         <RoomTopBar
           :name="roomInfo.name"
+          :team-id="roomInfo.teamId"
           :archived="isArchived"
           :connected="room.connected"
           :can-archive="room.isScrumMaster && !isArchived"
@@ -741,13 +832,13 @@ function retry(): void {
         <div v-if="!isArchived" class="flex flex-col gap-5 lg:flex-row lg:items-stretch">
           <div
             v-if="room.isScrumMaster"
-            class="surface-card surface-card-lg min-w-0 flex-[1.4] px-[30px] py-[26px]"
+            class="surface-card surface-card-lg min-w-0 flex-[1.4] px-4 py-5 sm:px-[30px] sm:py-[26px]"
           >
             <div class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
               {{ t('room.deckTitle') }}
             </div>
             <div
-              class="mb-[22px] inline-flex gap-1 rounded-[12px] p-1"
+              class="mb-[22px] grid grid-cols-1 gap-1 rounded-[12px] p-1 sm:inline-flex sm:flex-wrap"
               style="background-color: var(--brand-well-bg)"
             >
               <button
@@ -760,7 +851,7 @@ function retry(): void {
                     ? 'bg-[var(--brand-surface)] text-[var(--brand-primary-text)] shadow-[0_1px_3px_rgba(0,0,0,0.15)]'
                     : 'text-muted cursor-pointer'
                 "
-                @click="selectedDeck = option.value"
+                @click="onDeckOptionClick(option.value)"
               >
                 {{ option.label }}
               </button>
@@ -769,7 +860,7 @@ function retry(): void {
               <UButton
                 color="neutral"
                 variant="outline"
-                class="rounded-[11px] px-[22px] py-3 text-[14.5px] font-bold"
+                class="w-full justify-center rounded-[11px] px-[22px] py-3 text-[14.5px] font-bold sm:w-auto"
                 :loading="starting"
                 @click="onDeckActionClick"
               >
@@ -788,7 +879,10 @@ function retry(): void {
           />
         </div>
 
-        <div v-if="!isArchived" class="surface-card surface-card-lg px-[30px] py-[26px]">
+        <div
+          v-if="!isArchived"
+          class="surface-card surface-card-lg px-4 py-5 sm:px-[30px] sm:py-[26px]"
+        >
           <h2 class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
             {{ t('room.linksTitle') }}
           </h2>
@@ -834,7 +928,7 @@ function retry(): void {
             </UFormField>
             <UButton
               type="submit"
-              class="rounded-[11px] px-6 py-[13px] text-[14.5px] font-bold"
+              class="justify-center rounded-[11px] px-6 py-[13px] text-[14.5px] font-bold"
               :loading="savingLinks"
             >
               {{ savingLinks ? t('room.linksSaving') : t('room.linksSave') }}
@@ -842,7 +936,10 @@ function retry(): void {
           </UForm>
         </div>
 
-        <div v-if="room.result" class="surface-card surface-card-lg px-[30px] py-[26px]">
+        <div
+          v-if="room.result"
+          class="surface-card surface-card-lg px-4 py-5 sm:px-[30px] sm:py-[26px]"
+        >
           <RoundResultPanel
             :average="room.result.average"
             :min-label="cardLabel(room.result.min)"
@@ -853,7 +950,7 @@ function retry(): void {
           />
         </div>
 
-        <div class="surface-card surface-card-lg px-[30px] py-[26px]">
+        <div class="surface-card surface-card-lg px-4 py-5 sm:px-[30px] sm:py-[26px]">
           <div class="mb-6 flex items-center justify-between gap-3">
             <h2
               class="text-muted flex items-center gap-2 text-sm font-bold tracking-[0.03em] uppercase"
@@ -876,7 +973,7 @@ function retry(): void {
 
           <!-- pt-5 резервирует место под аватар-бейдж участника, который своим -top-5
                выходит за пределы карточки — без отступа он наезжает на текст/контент выше -->
-          <div class="flex flex-wrap gap-[22px] pt-5">
+          <div class="flex flex-wrap justify-center gap-[22px] pt-5 sm:justify-start">
             <ParticipantCard
               v-for="p in room.participants"
               :key="p.participantId"
@@ -886,7 +983,9 @@ function retry(): void {
               :value-label="revealedValueLabel(p.participantId)"
               :is-winner="isWinnerParticipant(p.participantId)"
               :can-kick="room.isScrumMaster && p.participantId !== room.participantId"
+              :received-reactions="receivedReactionsFor(p.participantId)"
               @kick="onKickClick(p)"
+              @react="onReactClick(p, $event)"
             />
           </div>
         </div>
@@ -906,7 +1005,7 @@ function retry(): void {
           @reveal="onRevealClick"
         />
 
-        <div class="surface-card surface-card-lg px-[30px] py-[26px]">
+        <div class="surface-card surface-card-lg px-4 py-5 sm:px-[30px] sm:py-[26px]">
           <h2 class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
             {{ t('room.historyTitle') }}
           </h2>
@@ -924,11 +1023,11 @@ function retry(): void {
           <p v-else-if="historyEntries.length === 0" class="text-muted text-sm">
             {{ t('room.historyEmpty') }}
           </p>
-          <div v-else class="-mx-[30px]">
+          <div v-else class="-mx-4 sm:-mx-[30px]">
             <div
               v-for="entry in historyEntries"
               :key="entry.round.id"
-              class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-[30px] py-[18px] first:border-t-0"
+              class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] first:border-t-0 sm:px-[30px]"
             >
               <div class="min-w-0">
                 <div class="text-[15px] font-bold">
@@ -999,7 +1098,7 @@ function retry(): void {
       :description="t('room.cancelRoundConfirmText')"
       :confirm-label="t('room.cancelRoundConfirm')"
       :loading="starting"
-      @confirm="onStartRound()"
+      @confirm="onStartRound({ deckType: pendingDeckChange ?? undefined })"
     />
 
     <ConfirmModal

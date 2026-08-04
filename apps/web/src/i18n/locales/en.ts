@@ -11,6 +11,7 @@ export default {
     language: 'Language',
     profile: 'Profile',
     userMenu: 'User menu',
+    menu: 'Navigation menu',
     themeLabel: 'Dark theme',
     theme: {
       light: 'Light theme',
@@ -152,6 +153,8 @@ export default {
     roleVoter: 'Voter',
     connected: 'Connected',
     disconnected: 'Connection lost',
+    teamRoomSubtitle: 'Team room',
+    personalRoomSubtitle: 'Personal room',
     participantsTitle: 'Participants',
     invite: 'Invite',
     noRoundYet: 'The round hasn’t started yet.',
@@ -247,6 +250,9 @@ export default {
     kickedNotice: 'The scrum master removed you from the room',
     kickedMessage: 'The scrum master removed you from this room.',
     rejoin: 'Rejoin',
+    reactionTriggerLabel: 'React to {name}',
+    reactionBadgeLabel: 'Reaction {emoji}, given by: {count}',
+    reactionError: 'Could not send the reaction. Please try again.',
   },
   myRooms: {
     title: 'My rooms',
@@ -295,7 +301,6 @@ export default {
   footer: {
     copyright: '© {year} solovjevrv',
     support: 'Support',
-    license: 'MIT License',
     build: 'Build {version}',
   },
 };

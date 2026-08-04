@@ -7,6 +7,8 @@ import type {
   DeckType,
   JoinRoomResult,
   Participant,
+  Reaction,
+  ReactionEmoji,
   RoomState,
   RoomTimerState,
   Round,
@@ -68,6 +70,7 @@ export const useRoomStore = defineStore('room', () => {
   const round = computed<Round | null>(() => state.value?.round ?? null);
   const participants = computed<Participant[]>(() => state.value?.participants ?? []);
   const result = computed<RoundResult | null>(() => state.value?.result ?? null);
+  const reactions = computed<Reaction[]>(() => state.value?.reactions ?? []);
   const timer = computed<RoomTimerState>(
     () =>
       state.value?.timer ?? {
@@ -311,6 +314,19 @@ export const useRoomStore = defineStore('room', () => {
     );
   }
 
+  /**
+   * Реакция-эмодзи на карточку другого участника (10.10) — доступна в любой
+   * момент раунда, любому участнику на карточку любого другого. Повторная
+   * реакция тому же адресату заменяет предыдущую — сервер решает это сам.
+   */
+  async function sendReaction(targetParticipantId: string, emoji: ReactionEmoji): Promise<void> {
+    await emitWithAck<typeof WS_EVENTS.SEND_REACTION, null>(
+      requireSocket(),
+      WS_EVENTS.SEND_REACTION,
+      { targetParticipantId, emoji },
+    );
+  }
+
   return {
     state,
     participantId,
@@ -321,6 +337,7 @@ export const useRoomStore = defineStore('room', () => {
     participants,
     result,
     timer,
+    reactions,
     isScrumMaster,
     applyState,
     join,
@@ -334,5 +351,6 @@ export const useRoomStore = defineStore('room', () => {
     pauseTimer,
     resetTimer,
     kickParticipant,
+    sendReaction,
   };
 });

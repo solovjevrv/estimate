@@ -11,6 +11,7 @@ export default {
     language: 'Язык',
     profile: 'Профиль',
     userMenu: 'Меню пользователя',
+    menu: 'Меню навигации',
     themeLabel: 'Тёмная тема',
     theme: {
       light: 'Светлая тема',
@@ -154,6 +155,8 @@ export default {
     roleVoter: 'Голосующий',
     connected: 'Подключено',
     disconnected: 'Обрыв соединения',
+    teamRoomSubtitle: 'Командная комната',
+    personalRoomSubtitle: 'Личная комната',
     participantsTitle: 'Участники',
     invite: 'Пригласить',
     noRoundYet: 'Раунд ещё не начат.',
@@ -248,6 +251,9 @@ export default {
     kickedNotice: 'Скрам-мастер исключил вас из комнаты',
     kickedMessage: 'Скрам-мастер исключил вас из этой комнаты.',
     rejoin: 'Войти снова',
+    reactionTriggerLabel: 'Поставить реакцию участнику {name}',
+    reactionBadgeLabel: 'Реакция {emoji}, поставили: {count}',
+    reactionError: 'Не удалось отправить реакцию. Попробуйте ещё раз.',
   },
   myRooms: {
     title: 'Мои комнаты',
@@ -296,7 +302,6 @@ export default {
   footer: {
     copyright: '© {year} solovjevrv',
     support: 'Поддержка',
-    license: 'Лицензия MIT',
     build: 'Сборка {version}',
   },
 };

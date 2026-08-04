@@ -102,6 +102,7 @@ function state(revision: number, overrides: Partial<RoomState> = {}): RoomState 
     participants: [],
     result: null,
     timer: timer(),
+    reactions: [],
     ...overrides,
   };
 }
@@ -467,6 +468,38 @@ describe('стор комнаты', () => {
         endsAt: null,
         remainingSec: TIMER_DEFAULT_DURATION_SEC,
       });
+    });
+
+    it('реакция на карточку участника (10.10): шлёт адресата и эмодзи; ответ — пустой', async () => {
+      const store = useRoomStore();
+      socket.next = null;
+
+      await store.sendReaction('p2', '👍');
+
+      expect(socket.sent[0]).toEqual({
+        event: WS_EVENTS.SEND_REACTION,
+        payload: { targetParticipantId: 'p2', emoji: '👍' },
+      });
+    });
+
+    it('реакции по умолчанию — пустой список, пока не пришёл снимок с ними', () => {
+      const store = useRoomStore();
+      store.leave();
+
+      expect(store.reactions).toEqual([]);
+    });
+
+    it('реакции берутся из последнего применённого снимка', () => {
+      const store = useRoomStore();
+      store.applyState(
+        state(2, {
+          reactions: [{ fromParticipantId: 'p1', toParticipantId: 'p2', emoji: '😂' }],
+        }),
+      );
+
+      expect(store.reactions).toEqual([
+        { fromParticipantId: 'p1', toParticipantId: 'p2', emoji: '😂' },
+      ]);
     });
   });
 });

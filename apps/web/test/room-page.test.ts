@@ -52,6 +52,7 @@ function roomState(overrides: Partial<RoomState> = {}): RoomState {
       endsAt: null,
       remainingSec: TIMER_DEFAULT_DURATION_SEC,
     },
+    reactions: [],
     ...overrides,
   };
 }
@@ -437,6 +438,35 @@ describe('вход в комнату', () => {
 
     expect(wrapper.text()).toContain('Ретро квартала');
     expect(wrapper.text()).not.toContain('Планирование спринта');
+  });
+});
+
+describe('подзаголовок «Командная/Личная комната» (10.5)', () => {
+  it('у комнаты без команды показывает «Личная комната»', async () => {
+    socket.next = { state: roomState(), guestToken: null, participantId: 'u1' };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
+    expect(wrapper.text()).toContain('Личная комната');
+    expect(wrapper.text()).not.toContain('Командная комната');
+  });
+
+  it('у комнаты команды показывает «Командная комната»', async () => {
+    const teamRoom: Room = { ...room1, teamId: 't1' };
+    socket.next = { state: roomState({ room: teamRoom }), guestToken: null, participantId: 'u1' };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: teamRoom }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
+    expect(wrapper.text()).toContain('Командная комната');
+    expect(wrapper.text()).not.toContain('Личная комната');
   });
 });
 
@@ -1140,6 +1170,166 @@ describe('новый раунд и отмена раунда', () => {
   });
 });
 
+describe('смена шкалы оценки во время активного раунда (баг: клик не имел эффекта)', () => {
+  it('без голосов — клик по другой шкале сразу перезапускает раунд, с тостом', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: false }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Отменить раунд'));
+
+    const activeRound = round({ id: 'rnd2', seq: 2, deckType: 'scale_0_5' });
+    socket.next = activeRound;
+    const scaleTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Шкала 0–5');
+    await scaleTab!.trigger('click');
+
+    const started = socket.sent.find((s) => s.event === 'start_new_round');
+    expect(started?.payload).toMatchObject({ deckType: 'scale_0_5', fromRoundId: 'rnd1' });
+    expect(document.body.textContent).not.toContain('Отменить голосование?');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Раунд перезапущен'));
+  });
+
+  it('с уже поставленными голосами — требует подтверждения и перезапускает именно с новой колодой', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Отменить раунд'));
+
+    const tshirtTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Футболки');
+    await tshirtTab!.trigger('click');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Отменить голосование?'));
+    expect(socket.sent.some((s) => s.event === 'start_new_round')).toBe(false);
+
+    const activeRound = round({ id: 'rnd2', seq: 2, deckType: 'tshirt' });
+    socket.next = activeRound;
+    const confirmButton = Array.from(
+      document.body.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [],
+    ).find((b) => b.textContent?.trim() === 'Отменить и начать заново');
+    confirmButton!.click();
+
+    await vi.waitFor(() => {
+      const started = socket.sent.find((s) => s.event === 'start_new_round');
+      expect(started?.payload).toMatchObject({ deckType: 'tshirt', fromRoundId: 'rnd1' });
+    });
+  });
+
+  it('отказ от подтверждения не перезапускает раунд и не подменяет отображаемую колоду', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Отменить раунд'));
+    // Раунд идёт на Фибоначчи — карта «13» доступна только в этой колоде
+    expect(wrapper.text()).toContain('13');
+
+    const scaleTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Шкала 0–5');
+    await scaleTab!.trigger('click');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Отменить голосование?'));
+
+    const cancelButton = Array.from(
+      document.body.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [],
+    ).find((b) => b.textContent?.trim() === 'Отмена');
+    cancelButton!.click();
+
+    await vi.waitFor(() =>
+      expect(document.body.textContent).not.toContain('Отменить голосование?'),
+    );
+    expect(socket.sent.some((s) => s.event === 'start_new_round')).toBe(false);
+    // Раунд не поменялся — колода на столе всё ещё Фибоначчи
+    expect(wrapper.text()).toContain('13');
+  });
+
+  it('после вскрытия — клик по другой шкале перезапускает раунд без вопроса', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ status: 'revealed', average: 5 }),
+        result: roundResult(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Результаты раунда'));
+
+    const activeRound = round({ id: 'rnd2', seq: 2, deckType: 'tshirt' });
+    socket.next = activeRound;
+    const tshirtTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Футболки');
+    await tshirtTab!.trigger('click');
+
+    const started = socket.sent.find((s) => s.event === 'start_new_round');
+    expect(started?.payload).toMatchObject({ deckType: 'tshirt', fromRoundId: 'rnd1' });
+    expect(document.body.textContent).not.toContain('Отменить голосование?');
+  });
+
+  it('клик по уже активной шкале ничего не отправляет', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ deckType: 'fibonacci' }),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Отменить раунд'));
+
+    const fibonacciTab = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === 'Числа Фибоначчи');
+    await fibonacciTab!.trigger('click');
+
+    expect(socket.sent.some((s) => s.event === 'start_new_round')).toBe(false);
+    expect(document.body.textContent).not.toContain('Отменить голосование?');
+  });
+});
+
 describe('архивация комнаты', () => {
   it('голосующему настройки комнаты не показываются', async () => {
     socket.next = {
@@ -1446,6 +1636,172 @@ describe('исключение участника (5.8)', () => {
     expect(wrapper.text()).toContain('Войти снова');
     // Кик не должен вызвать тот же автореконнект, что и штатное истечение токена (7.7)
     expect(socket.sent.filter((s) => s.event === 'join_room').length).toBe(joinsBefore);
+  });
+});
+
+describe('реакции-эмодзи на карточке участника (10.10)', () => {
+  it('реакцию можно поставить только на чужую карточку, не на свою', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
+
+    expect(
+      document.body.querySelector('[aria-label="Поставить реакцию участнику Иван"]'),
+    ).toBeNull();
+    expect(
+      document.body.querySelector('[aria-label="Поставить реакцию участнику Мария"]'),
+    ).not.toBeNull();
+  });
+
+  it('клик по эмодзи в пикере шлёт send_reaction с адресатом и выбранным эмодзи', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
+
+    const trigger = document.body.querySelector('[aria-label="Поставить реакцию участнику Мария"]');
+    (trigger as HTMLElement).click();
+    await vi.waitFor(() => {
+      const buttons = Array.from(document.body.querySelectorAll('button'));
+      const found = buttons.find((b) => b.getAttribute('aria-label') === '👍');
+      expect(found).not.toBeUndefined();
+    });
+
+    const emojiButton = Array.from(document.body.querySelectorAll('button')).find(
+      (b) => b.getAttribute('aria-label') === '👍',
+    );
+    (emojiButton as HTMLElement).click();
+
+    await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'send_reaction')).toBe(true));
+    const sent = socket.sent.find((s) => s.event === 'send_reaction');
+    expect(sent?.payload).toMatchObject({ targetParticipantId: 'g1', emoji: '👍' });
+  });
+
+  it('полученная реакция видна на карточке участника', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+        reactions: [{ fromParticipantId: 'u1', toParticipantId: 'g1', emoji: '😂' }],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('😂'));
+  });
+
+  it('одинаковая реакция от разных участников схлопывается в одну со счётчиком', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+          participant({ participantId: 'g2', name: 'Пётр', isGuest: true, role: 'voter' }),
+        ],
+        reactions: [
+          { fromParticipantId: 'u1', toParticipantId: 'g1', emoji: '👍' },
+          { fromParticipantId: 'g2', toParticipantId: 'g1', emoji: '👍' },
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+
+    // Одна карточка «👍» со счётчиком 2, а не два отдельных значка
+    await vi.waitFor(() => expect(wrapper.find('[title="Иван, Пётр"]').exists()).toBe(true));
+    const badge = wrapper.find('[title="Иван, Пётр"]');
+    expect(badge.text()).toContain('👍');
+    expect(badge.text()).toContain('2');
+  });
+
+  it('клик по чужому бейджу реакции ставит ту же реакцию от лица кликнувшего (Telegram-style)', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+          participant({ participantId: 'g2', name: 'Пётр', isGuest: true, role: 'voter' }),
+        ],
+        // Реакцию уже поставил Пётр — сам Иван (текущий пользователь) её ещё не ставил
+        reactions: [{ fromParticipantId: 'g2', toParticipantId: 'g1', emoji: '👍' }],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.find('[title="Пётр"]').exists()).toBe(true));
+
+    await wrapper.find('[title="Пётр"]').trigger('click');
+
+    await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'send_reaction')).toBe(true));
+    const sent = socket.sent.find((s) => s.event === 'send_reaction');
+    expect(sent?.payload).toMatchObject({ targetParticipantId: 'g1', emoji: '👍' });
+  });
+
+  it('на своей карточке бейдж полученной реакции не кликабелен', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+        reactions: [{ fromParticipantId: 'g1', toParticipantId: 'u1', emoji: '🔥' }],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.find('[title="Мария"]').exists()).toBe(true));
+
+    await wrapper.find('[title="Мария"]').trigger('click');
+
+    expect(socket.sent.some((s) => s.event === 'send_reaction')).toBe(false);
   });
 });
 
