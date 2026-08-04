@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { REACTION_EMOJIS, type Participant, type ReactionEmoji } from '@poker/shared';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import { teamAvatarColor } from '../../lib/team-roles';
@@ -18,16 +19,28 @@ export interface ReceivedReaction {
   reactedByMe: boolean;
 }
 
-const props = defineProps<{
-  participant: Participant;
-  isSelf: boolean;
-  /** none — раунда нет, voting — идёт голосование (значения скрыты), revealed — карты вскрыты */
-  roundStatus: 'none' | 'voting' | 'revealed';
-  /** Подпись значения после вскрытия; null — раунда не было или участник не голосовал */
-  valueLabel: string | null;
-  isWinner: boolean;
-  receivedReactions: ReceivedReaction[];
-}>();
+/** Одноразовый «вылет» эмодзи над карточкой в момент простановки реакции (10.12, Meet-style) */
+export interface FlyingReaction {
+  id: string;
+  emoji: ReactionEmoji;
+}
+
+const props = withDefaults(
+  defineProps<{
+    participant: Participant;
+    isSelf: boolean;
+    /** none — раунда нет, voting — идёт голосование (значения скрыты), revealed — карты вскрыты */
+    roundStatus: 'none' | 'voting' | 'revealed';
+    /** Подпись значения после вскрытия; null — раунда не было или участник не голосовал */
+    valueLabel: string | null;
+    isWinner: boolean;
+    receivedReactions: ReceivedReaction[];
+    flyingReactions?: FlyingReaction[];
+    /** Порядковый номер карточки в сетке — для лёгкого stagger при перевороте (10.12) */
+    flipIndex?: number;
+  }>(),
+  { flyingReactions: () => [], flipIndex: 0 },
+);
 
 const emit = defineEmits<{ react: [emoji: ReactionEmoji] }>();
 
@@ -37,6 +50,31 @@ function onPickEmoji(emoji: ReactionEmoji, close: () => void): void {
   emit('react', emoji);
   close();
 }
+
+/** Каскадный переворот карт при вскрытии — до 8 карточек, дальше задержка не растёт */
+const flipStyle = computed(() => {
+  const delayMs = props.roundStatus === 'revealed' ? Math.min(props.flipIndex, 8) * 60 : 0;
+  return {
+    transform: props.roundStatus === 'revealed' ? 'rotateY(180deg)' : undefined,
+    transitionDelay: `${delayMs}ms`,
+  };
+});
+
+/** Короткая вспышка рамки в момент, когда участник отдал голос (10.12) */
+const justVoted = ref(false);
+let justVotedTimer: ReturnType<typeof setTimeout> | null = null;
+watch(
+  () => props.participant.hasVoted,
+  (hasVoted, previouslyVoted) => {
+    if (hasVoted && !previouslyVoted && props.roundStatus === 'voting') {
+      justVoted.value = true;
+      if (justVotedTimer) clearTimeout(justVotedTimer);
+      justVotedTimer = setTimeout(() => {
+        justVoted.value = false;
+      }, 500);
+    }
+  },
+);
 
 /**
  * Клик по уже существующему бейджу — как реакция на сообщение в Telegram:
@@ -55,14 +93,18 @@ function onBadgeClick(emoji: ReactionEmoji): void {
     class="flex w-[130px] flex-col items-center gap-2.5"
     :data-winner="props.roundStatus === 'revealed' && props.isWinner ? 'true' : undefined"
   >
-    <div class="relative h-[150px] w-[118px]" style="perspective: 800px">
+    <div
+      class="relative h-[150px] w-[118px]"
+      style="perspective: 800px"
+      :class="{ 'vote-pulse': justVoted }"
+    >
       <div
         class="relative size-full transition-transform duration-500 ease-out [transform-style:preserve-3d]"
-        :style="props.roundStatus === 'revealed' ? 'transform: rotateY(180deg)' : ''"
+        :style="flipStyle"
       >
         <!-- Лицо карты: состояние голосования (не вскрыто). -->
         <div
-          class="absolute inset-0 flex items-center justify-center rounded-[14px] [backface-visibility:hidden]"
+          class="absolute inset-0 flex items-center justify-center rounded-[14px] transition-[background-color,box-shadow] duration-300 [backface-visibility:hidden]"
           :class="
             props.roundStatus === 'voting' && props.participant.hasVoted
               ? 'bg-[var(--brand-primary-soft-bg)] shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]'
@@ -107,8 +149,9 @@ function onBadgeClick(emoji: ReactionEmoji): void {
            реакции на сообщение в Telegram; одинаковые от нескольких участников схлопнуты в один
            бейдж со счётчиком. На чужой карточке бейдж кликабелен: у кого реакции ещё нет —
            ставит её тем же эмодзи, у кого уже есть своя — снимает (выделена рамкой). -->
-      <div
-        v-if="props.receivedReactions.length > 0"
+      <TransitionGroup
+        tag="div"
+        name="badge-pop"
         class="absolute bottom-[-10px] left-[-8px] flex max-w-[130px] flex-wrap gap-1"
       >
         <button
@@ -131,6 +174,20 @@ function onBadgeClick(emoji: ReactionEmoji): void {
             {{ reaction.count }}
           </span>
         </button>
+      </TransitionGroup>
+      <!-- «Вылетающий» эмодзи над карточкой в момент простановки реакции (10.12, Meet-style) —
+           отдельно от постоянного бейджа-счётчика выше; сам себя убирает по таймеру в RoomPage. -->
+      <div
+        v-if="props.flyingReactions.length > 0"
+        class="pointer-events-none absolute inset-0 overflow-visible"
+      >
+        <span
+          v-for="reaction in props.flyingReactions"
+          :key="reaction.id"
+          class="fly-emoji absolute bottom-14 left-1/2 text-4xl"
+        >
+          {{ reaction.emoji }}
+        </span>
       </div>
       <!-- Отправить реакцию — доступно на чужой карточке в любой момент раунда (10.10) -->
       <UPopover v-if="!props.isSelf" :content="{ side: 'top' }">
@@ -184,3 +241,55 @@ function onBadgeClick(emoji: ReactionEmoji): void {
     </div>
   </div>
 </template>
+
+<style scoped>
+.badge-pop-enter-active,
+.badge-pop-leave-active {
+  transition:
+    opacity 0.22s ease,
+    transform 0.22s ease;
+}
+.badge-pop-enter-from,
+.badge-pop-leave-to {
+  opacity: 0;
+  transform: scale(0.5);
+}
+.badge-pop-leave-active {
+  position: absolute;
+}
+
+.fly-emoji {
+  animation: fly-emoji-rise 1.4s ease-out forwards;
+}
+
+@keyframes fly-emoji-rise {
+  0% {
+    transform: translate(-50%, 0) scale(0.4);
+    opacity: 0;
+  }
+  15% {
+    transform: translate(-50%, -14px) scale(1.25);
+    opacity: 1;
+  }
+  100% {
+    transform: translate(-50%, -96px) scale(1);
+    opacity: 0;
+  }
+}
+
+.vote-pulse {
+  animation: vote-pulse 0.5s ease-out;
+}
+
+@keyframes vote-pulse {
+  0% {
+    transform: scale(1);
+  }
+  35% {
+    transform: scale(1.08);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+</style>
