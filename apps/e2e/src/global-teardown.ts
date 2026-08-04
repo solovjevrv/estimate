@@ -17,6 +17,9 @@ export default async function globalTeardown(): Promise<void> {
   const { db, pool } = createDb(databaseUrl);
   try {
     await db.delete(schema.rooms).where(like(schema.rooms.name, `${E2E_ROOM_PREFIX}%`));
+    // У teams нет внешнего ключа на users — удаление пользователя-создателя не каскадирует
+    // саму команду (только его членство), поэтому команда чистится отдельно по тому же маркеру
+    await db.delete(schema.teams).where(like(schema.teams.name, `${E2E_ROOM_PREFIX}%`));
     await db.delete(schema.users).where(like(schema.users.email, `%@${E2E_EMAIL_DOMAIN}`));
   } finally {
     await pool.end();
