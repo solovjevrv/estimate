@@ -70,7 +70,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
 
 <template>
   <section class="space-y-6">
-    <div class="flex items-center justify-between gap-4">
+    <div class="flex flex-wrap items-center justify-between gap-4">
       <h1 class="font-heading text-3xl font-extrabold">{{ t('teams.title') }}</h1>
       <UButton
         size="lg"

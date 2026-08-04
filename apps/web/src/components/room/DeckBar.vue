@@ -15,7 +15,7 @@ const emit = defineEmits<{ vote: [value: number]; reveal: [] }>();
 </script>
 
 <template>
-  <div class="surface-card surface-card-lg px-[30px] py-[26px]">
+  <div class="surface-card surface-card-lg px-4 py-5 sm:px-[30px] sm:py-[26px]">
     <div class="mb-[22px] flex items-center justify-between gap-3">
       <h2 class="text-muted text-sm font-bold tracking-[0.03em] uppercase">{{ props.title }}</h2>
       <span class="text-muted text-sm font-bold">{{ props.votedCountText }}</span>
@@ -39,7 +39,7 @@ const emit = defineEmits<{ vote: [value: number]; reveal: [] }>();
     <div class="flex flex-wrap items-center gap-3.5">
       <UButton
         v-if="props.isScrumMaster"
-        class="rounded-[12px] px-[26px] py-3.5 text-[15px] font-bold"
+        class="w-full justify-center rounded-[12px] px-[26px] py-3.5 text-[15px] font-bold sm:w-auto"
         :loading="props.revealing"
         @click="emit('reveal')"
       >

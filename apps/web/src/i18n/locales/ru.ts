@@ -11,6 +11,7 @@ export default {
     language: 'Язык',
     profile: 'Профиль',
     userMenu: 'Меню пользователя',
+    menu: 'Меню навигации',
     themeLabel: 'Тёмная тема',
     theme: {
       light: 'Светлая тема',

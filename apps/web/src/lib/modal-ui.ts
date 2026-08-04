@@ -7,7 +7,7 @@
 export const MODAL_UI = {
   overlay: 'bg-black/40',
   content:
-    'max-w-[420px] rounded-[1.5rem] shadow-[var(--brand-shadow-card)] ring-0 divide-y-0 bg-[var(--brand-surface)]',
+    'w-[calc(100%-2rem)] max-w-[420px] rounded-[1.5rem] shadow-[var(--brand-shadow-card)] ring-0 divide-y-0 bg-[var(--brand-surface)]',
   header: 'p-7 pb-0',
   body: 'p-7 pt-4',
   footer: 'p-7 pt-4',

@@ -373,20 +373,22 @@ async function confirmDelete(): Promise<void> {
 
     <div v-else-if="loading" class="space-y-5">
       <USkeleton class="h-9 w-1/3 bg-[var(--brand-border)]" />
-      <div class="surface-card space-y-4 px-[30px] py-[26px]">
+      <div class="surface-card space-y-4 px-4 py-5 sm:px-[30px] sm:py-[26px]">
         <USkeleton class="h-5 w-1/4 bg-[var(--brand-border)]" />
         <USkeleton class="h-14 w-full rounded-[12px] bg-[var(--brand-border)]" />
         <USkeleton class="h-14 w-full rounded-[12px] bg-[var(--brand-border)]" />
       </div>
-      <div class="surface-card space-y-4 px-[30px] py-[26px]">
+      <div class="surface-card space-y-4 px-4 py-5 sm:px-[30px] sm:py-[26px]">
         <USkeleton class="h-5 w-1/4 bg-[var(--brand-border)]" />
         <USkeleton class="h-10 w-full rounded-[12px] bg-[var(--brand-border)]" />
       </div>
     </div>
 
     <template v-else-if="overview">
-      <div class="flex items-center gap-3.5">
-        <h1 class="font-heading text-3xl font-extrabold">{{ overview.team.name }}</h1>
+      <div class="flex flex-wrap items-center gap-3.5">
+        <h1 class="font-heading min-w-0 text-3xl font-extrabold break-words">
+          {{ overview.team.name }}
+        </h1>
         <span
           class="badge-pill"
           :class="
@@ -400,7 +402,7 @@ async function confirmDelete(): Promise<void> {
       </div>
 
       <div class="surface-card overflow-hidden">
-        <div class="flex items-center justify-between gap-3 px-[30px] py-5">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-5 sm:px-[30px]">
           <h2 class="text-[17px] font-bold">{{ t('team.roomsTitle') }}</h2>
           <UButton
             v-if="canManageTeam"
@@ -412,7 +414,7 @@ async function confirmDelete(): Promise<void> {
           </UButton>
         </div>
 
-        <div class="flex items-center gap-2 px-[30px] pb-4">
+        <div class="flex items-center gap-2 px-4 pb-4 sm:px-[30px]">
           <button
             v-for="tab in roomTabs"
             :key="tab.key"
@@ -433,20 +435,20 @@ async function confirmDelete(): Promise<void> {
           v-if="roomsFailed"
           color="error"
           variant="subtle"
-          class="mx-[30px] mb-5"
+          class="mx-4 mb-5 sm:mx-[30px]"
           :description="t('team.roomsError')"
         />
         <template v-else-if="roomsTab === 'active'">
-          <p v-if="teamRooms.active.length === 0" class="text-muted px-[30px] pb-5 text-sm">
+          <p v-if="teamRooms.active.length === 0" class="text-muted px-4 pb-5 sm:px-[30px] text-sm">
             {{ t('team.roomsEmpty') }}
           </p>
           <RouterLink
             v-for="room in teamRooms.active"
             :key="room.id"
             :to="{ name: 'room', params: { id: room.id } }"
-            class="border-default hover:bg-elevated/50 flex items-center justify-between gap-3 border-t px-[30px] py-[18px]"
+            class="border-default hover:bg-elevated/50 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
           >
-            <span class="min-w-0 flex-1 truncate text-base font-bold">{{ room.name }}</span>
+            <span class="min-w-28 flex-1 truncate text-base font-bold">{{ room.name }}</span>
             <div class="flex shrink-0 items-center gap-3.5">
               <span class="text-muted text-sm">{{ formatDate(room.createdAt) }}</span>
               <span class="badge-pill badge-pill-primary">{{ t('team.roomActive') }}</span>
@@ -461,24 +463,27 @@ async function confirmDelete(): Promise<void> {
             v-if="archiveFailed"
             color="error"
             variant="subtle"
-            class="mx-[30px] mb-5"
+            class="mx-4 mb-5 sm:mx-[30px]"
             :description="t('team.archiveError')"
           />
           <div v-if="archiveLoading" class="text-muted flex justify-center pb-5">
             <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
           </div>
           <template v-else>
-            <p v-if="archiveTabRooms.length === 0" class="text-muted px-[30px] pb-5 text-sm">
+            <p
+              v-if="archiveTabRooms.length === 0"
+              class="text-muted px-4 pb-5 sm:px-[30px] text-sm"
+            >
               {{ t('team.archiveEmpty') }}
             </p>
             <div
               v-for="room in archiveTabRooms"
               :key="room.id"
-              class="border-default flex items-center justify-between gap-3 border-t px-[30px] py-[18px]"
+              class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
             >
               <RouterLink
                 :to="{ name: 'room', params: { id: room.id } }"
-                class="min-w-0 flex-1 truncate text-base font-bold"
+                class="min-w-28 flex-1 truncate text-base font-bold"
               >
                 {{ room.name }}
               </RouterLink>
@@ -501,14 +506,14 @@ async function confirmDelete(): Promise<void> {
         </template>
       </div>
 
-      <div class="surface-card px-[30px] py-[26px]">
+      <div class="surface-card px-4 py-5 sm:px-[30px] sm:py-[26px]">
         <h2 class="mb-[18px] text-[17px] font-bold">{{ t('team.membersTitle') }}</h2>
         <div
           v-for="member in overview.members"
           :key="member.userId"
-          class="border-default flex items-center justify-between gap-3 border-t py-3.5 first:border-t-0 first:pt-0 last:pb-0"
+          class="border-default flex flex-wrap items-center justify-between gap-3 border-t py-3.5 first:border-t-0 first:pt-0 last:pb-0"
         >
-          <div class="flex min-w-0 items-center gap-3.5">
+          <div class="flex min-w-36 items-center gap-3.5">
             <UAvatar
               :src="member.avatarUrl ?? undefined"
               :alt="member.name"
@@ -520,7 +525,7 @@ async function confirmDelete(): Promise<void> {
             <span class="min-w-0 truncate text-[15.5px] font-bold">{{ member.name }}</span>
           </div>
 
-          <div class="flex shrink-0 items-center gap-3">
+          <div class="ml-[52px] flex shrink-0 items-center gap-3 sm:ml-0">
             <!-- Администратор меняет роли всем, кроме себя; себе показываем бейдж -->
             <USelect
               v-if="canManageTeam && member.userId !== currentUserId"
@@ -561,7 +566,7 @@ async function confirmDelete(): Promise<void> {
         </div>
       </div>
 
-      <div v-if="inviteUrl" class="surface-card px-[30px] py-[26px]">
+      <div v-if="inviteUrl" class="surface-card px-4 py-5 sm:px-[30px] sm:py-[26px]">
         <h2 class="mb-1.5 text-[17px] font-bold">{{ t('team.inviteTitle') }}</h2>
         <p class="text-muted mb-4 text-sm">{{ t('team.inviteHint') }}</p>
         <div class="mb-3.5 flex flex-wrap items-center gap-3">
@@ -592,15 +597,15 @@ async function confirmDelete(): Promise<void> {
         </UButton>
       </div>
 
-      <div class="surface-card px-[30px] py-[26px]">
+      <div class="surface-card px-4 py-5 sm:px-[30px] sm:py-[26px]">
         <h2 class="mb-[18px] text-[17px] font-bold">{{ t('team.settingsTitle') }}</h2>
-        <div class="flex flex-wrap gap-3">
+        <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
           <UButton
             v-if="canManageTeam"
             icon="i-lucide-pencil"
             color="neutral"
             variant="outline"
-            class="rounded-[10px] px-[18px] py-[11px] text-sm font-bold"
+            class="w-full justify-center rounded-[10px] px-[18px] py-[11px] text-sm font-bold sm:w-auto"
             @click="renameOpen = true"
           >
             {{ t('team.rename') }}
@@ -611,7 +616,7 @@ async function confirmDelete(): Promise<void> {
             icon="i-lucide-log-out"
             color="neutral"
             variant="outline"
-            class="rounded-[10px] px-[18px] py-[11px] text-sm font-bold"
+            class="w-full justify-center rounded-[10px] px-[18px] py-[11px] text-sm font-bold sm:w-auto"
             @click="leaveOpen = true"
           >
             {{ t('team.leave') }}
@@ -621,7 +626,7 @@ async function confirmDelete(): Promise<void> {
             icon="i-lucide-trash-2"
             color="error"
             variant="subtle"
-            class="rounded-[10px] px-[18px] py-[11px] text-sm font-bold"
+            class="w-full justify-center rounded-[10px] px-[18px] py-[11px] text-sm font-bold sm:w-auto"
             @click="deleteOpen = true"
           >
             {{ t('team.deleteTeam') }}
