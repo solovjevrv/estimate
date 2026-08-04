@@ -122,6 +122,45 @@ describe('страница «Мои комнаты»', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось загрузить комнаты'));
   });
 
+  it('не показывает пагинацию, пока комнат 5 или меньше', async () => {
+    const rooms = Array.from({ length: 5 }, (_, i) => ({
+      ...activeRoom,
+      id: `r${i}`,
+      name: `Комната ${i}`,
+      createdAt: `2026-07-${String(i + 1).padStart(2, '0')}T00:00:00.000Z`,
+    }));
+    const { wrapper } = await mountApp(
+      makeFetch({ 'GET /api/rooms?archived=false': () => json(200, { rooms }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Комната 4'));
+    const pageTwoButton = wrapper.findAll('button').find((b) => b.text().trim() === '2');
+    expect(pageTwoButton).toBeUndefined();
+  });
+
+  it('при более чем 5 активных комнатах показывает пагинацию и листает страницы', async () => {
+    const rooms = Array.from({ length: 8 }, (_, i) => ({
+      ...activeRoom,
+      id: `r${i}`,
+      name: `Комната ${i}`,
+      createdAt: `2026-07-${String(i + 1).padStart(2, '0')}T00:00:00.000Z`,
+    }));
+    const { wrapper } = await mountApp(
+      makeFetch({ 'GET /api/rooms?archived=false': () => json(200, { rooms }) }),
+    );
+
+    // Сортировка — свежие сверху, свежая это i=7 ("Комната 7"), первая страница — 7..3
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Комната 7'));
+    expect(wrapper.text()).not.toContain('Комната 2');
+
+    const pageTwoButton = wrapper.findAll('button').find((b) => b.text().trim() === '2');
+    expect(pageTwoButton).toBeTruthy();
+    await pageTwoButton!.trigger('click');
+
+    expect(wrapper.text()).toContain('Комната 2');
+    expect(wrapper.text()).not.toContain('Комната 7');
+  });
+
   it('открывает архив и удаляет комнату навсегда', async () => {
     const archivedRoom: Room = { ...activeRoom, id: 'r2', archivedAt: '2026-07-25T00:00:00.000Z' };
     const remove = vi.fn(() => new Response(null, { status: 204 }));
