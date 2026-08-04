@@ -7,6 +7,7 @@ import {
   ROOM_NAME_MAX_LENGTH,
   type DeckType,
   type Participant,
+  type Reaction,
   type ReactionEmoji,
   type Room,
   type RoundHistoryEntry,
@@ -18,7 +19,7 @@ import { useI18n } from 'vue-i18n';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import DeckBar from '../components/room/DeckBar.vue';
 import ParticipantCard from '../components/room/ParticipantCard.vue';
-import type { ReceivedReaction } from '../components/room/ParticipantCardBody.vue';
+import type { FlyingReaction, ReceivedReaction } from '../components/room/ParticipantCardBody.vue';
 import RoomTimerCard from '../components/room/RoomTimerCard.vue';
 import RoomTopBar from '../components/room/RoomTopBar.vue';
 import RoundResultPanel from '../components/room/RoundResultPanel.vue';
@@ -175,6 +176,52 @@ async function onReactClick(participant: Participant, emoji: ReactionEmoji): Pro
     toast.add({ title: t('room.reactionError'), color: 'error' });
   }
 }
+
+/**
+ * Одноразовая «вылетающая» анимация эмодзи над карточкой адресата (10.12, Meet-style) —
+ * отдельно от постоянного бейджа-счётчика (10.10). `room.reactions` приходит только целиком
+ * с рассылкой `room_state` (нет отдельного дискретного события), поэтому свежедобавленные
+ * реакции ловим сравнением с предыдущим снимком списка.
+ */
+const flyingReactionsByParticipant = reactive<Record<string, FlyingReaction[]>>({});
+let flyingReactionSeq = 0;
+
+function flyingReactionsFor(participantId: string): FlyingReaction[] {
+  return flyingReactionsByParticipant[participantId] ?? [];
+}
+
+// Первый вызов колбэка — это гидратация ответа на join_room (переход состояния из
+// «ещё не подключились» в реальный снимок стола), а не новая реакция; её пропускаем,
+// иначе при входе/перезагрузке страницы уже стоящие на карточках реакции «вылетали» бы
+// все разом. Реконнект под этот случай не попадает — applyState() не сбрасывает state
+// в null между обрывом и восстановлением связи, так что здесь останется настоящий diff.
+let reactionsHydrated = false;
+
+watch(
+  () => room.reactions,
+  (current, previous) => {
+    if (!reactionsHydrated) {
+      reactionsHydrated = true;
+      return;
+    }
+    const prev = previous ?? [];
+    const isSame = (a: Reaction, b: Reaction): boolean =>
+      a.fromParticipantId === b.fromParticipantId &&
+      a.toParticipantId === b.toParticipantId &&
+      a.emoji === b.emoji;
+    const added = current.filter((r) => !prev.some((p) => isSame(p, r)));
+    for (const r of added) {
+      const id = `${Date.now()}-${flyingReactionSeq++}`;
+      const list = flyingReactionsByParticipant[r.toParticipantId] ?? [];
+      flyingReactionsByParticipant[r.toParticipantId] = [...list, { id, emoji: r.emoji }];
+      setTimeout(() => {
+        flyingReactionsByParticipant[r.toParticipantId] = (
+          flyingReactionsByParticipant[r.toParticipantId] ?? []
+        ).filter((f) => f.id !== id);
+      }, 1900);
+    }
+  },
+);
 
 /**
  * Таймером управляет любой участник (решение 27.07.2026) — прав здесь не
@@ -975,7 +1022,7 @@ function retry(): void {
                выходит за пределы карточки — без отступа он наезжает на текст/контент выше -->
           <div class="flex flex-wrap justify-center gap-[22px] pt-5 sm:justify-start">
             <ParticipantCard
-              v-for="p in room.participants"
+              v-for="(p, participantIndex) in room.participants"
               :key="p.participantId"
               :participant="p"
               :is-self="p.participantId === room.participantId"
@@ -984,6 +1031,8 @@ function retry(): void {
               :is-winner="isWinnerParticipant(p.participantId)"
               :can-kick="room.isScrumMaster && p.participantId !== room.participantId"
               :received-reactions="receivedReactionsFor(p.participantId)"
+              :flying-reactions="flyingReactionsFor(p.participantId)"
+              :flip-index="participantIndex"
               @kick="onKickClick(p)"
               @react="onReactClick(p, $event)"
             />

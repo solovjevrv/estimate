@@ -37,41 +37,54 @@ const confetti = ref<ConfettiPiece[]>([]);
 let nextConfettiId = 0;
 let clearConfettiTimer: ReturnType<typeof setTimeout> | null = null;
 
-// Единодушный консенсус (все проголосовавшие сошлись на одном значении) — лёгкий
-// разовый эффект при вскрытии, без новых зависимостей (чистый CSS/DOM)
+/**
+ * Панель монтируется заново на каждое вскрытие (`v-if="room.result"` в RoomPage —
+ * `result` обнуляется новым раундом), поэтому `{ immediate: true }` = «сработай при
+ * каждом реальном вскрытии» без отдельного watch на явное событие reveal.
+ *
+ * Эффект теперь не только для единодушного консенсуса (10.12: «анимация после любого
+ * вскрытия» + «увеличить видимость конфетти») — срабатывает всегда, но при 100%
+ * agreement заметно масштабнее (в 3+ раза больше конфетти), чем при частичном согласии.
+ */
 watch(
   () => props.agreement,
   (agreement) => {
-    if (agreement !== 100) return;
-    confetti.value = Array.from({ length: 24 }, (_, i) => ({
+    const isUnanimous = agreement === 100;
+    const count = isUnanimous ? 70 : 18;
+    confetti.value = Array.from({ length: count }, (_, i) => ({
       id: nextConfettiId++,
       left: Math.random() * 100,
-      delay: Math.random() * 0.25,
-      duration: 0.9 + Math.random() * 0.5,
+      delay: Math.random() * (isUnanimous ? 0.4 : 0.2),
+      duration: 1.4 + Math.random() * 0.8,
       color: confettiColors[i % confettiColors.length] ?? confettiColors[0]!,
     }));
     if (clearConfettiTimer) clearTimeout(clearConfettiTimer);
     clearConfettiTimer = setTimeout(() => {
       confetti.value = [];
-    }, 1700);
+    }, 2400);
   },
   { immediate: true },
 );
 </script>
 
 <template>
-  <div class="relative">
-    <div
-      v-for="piece in confetti"
-      :key="piece.id"
-      class="confetti-piece pointer-events-none absolute top-0 size-2 rounded-sm"
-      :style="{
-        left: piece.left + '%',
-        backgroundColor: piece.color,
-        animationDelay: piece.delay + 's',
-        animationDuration: piece.duration + 's',
-      }"
-    />
+  <Teleport to="body">
+    <!-- Во весь экран (не заперто в карточке результата) — 10.12: «увеличить видимость конфетти» -->
+    <div class="pointer-events-none fixed inset-0 z-[9999] overflow-hidden">
+      <div
+        v-for="piece in confetti"
+        :key="piece.id"
+        class="confetti-piece absolute top-0 size-2.5 rounded-sm"
+        :style="{
+          left: piece.left + '%',
+          backgroundColor: piece.color,
+          animationDelay: piece.delay + 's',
+          animationDuration: piece.duration + 's',
+        }"
+      />
+    </div>
+  </Teleport>
+  <div class="reveal-pop relative">
     <h2 class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
       {{ t('room.resultTitle') }}
     </h2>
@@ -134,7 +147,22 @@ watch(
   }
   100% {
     opacity: 0;
-    transform: translateY(140px) rotate(360deg);
+    transform: translateY(100vh) rotate(360deg);
+  }
+}
+
+.reveal-pop {
+  animation: reveal-pop 0.3s ease-out;
+}
+
+@keyframes reveal-pop {
+  0% {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
   }
 }
 </style>

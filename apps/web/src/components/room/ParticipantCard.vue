@@ -4,7 +4,10 @@ import type { Participant, ReactionEmoji } from '@poker/shared';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import ParticipantCardBody, { type ReceivedReaction } from './ParticipantCardBody.vue';
+import ParticipantCardBody, {
+  type FlyingReaction,
+  type ReceivedReaction,
+} from './ParticipantCardBody.vue';
 
 const props = defineProps<{
   participant: Participant;
@@ -17,6 +20,8 @@ const props = defineProps<{
   /** Меню исключения — открывается по клику на карточку; решает вызывающий (скрам-мастер и не на себе) */
   canKick: boolean;
   receivedReactions: ReceivedReaction[];
+  flyingReactions: FlyingReaction[];
+  flipIndex: number;
 }>();
 
 const emit = defineEmits<{ kick: []; react: [emoji: ReactionEmoji] }>();
@@ -53,6 +58,8 @@ const menuItems = computed<DropdownMenuItem[][]>(() => [
       :value-label="valueLabel"
       :is-winner="isWinner"
       :received-reactions="receivedReactions"
+      :flying-reactions="flyingReactions"
+      :flip-index="flipIndex"
       @react="emit('react', $event)"
     />
   </UDropdownMenu>
@@ -64,6 +71,8 @@ const menuItems = computed<DropdownMenuItem[][]>(() => [
     :value-label="valueLabel"
     :is-winner="isWinner"
     :received-reactions="receivedReactions"
+    :flying-reactions="flyingReactions"
+    :flip-index="flipIndex"
     @react="emit('react', $event)"
   />
 </template>

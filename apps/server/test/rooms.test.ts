@@ -1114,18 +1114,23 @@ describeDb('комнаты', () => {
       expect((await afterToggleOff).reactions).toEqual([]);
     });
 
-    it('нельзя отправить реакцию самому себе', async () => {
+    it('можно отправить реакцию самому себе', async () => {
       const owner = await newUser('reaction-self-owner');
       const roomId = await newRoom(owner);
       const master = connect(owner);
       await joinRoom(master, roomId);
 
+      const selfSeesReaction = nextState(master);
       const ack = await emit(master, WS_EVENTS.SEND_REACTION, {
         targetParticipantId: owner.id,
         emoji: '👍',
       });
 
-      expect(ack).toMatchObject({ ok: false, error: 'forbidden' });
+      expect(ack.ok).toBe(true);
+      const state = await selfSeesReaction;
+      expect(state.reactions).toEqual([
+        { fromParticipantId: owner.id, toParticipantId: owner.id, emoji: '👍' },
+      ]);
     });
 
     it('недопустимый эмодзи отклоняется', async () => {
