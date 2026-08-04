@@ -177,7 +177,7 @@ async function confirmDelete(): Promise<void> {
 
 <template>
   <section class="space-y-5">
-    <div class="flex items-center justify-between gap-3">
+    <div class="flex flex-wrap items-center justify-between gap-3">
       <h1 class="font-heading text-3xl font-extrabold">{{ t('myRooms.title') }}</h1>
       <UButton
         icon="i-lucide-plus"
@@ -206,7 +206,7 @@ async function confirmDelete(): Promise<void> {
         <div
           v-for="i in 3"
           :key="i"
-          class="border-default flex items-center justify-between gap-3 border-t px-[30px] py-[22px] first:border-t-0"
+          class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[22px] first:border-t-0 sm:px-[30px]"
         >
           <USkeleton class="h-5 w-1/3 bg-[var(--brand-border)]" />
           <USkeleton class="h-5 w-20 rounded-full bg-[var(--brand-border)]" />
@@ -226,21 +226,23 @@ async function confirmDelete(): Promise<void> {
         </div>
       </div>
 
-      <p v-if="list.length === 0" class="surface-card text-muted p-[30px] text-sm">
+      <p v-if="list.length === 0" class="surface-card text-muted p-4 text-sm sm:p-[30px]">
         {{ t('myRooms.empty') }}
       </p>
       <div v-else class="surface-card overflow-hidden">
         <div v-for="section in roomSections" v-show="section.rooms.length" :key="section.key">
-          <h3 class="text-muted px-[30px] py-5 text-[13px] font-bold tracking-[0.03em] uppercase">
+          <h3
+            class="text-muted px-4 py-5 sm:px-[30px] text-[13px] font-bold tracking-[0.03em] uppercase"
+          >
             {{ section.title }}
           </h3>
           <RouterLink
             v-for="room in section.rooms"
             :key="room.id"
             :to="{ name: 'room', params: { id: room.id } }"
-            class="border-default hover:bg-elevated/50 flex items-center justify-between gap-3 border-t px-[30px] py-[22px]"
+            class="border-default hover:bg-elevated/50 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[22px] sm:px-[30px]"
           >
-            <span class="min-w-0 flex-1 truncate text-[17px] font-bold">{{ room.name }}</span>
+            <span class="min-w-28 flex-1 truncate text-[17px] font-bold">{{ room.name }}</span>
             <div class="flex shrink-0 items-center gap-3.5">
               <span v-if="room.teamId" class="badge-pill badge-pill-neutral">{{
                 t('myRooms.teamBadge')
@@ -257,7 +259,7 @@ async function confirmDelete(): Promise<void> {
       </div>
 
       <div class="surface-card overflow-hidden">
-        <div class="flex items-center justify-between gap-3 px-[30px] py-5">
+        <div class="flex items-center justify-between gap-3 px-4 py-5 sm:px-[30px]">
           <h2 class="text-[17px] font-bold">{{ t('myRooms.archiveTitle') }}</h2>
           <button
             type="button"
@@ -273,24 +275,24 @@ async function confirmDelete(): Promise<void> {
             v-if="archiveFailed"
             color="error"
             variant="subtle"
-            class="mx-[30px] mb-5"
+            class="mx-4 mb-5 sm:mx-[30px]"
             :description="t('myRooms.archiveError')"
           />
           <div v-else-if="archiveLoading" class="text-muted flex justify-center pb-5">
             <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
           </div>
-          <p v-else-if="archived.length === 0" class="text-muted px-[30px] pb-5 text-sm">
+          <p v-else-if="archived.length === 0" class="text-muted px-4 pb-5 text-sm sm:px-[30px]">
             {{ t('myRooms.archiveEmpty') }}
           </p>
           <div
             v-for="room in archived"
             v-else
             :key="room.id"
-            class="border-default flex items-center justify-between gap-3 border-t px-[30px] py-[18px]"
+            class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
           >
             <RouterLink
               :to="{ name: 'room', params: { id: room.id } }"
-              class="min-w-0 flex-1 truncate text-[15.5px] font-bold"
+              class="min-w-28 flex-1 truncate text-[15.5px] font-bold"
             >
               {{ room.name }}
             </RouterLink>

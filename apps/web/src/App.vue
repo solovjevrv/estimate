@@ -62,6 +62,11 @@ const languageMenuItems = computed<DropdownMenuItem[]>(() =>
   })),
 );
 
+const mobileNavItems = computed<DropdownMenuItem[]>(() => [
+  { label: t('nav.teams'), icon: 'i-lucide-users', to: '/teams' },
+  { label: t('nav.myRooms'), icon: 'i-lucide-layout-grid', to: '/my-rooms' },
+]);
+
 const userMenuItems = computed<DropdownMenuItem[][]>(() => [
   [
     {
@@ -105,8 +110,10 @@ async function logout(): Promise<void> {
   <UApp>
     <div class="min-h-screen flex flex-col bg-default text-highlighted">
       <header class="border-default border-b" style="background-color: var(--brand-surface)">
-        <nav class="mx-auto flex h-[76px] w-full max-w-[73.75rem] items-center gap-8 px-14">
-          <RouterLink to="/" class="flex items-center gap-2">
+        <nav
+          class="mx-auto flex h-[64px] w-full max-w-[73.75rem] items-center gap-3 px-4 sm:gap-6 sm:px-6 md:h-[76px] md:gap-8 md:px-14"
+        >
+          <RouterLink to="/" class="flex shrink-0 items-center gap-2">
             <span class="relative inline-block size-[30px]" aria-hidden="true">
               <span
                 class="absolute top-[2px] left-[6px] h-[22px] w-4 rounded"
@@ -122,10 +129,20 @@ async function logout(): Promise<void> {
             }}</span>
           </RouterLink>
 
+          <UDropdownMenu v-if="session.isAuthenticated" :items="mobileNavItems" class="md:hidden">
+            <UButton
+              icon="i-lucide-menu"
+              size="sm"
+              color="neutral"
+              variant="ghost"
+              :aria-label="t('nav.menu')"
+            />
+          </UDropdownMenu>
+
           <RouterLink
             v-if="session.isAuthenticated"
             to="/teams"
-            class="text-[15px] font-semibold"
+            class="hidden text-[15px] font-semibold md:inline"
             :class="teamsLinkActive ? 'text-primary' : 'text-muted'"
           >
             {{ t('nav.teams') }}
@@ -133,7 +150,7 @@ async function logout(): Promise<void> {
           <RouterLink
             v-if="session.isAuthenticated"
             to="/my-rooms"
-            class="text-[15px] font-semibold"
+            class="hidden text-[15px] font-semibold md:inline"
             :class="myRoomsLinkActive ? 'text-primary' : 'text-muted'"
           >
             {{ t('nav.myRooms') }}
@@ -169,7 +186,7 @@ async function logout(): Promise<void> {
                 class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1"
                 :aria-label="t('nav.userMenu')"
               >
-                <span class="flex flex-col items-end leading-tight">
+                <span class="hidden flex-col items-end leading-tight sm:flex">
                   <span class="text-sm font-bold">{{ session.user?.name }}</span>
                   <span class="text-primary text-[13px] font-semibold">{{
                     session.user?.jobTitle ?? session.user?.email
@@ -189,7 +206,7 @@ async function logout(): Promise<void> {
         </nav>
       </header>
 
-      <main class="mx-auto w-full max-w-[73.75rem] flex-1 px-4 py-14">
+      <main class="mx-auto w-full max-w-[73.75rem] flex-1 px-4 py-8 md:py-14">
         <RouterView />
       </main>
 

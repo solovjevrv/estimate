@@ -1170,6 +1170,166 @@ describe('новый раунд и отмена раунда', () => {
   });
 });
 
+describe('смена шкалы оценки во время активного раунда (баг: клик не имел эффекта)', () => {
+  it('без голосов — клик по другой шкале сразу перезапускает раунд, с тостом', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: false }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Отменить раунд'));
+
+    const activeRound = round({ id: 'rnd2', seq: 2, deckType: 'scale_0_5' });
+    socket.next = activeRound;
+    const scaleTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Шкала 0–5');
+    await scaleTab!.trigger('click');
+
+    const started = socket.sent.find((s) => s.event === 'start_new_round');
+    expect(started?.payload).toMatchObject({ deckType: 'scale_0_5', fromRoundId: 'rnd1' });
+    expect(document.body.textContent).not.toContain('Отменить голосование?');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Раунд перезапущен'));
+  });
+
+  it('с уже поставленными голосами — требует подтверждения и перезапускает именно с новой колодой', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Отменить раунд'));
+
+    const tshirtTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Футболки');
+    await tshirtTab!.trigger('click');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Отменить голосование?'));
+    expect(socket.sent.some((s) => s.event === 'start_new_round')).toBe(false);
+
+    const activeRound = round({ id: 'rnd2', seq: 2, deckType: 'tshirt' });
+    socket.next = activeRound;
+    const confirmButton = Array.from(
+      document.body.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [],
+    ).find((b) => b.textContent?.trim() === 'Отменить и начать заново');
+    confirmButton!.click();
+
+    await vi.waitFor(() => {
+      const started = socket.sent.find((s) => s.event === 'start_new_round');
+      expect(started?.payload).toMatchObject({ deckType: 'tshirt', fromRoundId: 'rnd1' });
+    });
+  });
+
+  it('отказ от подтверждения не перезапускает раунд и не подменяет отображаемую колоду', async () => {
+    socket.next = {
+      state: roomState({
+        round: round(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Отменить раунд'));
+    // Раунд идёт на Фибоначчи — карта «13» доступна только в этой колоде
+    expect(wrapper.text()).toContain('13');
+
+    const scaleTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Шкала 0–5');
+    await scaleTab!.trigger('click');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Отменить голосование?'));
+
+    const cancelButton = Array.from(
+      document.body.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [],
+    ).find((b) => b.textContent?.trim() === 'Отмена');
+    cancelButton!.click();
+
+    await vi.waitFor(() =>
+      expect(document.body.textContent).not.toContain('Отменить голосование?'),
+    );
+    expect(socket.sent.some((s) => s.event === 'start_new_round')).toBe(false);
+    // Раунд не поменялся — колода на столе всё ещё Фибоначчи
+    expect(wrapper.text()).toContain('13');
+  });
+
+  it('после вскрытия — клик по другой шкале перезапускает раунд без вопроса', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ status: 'revealed', average: 5 }),
+        result: roundResult(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Результаты раунда'));
+
+    const activeRound = round({ id: 'rnd2', seq: 2, deckType: 'tshirt' });
+    socket.next = activeRound;
+    const tshirtTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Футболки');
+    await tshirtTab!.trigger('click');
+
+    const started = socket.sent.find((s) => s.event === 'start_new_round');
+    expect(started?.payload).toMatchObject({ deckType: 'tshirt', fromRoundId: 'rnd1' });
+    expect(document.body.textContent).not.toContain('Отменить голосование?');
+  });
+
+  it('клик по уже активной шкале ничего не отправляет', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ deckType: 'fibonacci' }),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Отменить раунд'));
+
+    const fibonacciTab = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === 'Числа Фибоначчи');
+    await fibonacciTab!.trigger('click');
+
+    expect(socket.sent.some((s) => s.event === 'start_new_round')).toBe(false);
+    expect(document.body.textContent).not.toContain('Отменить голосование?');
+  });
+});
+
 describe('архивация комнаты', () => {
   it('голосующему настройки комнаты не показываются', async () => {
     socket.next = {

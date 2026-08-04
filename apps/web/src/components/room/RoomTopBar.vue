@@ -54,7 +54,7 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
   <div class="flex items-start justify-between gap-3">
     <div>
       <div class="flex flex-wrap items-center gap-2.5">
-        <h1 class="font-heading text-[28px] font-extrabold">{{ props.name }}</h1>
+        <h1 class="font-heading text-[22px] font-extrabold sm:text-[28px]">{{ props.name }}</h1>
         <UTooltip :text="props.connected ? t('room.connected') : t('room.disconnected')">
           <!-- Не badge-pill: этот класс задаёт padding вне Tailwind-слоёв, поэтому
                перебивает любые утилиты-переопределения padding независимо от специфичности -->

@@ -93,7 +93,9 @@ function onToggleClick(): void {
 </script>
 
 <template>
-  <div class="surface-card surface-card-lg flex flex-wrap items-center gap-4 px-[30px] py-[26px]">
+  <div
+    class="surface-card surface-card-lg flex flex-col items-center gap-4 px-4 py-5 text-center sm:flex-row sm:flex-wrap sm:text-left sm:px-[30px] sm:py-[26px]"
+  >
     <div class="relative flex size-[76px] shrink-0 items-center justify-center">
       <svg viewBox="0 0 76 76" class="absolute inset-0 -rotate-90">
         <circle
@@ -126,14 +128,14 @@ function onToggleClick(): void {
       </div>
     </div>
 
-    <div class="flex min-w-0 flex-col gap-2">
+    <div class="flex min-w-0 flex-col items-center gap-2 sm:items-start">
       <div
         class="text-muted flex items-center gap-1.5 text-[12.5px] font-bold tracking-[0.03em] uppercase"
       >
         <UIcon name="i-lucide-timer" class="size-3.5" />
         {{ t('room.timerTitle') }}
       </div>
-      <div class="flex flex-wrap items-center gap-2">
+      <div class="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
         <UButton
           size="sm"
           :icon="props.timer.running ? 'i-lucide-pause' : 'i-lucide-play'"
