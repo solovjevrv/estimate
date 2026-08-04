@@ -517,7 +517,14 @@ describe('создание личной комнаты с главной', () =>
     );
     submitButton!.click();
 
-    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/rooms/r7'));
+    // Это единственный переход на /rooms/:id во всём файле — компонент RoomPage.vue (лениво
+    // импортируемый роутером, тяжёлый по дереву зависимостей) грузится здесь впервые и вхолодную.
+    // Роутер не обновляет currentRoute, пока не разрешится async-компонент маршрута, так что при
+    // конкуренции за CPU в полном прогоне CI дефолтных 1000ms vi.waitFor иногда не хватает —
+    // отсюда флаки-тест 11.1 (стабильно проходил в изоляции/при перезапуске, где конкуренции нет).
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/rooms/r7'), {
+      timeout: 5000,
+    });
     expect(fetchImpl).toHaveBeenCalledWith(
       '/api/rooms',
       expect.objectContaining({ method: 'POST' }),
