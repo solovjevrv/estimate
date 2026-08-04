@@ -827,6 +827,86 @@ describe('вскрытие карт', () => {
     expect(wrapper.text()).toContain('8');
   });
 
+  it('конфетти при вскрытии показывается всегда, а при полном согласии — заметно масштабнее (10.12)', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ status: 'voting' }),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Вскрыть карты'));
+
+    // Частичное согласие — раньше конфетти вообще не показывалось
+    socket.next = roundResult({ agreement: 50 });
+    const revealButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Вскрыть карты');
+    await revealButton!.trigger('click');
+    socket.emitLocal(
+      WS_SERVER_EVENTS.ROOM_STATE,
+      roomState({
+        room: { ...room1, revision: room1.revision + 1 },
+        round: round({ status: 'revealed' }),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+        result: roundResult({ agreement: 50 }),
+      }),
+    );
+
+    let partialCount = 0;
+    await vi.waitFor(() => {
+      partialCount = document.body.querySelectorAll('.confetti-piece').length;
+      expect(partialCount).toBeGreaterThan(0);
+    });
+    expect(partialCount).toBeLessThan(30);
+  });
+
+  it('конфетти телепортируется во весь экран, а не заперто внутри карточки результата (10.12)', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ status: 'voting' }),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Вскрыть карты'));
+
+    // Единодушный консенсус — заметно больше частиц, чем при частичном согласии
+    socket.next = roundResult({ agreement: 100 });
+    const revealButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Вскрыть карты');
+    await revealButton!.trigger('click');
+    socket.emitLocal(
+      WS_SERVER_EVENTS.ROOM_STATE,
+      roomState({
+        room: { ...room1, revision: room1.revision + 1 },
+        round: round({ status: 'revealed' }),
+        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
+        result: roundResult({ agreement: 100 }),
+      }),
+    );
+
+    await vi.waitFor(() => {
+      const overlay = document.body.querySelector('.fixed.inset-0');
+      expect(overlay).not.toBeNull();
+      const pieces = overlay!.querySelectorAll('.confetti-piece');
+      expect(pieces.length).toBeGreaterThanOrEqual(50);
+    });
+  });
+
   it('колода футболочных размеров: карты и результаты в буквах, среднего нет, есть согласие', async () => {
     socket.next = {
       state: roomState({
@@ -1778,6 +1858,65 @@ describe('реакции-эмодзи на карточке участника (
     await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'send_reaction')).toBe(true));
     const sent = socket.sent.find((s) => s.event === 'send_reaction');
     expect(sent?.payload).toMatchObject({ targetParticipantId: 'g1', emoji: '👍' });
+  });
+
+  it('новая реакция запускает разовую анимацию эмодзи над карточкой адресата (10.12)', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
+    expect(document.body.querySelector('.fly-emoji')).toBeNull();
+
+    socket.emitLocal(
+      WS_SERVER_EVENTS.ROOM_STATE,
+      roomState({
+        room: { ...room1, revision: room1.revision + 1 },
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+        reactions: [{ fromParticipantId: 'u1', toParticipantId: 'g1', emoji: '🔥' }],
+      }),
+    );
+
+    await vi.waitFor(() => {
+      const flying = document.body.querySelector('.fly-emoji');
+      expect(flying?.textContent?.trim()).toBe('🔥');
+    });
+  });
+
+  it('реакции, уже стоящие на карточке при входе в комнату, не анимируются как новые', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+        reactions: [{ fromParticipantId: 'u1', toParticipantId: 'g1', emoji: '😂' }],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('😂'));
+
+    expect(document.body.querySelector('.fly-emoji')).toBeNull();
   });
 
   it('на своей карточке бейдж полученной реакции не кликабелен', async () => {
