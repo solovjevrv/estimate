@@ -79,11 +79,9 @@ watch(
 /**
  * Клик по уже существующему бейджу — как реакция на сообщение в Telegram:
  * у кого её ещё нет — ставит; у кого уже есть — снимает (сервер решает сам,
- * какая это из двух веток, по паре «автор → адресат»). На своей карточке
- * бейджи не кликабельны — самому себе реакцию не поставить.
+ * какая это из двух веток, по паре «автор → адресат»).
  */
 function onBadgeClick(emoji: ReactionEmoji): void {
-  if (props.isSelf) return;
   emit('react', emoji);
 }
 </script>
@@ -129,7 +127,7 @@ function onBadgeClick(emoji: ReactionEmoji): void {
           :class="
             props.isWinner
               ? 'bg-[var(--brand-primary-soft-bg)] shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]'
-              : 'bg-[var(--brand-surface)] shadow-[var(--brand-shadow-card)]'
+              : 'bg-[var(--brand-surface)] shadow-[var(--brand-shadow-card),inset_0_0_0_1px_var(--brand-border)]'
           "
         >
           <span class="font-heading text-[28px] font-extrabold text-[var(--brand-primary-text)]">
@@ -147,8 +145,8 @@ function onBadgeClick(emoji: ReactionEmoji): void {
       <!-- Реакции, полученные этой карточкой (10.10) — противоположный угол от бейджа голосования.
            Каждая уникальная реакция — свой отдельный бейдж (не общий контейнер на всех), как
            реакции на сообщение в Telegram; одинаковые от нескольких участников схлопнуты в один
-           бейдж со счётчиком. На чужой карточке бейдж кликабелен: у кого реакции ещё нет —
-           ставит её тем же эмодзи, у кого уже есть своя — снимает (выделена рамкой). -->
+           бейдж со счётчиком. Бейдж кликабелен на любой карточке, включая свою (10.12): у кого
+           реакции ещё нет — ставит её тем же эмодзи, у кого уже есть своя — снимает (выделена рамкой). -->
       <TransitionGroup
         tag="div"
         name="badge-pop"
@@ -162,11 +160,10 @@ function onBadgeClick(emoji: ReactionEmoji): void {
           :aria-label="
             t('room.reactionBadgeLabel', { emoji: reaction.emoji, count: reaction.count })
           "
-          class="border-[var(--brand-ink2)]/45 flex items-center gap-0.5 rounded-full border-[1.5px] bg-[var(--brand-surface)] px-1.5 py-0.5 text-xl leading-none shadow-[var(--brand-shadow-card)] dark:border-transparent"
-          :class="[
-            reaction.reactedByMe ? 'shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]' : '',
-            !props.isSelf ? 'hover:bg-[var(--brand-border)] cursor-pointer' : 'cursor-default',
-          ]"
+          class="border-[var(--brand-ink2)]/45 hover:bg-[var(--brand-border)] flex cursor-pointer items-center gap-0.5 rounded-full border-[1.5px] bg-[var(--brand-surface)] px-1.5 py-0.5 text-xl leading-none shadow-[var(--brand-shadow-card)] dark:border-transparent"
+          :class="
+            reaction.reactedByMe ? 'shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]' : ''
+          "
           @click.stop="onBadgeClick(reaction.emoji)"
         >
           {{ reaction.emoji }}
@@ -184,13 +181,13 @@ function onBadgeClick(emoji: ReactionEmoji): void {
         <span
           v-for="reaction in props.flyingReactions"
           :key="reaction.id"
-          class="fly-emoji absolute bottom-14 left-1/2 text-4xl"
+          class="fly-emoji absolute bottom-2 left-1/2 text-4xl"
         >
           {{ reaction.emoji }}
         </span>
       </div>
-      <!-- Отправить реакцию — доступно на чужой карточке в любой момент раунда (10.10) -->
-      <UPopover v-if="!props.isSelf" :content="{ side: 'top' }">
+      <!-- Отправить реакцию — доступно на любой карточке, включая свою, в любой момент раунда (10.10) -->
+      <UPopover :content="{ side: 'top' }">
         <button
           type="button"
           class="border-[var(--brand-ink2)]/45 absolute -top-1 -right-1 flex size-[22px] cursor-pointer items-center justify-center rounded-full border-[1.5px] bg-[var(--brand-surface)] shadow-[var(--brand-shadow-card)] dark:border-transparent"
@@ -259,7 +256,7 @@ function onBadgeClick(emoji: ReactionEmoji): void {
 }
 
 .fly-emoji {
-  animation: fly-emoji-rise 1.4s ease-out forwards;
+  animation: fly-emoji-rise 1.8s ease-out forwards;
 }
 
 @keyframes fly-emoji-rise {
@@ -268,11 +265,11 @@ function onBadgeClick(emoji: ReactionEmoji): void {
     opacity: 0;
   }
   15% {
-    transform: translate(-50%, -14px) scale(1.25);
+    transform: translate(-50%, -18px) scale(1.25);
     opacity: 1;
   }
   100% {
-    transform: translate(-50%, -96px) scale(1);
+    transform: translate(-50%, -150px) scale(1);
     opacity: 0;
   }
 }

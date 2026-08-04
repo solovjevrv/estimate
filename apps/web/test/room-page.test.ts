@@ -1720,7 +1720,7 @@ describe('исключение участника (5.8)', () => {
 });
 
 describe('реакции-эмодзи на карточке участника (10.10)', () => {
-  it('реакцию можно поставить только на чужую карточку, не на свою', async () => {
+  it('реакцию можно поставить и на чужую, и на свою карточку', async () => {
     socket.next = {
       state: roomState({
         participants: [
@@ -1740,7 +1740,7 @@ describe('реакции-эмодзи на карточке участника (
 
     expect(
       document.body.querySelector('[aria-label="Поставить реакцию участнику Иван"]'),
-    ).toBeNull();
+    ).not.toBeNull();
     expect(
       document.body.querySelector('[aria-label="Поставить реакцию участнику Мария"]'),
     ).not.toBeNull();
@@ -1919,7 +1919,7 @@ describe('реакции-эмодзи на карточке участника (
     expect(document.body.querySelector('.fly-emoji')).toBeNull();
   });
 
-  it('на своей карточке бейдж полученной реакции не кликабелен', async () => {
+  it('бейдж полученной реакции кликабелен и на своей карточке (ограничение снято)', async () => {
     socket.next = {
       state: roomState({
         participants: [
@@ -1940,7 +1940,44 @@ describe('реакции-эмодзи на карточке участника (
 
     await wrapper.find('[title="Мария"]').trigger('click');
 
-    expect(socket.sent.some((s) => s.event === 'send_reaction')).toBe(false);
+    await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'send_reaction')).toBe(true));
+    const sent = socket.sent.find((s) => s.event === 'send_reaction');
+    expect(sent?.payload).toMatchObject({ targetParticipantId: 'u1', emoji: '🔥' });
+  });
+
+  it('пикер реакций доступен и на своей карточке — можно отправить реакцию себе', async () => {
+    socket.next = {
+      state: roomState({
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' }),
+          participant({ participantId: 'g1', name: 'Мария', isGuest: true, role: 'voter' }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Мария'));
+
+    const trigger = document.body.querySelector('[aria-label="Поставить реакцию участнику Иван"]');
+    (trigger as HTMLElement).click();
+    await vi.waitFor(() => {
+      const buttons = Array.from(document.body.querySelectorAll('button'));
+      expect(buttons.some((b) => b.getAttribute('aria-label') === '🎉')).toBe(true);
+    });
+
+    const emojiButton = Array.from(document.body.querySelectorAll('button')).find(
+      (b) => b.getAttribute('aria-label') === '🎉',
+    );
+    (emojiButton as HTMLElement).click();
+
+    await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'send_reaction')).toBe(true));
+    const sent = socket.sent.find((s) => s.event === 'send_reaction');
+    expect(sent?.payload).toMatchObject({ targetParticipantId: 'u1', emoji: '🎉' });
   });
 });
 
