@@ -131,7 +131,11 @@ export class TeamsRepository {
         // (9.2) живёт в display_name, поэтому наружу отдаём именно её при наличии
         name: sql<string>`coalesce(${schema.users.displayName}, ${schema.users.name})`,
         email: schema.users.email,
-        avatarUrl: schema.users.avatarUrl,
+        // Провайдер перезаписывает users.avatarUrl при каждом входе — своя загруженная
+        // аватарка (10.15) живёт в avatar_override_url, отдаём её при наличии
+        avatarUrl: sql<
+          string | null
+        >`coalesce(${schema.users.avatarOverrideUrl}, ${schema.users.avatarUrl})`,
         role: schema.teamMembers.role,
         joinedAt: schema.teamMembers.joinedAt,
       })
@@ -150,7 +154,9 @@ export class TeamsRepository {
         userId: schema.users.id,
         name: sql<string>`coalesce(${schema.users.displayName}, ${schema.users.name})`,
         email: schema.users.email,
-        avatarUrl: schema.users.avatarUrl,
+        avatarUrl: sql<
+          string | null
+        >`coalesce(${schema.users.avatarOverrideUrl}, ${schema.users.avatarUrl})`,
         provider: schema.users.provider,
         jobTitle: schema.users.jobTitle,
         role: schema.teamMembers.role,

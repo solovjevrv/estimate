@@ -18,6 +18,7 @@ async function main(): Promise<void> {
       },
       auth: config.auth,
       docsEnabled: config.docsEnabled,
+      avatarsDir: config.avatarsDir,
     },
     { logger: true },
   );

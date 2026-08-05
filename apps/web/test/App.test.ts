@@ -327,7 +327,8 @@ describe('страница профиля', () => {
     await router.isReady();
     await vi.waitFor(() => expect(wrapper.text()).toContain('ivan@example.com'));
 
-    const inputs = wrapper.findAll('input');
+    // Исключаем скрытый input[type=file] загрузки аватарки (10.15) — он тоже попал бы в findAll
+    const inputs = wrapper.findAll('input').filter((i) => i.attributes('type') !== 'file');
     await inputs[0]!.setValue('Новое Имя');
     await inputs[1]!.setValue('Фронтенд-разработчик');
     await wrapper.find('form').trigger('submit');
@@ -371,7 +372,8 @@ describe('страница профиля', () => {
     await router.isReady();
     await vi.waitFor(() => expect(wrapper.text()).toContain('ivan@example.com'));
 
-    const nameInput = wrapper.findAll('input')[0]!;
+    // Исключаем скрытый input[type=file] загрузки аватарки (10.15)
+    const nameInput = wrapper.findAll('input').filter((i) => i.attributes('type') !== 'file')[0]!;
     await nameInput.setValue('   ');
     await wrapper.find('form').trigger('submit');
 

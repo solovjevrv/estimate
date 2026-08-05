@@ -62,6 +62,15 @@ export const useSessionStore = defineStore('session', () => {
     return res.user;
   }
 
+  /** Загрузка своей аватарки (10.15) — blob уже вырезан кроппером на фронте */
+  async function uploadAvatar(blob: Blob): Promise<AuthUser> {
+    const body = new FormData();
+    body.append('avatar', blob, 'avatar.webp');
+    const res = await api.upload<{ user: AuthUser }>('/api/me/avatar', body);
+    user.value = res.user;
+    return res.user;
+  }
+
   async function logout(): Promise<void> {
     try {
       await api.post('/api/auth/logout');
@@ -86,6 +95,7 @@ export const useSessionStore = defineStore('session', () => {
     ensureLoaded,
     loadProviders,
     updateProfile,
+    uploadAvatar,
     logout,
     setUser,
   };

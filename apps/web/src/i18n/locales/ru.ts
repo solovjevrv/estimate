@@ -304,6 +304,16 @@ export default {
     saving: 'Сохраняем…',
     saved: 'Профиль обновлён',
     saveError: 'Не удалось сохранить профиль. Попробуйте ещё раз.',
+    avatar: {
+      change: 'Сменить фото',
+      cropTitle: 'Обрежьте фото',
+      cropConfirm: 'Сохранить',
+      cropCancel: 'Отмена',
+      invalidType: 'Поддерживаются только JPEG, PNG и WebP',
+      tooLarge: 'Файл слишком большой (максимум 8 МБ)',
+      saved: 'Аватарка обновлена',
+      saveError: 'Не удалось сохранить аватарку. Попробуйте ещё раз.',
+    },
   },
   footer: {
     copyright: '© {year} solovjevrv',

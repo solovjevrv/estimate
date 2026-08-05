@@ -72,7 +72,7 @@ async function load(): Promise<void> {
       v-else-if="loading"
       class="surface-card surface-card-lg mx-auto flex max-w-[480px] flex-col items-center px-[30px] py-[26px]"
     >
-      <USkeleton class="mb-4 size-[72px] rounded-full bg-[var(--brand-border)]" />
+      <USkeleton class="mb-4 size-[100px] rounded-full bg-[var(--brand-border)]" />
       <USkeleton class="mb-3 h-5 w-1/2 bg-[var(--brand-border)]" />
       <USkeleton class="h-4 w-1/3 bg-[var(--brand-border)]" />
     </div>
@@ -85,7 +85,7 @@ async function load(): Promise<void> {
         :src="member.avatarUrl ?? undefined"
         :alt="member.name"
         size="3xl"
-        class="mb-4 size-[72px]"
+        class="mb-4 size-[100px]"
         :class="teamAvatarColor(member.userId)"
         :ui="{ fallback: 'font-heading text-xl font-bold text-white' }"
       />

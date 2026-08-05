@@ -37,7 +37,10 @@ export const users = pgTable(
     displayName: text('display_name'),
     /** Должность, вводится свободным текстом — провайдер её не даёт */
     jobTitle: text('job_title'),
+    /** Аватар от провайдера — перезаписывается при каждом входе, как и name */
     avatarUrl: text('avatar_url'),
+    /** Своя загруженная аватарка (10.15) — override по аналогии с displayName (9.2); NULL — показываем avatarUrl от провайдера */
+    avatarOverrideUrl: text('avatar_override_url'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     /** Правится и входом через провайдера, и правкой профиля (9.2) (7.9) */
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
