@@ -17,6 +17,9 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app/apps/server/dist ./dist
 COPY --from=build /app/apps/server/drizzle ./drizzle
+# Создаём и передаём владение заранее: Docker переносит содержимое (и права)
+# этой директории в volume при первом монтировании (10.15)
+RUN mkdir -p avatars && chown node:node avatars
 EXPOSE 3000
 USER node
 CMD ["node", "dist/index.cjs"]

@@ -39,6 +39,8 @@ export interface Config {
   auth: AuthConfig;
   /** DSN проекта Sentry; не задан — мониторинг ошибок/логов выключен */
   sentryDsn?: string;
+  /** Куда пишутся загруженные пользователями аватарки (10.15) */
+  avatarsDir: string;
 }
 
 /**
@@ -129,5 +131,6 @@ export function loadConfig(): Config {
     docsEnabled: process.env.DOCS_ENABLED ? process.env.DOCS_ENABLED === 'true' : !isProduction,
     auth: loadAuthConfig(webOrigin, port),
     sentryDsn: process.env.SENTRY_DSN || undefined,
+    avatarsDir: process.env.AVATARS_DIR ?? join(process.cwd(), 'avatars'),
   };
 }

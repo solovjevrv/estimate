@@ -40,8 +40,8 @@ function namespaceOf(provider: AuthProvider): 'googleOauth2' | 'yandexOauth2' {
   return `${provider}Oauth2`;
 }
 
-/** Публичный профиль в ответах — описан один раз и переиспользуется схемами */
-const userResponse = {
+/** Публичный профиль в ответах — описан один раз и переиспользуется схемами (в т.ч. avatar.plugin.ts) */
+export const userResponse = {
   type: 'object',
   properties: {
     id: { type: 'string' },

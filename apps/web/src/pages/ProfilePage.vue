@@ -1,10 +1,16 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { USER_JOB_TITLE_MAX_LENGTH, USER_NAME_MAX_LENGTH } from '@poker/shared';
+import {
+  AVATAR_ALLOWED_MIME_TYPES,
+  AVATAR_MAX_BYTES,
+  USER_JOB_TITLE_MAX_LENGTH,
+  USER_NAME_MAX_LENGTH,
+} from '@poker/shared';
 import { reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import AvatarCropModal from '../components/AvatarCropModal.vue';
 import { providerLabel } from '../lib/auth-provider';
 import { useSessionStore } from '../stores/session';
 
@@ -14,6 +20,47 @@ const session = useSessionStore();
 
 const form = reactive({ name: '', jobTitle: '' });
 const saving = ref(false);
+
+// --- Аватарка (10.15) ---
+const fileInput = ref<HTMLInputElement | null>(null);
+const cropFile = ref<File | null>(null);
+const cropOpen = ref(false);
+const uploadingAvatar = ref(false);
+
+function pickAvatar(): void {
+  fileInput.value?.click();
+}
+
+function onAvatarSelected(event: Event): void {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0] ?? null;
+  input.value = ''; // тот же файл можно будет выбрать повторно
+
+  if (!file) return;
+  if (!(AVATAR_ALLOWED_MIME_TYPES as readonly string[]).includes(file.type)) {
+    toast.add({ title: t('profile.avatar.invalidType'), color: 'error' });
+    return;
+  }
+  if (file.size > AVATAR_MAX_BYTES) {
+    toast.add({ title: t('profile.avatar.tooLarge'), color: 'error' });
+    return;
+  }
+
+  cropFile.value = file;
+  cropOpen.value = true;
+}
+
+async function onCropConfirm(blob: Blob): Promise<void> {
+  uploadingAvatar.value = true;
+  try {
+    await session.uploadAvatar(blob);
+    toast.add({ title: t('profile.avatar.saved'), color: 'success', icon: 'i-lucide-check' });
+  } catch {
+    toast.add({ title: t('profile.avatar.saveError'), color: 'error' });
+  } finally {
+    uploadingAvatar.value = false;
+  }
+}
 
 watch(
   () => session.user,
@@ -65,8 +112,25 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
     <UAvatar
       :src="session.user.avatarUrl ?? undefined"
       :alt="session.user.name"
-      class="mb-4 size-[72px]"
+      class="mb-3 size-[100px]"
     />
+    <input
+      ref="fileInput"
+      type="file"
+      accept="image/jpeg,image/png,image/webp"
+      class="hidden"
+      @change="onAvatarSelected"
+    />
+    <UButton
+      color="neutral"
+      variant="outline"
+      size="sm"
+      :loading="uploadingAvatar"
+      class="mb-4 rounded-[9px] px-3.5 py-2 text-[13px] font-bold"
+      @click="pickAvatar"
+    >
+      {{ t('profile.avatar.change') }}
+    </UButton>
     <p class="mb-3 text-[15px] font-semibold" style="color: var(--ui-color-primary-500)">
       {{ session.user.email }}
     </p>
@@ -115,4 +179,6 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
     </UForm>
   </div>
   <p v-else class="text-muted text-center">{{ t('profile.notLoaded') }}</p>
+
+  <AvatarCropModal v-model:open="cropOpen" :file="cropFile" @confirm="onCropConfirm" />
 </template>

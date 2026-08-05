@@ -35,6 +35,8 @@ services:
       YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-}
       YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
+    volumes:
+      - avatars_data:/app/avatars
     depends_on:
       postgres:
         condition: service_healthy
@@ -88,10 +90,10 @@ services:
       fix;
       while :; do certbot renew --webroot -w /var/www/certbot --quiet --deploy-hook "chown -R root:101 /etc/letsencrypt/live /etc/letsencrypt/archive && chmod -R g+rX /etc/letsencrypt/live /etc/letsencrypt/archive"; sleep 12h & wait $${!}; done'
 
-  # Ежедневный бэкап БД на том же диске: раз в сутки pg_dump в отдельный volume,
-  # хранение 14 дней (find -mtime +14). Не защищает от потери самого сервера/диска —
-  # только от порчи данных багом/миграцией/человеческой ошибкой. Восстановление и
-  # офсайт-хранение — см. README «Продакшен».
+  # Ежедневный бэкап БД и загруженных аватарок (10.15) на том же диске: раз в сутки
+  # pg_dump + tar аватарок в отдельный volume, хранение 14 дней (find -mtime +14).
+  # Не защищает от потери самого сервера/диска — только от порчи данных
+  # багом/миграцией/человеческой ошибкой. Восстановление и офсайт-хранение — см. README «Продакшен».
   db-backup:
     image: postgres:18-alpine
     restart: unless-stopped
@@ -101,6 +103,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:?}
     volumes:
       - postgres_backups:/backups
+      - avatars_data:/avatars:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -108,10 +111,12 @@ services:
       /bin/sh -c 'trap exit TERM;
       while :; do
       pg_dump -h postgres -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -Fc -f "/backups/$$(date +%Y-%m-%d_%H%M%S).dump" && find /backups -name "*.dump" -mtime +14 -delete;
+      tar -czf "/backups/avatars_$$(date +%Y-%m-%d_%H%M%S).tar.gz" -C /avatars . && find /backups -name "avatars_*.tar.gz" -mtime +14 -delete;
       sleep 24h & wait $${!}; done'
 
 volumes:
   postgres_data:
   postgres_backups:
+  avatars_data:
   letsencrypt:
   certbot_www:
