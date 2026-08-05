@@ -48,7 +48,10 @@ test('вступление в команду по инвайт-ссылке и �
   const memberRow = ownerPage.locator('.border-default').filter({ hasText: member.name });
   await memberRow.getByRole('combobox', { name: 'Роль' }).click();
   await ownerPage.getByRole('option', { name: 'Администратор' }).click();
-  await expect(ownerPage.getByText('Роль обновлена')).toBeVisible();
+  // Текст тоста задублирован скрытым aria-live регионом для скринридеров — уточняем видимую зону (11.3)
+  await expect(
+    ownerPage.getByRole('region', { name: /Notifications/ }).getByText('Роль обновлена'),
+  ).toBeVisible();
 
   // У повышенного до администратора участника появляется доступ к настройкам команды
   await memberPage.reload();
