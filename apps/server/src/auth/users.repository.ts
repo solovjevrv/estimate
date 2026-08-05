@@ -66,6 +66,20 @@ export class UsersRepository {
     return this.toAuthUser(row);
   }
 
+  /** Сохраняет свою загруженную аватарку; null — сброс на аватарку от провайдера (10.15) */
+  async updateAvatarOverride(id: string, avatarOverrideUrl: string | null): Promise<AuthUser> {
+    const [row] = await this.db
+      .update(schema.users)
+      .set({ avatarOverrideUrl, updatedAt: sql`now()` })
+      .where(eq(schema.users.id, id))
+      .returning();
+
+    if (!row) {
+      throw new Error('Пользователь не найден');
+    }
+    return this.toAuthUser(row);
+  }
+
   private toAuthUser(row: typeof schema.users.$inferSelect): AuthUser {
     return {
       id: row.id,
@@ -74,7 +88,8 @@ export class UsersRepository {
       // Провайдер перезаписывает name при каждом входе — своя правка живёт в displayName
       name: row.displayName ?? row.name,
       jobTitle: row.jobTitle,
-      avatarUrl: row.avatarUrl,
+      // Аналогично: provider перезаписывает avatarUrl при входе — своя загрузка живёт в override (10.15)
+      avatarUrl: row.avatarOverrideUrl ?? row.avatarUrl,
     };
   }
 }

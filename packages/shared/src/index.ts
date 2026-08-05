@@ -89,6 +89,16 @@ export interface TeamMember {
   joinedAt: string;
 }
 
+/** Данные участника для его собственной страницы (10.14) — то же, что видно на «Мой профиль» */
+export interface TeamMemberProfile extends TeamMember {
+  provider: AuthProvider;
+  jobTitle: string | null;
+}
+
+/** Загрузка аватарки (10.15) — верхняя граница исходника до пережатия и допустимые типы файла */
+export const AVATAR_MAX_BYTES = 8 * 1024 * 1024;
+export const AVATAR_ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+
 /** Ограничения на название команды */
 export const TEAM_NAME_MIN_LENGTH = 1;
 export const TEAM_NAME_MAX_LENGTH = 80;

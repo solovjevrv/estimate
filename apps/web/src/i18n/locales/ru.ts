@@ -127,6 +127,12 @@ export default {
     archiveDeleted: 'Комната удалена',
     archiveDeleteError: 'Не удалось удалить комнату',
   },
+  teamMember: {
+    pageTitle: 'Участник команды',
+    notFound: 'Участник не найден или вы не в этой команде.',
+    loadError: 'Не удалось загрузить данные участника. Попробуйте обновить страницу.',
+    joinedAt: 'В команде с {date}',
+  },
   invite: {
     pageTitle: 'Приглашение',
     lead: 'Вас приглашают в команду «{name}».',
@@ -298,6 +304,16 @@ export default {
     saving: 'Сохраняем…',
     saved: 'Профиль обновлён',
     saveError: 'Не удалось сохранить профиль. Попробуйте ещё раз.',
+    avatar: {
+      change: 'Сменить фото',
+      cropTitle: 'Обрежьте фото',
+      cropConfirm: 'Сохранить',
+      cropCancel: 'Отмена',
+      invalidType: 'Поддерживаются только JPEG, PNG и WebP',
+      tooLarge: 'Файл слишком большой (максимум 8 МБ)',
+      saved: 'Аватарка обновлена',
+      saveError: 'Не удалось сохранить аватарку. Попробуйте ещё раз.',
+    },
   },
   footer: {
     copyright: '© {year} solovjevrv',

@@ -125,6 +125,12 @@ export default {
     archiveDeleted: 'Room deleted',
     archiveDeleteError: 'Could not delete the room',
   },
+  teamMember: {
+    pageTitle: 'Team member',
+    notFound: 'Member not found, or you are not in this team.',
+    loadError: 'Could not load the member. Try refreshing the page.',
+    joinedAt: 'Member since {date}',
+  },
   invite: {
     pageTitle: 'Invite',
     lead: 'You are invited to the team “{name}”.',
@@ -297,6 +303,16 @@ export default {
     saving: 'Saving…',
     saved: 'Profile updated',
     saveError: 'Could not save the profile. Please try again.',
+    avatar: {
+      change: 'Change photo',
+      cropTitle: 'Crop your photo',
+      cropConfirm: 'Save',
+      cropCancel: 'Cancel',
+      invalidType: 'Only JPEG, PNG and WebP are supported',
+      tooLarge: 'File is too large (maximum 8 MB)',
+      saved: 'Avatar updated',
+      saveError: 'Could not save the avatar. Please try again.',
+    },
   },
   footer: {
     copyright: '© {year} solovjevrv',

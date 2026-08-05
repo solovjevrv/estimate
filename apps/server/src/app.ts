@@ -2,7 +2,7 @@ import fastifyHelmet from '@fastify/helmet';
 import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastify';
 import fp from 'fastify-plugin';
 
-import { authPlugin, sessionCleanupPlugin } from './auth';
+import { authPlugin, avatarPlugin, sessionCleanupPlugin } from './auth';
 import type { AuthConfig } from './config';
 import type { Db } from './db';
 import { ErrorHandler } from './http/error-handler';
@@ -26,15 +26,19 @@ export interface AppDeps {
   docsEnabled?: boolean;
   /** Переопределение лимита /api/rooms/* — нужно интеграционным тестам (7.34) */
   roomsRateLimit?: RoomsRateLimitOptions;
+  /** Каталог для загруженных аватарок (10.15); без auth не используется */
+  avatarsDir?: string;
 }
 
 export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): FastifyInstance {
   // coerceTypes выключен, чтобы число в поле-строке не превращалось молча в строку
   const app = Fastify({ ajv: { customOptions: { coerceTypes: false } }, ...opts });
 
-  // Ответы API касаются сессии и состава команд — их нельзя держать в кэшах
+  // Ответы API касаются сессии и состава команд — их нельзя держать в кэшах.
+  // Аватарки — исключение: отдаются под тем же /api/ (см. nginx/vite-прокси),
+  // но их собственный cache-control (10.15) не должен затираться этим хуком.
   app.addHook('onSend', async (req, reply) => {
-    if (req.url.startsWith('/api/')) {
+    if (req.url.startsWith('/api/') && !req.url.startsWith('/api/avatars/')) {
       reply.header('cache-control', 'no-store');
     }
   });
@@ -72,6 +76,9 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
   if (deps.auth) {
     void app.register(authPlugin, { auth: deps.auth });
     void app.register(sessionCleanupPlugin);
+    if (deps.avatarsDir) {
+      void app.register(avatarPlugin, { avatarsDir: deps.avatarsDir });
+    }
     // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией
     void app.register(teamsPlugin);
     void app.register(roomsPlugin, { auth: deps.auth, rateLimit: deps.roomsRateLimit });

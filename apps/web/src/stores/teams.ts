@@ -1,5 +1,5 @@
 /** Команды пользователя: список, карточка с составом и работа с приглашениями. */
-import type { Team, TeamMember, TeamRole, TeamWithRole } from '@poker/shared';
+import type { Team, TeamMember, TeamMemberProfile, TeamRole, TeamWithRole } from '@poker/shared';
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
@@ -119,6 +119,14 @@ export const useTeamsStore = defineStore('teams', () => {
     return res.team;
   }
 
+  /** Карточка одного участника (10.14) — доступна только участникам той же команды. */
+  async function loadMember(teamId: string, userId: string): Promise<TeamMemberProfile> {
+    const res = await api.get<{ member: TeamMemberProfile }>(
+      `/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
+    );
+    return res.member;
+  }
+
   /** Удалить команду (только администратор). Комнаты команды на бэкенде сохраняются. */
   async function remove(teamId: string): Promise<void> {
     await api.delete(`/api/teams/${encodeURIComponent(teamId)}`);
@@ -132,6 +140,7 @@ export const useTeamsStore = defineStore('teams', () => {
     loadList,
     create,
     loadTeam,
+    loadMember,
     rotateInvite,
     previewInvite,
     joinByInvite,

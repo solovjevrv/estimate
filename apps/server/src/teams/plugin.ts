@@ -83,6 +83,15 @@ const membersResponse = {
   properties: { members: { type: 'array', items: memberResponse } },
 } as const;
 
+const memberProfileResponse = {
+  type: 'object',
+  properties: {
+    ...memberResponse.properties,
+    provider: { type: 'string' },
+    jobTitle: { type: ['string', 'null'] },
+  },
+} as const;
+
 async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
   const authenticate = app.authenticate;
   if (!authenticate) {
@@ -233,6 +242,34 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
       },
     },
     controller.members,
+  );
+
+  app.get<{ Params: MemberParams }>(
+    '/api/teams/:id/members/:userId',
+    {
+      preHandler: authenticate,
+      schema: {
+        tags: [DOCS_TAGS.teams],
+        summary: 'Карточка участника',
+        description:
+          'Профиль одного участника команды: то же, что видно на "Мой профиль". Гостю команды email не показывается. Доступно только тем, кто сам состоит в команде.',
+        security: [{ session: [] }],
+        params: memberParams,
+        response: {
+          200: {
+            description: 'Участник',
+            type: 'object',
+            properties: { member: memberProfileResponse },
+          },
+          401: { description: 'Требуется вход', ...errorResponse },
+          404: {
+            description: 'Команда, участник не найдены или вы не в команде',
+            ...errorResponse,
+          },
+        },
+      },
+    },
+    controller.member,
   );
 
   app.patch<{ Params: MemberParams; Body: RoleBody }>(

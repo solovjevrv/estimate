@@ -1,4 +1,5 @@
 export { authPlugin, type AuthPluginOptions } from './plugin';
+export { avatarPlugin, type AvatarPluginOptions } from './avatar.plugin';
 export { sessionCleanupPlugin, type SessionCleanupPluginOptions } from './session-cleanup.plugin';
 export { SessionsRepository } from './sessions.repository';
 export { UsersRepository } from './users.repository';
