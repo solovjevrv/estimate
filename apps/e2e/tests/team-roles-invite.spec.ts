@@ -54,4 +54,12 @@ test('вступление в команду по инвайт-ссылке и �
   await memberPage.reload();
   await expect(memberPage.getByRole('button', { name: 'Переименовать' })).toBeVisible();
   await expect(memberPage.getByRole('button', { name: 'Удалить команду' })).toBeVisible();
+
+  // Клик по участнику в составе открывает его карточку (10.14) с полным профилем —
+  // владелец команды видит email коллеги-администратора
+  await memberRow.getByRole('link', { name: member.name }).click();
+  await ownerPage.waitForURL(/\/teams\/[0-9a-f-]{36}\/members\/[0-9a-f-]{36}/);
+  await expect(ownerPage.getByRole('heading', { name: member.name })).toBeVisible();
+  await expect(ownerPage.getByText(member.email)).toBeVisible();
+  await expect(ownerPage.getByText('Администратор', { exact: true }).first()).toBeVisible();
 });

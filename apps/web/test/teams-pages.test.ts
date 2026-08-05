@@ -670,3 +670,53 @@ describe('страница приглашения', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Приглашение не найдено'));
   });
 });
+
+describe('карточка участника (10.14)', () => {
+  it('клик по участнику в составе команды открывает его карточку', async () => {
+    const { wrapper, router } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () =>
+          json(200, { team: teamA, role: 'admin', members: [admin, other] }),
+        'GET /api/teams/t1/members/u2': () =>
+          json(200, {
+            member: { ...other, provider: 'google', jobTitle: 'Разработчик' },
+          }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Пётр'));
+
+    await wrapper.find('a[href*="/teams/t1/members/u2"]').trigger('click');
+
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('team-member'));
+    expect(router.currentRoute.value.params).toMatchObject({ id: 't1', userId: 'u2' });
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Разработчик'));
+    expect(wrapper.text()).toContain('petr@example.com');
+  });
+
+  it('гостю команды email участника не показывается', async () => {
+    const { wrapper } = await mountApp(
+      '/teams/t1/members/u2',
+      makeFetch(true, {
+        'GET /api/teams/t1/members/u2': () =>
+          json(200, {
+            member: { ...other, provider: 'google', jobTitle: null, email: undefined },
+          }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Пётр'));
+    expect(wrapper.text()).not.toContain('petr@example.com');
+  });
+
+  it('на чужую или несуществующую карточку участника показывает «не найдено»', async () => {
+    const { wrapper } = await mountApp(
+      '/teams/t1/members/u2',
+      makeFetch(true, {
+        'GET /api/teams/t1/members/u2': () => json(404, { error: 'not_found', message: 'нет' }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участник не найден'));
+  });
+});

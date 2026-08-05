@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-import type { Team, TeamMember, TeamRole } from '@poker/shared';
+import type { Team, TeamMember, TeamMemberProfile, TeamRole } from '@poker/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import type { Db } from '../db';
@@ -141,6 +141,26 @@ export class TeamsRepository {
       .orderBy(schema.teamMembers.joinedAt);
 
     return rows.map((row) => ({ ...row, joinedAt: row.joinedAt.toISOString() }));
+  }
+
+  /** Один участник со всеми полями его профиля — для его собственной страницы (10.14) */
+  async findMemberProfile(teamId: string, userId: string): Promise<TeamMemberProfile | null> {
+    const [row] = await this.db
+      .select({
+        userId: schema.users.id,
+        name: sql<string>`coalesce(${schema.users.displayName}, ${schema.users.name})`,
+        email: schema.users.email,
+        avatarUrl: schema.users.avatarUrl,
+        provider: schema.users.provider,
+        jobTitle: schema.users.jobTitle,
+        role: schema.teamMembers.role,
+        joinedAt: schema.teamMembers.joinedAt,
+      })
+      .from(schema.teamMembers)
+      .innerJoin(schema.users, eq(schema.users.id, schema.teamMembers.userId))
+      .where(and(eq(schema.teamMembers.teamId, teamId), eq(schema.teamMembers.userId, userId)))
+      .limit(1);
+    return row ? { ...row, joinedAt: row.joinedAt.toISOString() } : null;
   }
 
   async updateName(teamId: string, name: string): Promise<Team | null> {

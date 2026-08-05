@@ -127,6 +127,12 @@ export default {
     archiveDeleted: 'Комната удалена',
     archiveDeleteError: 'Не удалось удалить комнату',
   },
+  teamMember: {
+    pageTitle: 'Участник команды',
+    notFound: 'Участник не найден или вы не в этой команде.',
+    loadError: 'Не удалось загрузить данные участника. Попробуйте обновить страницу.',
+    joinedAt: 'В команде с {date}',
+  },
   invite: {
     pageTitle: 'Приглашение',
     lead: 'Вас приглашают в команду «{name}».',

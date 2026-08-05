@@ -17,6 +17,7 @@ type TitleKey =
   | 'myRooms.title'
   | 'nav.profile'
   | 'team.pageTitle'
+  | 'teamMember.pageTitle'
   | 'invite.pageTitle'
   | 'room.pageTitle'
   | 'notFound.title';
@@ -69,6 +70,13 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('../pages/TeamPage.vue'),
     props: true,
     meta: { requiresAuth: true, titleKey: 'team.pageTitle' },
+  },
+  {
+    path: '/teams/:id/members/:userId',
+    name: 'team-member',
+    component: () => import('../pages/TeamMemberPage.vue'),
+    props: true,
+    meta: { requiresAuth: true, titleKey: 'teamMember.pageTitle' },
   },
   {
     // Приглашение открывается и гостю: сначала показываем, куда зовут, а вход

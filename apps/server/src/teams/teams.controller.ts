@@ -46,6 +46,10 @@ export class TeamsController {
     members: await this.service.listMembers(req.user.sub, req.params.id),
   });
 
+  readonly member = async (req: FastifyRequest<{ Params: MemberParams }>): Promise<unknown> => ({
+    member: await this.service.getMember(req.user.sub, req.params.id, req.params.userId),
+  });
+
   readonly rename = async (
     req: FastifyRequest<{ Params: TeamIdParams; Body: NameBody }>,
   ): Promise<unknown> => ({

@@ -3,6 +3,7 @@ import {
   TEAM_NAME_MIN_LENGTH,
   type Team,
   type TeamMember,
+  type TeamMemberProfile,
   type TeamRole,
   type TeamWithRole,
   hasTeamRole,
@@ -107,6 +108,28 @@ export class TeamsService {
       'guest',
     );
     return this.visibleMembers(await this.repository.listMembers(teamId), membership.role);
+  }
+
+  /** Карточка одного участника (10.14) — доступна только тем, кто сам состоит в команде */
+  async getMember(
+    actorId: string,
+    teamId: string,
+    targetUserId: string,
+  ): Promise<TeamMemberProfile> {
+    const membership = this.ensureRole(
+      await this.repository.findMembership(teamId, actorId),
+      'guest',
+    );
+    const member = await this.repository.findMemberProfile(teamId, targetUserId);
+    if (!member) {
+      throw new NotFoundError('Участник не найден');
+    }
+    if (hasTeamRole(membership.role, 'member')) {
+      return member;
+    }
+    const withoutEmail = { ...member };
+    delete withoutEmail.email;
+    return withoutEmail;
   }
 
   async rename(actorId: string, teamId: string, rawName: string): Promise<Team> {

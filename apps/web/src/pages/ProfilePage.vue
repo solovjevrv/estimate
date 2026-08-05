@@ -5,16 +5,12 @@ import { USER_JOB_TITLE_MAX_LENGTH, USER_NAME_MAX_LENGTH } from '@poker/shared';
 import { reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import { providerLabel } from '../lib/auth-provider';
 import { useSessionStore } from '../stores/session';
 
 const { t } = useI18n();
 const toast = useToast();
 const session = useSessionStore();
-
-const providerLabels: Record<string, string> = {
-  google: 'Google',
-  yandex: 'Яндекс',
-};
 
 const form = reactive({ name: '', jobTitle: '' });
 const saving = ref(false);
@@ -75,7 +71,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
       {{ session.user.email }}
     </p>
     <span class="badge-pill badge-pill-neutral mb-7">
-      {{ providerLabels[session.user.provider] ?? session.user.provider }}
+      {{ providerLabel(session.user.provider) }}
     </span>
 
     <UForm :state="form" :validate="validate" class="w-full" @submit="onSubmit">
