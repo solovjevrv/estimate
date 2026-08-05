@@ -543,7 +543,10 @@ async function confirmDelete(): Promise<void> {
           :key="member.userId"
           class="border-default flex flex-wrap items-center justify-between gap-3 border-t py-3.5 first:border-t-0 first:pt-0 last:pb-0"
         >
-          <div class="flex min-w-36 items-center gap-3.5">
+          <RouterLink
+            :to="{ name: 'team-member', params: { id: props.id, userId: member.userId } }"
+            class="hover:text-primary flex min-w-36 items-center gap-3.5"
+          >
             <UAvatar
               :src="member.avatarUrl ?? undefined"
               :alt="member.name"
@@ -553,7 +556,7 @@ async function confirmDelete(): Promise<void> {
               :ui="{ fallback: 'font-heading text-[12px] font-bold text-white' }"
             />
             <span class="min-w-0 truncate text-[15.5px] font-bold">{{ member.name }}</span>
-          </div>
+          </RouterLink>
 
           <div class="ml-[52px] flex shrink-0 items-center gap-3 sm:ml-0">
             <!-- Администратор меняет роли всем, кроме себя; себе показываем бейдж -->

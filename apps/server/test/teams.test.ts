@@ -312,6 +312,104 @@ describeDb('API команд', () => {
     });
   });
 
+  describe('карточка участника (10.14)', () => {
+    it('участник видит полный профиль коллеги, включая email и должность', async () => {
+      const admin = await newUser('member-card-admin');
+      const member = await newUser('member-card-member');
+      const teamId = await newTeam(admin, [[member, 'member']]);
+      await new UsersRepository(db).updateProfile(member.id, {
+        name: 'Псевдоним участника',
+        jobTitle: 'QA-инженер',
+      });
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${teamId}/members/${member.id}`,
+        headers: as(admin),
+      });
+
+      expect(res.statusCode).toBe(200);
+      const { member: profile } = res.json() as {
+        member: {
+          userId: string;
+          name: string;
+          email?: string;
+          provider: string;
+          jobTitle: string | null;
+          role: string;
+        };
+      };
+      expect(profile).toMatchObject({
+        userId: member.id,
+        name: 'Псевдоним участника',
+        email: member.email,
+        provider: 'google',
+        jobTitle: 'QA-инженер',
+        role: 'member',
+      });
+    });
+
+    it('гость команды не видит email участника на его карточке', async () => {
+      const admin = await newUser('member-card-guest-admin');
+      const guest = await newUser('member-card-guest-viewer');
+      const teamId = await newTeam(admin, [[guest, 'guest']]);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${teamId}/members/${admin.id}`,
+        headers: as(guest),
+      });
+
+      expect(res.statusCode).toBe(200);
+      const { member: profile } = res.json() as { member: { email?: string } };
+      expect(profile.email).toBeUndefined();
+    });
+
+    it('не состоящий в команде получает 404 вместо чужой карточки', async () => {
+      const admin = await newUser('member-card-stranger-admin');
+      const member = await newUser('member-card-stranger-member');
+      const stranger = await newUser('member-card-stranger');
+      const teamId = await newTeam(admin, [[member, 'member']]);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${teamId}/members/${member.id}`,
+        headers: as(stranger),
+      });
+
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('участник другой команды по своему userId не открывается — 404, а не чужой профиль', async () => {
+      const adminA = await newUser('member-card-team-a-admin');
+      const teamAId = await newTeam(adminA);
+      const adminB = await newUser('member-card-team-b-admin');
+      const memberB = await newUser('member-card-team-b-member');
+      await newTeam(adminB, [[memberB, 'member']]);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${teamAId}/members/${memberB.id}`,
+        headers: as(adminA),
+      });
+
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('несуществующий участник команды даёт 404', async () => {
+      const admin = await newUser('member-card-missing-admin');
+      const teamId = await newTeam(admin);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/teams/${teamId}/members/${randomUUID()}`,
+        headers: as(admin),
+      });
+
+      expect(res.statusCode).toBe(404);
+    });
+  });
+
   describe('настройки команды', () => {
     it('администратор переименовывает команду, участник — нет', async () => {
       const admin = await newUser('rename-admin');

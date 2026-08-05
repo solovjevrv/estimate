@@ -125,6 +125,12 @@ export default {
     archiveDeleted: 'Room deleted',
     archiveDeleteError: 'Could not delete the room',
   },
+  teamMember: {
+    pageTitle: 'Team member',
+    notFound: 'Member not found, or you are not in this team.',
+    loadError: 'Could not load the member. Try refreshing the page.',
+    joinedAt: 'Member since {date}',
+  },
   invite: {
     pageTitle: 'Invite',
     lead: 'You are invited to the team “{name}”.',

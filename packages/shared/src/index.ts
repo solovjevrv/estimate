@@ -89,6 +89,12 @@ export interface TeamMember {
   joinedAt: string;
 }
 
+/** Данные участника для его собственной страницы (10.14) — то же, что видно на «Мой профиль» */
+export interface TeamMemberProfile extends TeamMember {
+  provider: AuthProvider;
+  jobTitle: string | null;
+}
+
 /** Ограничения на название команды */
 export const TEAM_NAME_MIN_LENGTH = 1;
 export const TEAM_NAME_MAX_LENGTH = 80;
