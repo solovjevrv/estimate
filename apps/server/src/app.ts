@@ -3,6 +3,7 @@ import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastif
 import fp from 'fastify-plugin';
 
 import { authPlugin, avatarPlugin, sessionCleanupPlugin } from './auth';
+import { boardsPlugin } from './boards';
 import type { AuthConfig } from './config';
 import type { Db } from './db';
 import { ErrorHandler } from './http/error-handler';
@@ -82,6 +83,8 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
     // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией
     void app.register(teamsPlugin);
     void app.register(roomsPlugin, { auth: deps.auth, rateLimit: deps.roomsRateLimit });
+    // Доскам нужны и аутентификация, и проверка членства в команде — регистрируем после teamsPlugin
+    void app.register(boardsPlugin);
   }
 
   if (deps.closeDb) {

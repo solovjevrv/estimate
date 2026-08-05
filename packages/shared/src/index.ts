@@ -377,3 +377,125 @@ export type WsAck<T> = { ok: true; data: T } | { ok: false; error: string; messa
 /** Максимальная длина имени гостя и названия комнаты */
 export const ROOM_NAME_MAX_LENGTH = 120;
 export const GUEST_NAME_MAX_LENGTH = 60;
+
+/**
+ * Доски (Epic 12+) — простой холст для брейншторма/планирования/ретро, по
+ * образцу Miro. Командные (`teamId` заполнен) и личные (`teamId: null`),
+ * аналогично комнатам (7.25). Набор типов элементов растёт по мере эпиков
+ * (12.6 стикеры, 12.7 фигуры, 13.х текст/картинки/эмодзи) — новый тип не
+ * требует миграции схемы благодаря дискриминированному union по `type`.
+ */
+export type BoardItemType = 'sticky' | 'shape';
+export const BOARD_ITEM_TYPES: readonly BoardItemType[] = ['sticky', 'shape'];
+
+export type BoardShapeKind = 'rectangle' | 'rounded' | 'ellipse' | 'diamond';
+export const BOARD_SHAPE_KINDS: readonly BoardShapeKind[] = [
+  'rectangle',
+  'rounded',
+  'ellipse',
+  'diamond',
+];
+
+/**
+ * Белый список цветов для стикеров/фигур/стрелок: `style`, присланный клиентом,
+ * никогда не льётся в CSS напрямую — сервер принимает только токен из этого списка.
+ */
+export const BOARD_COLOR_TOKENS = [
+  'yellow',
+  'green',
+  'blue',
+  'pink',
+  'purple',
+  'orange',
+  'gray',
+] as const;
+export type BoardColorToken = (typeof BOARD_COLOR_TOKENS)[number];
+
+export const BOARD_TITLE_MIN_LENGTH = 1;
+export const BOARD_TITLE_MAX_LENGTH = 120;
+export const BOARD_ITEM_TEXT_MAX_LENGTH = 2000;
+/** Потолок элементов на доску — защита от неограниченно растущего снимка (12.1) */
+export const BOARD_MAX_ITEMS = 2000;
+
+export interface BoardStickyContent {
+  type: 'sticky';
+  text: string;
+}
+
+export interface BoardShapeContent {
+  type: 'shape';
+  shape: BoardShapeKind;
+  text: string;
+}
+
+/** Дискриминированный union по `type` — новый тип элемента не требует миграции схемы */
+export type BoardItemContent = BoardStickyContent | BoardShapeContent;
+
+export interface BoardItemStyle {
+  color: BoardColorToken;
+}
+
+export interface BoardItem {
+  id: string;
+  boardId: string;
+  /** Родитель во фрейме/группе (14.3) — пока всегда null */
+  parentId: string | null;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Поворот в градусах — заложено заранее, UI появится позже */
+  rotation: number;
+  /** Порядок наложения: больше — выше */
+  zIndex: number;
+  content: BoardItemContent;
+  style: BoardItemStyle;
+  createdBy: string | null;
+  updatedAt: string;
+}
+
+export type BoardEdgeLineKind = 'straight' | 'curved';
+
+export interface BoardEdgeStyle {
+  color: BoardColorToken;
+  line: BoardEdgeLineKind;
+}
+
+export interface BoardEdge {
+  id: string;
+  boardId: string;
+  sourceItemId: string;
+  targetItemId: string;
+  /** null — floating edge: конец цепляется к ближайшей стороне карточки (12.8) */
+  sourceHandle: string | null;
+  targetHandle: string | null;
+  label: string | null;
+  style: BoardEdgeStyle;
+}
+
+export type BoardStatus = 'active' | 'archived';
+
+export interface Board {
+  id: string;
+  /** Личная доска — null, командная — id команды (аналогично rooms.teamId, 7.25) */
+  teamId: string | null;
+  ownerId: string | null;
+  title: string;
+  status: BoardStatus;
+  /** Номер изменения доски: растёт при каждой операции (12.4), по нему клиент отбрасывает отставшие рассылки */
+  revision: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Доска в списке — без содержимого, для «Мои доски»/страницы команды */
+export interface BoardSummary extends Board {
+  itemCount: number;
+}
+
+/** Полный снимок доски — элементы и связи разом, для открытия страницы доски */
+export interface BoardSnapshot {
+  board: Board;
+  items: BoardItem[];
+  edges: BoardEdge[];
+}
