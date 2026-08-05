@@ -1,8 +1,11 @@
+import type { BoardEdgeStyle, BoardItemContent, BoardItemStyle } from '@poker/shared';
 import { sql } from 'drizzle-orm';
 import {
   check,
+  doublePrecision,
   index,
   integer,
+  jsonb,
   numeric,
   pgEnum,
   pgTable,
@@ -18,6 +21,7 @@ export const teamRoleEnum = pgEnum('team_role', ['admin', 'member', 'guest']);
 export const roomStatusEnum = pgEnum('room_status', ['active', 'closed']);
 export const deckTypeEnum = pgEnum('deck_type', ['fibonacci', 'scale_0_5', 'tshirt']);
 export const roundStatusEnum = pgEnum('round_status', ['voting', 'revealed']);
+export const boardStatusEnum = pgEnum('board_status', ['active', 'archived']);
 
 /**
  * Авторизованные пользователи (OAuth Google/Яндекс).
@@ -170,4 +174,85 @@ export const votes = pgTable(
     check('votes_guest_name_check', sql`guest_session_id is null or guest_name is not null`),
     check('votes_value_check', sql`value >= 0`),
   ],
+);
+
+/**
+ * Доска (Epic 12+) — холст для брейншторма/планирования/ретро, по образцу
+ * Miro. team_id nullable: доска может быть личной, как и комната (7.25);
+ * при удалении команды доска не пропадает, а становится личной владельца
+ * (тот же приём, что у rooms.team_id). owner_id nullable по аналогии с
+ * rooms.creator_id — удаление аккаунта не должно унести доску команды.
+ */
+export const boards = pgTable(
+  'boards',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'set null' }),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    title: text('title').notNull(),
+    status: boardStatusEnum('status').notNull().default('active'),
+    /** Номер изменения доски: растёт с каждой операцией (12.4), по нему клиент отбрасывает отставшие рассылки */
+    revision: integer('revision').notNull().default(0),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('boards_team_id_idx').on(t.teamId)],
+);
+
+/**
+ * Элемент на доске (стикер, фигура, ...). `content`/`style` — jsonb с
+ * дискриминированным union по `content.type` (см. `@poker/shared`): новый тип
+ * элемента не требует миграции схемы, только нового случая в union и валидации
+ * на сервере. Именно поэтому `type` не вынесен в отдельный enum-столбец —
+ * это сделало бы каждый новый тип элемента миграцией (`ALTER TYPE ... ADD VALUE`),
+ * ровно то, чего дискриминированный union должен избежать.
+ */
+export const boardItems = pgTable(
+  'board_items',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    boardId: uuid('board_id')
+      .notNull()
+      .references(() => boards.id, { onDelete: 'cascade' }),
+    /** Родитель во фрейме/группе (14.3) — пока всегда null, столбец заведён заранее */
+    parentId: uuid('parent_id'),
+    x: doublePrecision('x').notNull(),
+    y: doublePrecision('y').notNull(),
+    width: doublePrecision('width').notNull(),
+    height: doublePrecision('height').notNull(),
+    rotation: doublePrecision('rotation').notNull().default(0),
+    zIndex: integer('z_index').notNull().default(0),
+    content: jsonb('content').notNull().$type<BoardItemContent>(),
+    style: jsonb('style').notNull().$type<BoardItemStyle>(),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('board_items_board_id_idx').on(t.boardId)],
+);
+
+/**
+ * Связь-стрелка между двумя элементами доски. Отдельная таблица, не поле
+ * внутри элемента: удаление элемента каскадом уносит его стрелки бесплатно,
+ * а доска читается двумя независимыми запросами вместо разбора вложенности.
+ */
+export const boardEdges = pgTable(
+  'board_edges',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    boardId: uuid('board_id')
+      .notNull()
+      .references(() => boards.id, { onDelete: 'cascade' }),
+    sourceItemId: uuid('source_item_id')
+      .notNull()
+      .references(() => boardItems.id, { onDelete: 'cascade' }),
+    targetItemId: uuid('target_item_id')
+      .notNull()
+      .references(() => boardItems.id, { onDelete: 'cascade' }),
+    /** null — floating edge: конец цепляется к ближайшей стороне карточки (12.8) */
+    sourceHandle: text('source_handle'),
+    targetHandle: text('target_handle'),
+    label: text('label'),
+    style: jsonb('style').notNull().$type<BoardEdgeStyle>(),
+  },
+  (t) => [index('board_edges_board_id_idx').on(t.boardId)],
 );
