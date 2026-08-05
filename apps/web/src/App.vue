@@ -16,6 +16,7 @@ const route = useRoute();
 
 const teamsLinkActive = computed(() => route.path.startsWith('/teams'));
 const myRoomsLinkActive = computed(() => route.path.startsWith('/my-rooms'));
+const boardsLinkActive = computed(() => route.path.startsWith('/boards'));
 
 const language = computed({
   get: () => locale.value as Locale,
@@ -65,6 +66,7 @@ const languageMenuItems = computed<DropdownMenuItem[]>(() =>
 const mobileNavItems = computed<DropdownMenuItem[]>(() => [
   { label: t('nav.teams'), icon: 'i-lucide-users', to: '/teams' },
   { label: t('nav.myRooms'), icon: 'i-lucide-layout-grid', to: '/my-rooms' },
+  { label: t('nav.boards'), icon: 'i-lucide-layout-dashboard', to: '/boards' },
 ]);
 
 const userMenuItems = computed<DropdownMenuItem[][]>(() => [
@@ -154,6 +156,14 @@ async function logout(): Promise<void> {
             :class="myRoomsLinkActive ? 'text-primary' : 'text-muted'"
           >
             {{ t('nav.myRooms') }}
+          </RouterLink>
+          <RouterLink
+            v-if="session.isAuthenticated"
+            to="/boards"
+            class="hidden text-[15px] font-semibold md:inline"
+            :class="boardsLinkActive ? 'text-primary' : 'text-muted'"
+          >
+            {{ t('nav.boards') }}
           </RouterLink>
 
           <div class="ml-auto flex items-center gap-2">

@@ -2,10 +2,12 @@
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
 import {
+  BOARD_TITLE_MAX_LENGTH,
   hasTeamRole,
   ROOM_NAME_MAX_LENGTH,
   TEAM_NAME_MAX_LENGTH,
   TEAM_ROLES,
+  type BoardSummary,
   type Room,
   type TeamMember,
   type TeamRole,
@@ -19,8 +21,10 @@ import { usePagedList } from '../composables/use-paged-list';
 import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
+import { useBoardsStore } from '../stores/boards';
 import { useRoomsStore } from '../stores/rooms';
 import { useSessionStore } from '../stores/session';
+import { useTeamBoardsStore } from '../stores/team-boards';
 import { useTeamRoomsStore } from '../stores/team-rooms';
 import { useTeamsStore } from '../stores/teams';
 
@@ -32,6 +36,8 @@ const router = useRouter();
 const teams = useTeamsStore();
 const teamRooms = useTeamRoomsStore();
 const rooms = useRoomsStore();
+const teamBoards = useTeamBoardsStore();
+const boards = useBoardsStore();
 const session = useSessionStore();
 
 const loading = ref(true);
@@ -39,6 +45,8 @@ const notFound = ref(false);
 const loadFailed = ref(false);
 /** Комнаты грузятся отдельно: их сбой не должен прятать саму команду */
 const roomsFailed = ref(false);
+/** Доски грузятся отдельно: их сбой не должен прятать саму команду */
+const boardsFailed = ref(false);
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(locale.value);
@@ -51,6 +59,14 @@ const currentUserId = computed(() => session.user?.id ?? null);
  * роли, переименование, удаление команды). Администраторов может быть несколько.
  */
 const canManageTeam = computed(() => !!overview.value && hasTeamRole(overview.value.role, 'admin'));
+/** Заводить доски команды может участник или администратор, не гость (12.1) */
+const canCreateBoard = computed(
+  () => !!overview.value && hasTeamRole(overview.value.role, 'member'),
+);
+
+function canManageBoard(board: BoardSummary): boolean {
+  return canManageTeam.value || board.ownerId === currentUserId.value;
+}
 
 /** Пока идёт запрос по участнику — блокируем его элементы управления. Набор, а
  * не один id: операции по разным участникам могут идти внахлёст. */
@@ -89,6 +105,13 @@ const archiveTabRooms = computed(() =>
 const activeRoomsPaging = usePagedList(computed(() => teamRooms.active));
 const archiveTabPaging = usePagedList(archiveTabRooms);
 
+const boardTabs = computed(() => [
+  { key: 'active' as const, label: t('team.boardsActive') },
+  { key: 'archive' as const, label: t('team.tabArchive') },
+]);
+const activeBoardsPaging = usePagedList(computed(() => teamBoards.active));
+const archiveBoardsPaging = usePagedList(computed(() => teamBoards.archived));
+
 /** Код приходит только администратору — по нему и показываем блок приглашения */
 const inviteUrl = computed(() =>
   overview.value?.inviteCode
@@ -102,6 +125,11 @@ const roomsTab = ref<'active' | 'archive'>('active');
 const archiveLoading = ref(false);
 const archiveFailed = ref(false);
 let archiveLoaded = false;
+
+const boardsTab = ref<'active' | 'archive'>('active');
+const archiveBoardsLoading = ref(false);
+const archiveBoardsFailed = ref(false);
+let archiveBoardsLoaded = false;
 
 // immediate — грузим при заходе; watch — на случай перехода между командами,
 // когда vue-router переиспользует компонент и onMounted повторно не срабатывает
@@ -118,10 +146,17 @@ async function load(): Promise<void> {
   teamRooms.reset();
   activeRoomsPaging.reset();
   archiveTabPaging.reset();
+  boardsFailed.value = false;
+  boardsTab.value = 'active';
+  archiveBoardsLoaded = false;
+  archiveBoardsFailed.value = false;
+  teamBoards.reset();
+  activeBoardsPaging.reset();
+  archiveBoardsPaging.reset();
   try {
     await teams.loadTeam(props.id);
-    // Дашборд команды: комнаты тянем следом, их ошибку ловим отдельно ниже
-    await loadRooms();
+    // Дашборд команды: комнаты и доски тянем следом, их ошибки ловим отдельно ниже
+    await Promise.all([loadRooms(), loadBoards()]);
   } catch (err) {
     // Посторонним и на несуществующую команду сервер отвечает одинаково — 404
     if (err instanceof ApiError && err.status === 404) {
@@ -142,6 +177,14 @@ async function loadRooms(): Promise<void> {
   }
 }
 
+async function loadBoards(): Promise<void> {
+  try {
+    await teamBoards.load(props.id);
+  } catch {
+    boardsFailed.value = true;
+  }
+}
+
 async function selectRoomsTab(tab: 'active' | 'archive'): Promise<void> {
   roomsTab.value = tab;
   if (tab === 'archive' && canManageTeam.value && !archiveLoaded) {
@@ -155,6 +198,25 @@ async function selectRoomsTab(tab: 'active' | 'archive'): Promise<void> {
       archiveFailed.value = true;
     } finally {
       archiveLoading.value = false;
+    }
+  }
+}
+
+// Архив досок, в отличие от архива комнат, доступен на чтение любому участнику
+// команды — сервер (`listForTeam`) не сужает его до администратора (12.1)
+async function selectBoardsTab(tab: 'active' | 'archive'): Promise<void> {
+  boardsTab.value = tab;
+  if (tab === 'archive' && !archiveBoardsLoaded) {
+    archiveBoardsLoading.value = true;
+    archiveBoardsFailed.value = false;
+    try {
+      await teamBoards.loadArchived(props.id);
+      archiveBoardsPaging.reset();
+      archiveBoardsLoaded = true;
+    } catch {
+      archiveBoardsFailed.value = true;
+    } finally {
+      archiveBoardsLoading.value = false;
     }
   }
 }
@@ -214,6 +276,86 @@ async function onCreateRoom(event: FormSubmitEvent<{ name: string }>): Promise<v
     toast.add({ title: t('room.createError'), color: 'error' });
   } finally {
     creatingRoom.value = false;
+  }
+}
+
+// --- Создание доски от лица команды ---
+const createBoardOpen = ref(false);
+const creatingBoard = ref(false);
+const createBoardState = reactive({ title: '' });
+
+watch(createBoardOpen, (isOpen) => {
+  if (!isOpen) createBoardState.title = '';
+});
+
+function validateBoardTitle(s: { title: string }): FormError[] {
+  const errors: FormError[] = [];
+  const title = s.title.trim();
+  if (!title) {
+    errors.push({ name: 'title', message: t('teams.nameRequired') });
+  } else if (title.length > BOARD_TITLE_MAX_LENGTH) {
+    errors.push({
+      name: 'title',
+      message: t('teams.nameTooLong', { max: BOARD_TITLE_MAX_LENGTH }),
+    });
+  }
+  return errors;
+}
+
+async function onCreateBoard(event: FormSubmitEvent<{ title: string }>): Promise<void> {
+  creatingBoard.value = true;
+  try {
+    const board = await boards.create(event.data.title.trim(), props.id);
+    createBoardOpen.value = false;
+    await router.push({ name: 'board', params: { id: board.id } });
+  } catch {
+    toast.add({ title: t('board.createError'), color: 'error' });
+  } finally {
+    creatingBoard.value = false;
+  }
+}
+
+const unarchivingBoardId = ref<string | null>(null);
+
+async function unarchiveBoard(board: BoardSummary): Promise<void> {
+  unarchivingBoardId.value = board.id;
+  try {
+    await boards.unarchive(board.id);
+    await Promise.all([teamBoards.load(props.id), teamBoards.loadArchived(props.id)]);
+    toast.add({
+      title: t('team.archiveBoardUnarchived'),
+      color: 'success',
+      icon: 'i-lucide-check',
+    });
+  } catch {
+    toast.add({ title: t('team.archiveBoardUnarchiveError'), color: 'error' });
+  } finally {
+    unarchivingBoardId.value = null;
+  }
+}
+
+const deleteBoardTarget = ref<BoardSummary | null>(null);
+const deleteBoardOpen = ref(false);
+const deletingBoard = ref(false);
+
+function askDeleteBoard(board: BoardSummary): void {
+  deleteBoardTarget.value = board;
+  deleteBoardOpen.value = true;
+}
+
+async function confirmDeleteBoard(): Promise<void> {
+  const target = deleteBoardTarget.value;
+  if (!target) return;
+  deletingBoard.value = true;
+  try {
+    await boards.remove(target.id);
+    await teamBoards.loadArchived(props.id);
+    toast.add({ title: t('team.archiveBoardDeleted'), color: 'success', icon: 'i-lucide-check' });
+    deleteBoardOpen.value = false;
+  } catch {
+    toast.add({ title: t('team.archiveBoardDeleteError'), color: 'error' });
+  } finally {
+    deletingBoard.value = false;
   }
 }
 
@@ -536,6 +678,138 @@ async function confirmDelete(): Promise<void> {
         </template>
       </div>
 
+      <div class="surface-card overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-5 sm:px-[30px]">
+          <h2 class="text-[17px] font-bold">{{ t('team.boardsTitle') }}</h2>
+          <UButton
+            v-if="canCreateBoard"
+            icon="i-lucide-plus"
+            class="rounded-[11px] px-[18px] py-[11px] text-sm font-bold"
+            @click="createBoardOpen = true"
+          >
+            {{ t('board.create') }}
+          </UButton>
+        </div>
+
+        <div class="flex items-center gap-2 px-4 pb-4 sm:px-[30px]">
+          <button
+            v-for="tab in boardTabs"
+            :key="tab.key"
+            type="button"
+            class="rounded-full px-4 py-1.5 text-[13px] font-bold transition-colors"
+            :class="
+              boardsTab === tab.key
+                ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)]'
+                : 'text-muted hover:text-default cursor-pointer'
+            "
+            @click="selectBoardsTab(tab.key)"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
+
+        <UAlert
+          v-if="boardsFailed"
+          color="error"
+          variant="subtle"
+          class="mx-4 mb-5 sm:mx-[30px]"
+          :description="t('team.boardsError')"
+        />
+        <template v-else-if="boardsTab === 'active'">
+          <p
+            v-if="activeBoardsPaging.total.value === 0"
+            class="text-muted px-4 pb-5 sm:px-[30px] text-sm"
+          >
+            {{ t('team.boardsEmpty') }}
+          </p>
+          <RouterLink
+            v-for="board in activeBoardsPaging.items.value"
+            :key="board.id"
+            :to="{ name: 'board', params: { id: board.id } }"
+            class="border-default hover:bg-elevated/50 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
+          >
+            <span class="min-w-28 flex-1 truncate text-base font-bold">{{ board.title }}</span>
+            <span class="text-muted text-sm">{{ formatDate(board.createdAt) }}</span>
+          </RouterLink>
+          <div
+            v-if="activeBoardsPaging.total.value > activeBoardsPaging.pageSize"
+            class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
+          >
+            <UPagination
+              v-model:page="activeBoardsPaging.page.value"
+              :total="activeBoardsPaging.total.value"
+              :items-per-page="activeBoardsPaging.pageSize"
+            />
+          </div>
+        </template>
+        <template v-else>
+          <UAlert
+            v-if="archiveBoardsFailed"
+            color="error"
+            variant="subtle"
+            class="mx-4 mb-5 sm:mx-[30px]"
+            :description="t('team.boardsError')"
+          />
+          <div v-if="archiveBoardsLoading" class="text-muted flex justify-center pb-5">
+            <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
+          </div>
+          <template v-else>
+            <p
+              v-if="archiveBoardsPaging.total.value === 0"
+              class="text-muted px-4 pb-5 sm:px-[30px] text-sm"
+            >
+              {{ t('team.archiveBoardsEmpty') }}
+            </p>
+            <div
+              v-for="board in archiveBoardsPaging.items.value"
+              :key="board.id"
+              class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
+            >
+              <RouterLink
+                :to="{ name: 'board', params: { id: board.id } }"
+                class="min-w-28 flex-1 truncate text-base font-bold"
+              >
+                {{ board.title }}
+              </RouterLink>
+              <div class="flex shrink-0 items-center gap-3.5">
+                <span class="text-muted text-sm">{{ formatDate(board.createdAt) }}</span>
+                <template v-if="canManageBoard(board)">
+                  <UButton
+                    icon="i-lucide-rotate-ccw"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :loading="unarchivingBoardId === board.id"
+                    @click="unarchiveBoard(board)"
+                  >
+                    {{ t('team.archiveUnarchiveBoard') }}
+                  </UButton>
+                  <UButton
+                    icon="i-lucide-trash-2"
+                    color="error"
+                    variant="ghost"
+                    size="sm"
+                    @click="askDeleteBoard(board)"
+                  >
+                    {{ t('team.archiveDeleteBoard') }}
+                  </UButton>
+                </template>
+              </div>
+            </div>
+            <div
+              v-if="archiveBoardsPaging.total.value > archiveBoardsPaging.pageSize"
+              class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
+            >
+              <UPagination
+                v-model:page="archiveBoardsPaging.page.value"
+                :total="archiveBoardsPaging.total.value"
+                :items-per-page="archiveBoardsPaging.pageSize"
+              />
+            </div>
+          </template>
+        </template>
+      </div>
+
       <div class="surface-card px-4 py-5 sm:px-[30px] sm:py-[26px]">
         <h2 class="mb-[18px] text-[17px] font-bold">{{ t('team.membersTitle') }}</h2>
         <div
@@ -704,6 +978,17 @@ async function confirmDelete(): Promise<void> {
       @confirm="confirmDeleteRoom"
     />
 
+    <ConfirmModal
+      v-model:open="deleteBoardOpen"
+      :title="t('team.archiveDeleteBoardConfirmTitle')"
+      :description="
+        t('team.archiveDeleteBoardConfirmText', { name: deleteBoardTarget?.title ?? '' })
+      "
+      :confirm-label="t('team.archiveDeleteBoardConfirm')"
+      :loading="deletingBoard"
+      @confirm="confirmDeleteBoard"
+    />
+
     <UModal v-model:open="createRoomOpen" :title="t('room.createTitle')" :ui="MODAL_UI">
       <template #body>
         <UForm
@@ -734,6 +1019,42 @@ async function confirmDelete(): Promise<void> {
             </UButton>
             <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="creatingRoom">
               {{ creatingRoom ? t('room.creating') : t('room.create') }}
+            </UButton>
+          </div>
+        </UForm>
+      </template>
+    </UModal>
+
+    <UModal v-model:open="createBoardOpen" :title="t('board.createTitle')" :ui="MODAL_UI">
+      <template #body>
+        <UForm
+          :state="createBoardState"
+          :validate="validateBoardTitle"
+          class="space-y-4"
+          @submit="onCreateBoard"
+        >
+          <UFormField :label="t('teams.nameLabel')" name="title">
+            <UInput
+              v-model="createBoardState.title"
+              :placeholder="t('board.createNamePlaceholder')"
+              :maxlength="BOARD_TITLE_MAX_LENGTH"
+              autofocus
+              class="w-full"
+              :ui="MODAL_INPUT_UI"
+            />
+          </UFormField>
+
+          <div class="flex justify-end gap-2.5">
+            <UButton
+              color="neutral"
+              variant="outline"
+              :ui="MODAL_BUTTON_UI"
+              @click="createBoardOpen = false"
+            >
+              {{ t('teams.cancel') }}
+            </UButton>
+            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="creatingBoard">
+              {{ creatingBoard ? t('board.creating') : t('board.create') }}
             </UButton>
           </div>
         </UForm>

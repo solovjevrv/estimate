@@ -15,11 +15,13 @@ type TitleKey =
   | 'login.title'
   | 'teams.title'
   | 'myRooms.title'
+  | 'boards.title'
   | 'nav.profile'
   | 'team.pageTitle'
   | 'teamMember.pageTitle'
   | 'invite.pageTitle'
   | 'room.pageTitle'
+  | 'board.pageTitle'
   | 'notFound.title';
 
 declare module 'vue-router' {
@@ -59,6 +61,12 @@ export const routes: RouteRecordRaw[] = [
     meta: { requiresAuth: true, titleKey: 'myRooms.title' },
   },
   {
+    path: '/boards',
+    name: 'boards',
+    component: () => import('../pages/MyBoardsPage.vue'),
+    meta: { requiresAuth: true, titleKey: 'boards.title' },
+  },
+  {
     path: '/profile',
     name: 'profile',
     component: () => import('../pages/ProfilePage.vue'),
@@ -94,6 +102,15 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('../pages/RoomPage.vue'),
     props: true,
     meta: { titleKey: 'room.pageTitle' },
+  },
+  {
+    // Вход по прямой ссылке доступен только своему владельцу/участнику команды —
+    // в отличие от комнаты, доска не рассчитана на анонимного гостя
+    path: '/boards/:id',
+    name: 'board',
+    component: () => import('../pages/BoardPage.vue'),
+    props: true,
+    meta: { requiresAuth: true, titleKey: 'board.pageTitle' },
   },
   {
     path: '/:pathMatch(.*)*',
