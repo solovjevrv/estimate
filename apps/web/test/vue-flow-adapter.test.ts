@@ -1,0 +1,103 @@
+import type { BoardEdge, BoardItem } from '@poker/shared';
+import { describe, expect, it } from 'vitest';
+
+import {
+  boardEdgeToFlowEdge,
+  boardItemToNode,
+  toFlowEdges,
+  toFlowNodes,
+} from '../src/lib/board/vue-flow-adapter';
+
+const stickyItem: BoardItem = {
+  id: 'i1',
+  boardId: 'b1',
+  parentId: null,
+  x: 10,
+  y: 20,
+  width: 160,
+  height: 120,
+  rotation: 0,
+  zIndex: 3,
+  content: { type: 'sticky', text: 'Привет' },
+  style: { color: 'yellow' },
+  createdBy: 'u1',
+  updatedAt: '2026-08-06T00:00:00.000Z',
+};
+
+const shapeItem: BoardItem = {
+  ...stickyItem,
+  id: 'i2',
+  content: { type: 'shape', shape: 'diamond', text: 'Решение' },
+  style: { color: 'blue' },
+};
+
+const straightEdge: BoardEdge = {
+  id: 'e1',
+  boardId: 'b1',
+  sourceItemId: 'i1',
+  targetItemId: 'i2',
+  sourceHandle: null,
+  targetHandle: null,
+  label: null,
+  style: { color: 'gray', line: 'straight' },
+};
+
+const curvedEdge: BoardEdge = {
+  ...straightEdge,
+  id: 'e2',
+  label: 'зависит от',
+  style: { color: 'pink', line: 'curved' },
+};
+
+describe('boardItemToNode', () => {
+  it('переносит позицию, размер, z-index и тип узла из content.type', () => {
+    const node = boardItemToNode(stickyItem);
+
+    expect(node.id).toBe('i1');
+    expect(node.type).toBe('sticky');
+    expect(node.position).toEqual({ x: 10, y: 20 });
+    expect(node.width).toBe(160);
+    expect(node.height).toBe(120);
+    expect(node.zIndex).toBe(3);
+    expect(node.data).toEqual(stickyItem);
+  });
+
+  it('тип узла для фигуры — shape, вне зависимости от конкретного shape', () => {
+    expect(boardItemToNode(shapeItem).type).toBe('shape');
+  });
+
+  it('элементы пока не перетаскиваются и не выделяются (рендер снимка, 12.5)', () => {
+    const node = boardItemToNode(stickyItem);
+    expect(node.draggable).toBe(false);
+    expect(node.selectable).toBe(false);
+  });
+
+  it('toFlowNodes переносит список поэлементно', () => {
+    expect(toFlowNodes([stickyItem, shapeItem]).map((n) => n.id)).toEqual(['i1', 'i2']);
+  });
+});
+
+describe('boardEdgeToFlowEdge', () => {
+  it('прямая линия мапится в тип straight', () => {
+    const edge = boardEdgeToFlowEdge(straightEdge);
+    expect(edge.type).toBe('straight');
+    expect(edge.source).toBe('i1');
+    expect(edge.target).toBe('i2');
+    expect(edge.sourceHandle).toBeUndefined();
+    expect(edge.label).toBeUndefined();
+  });
+
+  it('кривая линия мапится в тип default (bezier)', () => {
+    expect(boardEdgeToFlowEdge(curvedEdge).type).toBe('default');
+  });
+
+  it('переносит подпись и цвет как inline-style с hex из белого списка токенов', () => {
+    const edge = boardEdgeToFlowEdge(curvedEdge);
+    expect(edge.label).toBe('зависит от');
+    expect(edge.style).toMatchObject({ stroke: expect.stringMatching(/^#[0-9a-f]{6}$/i) });
+  });
+
+  it('toFlowEdges переносит список поэлементно', () => {
+    expect(toFlowEdges([straightEdge, curvedEdge]).map((e) => e.id)).toEqual(['e1', 'e2']);
+  });
+});

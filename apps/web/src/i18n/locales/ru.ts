@@ -304,12 +304,14 @@ export default {
   },
   board: {
     pageTitle: 'Доска',
+    backToBoards: 'Доски',
     notFound: 'Доска не найдена или у вас нет доступа.',
     loadError: 'Не удалось загрузить доску. Попробуйте обновить страницу.',
     teamBoardSubtitle: 'Командная доска',
     personalBoardSubtitle: 'Личная доска',
-    canvasComingSoon:
-      'Холст доски появится в одной из следующих задач — здесь будут стикеры, фигуры и стрелки.',
+    fullscreen: 'Развернуть на весь экран',
+    exitFullscreen: 'Свернуть из полноэкранного режима',
+    moreActions: 'Ещё действия',
     createTitle: 'Новая доска',
     createNamePlaceholder: 'Например, Ретро спринта 24',
     create: 'Создать доску',

@@ -110,7 +110,10 @@ async function logout(): Promise<void> {
 
 <template>
   <UApp>
-    <div class="min-h-screen flex flex-col bg-default text-highlighted">
+    <div
+      class="flex flex-col bg-default text-highlighted"
+      :class="route.meta.fullBleedCanvas ? 'h-screen overflow-hidden' : 'min-h-screen'"
+    >
       <header class="border-default border-b" style="background-color: var(--brand-surface)">
         <nav
           class="mx-auto flex h-[64px] w-full max-w-[73.75rem] items-center gap-3 px-4 sm:gap-6 sm:px-6 md:h-[76px] md:gap-8 md:px-14"
@@ -216,11 +219,22 @@ async function logout(): Promise<void> {
         </nav>
       </header>
 
-      <main class="mx-auto w-full max-w-[73.75rem] flex-1 px-4 py-8 md:py-14">
+      <main
+        class="w-full flex-1"
+        :class="
+          route.meta.fullBleedCanvas
+            ? 'flex min-h-0 flex-col overflow-hidden'
+            : 'mx-auto max-w-[73.75rem] px-4 py-8 md:py-14'
+        "
+      >
         <RouterView />
       </main>
 
-      <footer class="border-default border-t" style="background-color: var(--brand-surface)">
+      <footer
+        v-if="!route.meta.fullBleedCanvas"
+        class="border-default border-t"
+        style="background-color: var(--brand-surface)"
+      >
         <div
           class="text-muted mx-auto flex w-full max-w-[73.75rem] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-6 text-[13px]"
         >
