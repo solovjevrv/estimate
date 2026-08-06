@@ -359,6 +359,7 @@ function deleteSelected(): void {
       :only-render-visible-elements="true"
       fit-view-on-init
       :delete-key-code="null"
+      :elevate-nodes-on-select="false"
       @pane-click="onPaneClick"
       @node-drag="onNodeDrag"
       @node-drag-stop="onNodeDragStop"
@@ -367,7 +368,13 @@ function deleteSelected(): void {
       только с внутренним состоянием Vue Flow, а не через наш стор — удаление молча
       не долетало бы до сервера/других участников и возвращалось после перезагрузки.
       Клавиатурное удаление вернётся в 12.9 вместе с остальными хоткеями, проведённое
-      через deleteSelected(), как и кнопка в тулбаре выделения. -->
+      через deleteSelected(), как и кнопка в тулбаре выделения.
+
+      elevate-nodes-on-select тоже выключен: по умолчанию Vue Flow добавляет +1000 к
+      z-index ВЫДЕЛЕННОГО узла, чтобы он всегда был поверх остальных — из-за этого
+      "на передний/задний план" выглядели так, будто ничего не произошло, пока не
+      снимешь выделение (наш собственный zIndex маскировался этой надбавкой). Порядок
+      слоёв теперь целиком определяется данными (zIndex), без скрытого поведения библиотеки. -->
       <Background pattern-color="var(--brand-border)" :gap="22" variant="dots" />
       <MiniMap
         class="board-minimap"
