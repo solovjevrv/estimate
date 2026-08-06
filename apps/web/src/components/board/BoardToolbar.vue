@@ -1,15 +1,14 @@
 <script setup lang="ts">
 /**
- * Левый вертикальный тулбар инструментов холста (12.6) — позиция/чехол по
+ * Левый вертикальный тулбар инструментов холста (12.6+12.7) — позиция/чехол по
  * референсу `.design/main.html` (`top:50%; left:20px`, кнопки 40×40, radius 11).
- * Из макета сознательно взяты только «Выделение»/«Стикер»: остальные пять
- * иконок (фигура/стрелка/текст/картинка/эмодзи) относятся к ещё не
- * реализованным задачам (12.7+) — рендерить их сейчас значило бы дать
- * нерабочие кнопки.
+ * Из макета взяты «Выделение»/«Стикер»/«Фигура»: оставшиеся три иконки
+ * (стрелка/текст/картинка/эмодзи) относятся к ещё не реализованным задачам
+ * (12.8+) — рендерить их сейчас значило бы дать нерабочие кнопки.
  */
 import { useI18n } from 'vue-i18n';
 
-export type BoardTool = 'select' | 'sticky';
+export type BoardTool = 'select' | 'sticky' | 'shape';
 
 const tool = defineModel<BoardTool>({ required: true });
 
@@ -41,6 +40,16 @@ function isActive(value: BoardTool): boolean {
       @click="tool = 'sticky'"
     >
       <UIcon name="i-lucide-sticky-note" class="size-[19px]" />
+    </button>
+    <button
+      type="button"
+      class="board-toolbar-btn"
+      :class="{ 'board-toolbar-btn-active': isActive('shape') }"
+      :aria-label="t('board.toolShape')"
+      :aria-pressed="isActive('shape')"
+      @click="tool = 'shape'"
+    >
+      <UIcon name="i-lucide-square" class="size-[19px]" />
     </button>
   </div>
 </template>

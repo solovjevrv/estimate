@@ -6,8 +6,6 @@
 import type { BoardEdge, BoardItem } from '@poker/shared';
 import type { Edge, Node } from '@vue-flow/core';
 
-import { BOARD_COLOR_HEX } from './board-colors';
-
 export function boardItemToNode(item: BoardItem): Node<BoardItem> {
   return {
     id: item.id,
@@ -36,7 +34,7 @@ export function boardEdgeToFlowEdge(edge: BoardEdge): Edge<BoardEdge> {
     // Floating edges (геометрия до ближайшей стороны) — 12.8; пока прямая или кривая по типу линии
     type: edge.style.line === 'straight' ? 'straight' : 'default',
     label: edge.label ?? undefined,
-    style: { stroke: BOARD_COLOR_HEX[edge.style.color], strokeWidth: 2 },
+    style: { stroke: edge.style.color, strokeWidth: 2 },
     data: edge,
   };
 }

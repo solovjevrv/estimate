@@ -435,7 +435,7 @@ describeDb('API досок', () => {
           width: 200,
           height: 120,
           content: { type: 'sticky', text: 'Первый' },
-          style: { color: 'yellow' },
+          style: { color: '#FCEB96' },
         })
         .returning();
       const [itemB] = await db
@@ -447,14 +447,14 @@ describeDb('API досок', () => {
           width: 200,
           height: 120,
           content: { type: 'sticky', text: 'Второй' },
-          style: { color: 'green' },
+          style: { color: '#60D878' },
         })
         .returning();
       await db.insert(schema.boardEdges).values({
         boardId,
         sourceItemId: itemA!.id,
         targetItemId: itemB!.id,
-        style: { color: 'gray', line: 'straight' },
+        style: { color: '#7DA9F6', line: 'straight' },
       });
 
       await app.inject({

@@ -7,7 +7,7 @@
  * при этом не сохраняются, так как персистится только валидный батч.
  */
 import {
-  BOARD_COLOR_TOKENS,
+  BOARD_COLOR_HEX_PATTERN,
   BOARD_EDGE_LINE_KINDS,
   BOARD_ITEM_TEXT_MAX_LENGTH,
   BOARD_MAX_ITEMS,
@@ -44,15 +44,25 @@ function requireFinite(value: unknown, field: string, min: number, max: number):
   return value;
 }
 
+/**
+ * Цвет — hex-строка `#RRGGBB` (12.7, не токен из белого списка — пользователь
+ * может выбрать произвольный цвет). Формат проверяется строгим regex'ом:
+ * `#RRGGBB` физически не может нести ничего, кроме шести hex-цифр, так что
+ * далее это значение безопасно использовать как CSS-цвет на клиенте.
+ */
+function requireColorHex(color: unknown, what: string): string {
+  if (typeof color !== 'string' || !BOARD_COLOR_HEX_PATTERN.test(color)) {
+    throw new ValidationError(`Недопустимый цвет ${what}`);
+  }
+  return color;
+}
+
 function validateStyle(style: unknown): BoardItemStyle {
   if (typeof style !== 'object' || style === null) {
     throw new ValidationError('Не указан стиль элемента');
   }
-  const color = (style as { color?: unknown }).color;
-  if (!(BOARD_COLOR_TOKENS as readonly unknown[]).includes(color)) {
-    throw new ValidationError('Недопустимый цвет элемента');
-  }
-  return { color } as BoardItemStyle;
+  const color = requireColorHex((style as { color?: unknown }).color, 'элемента');
+  return { color };
 }
 
 function validateEdgeStyle(style: unknown): BoardEdge['style'] {
@@ -60,13 +70,11 @@ function validateEdgeStyle(style: unknown): BoardEdge['style'] {
     throw new ValidationError('Не указан стиль связи');
   }
   const { color, line } = style as { color?: unknown; line?: unknown };
-  if (!(BOARD_COLOR_TOKENS as readonly unknown[]).includes(color)) {
-    throw new ValidationError('Недопустимый цвет связи');
-  }
+  const validColor = requireColorHex(color, 'связи');
   if (!(BOARD_EDGE_LINE_KINDS as readonly unknown[]).includes(line)) {
     throw new ValidationError('Недопустимый тип линии связи');
   }
-  return { color, line } as BoardEdge['style'];
+  return { color: validColor, line } as BoardEdge['style'];
 }
 
 function validateContent(content: unknown): BoardItemContent {

@@ -64,7 +64,7 @@ function stickyItem(
     rotation: 0,
     zIndex: 0,
     content: { type: 'sticky', text: 'Привет' },
-    style: { color: 'yellow' },
+    style: { color: '#FCEB96' },
     ...over,
   };
 }

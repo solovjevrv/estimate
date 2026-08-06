@@ -397,19 +397,35 @@ export const BOARD_SHAPE_KINDS: readonly BoardShapeKind[] = [
 ];
 
 /**
- * Белый список цветов для стикеров/фигур/стрелок: `style`, присланный клиентом,
- * никогда не льётся в CSS напрямую — сервер принимает только токен из этого списка.
+ * Цвет стикера/фигуры/связи (12.7) — hex-строка `#RRGGBB`, а не токен из
+ * белого списка: пользователь может выбрать произвольный цвет, не только
+ * из предложенной палитры. Сервер валидирует не членство в списке, а сам
+ * формат строгим regex'ом (`boards/board-ops.ts`) — `#RRGGBB` физически не
+ * может нести ничего, кроме шести hex-цифр, так что инъекции через это поле
+ * не более возможны, чем при белом списке токенов.
  */
-export const BOARD_COLOR_TOKENS = [
-  'yellow',
-  'green',
-  'blue',
-  'pink',
-  'purple',
-  'orange',
-  'gray',
-] as const;
-export type BoardColorToken = (typeof BOARD_COLOR_TOKENS)[number];
+export const BOARD_COLOR_HEX_PATTERN = /^#[0-9a-f]{6}$/i;
+export type BoardColorHex = string;
+
+/** Предложенные свотчи в UI (палитра выбора) — не белый список для валидации */
+export const BOARD_COLOR_PALETTE: readonly BoardColorHex[] = [
+  '#FFFFFF',
+  '#FCEB96',
+  '#FCE269',
+  '#FCB97D',
+  '#D4E98C',
+  '#B6E565',
+  '#60D878',
+  '#69DFCD',
+  '#FFB8E8',
+  '#FFA3E8',
+  '#B4A7FA',
+  '#FF9595',
+  '#A8CAFF',
+  '#8FE3FF',
+  '#7DA9F6',
+  '#1A1A1A',
+];
 
 export const BOARD_TITLE_MIN_LENGTH = 1;
 export const BOARD_TITLE_MAX_LENGTH = 120;
@@ -432,7 +448,7 @@ export interface BoardShapeContent {
 export type BoardItemContent = BoardStickyContent | BoardShapeContent;
 
 export interface BoardItemStyle {
-  color: BoardColorToken;
+  color: BoardColorHex;
 }
 
 export interface BoardItem {
@@ -458,7 +474,7 @@ export type BoardEdgeLineKind = 'straight' | 'curved';
 export const BOARD_EDGE_LINE_KINDS: readonly BoardEdgeLineKind[] = ['straight', 'curved'];
 
 export interface BoardEdgeStyle {
-  color: BoardColorToken;
+  color: BoardColorHex;
   line: BoardEdgeLineKind;
 }
 

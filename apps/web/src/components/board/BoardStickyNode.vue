@@ -5,13 +5,13 @@ import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, nextTick, onMounted, ref, useTemplateRef } from 'vue';
 
 import { BOARD_CAN_EDIT_KEY, BOARD_PENDING_EDIT_ID_KEY } from '../../lib/board/board-canvas-keys';
+import { readableTextColor } from '../../lib/board/board-colors';
 import {
   STICKY_MAX_HEIGHT,
   STICKY_MAX_WIDTH,
   STICKY_MIN_HEIGHT,
   STICKY_MIN_WIDTH,
 } from '../../lib/board/board-item-defaults';
-import { BOARD_COLOR_BG_CLASSES, BOARD_COLOR_TEXT_CLASSES } from '../../lib/board/board-colors';
 import { useBoardSessionStore } from '../../stores/board-session';
 
 const props = defineProps<NodeProps<BoardItem>>();
@@ -22,8 +22,8 @@ const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 const pendingEditId = inject(BOARD_PENDING_EDIT_ID_KEY, ref(null));
 
 const content = computed(() => props.data.content as BoardStickyContent);
-const bgClass = computed(() => BOARD_COLOR_BG_CLASSES[props.data.style.color]);
-const textClass = computed(() => BOARD_COLOR_TEXT_CLASSES[props.data.style.color]);
+const bgColor = computed(() => props.data.style.color);
+const textColor = computed(() => readableTextColor(bgColor.value));
 
 const editing = ref(false);
 const draftText = ref('');
@@ -86,12 +86,13 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       :min-height="STICKY_MIN_HEIGHT"
       :max-width="STICKY_MAX_WIDTH"
       :max-height="STICKY_MAX_HEIGHT"
+      keep-aspect-ratio
       color="var(--ui-primary)"
       @resize-end="onResizeEnd"
     />
     <div
       class="board-sticky-content flex h-full w-full items-start justify-start overflow-hidden rounded-md p-4 text-sm font-semibold break-words whitespace-pre-wrap"
-      :class="[bgClass, textClass]"
+      :style="{ backgroundColor: bgColor, color: textColor }"
       @dblclick.stop="startEditing"
     >
       <Handle type="target" :position="Position.Top" class="!opacity-0" />
@@ -101,8 +102,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
           v-model="draftText"
           :maxlength="BOARD_ITEM_TEXT_MAX_LENGTH"
           class="nodrag h-full w-full resize-none bg-transparent text-sm font-semibold outline-none"
-          :class="textClass"
-          :style="{ fontSize: `${Math.max(10, 14 / viewport.zoom)}px` }"
+          :style="{ color: textColor, fontSize: `${Math.max(10, 14 / viewport.zoom)}px` }"
           @pointerdown.stop
           @keydown.esc.stop.prevent="cancelEditing"
           @blur="commitEditing"

@@ -18,7 +18,7 @@ const item: BoardItem = {
   rotation: 0,
   zIndex: 0,
   content: { type: 'sticky', text: 'Привет' },
-  style: { color: 'yellow' },
+  style: { color: '#FCEB96' },
   createdBy: 'u1',
   updatedAt: '2026-08-06T00:00:00.000Z',
 };
@@ -31,7 +31,7 @@ const edge: BoardEdge = {
   sourceHandle: null,
   targetHandle: null,
   label: null,
-  style: { color: 'blue', line: 'straight' },
+  style: { color: '#A8CAFF', line: 'straight' },
 };
 
 describe('applyLocalBoardOp', () => {

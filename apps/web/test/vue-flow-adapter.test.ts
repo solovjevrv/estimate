@@ -19,7 +19,7 @@ const stickyItem: BoardItem = {
   rotation: 0,
   zIndex: 3,
   content: { type: 'sticky', text: 'Привет' },
-  style: { color: 'yellow' },
+  style: { color: '#FCEB96' },
   createdBy: 'u1',
   updatedAt: '2026-08-06T00:00:00.000Z',
 };
@@ -28,7 +28,7 @@ const shapeItem: BoardItem = {
   ...stickyItem,
   id: 'i2',
   content: { type: 'shape', shape: 'diamond', text: 'Решение' },
-  style: { color: 'blue' },
+  style: { color: '#A8CAFF' },
 };
 
 const straightEdge: BoardEdge = {
@@ -39,14 +39,14 @@ const straightEdge: BoardEdge = {
   sourceHandle: null,
   targetHandle: null,
   label: null,
-  style: { color: 'gray', line: 'straight' },
+  style: { color: '#7DA9F6', line: 'straight' },
 };
 
 const curvedEdge: BoardEdge = {
   ...straightEdge,
   id: 'e2',
   label: 'зависит от',
-  style: { color: 'pink', line: 'curved' },
+  style: { color: '#FFB8E8', line: 'curved' },
 };
 
 describe('boardItemToNode', () => {
