@@ -66,10 +66,10 @@ describe('boardItemToNode', () => {
     expect(boardItemToNode(shapeItem).type).toBe('shape');
   });
 
-  it('элементы пока не перетаскиваются и не выделяются (рендер снимка, 12.5)', () => {
+  it('элементы перетаскиваются и выделяются (12.6)', () => {
     const node = boardItemToNode(stickyItem);
-    expect(node.draggable).toBe(false);
-    expect(node.selectable).toBe(false);
+    expect(node.draggable).toBe(true);
+    expect(node.selectable).toBe(true);
   });
 
   it('toFlowNodes переносит список поэлементно', () => {

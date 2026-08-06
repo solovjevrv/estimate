@@ -164,6 +164,68 @@ describe('стор сессии доски', () => {
     ).rejects.toThrow('Доска не подключена');
   });
 
+  describe('оптимистичное применение и эхо (12.6)', () => {
+    it('создание элемента отражается локально сразу, не дожидаясь рассылки board:ops', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+      socket.next = { revision: 2 };
+
+      await store.applyOps([{ type: 'item.create', clientOpId: 'c1', item: item() }]);
+
+      // Эхо (board:ops) не приходило — элемент появился именно из оптимистичного применения
+      expect(store.items.map((i) => i.id)).toEqual(['i1']);
+      expect(store.revision).toBe(1);
+    });
+
+    it('эхо устаревшей своей операции не откатывает более свежую локальную правку той же цели', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1, [item({ x: 0 })]);
+      await store.join('board1');
+
+      socket.next = { revision: 2 };
+      await store.applyOps([{ type: 'item.patch', clientOpId: 'a', id: 'i1', patch: { x: 10 } }]);
+      socket.next = { revision: 3 };
+      await store.applyOps([{ type: 'item.patch', clientOpId: 'b', id: 'i1', patch: { x: 20 } }]);
+      expect(store.items[0]?.x).toBe(20);
+
+      // Эхо более старой операции 'a' долетает первым (типичный порядок для последовательной
+      // отправки) — не должно откатить уже показанные 20 обратно к 10
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
+        revision: 2,
+        ops: [{ type: 'item.patch', clientOpId: 'a', item: item({ x: 10 }) }],
+      } satisfies BoardOpsBatch);
+      expect(store.items[0]?.x).toBe(20);
+      expect(store.revision).toBe(2);
+
+      // Эхо последней операции 'b' — применяется и снимает пометку "своя в полёте"
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
+        revision: 3,
+        ops: [{ type: 'item.patch', clientOpId: 'b', item: item({ x: 20 }) }],
+      } satisfies BoardOpsBatch);
+      expect(store.items[0]?.x).toBe(20);
+      expect(store.revision).toBe(3);
+    });
+
+    it('чужая операция по той же цели применяется всегда, независимо от своих операций в полёте', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1, [item({ x: 0 })]);
+      await store.join('board1');
+
+      socket.next = { revision: 2 };
+      await store.applyOps([{ type: 'item.patch', clientOpId: 'a', id: 'i1', patch: { x: 10 } }]);
+
+      // Чужая операция (clientOpId, который мы не отправляли) — не участвует в
+      // проверке "своя в полёте", применяется как обычное эхо
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
+        revision: 2,
+        ops: [{ type: 'item.patch', clientOpId: 'someone-else', item: item({ x: 99 }) }],
+      } satisfies BoardOpsBatch);
+
+      expect(store.items[0]?.x).toBe(99);
+    });
+  });
+
   describe('приём рассылок board:ops', () => {
     it('применяет батч со следующей ревизией', async () => {
       const store = useBoardSessionStore();
