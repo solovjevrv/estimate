@@ -358,10 +358,16 @@ function deleteSelected(): void {
       :max-zoom="2"
       :only-render-visible-elements="true"
       fit-view-on-init
+      :delete-key-code="null"
       @pane-click="onPaneClick"
       @node-drag="onNodeDrag"
       @node-drag-stop="onNodeDragStop"
     >
+      <!-- delete-key-code выключен: встроенное удаление по Backspace/Delete работает
+      только с внутренним состоянием Vue Flow, а не через наш стор — удаление молча
+      не долетало бы до сервера/других участников и возвращалось после перезагрузки.
+      Клавиатурное удаление вернётся в 12.9 вместе с остальными хоткеями, проведённое
+      через deleteSelected(), как и кнопка в тулбаре выделения. -->
       <Background pattern-color="var(--brand-border)" :gap="22" variant="dots" />
       <MiniMap
         class="board-minimap"
@@ -465,6 +471,17 @@ function deleteSelected(): void {
 
 .board-canvas-sticky-armed :deep(.vue-flow__pane) {
   cursor: crosshair;
+}
+
+/*
+ * Чужие перемещения долетают дискретными throttled-патчами (~80мс) — без
+ * интерполяции это выглядит рвано (жалоба пользователя). Плавно доводим
+ * transform между патчами, но не во время СВОЕГО активного драга/резайза
+ * (класс "dragging"/"resizing" вешает сам Vue Flow) — иначе собственный
+ * курсор будет отставать от карточки.
+ */
+:deep(.vue-flow__node:not(.dragging):not(.resizing)) {
+  transition: transform 120ms linear;
 }
 
 .board-empty-state {

@@ -11,7 +11,7 @@ import {
   STICKY_MIN_HEIGHT,
   STICKY_MIN_WIDTH,
 } from '../../lib/board/board-item-defaults';
-import { BOARD_COLOR_CLASSES } from '../../lib/board/board-colors';
+import { BOARD_COLOR_BG_CLASSES, BOARD_COLOR_TEXT_CLASSES } from '../../lib/board/board-colors';
 import { useBoardSessionStore } from '../../stores/board-session';
 
 const props = defineProps<NodeProps<BoardItem>>();
@@ -22,7 +22,8 @@ const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 const pendingEditId = inject(BOARD_PENDING_EDIT_ID_KEY, ref(null));
 
 const content = computed(() => props.data.content as BoardStickyContent);
-const colorClasses = computed(() => BOARD_COLOR_CLASSES[props.data.style.color]);
+const bgClass = computed(() => BOARD_COLOR_BG_CLASSES[props.data.style.color]);
+const textClass = computed(() => BOARD_COLOR_TEXT_CLASSES[props.data.style.color]);
 
 const editing = ref(false);
 const draftText = ref('');
@@ -89,8 +90,8 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       @resize-end="onResizeEnd"
     />
     <div
-      class="board-node-content flex h-full w-full items-start justify-start overflow-hidden rounded-md border-2 p-3 text-sm break-words whitespace-pre-wrap text-neutral-900 shadow-sm"
-      :class="colorClasses"
+      class="board-sticky-content flex h-full w-full items-start justify-start overflow-hidden rounded-md p-4 text-sm font-semibold break-words whitespace-pre-wrap"
+      :class="[bgClass, textClass]"
       @dblclick.stop="startEditing"
     >
       <Handle type="target" :position="Position.Top" class="!opacity-0" />
@@ -99,7 +100,8 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
           ref="textarea"
           v-model="draftText"
           :maxlength="BOARD_ITEM_TEXT_MAX_LENGTH"
-          class="nodrag h-full w-full resize-none bg-transparent text-sm text-neutral-900 outline-none"
+          class="nodrag h-full w-full resize-none bg-transparent text-sm font-semibold outline-none"
+          :class="textClass"
           :style="{ fontSize: `${Math.max(10, 14 / viewport.zoom)}px` }"
           @pointerdown.stop
           @keydown.esc.stop.prevent="cancelEditing"
@@ -111,3 +113,13 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* Стикер держится на тени, а не на обводке (референс `.design/main.html`) — заметно
+   сильнее общей `--brand-shadow-card` (та калибрована под UI-панели, не бумагу) */
+.board-sticky-content {
+  box-shadow:
+    0 1px 2px rgb(0 0 0 / 8%),
+    0 6px 14px -6px rgb(0 0 0 / 18%);
+}
+</style>

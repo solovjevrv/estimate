@@ -24,3 +24,25 @@ export const BOARD_COLOR_CLASSES: Record<BoardColorToken, string> = {
   orange: 'bg-[#fff4e6] border-[#ffc078]',
   gray: 'bg-[#f1f3f5] border-[#ced4da]',
 };
+
+/** Только фон, без рамки — стикеры в референсе держатся на тени, а не на обводке (12.6) */
+export const BOARD_COLOR_BG_CLASSES: Record<BoardColorToken, string> = {
+  yellow: 'bg-[#fff3bf]',
+  green: 'bg-[#ebfbee]',
+  blue: 'bg-[#e7f5ff]',
+  pink: 'bg-[#fff0f6]',
+  purple: 'bg-[#f3f0ff]',
+  orange: 'bg-[#fff4e6]',
+  gray: 'bg-[#f1f3f5]',
+};
+
+/** Текст стикера — не чёрный, а затемнённый вариант того же тона (12.6, по референсу) */
+export const BOARD_COLOR_TEXT_CLASSES: Record<BoardColorToken, string> = {
+  yellow: 'text-[#856404]',
+  green: 'text-[#2b8a3e]',
+  blue: 'text-[#1864ab]',
+  pink: 'text-[#a61e4d]',
+  purple: 'text-[#5f3dc4]',
+  orange: 'text-[#d9480f]',
+  gray: 'text-[#495057]',
+};
