@@ -4,6 +4,14 @@
  * `join_room`, а не новым сокетом.
  */
 import type {
+  ApplyBoardOpsPayload,
+  ApplyBoardOpsResult,
+  BoardAwarenessBroadcast,
+  BoardAwarenessPayload,
+  BoardOpsBatch,
+  BoardPresenceEntry,
+  JoinBoardPayload,
+  JoinBoardResult,
   JoinRoomPayload,
   JoinRoomResult,
   KickParticipantPayload,
@@ -19,7 +27,12 @@ import type {
   UpdateLinksPayload,
   WsAck,
 } from '@poker/shared';
-import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
+import {
+  BOARD_WS_EVENTS,
+  BOARD_WS_SERVER_EVENTS,
+  WS_EVENTS,
+  WS_SERVER_EVENTS,
+} from '@poker/shared';
 import { io, type Socket } from 'socket.io-client';
 
 /** Отказ сервера в ответ на событие: код тот же, что в REST (`conflict`, `forbidden`, ...) */
@@ -40,6 +53,12 @@ interface ServerToClientEvents {
   [WS_SERVER_EVENTS.ROOM_STATE]: (state: RoomState) => void;
   /** Адресное событие только исключённому — приходит перед разрывом соединения */
   [WS_SERVER_EVENTS.KICKED]: (payload: Record<string, never>) => void;
+  /** Подтверждённые операции доски — включая эхо своих же (отбрасывается по `clientOpId`) */
+  [BOARD_WS_SERVER_EVENTS.OPS]: (batch: BoardOpsBatch) => void;
+  /** Курсоры/перетаскивание — не персистится, приходит от всех, кроме себя самого */
+  [BOARD_WS_SERVER_EVENTS.AWARENESS]: (payload: BoardAwarenessBroadcast) => void;
+  /** Кто сейчас смотрит доску */
+  [BOARD_WS_SERVER_EVENTS.PRESENCE]: (entries: BoardPresenceEntry[]) => void;
 }
 
 /**
@@ -65,6 +84,13 @@ interface ClientToServerEvents {
   [WS_EVENTS.RESET_TIMER]: (p: ResetTimerPayload, ack: (r: WsAck<RoomTimerState>) => void) => void;
   [WS_EVENTS.KICK_PARTICIPANT]: (p: KickParticipantPayload, ack: (r: WsAck<null>) => void) => void;
   [WS_EVENTS.SEND_REACTION]: (p: SendReactionPayload, ack: (r: WsAck<null>) => void) => void;
+  [BOARD_WS_EVENTS.JOIN]: (p: JoinBoardPayload, ack: (r: WsAck<JoinBoardResult>) => void) => void;
+  [BOARD_WS_EVENTS.APPLY]: (
+    p: ApplyBoardOpsPayload,
+    ack: (r: WsAck<ApplyBoardOpsResult>) => void,
+  ) => void;
+  /** Без подтверждения — эфемерное событие, ответ не нужен и не ждётся */
+  [BOARD_WS_EVENTS.AWARENESS]: (p: BoardAwarenessPayload) => void;
 }
 
 export type PokerSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

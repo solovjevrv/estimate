@@ -23,6 +23,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app';
 import { ACCESS_COOKIE, TokenService, UsersRepository } from '../src/auth';
+import { BoardsService } from '../src/boards';
 import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
 import { ConflictError } from '../src/errors';
@@ -159,7 +160,8 @@ describeDb('комнаты', () => {
       roomsRateLimit: { max: 10_000, timeWindow: '1 minute' },
     });
     const roomsService = RoomsService.forDatabase(db, authConfig.guestSecret);
-    new SocketGateway(roomsService, { corsOrigin: '*' }).attach(app);
+    const boardsService = BoardsService.forDatabase(db);
+    new SocketGateway(roomsService, boardsService, { corsOrigin: '*' }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
     port = (app.server.address() as AddressInfo).port;
   });
