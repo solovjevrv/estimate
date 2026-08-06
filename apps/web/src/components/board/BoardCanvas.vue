@@ -32,6 +32,7 @@ import {
   type BoardEdge,
   type BoardItem,
   type BoardItemContent,
+  type BoardItemPatchOp,
   type BoardOp,
 } from '@poker/shared';
 import type { DropdownMenuItem } from '@nuxt/ui';
@@ -358,20 +359,41 @@ const selectedColor = computed<BoardColorHex>(
 
 /**
  * Единый переключатель «тип элемента» (12.7) — конвертирует ЛЮБОЕ выделение
- * (стикер, фигура, смешанное) в выбранный тип/форму, сохраняя текст. Геометрия
- * не трогается. Рендер-компонент переключится сам — маппинг в `nodeTypes` идёт
- * по `content.type`, отдельно менять его не нужно.
+ * (стикер, фигура, смешанное) в выбранный тип/форму, сохраняя текст.
+ * Рендер-компонент переключится сам — маппинг в `nodeTypes` идёт по
+ * `content.type`, отдельно менять его не нужно.
+ *
+ * Геометрия фигуры при конвертации В стикер не сохраняется как есть: стикер
+ * всегда квадрат (см. `keep-aspect-ratio` в `BoardStickyNode.vue`), поэтому
+ * растянутая фигура (например, широкий прямоугольник) сжимается до квадрата
+ * по МЕНЬШЕЙ стороне, с центром на прежнем месте — иначе конвертация назад
+ * в стикер "запоминала" бы вытянутые пропорции, которых у стикера в принципе
+ * не бывает (баг, найденный пользователем при ручной проверке). В обратную
+ * сторону (стикер → фигура) геометрия не трогается — фигуры не обязаны быть
+ * квадратом.
  */
 function setSelectedForm(kind: ItemFormKind): void {
   patchSelected((node) => {
     const text = node.data.content.text;
     const content: BoardItemContent =
       kind === 'sticky' ? { type: 'sticky', text } : { type: 'shape', shape: kind, text };
+    const patch: BoardItemPatchOp['patch'] = { content };
+    if (kind === 'sticky') {
+      const { x, y } = node.computedPosition;
+      const { width, height } = node.dimensions;
+      const side = Math.min(width, height);
+      Object.assign(patch, {
+        x: x + (width - side) / 2,
+        y: y + (height - side) / 2,
+        width: side,
+        height: side,
+      });
+    }
     return {
       type: 'item.patch',
       clientOpId: crypto.randomUUID(),
       id: node.id,
-      patch: { content },
+      patch,
     };
   });
 }

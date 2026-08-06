@@ -35,13 +35,23 @@ const shapeClass = computed(() => {
       return 'rounded-2xl';
     case 'ellipse':
       return 'rounded-full';
-    case 'diamond':
-      return '[clip-path:polygon(50%_0%,100%_50%,50%_100%,0%_50%)]';
     case 'rectangle':
     default:
       return 'rounded-none';
   }
 });
+
+/**
+ * У ромба `border` не работает: clip-path вырезает форму из прямоугольного
+ * бокса, а обводка рисуется ПО ГРАНИЦАМ этого бокса до выреза — после
+ * clip-path от неё остаются только точки в местах, где ромб касается краёв
+ * бокса (не сплошная линия). Вместо CSS-обводки — два вложенных ромба:
+ * нижний (побольше, цвета обводки) и верхний (меньше на толщину обводки,
+ * цвета заливки) — стандартный приём для «обводки» произвольной clip-path
+ * формы, даёт визуально ту же обводку, что у остальных фигур.
+ */
+const isDiamond = computed(() => content.value.shape === 'diamond');
+const DIAMOND_CLIP_PATH = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
 
 const editing = ref(false);
 const draftText = ref('');
@@ -108,28 +118,43 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       @resize-end="onResizeEnd"
     />
     <div
-      class="board-node-content flex h-full w-full items-center justify-center overflow-hidden border-2 p-4 text-sm font-semibold break-words"
-      :class="shapeClass"
-      :style="{ backgroundColor: bgColor, borderColor, color: textColor }"
+      class="board-node-content relative flex h-full w-full items-center justify-center overflow-hidden p-4 text-sm font-semibold break-words"
+      :class="isDiamond ? '' : ['border-2', shapeClass]"
+      :style="isDiamond ? {} : { backgroundColor: bgColor, borderColor, color: textColor }"
       @dblclick.stop="startEditing"
     >
-      <Handle type="target" :position="Position.Top" class="!opacity-0" />
-      <template v-if="editing">
-        <textarea
-          ref="textarea"
-          v-model="draftText"
-          :maxlength="BOARD_ITEM_TEXT_MAX_LENGTH"
-          class="nodrag h-full max-w-full resize-none bg-transparent text-center text-sm font-semibold outline-none"
-          :style="{ color: textColor, fontSize: `${Math.max(10, 14 / viewport.zoom)}px` }"
-          @pointerdown.stop
-          @keydown.esc.stop.prevent="cancelEditing"
-          @blur="commitEditing"
+      <template v-if="isDiamond">
+        <div
+          class="absolute inset-0"
+          :style="{ backgroundColor: borderColor, clipPath: DIAMOND_CLIP_PATH }"
+        />
+        <div
+          class="absolute inset-[2px]"
+          :style="{ backgroundColor: bgColor, clipPath: DIAMOND_CLIP_PATH }"
         />
       </template>
-      <template v-else>
-        <span class="max-w-full text-center">{{ content.text }}</span>
-      </template>
-      <Handle type="source" :position="Position.Bottom" class="!opacity-0" />
+      <div
+        class="relative flex h-full w-full items-center justify-center"
+        :style="isDiamond ? { color: textColor } : {}"
+      >
+        <Handle type="target" :position="Position.Top" class="!opacity-0" />
+        <template v-if="editing">
+          <textarea
+            ref="textarea"
+            v-model="draftText"
+            :maxlength="BOARD_ITEM_TEXT_MAX_LENGTH"
+            class="nodrag h-full max-w-full resize-none bg-transparent text-center text-sm font-semibold outline-none"
+            :style="{ color: textColor, fontSize: `${Math.max(10, 14 / viewport.zoom)}px` }"
+            @pointerdown.stop
+            @keydown.esc.stop.prevent="cancelEditing"
+            @blur="commitEditing"
+          />
+        </template>
+        <template v-else>
+          <span class="max-w-full text-center">{{ content.text }}</span>
+        </template>
+        <Handle type="source" :position="Position.Bottom" class="!opacity-0" />
+      </div>
     </div>
   </div>
 </template>

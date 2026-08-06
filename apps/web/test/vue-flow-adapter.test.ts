@@ -72,6 +72,16 @@ describe('boardItemToNode', () => {
     expect(node.selectable).toBe(true);
   });
 
+  it('задаёт style.width/height явно, не только поля width/height (12.7)', () => {
+    // Регрессия: @vue-flow/node-resizer после интерактивного резайза сам пишет
+    // размер в node.style (updateStyle: true) — без явного style в адаптере это
+    // значение навсегда перебивало бы любой последующий программный патч
+    // размера (например, принудительный квадрат при конвертации в стикер),
+    // потому что Vue Flow берёт style.width, только если он ещё не задан.
+    const node = boardItemToNode(stickyItem);
+    expect(node.style).toEqual({ width: '160px', height: '120px' });
+  });
+
   it('toFlowNodes переносит список поэлементно', () => {
     expect(toFlowNodes([stickyItem, shapeItem]).map((n) => n.id)).toEqual(['i1', 'i2']);
   });

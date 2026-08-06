@@ -88,10 +88,11 @@ function onCustomColor(event: Event): void {
             type="button"
             class="board-form-menu-item"
             :class="{ 'board-form-menu-item-active': kind === props.currentForm }"
+            :aria-label="t(`board.forms.${kind}`)"
+            :title="t(`board.forms.${kind}`)"
             @click="emit('form', kind)"
           >
             <UIcon :name="FORM_ICONS[kind]" class="size-4" />
-            {{ t(`board.forms.${kind}`) }}
           </button>
         </div>
       </template>
@@ -226,23 +227,21 @@ function onCustomColor(event: Event): void {
 
 .board-form-menu {
   display: flex;
-  min-width: 168px;
-  flex-direction: column;
+  gap: 2px;
   padding: 6px;
 }
 
 .board-form-menu-item {
   display: flex;
+  width: 32px;
+  height: 32px;
   align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
+  justify-content: center;
   color: var(--brand-ink);
-  text-align: left;
   cursor: pointer;
   background: transparent;
   border: none;
   border-radius: 8px;
-  font-size: 0.875rem;
 }
 
 .board-form-menu-item:hover {
@@ -251,7 +250,7 @@ function onCustomColor(event: Event): void {
 
 .board-form-menu-item-active {
   color: var(--ui-primary);
-  font-weight: 600;
+  background: var(--ui-bg-elevated);
 }
 
 .board-selection-divider {
