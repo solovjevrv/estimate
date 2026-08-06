@@ -303,12 +303,14 @@ export default {
   },
   board: {
     pageTitle: 'Board',
+    backToBoards: 'Boards',
     notFound: 'Board not found, or you don’t have access.',
     loadError: 'Could not load the board. Try refreshing the page.',
     teamBoardSubtitle: 'Team board',
     personalBoardSubtitle: 'Personal board',
-    canvasComingSoon:
-      'The board canvas is coming in an upcoming task — sticky notes, shapes and arrows will live here.',
+    fullscreen: 'Enter fullscreen',
+    exitFullscreen: 'Exit fullscreen',
+    moreActions: 'More actions',
     createTitle: 'New board',
     createNamePlaceholder: 'For example, Sprint 24 retro',
     create: 'Create board',

@@ -32,6 +32,12 @@ declare module 'vue-router' {
     guestOnly?: boolean;
     /** Заголовок вкладки: `EstiMate | ${t(titleKey)}` — см. App.vue */
     titleKey: TitleKey;
+    /**
+     * Заголовок и кнопки страницы остаются в обычном контейнере, но сама страница
+     * занимает весь остаток экрана без скролла — холст сам владеет своим пространством
+     * и прокруткой (холст доски, 12.5)
+     */
+    fullBleedCanvas?: boolean;
   }
 }
 
@@ -110,7 +116,7 @@ export const routes: RouteRecordRaw[] = [
     name: 'board',
     component: () => import('../pages/BoardPage.vue'),
     props: true,
-    meta: { requiresAuth: true, titleKey: 'board.pageTitle' },
+    meta: { requiresAuth: true, titleKey: 'board.pageTitle', fullBleedCanvas: true },
   },
   {
     path: '/:pathMatch(.*)*',

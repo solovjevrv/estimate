@@ -2,14 +2,16 @@
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
 import { BOARD_TITLE_MAX_LENGTH, hasTeamRole, type Board } from '@poker/shared';
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
+import BoardCanvas from '../components/board/BoardCanvas.vue';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useBoardsStore } from '../stores/boards';
+import { useBoardSessionStore } from '../stores/board-session';
 import { useSessionStore } from '../stores/session';
 import { useTeamsStore } from '../stores/teams';
 
@@ -21,13 +23,12 @@ const router = useRouter();
 const boards = useBoardsStore();
 const teams = useTeamsStore();
 const session = useSessionStore();
+const boardSession = useBoardSessionStore();
 
 const loading = ref(true);
 const notFound = ref(false);
 const loadFailed = ref(false);
 const board = ref<Board | null>(null);
-
-const isArchived = computed(() => board.value?.status === 'archived');
 
 /**
  * Личная доска доступна на чтение только владельцу (иначе сервер уже отдал бы
@@ -55,6 +56,7 @@ async function load(): Promise<void> {
     if (snapshot.board.teamId) {
       await teams.loadTeam(snapshot.board.teamId);
     }
+    void boardSession.join(props.id);
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
       notFound.value = true;
@@ -65,6 +67,12 @@ async function load(): Promise<void> {
     loading.value = false;
   }
 }
+
+// REST-снимок уже загружен через `boards.get` выше — WS-вход (12.4) даёт только
+// реалтайм-синхронизацию поверх него, поэтому его результат ожидать не нужно
+onBeforeUnmount(() => {
+  boardSession.leave();
+});
 
 // --- Переименование ---
 const renameOpen = ref(false);
@@ -119,17 +127,12 @@ async function confirmArchive(): Promise<void> {
   }
 }
 
-const unarchiving = ref(false);
-
 async function unarchive(): Promise<void> {
-  unarchiving.value = true;
   try {
     board.value = await boards.unarchive(props.id);
     toast.add({ title: t('board.unarchived'), color: 'success', icon: 'i-lucide-check' });
   } catch {
     toast.add({ title: t('board.unarchiveError'), color: 'error' });
-  } finally {
-    unarchiving.value = false;
   }
 }
 
@@ -153,134 +156,85 @@ async function confirmDelete(): Promise<void> {
 </script>
 
 <template>
-  <section class="space-y-5">
-    <UAlert v-if="notFound" color="error" variant="subtle" :description="t('board.notFound')" />
-    <UAlert
-      v-else-if="loadFailed"
-      color="error"
-      variant="subtle"
-      :description="t('board.loadError')"
-    />
+  <div class="flex h-full min-h-0 flex-1 flex-col">
+    <div v-if="!board" class="mx-auto w-full max-w-[73.75rem] px-4 pt-8 pb-5 md:px-14 md:pt-14">
+      <UAlert v-if="notFound" color="error" variant="subtle" :description="t('board.notFound')" />
+      <UAlert
+        v-else-if="loadFailed"
+        color="error"
+        variant="subtle"
+        :description="t('board.loadError')"
+      />
 
-    <div v-else-if="loading" class="space-y-5">
-      <USkeleton class="h-9 w-1/3 bg-[var(--brand-border)]" />
-      <USkeleton class="h-64 w-full rounded-[12px] bg-[var(--brand-border)]" />
+      <div v-else-if="loading" class="space-y-5">
+        <USkeleton class="h-9 w-1/3 bg-[var(--brand-border)]" />
+        <USkeleton class="h-16 w-full rounded-[12px] bg-[var(--brand-border)]" />
+      </div>
     </div>
 
-    <template v-else-if="board">
-      <div class="flex flex-wrap items-start justify-between gap-3.5">
-        <div class="flex min-w-0 flex-col gap-1">
-          <div class="flex min-w-0 flex-wrap items-center gap-3">
-            <h1 class="font-heading min-w-0 text-3xl font-extrabold break-words">
-              {{ board.title }}
-            </h1>
-            <span v-if="isArchived" class="badge-pill badge-pill-neutral">{{
-              t('board.archivedBadge')
-            }}</span>
-          </div>
-          <span class="text-muted text-sm font-semibold">
-            {{ board.teamId ? t('board.teamBoardSubtitle') : t('board.personalBoardSubtitle') }}
-          </span>
-        </div>
+    <!-- Холст владеет всем остатком экрана (без общего max-width-контейнера страницы, 12.5) —
+    название доски и её меню теперь плашкой поверх холста, а не отдельным рядом над ним -->
+    <div v-if="board" class="min-h-0 flex-1">
+      <BoardCanvas
+        :board="board"
+        :team-name="board.teamId ? (teams.current?.team.name ?? null) : null"
+        :can-manage="canManage"
+        :items="boardSession.items"
+        :edges="boardSession.edges"
+        @rename="renameOpen = true"
+        @archive="archiveOpen = true"
+        @unarchive="unarchive"
+        @delete="deleteOpen = true"
+      />
+    </div>
+  </div>
 
-        <div v-if="canManage" class="flex flex-wrap items-center gap-2">
+  <UModal v-model:open="renameOpen" :title="t('board.renameTitle')" :ui="MODAL_UI">
+    <template #body>
+      <UForm :state="renameState" :validate="validateTitle" class="space-y-4" @submit="onRename">
+        <UFormField :label="t('teams.nameLabel')" name="title">
+          <UInput
+            v-model="renameState.title"
+            :maxlength="BOARD_TITLE_MAX_LENGTH"
+            autofocus
+            class="w-full"
+            :ui="MODAL_INPUT_UI"
+          />
+        </UFormField>
+
+        <div class="flex justify-end gap-2.5">
           <UButton
-            icon="i-lucide-pencil"
             color="neutral"
             variant="outline"
-            class="rounded-[10px] px-[18px] py-[11px] text-sm font-bold"
-            @click="renameOpen = true"
+            :ui="MODAL_BUTTON_UI"
+            @click="renameOpen = false"
           >
+            {{ t('teams.cancel') }}
+          </UButton>
+          <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="renaming">
             {{ t('board.rename') }}
           </UButton>
-          <UButton
-            v-if="!isArchived"
-            icon="i-lucide-archive"
-            color="neutral"
-            variant="outline"
-            class="rounded-[10px] px-[18px] py-[11px] text-sm font-bold"
-            @click="archiveOpen = true"
-          >
-            {{ t('board.archive') }}
-          </UButton>
-          <template v-else>
-            <UButton
-              icon="i-lucide-rotate-ccw"
-              color="neutral"
-              variant="outline"
-              class="rounded-[10px] px-[18px] py-[11px] text-sm font-bold"
-              :loading="unarchiving"
-              @click="unarchive"
-            >
-              {{ t('board.unarchive') }}
-            </UButton>
-            <UButton
-              icon="i-lucide-trash-2"
-              color="error"
-              variant="subtle"
-              class="rounded-[10px] px-[18px] py-[11px] text-sm font-bold"
-              @click="deleteOpen = true"
-            >
-              {{ t('board.deleteBoard') }}
-            </UButton>
-          </template>
         </div>
-      </div>
-
-      <div
-        class="surface-card text-muted flex min-h-64 items-center justify-center p-8 text-center text-sm"
-      >
-        {{ t('board.canvasComingSoon') }}
-      </div>
+      </UForm>
     </template>
+  </UModal>
 
-    <UModal v-model:open="renameOpen" :title="t('board.renameTitle')" :ui="MODAL_UI">
-      <template #body>
-        <UForm :state="renameState" :validate="validateTitle" class="space-y-4" @submit="onRename">
-          <UFormField :label="t('teams.nameLabel')" name="title">
-            <UInput
-              v-model="renameState.title"
-              :maxlength="BOARD_TITLE_MAX_LENGTH"
-              autofocus
-              class="w-full"
-              :ui="MODAL_INPUT_UI"
-            />
-          </UFormField>
+  <ConfirmModal
+    v-model:open="archiveOpen"
+    :title="t('board.archiveConfirmTitle')"
+    :description="t('board.archiveConfirmText')"
+    :confirm-label="t('board.archiveConfirm')"
+    confirm-color="primary"
+    :loading="archiving"
+    @confirm="confirmArchive"
+  />
 
-          <div class="flex justify-end gap-2.5">
-            <UButton
-              color="neutral"
-              variant="outline"
-              :ui="MODAL_BUTTON_UI"
-              @click="renameOpen = false"
-            >
-              {{ t('teams.cancel') }}
-            </UButton>
-            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="renaming">
-              {{ t('board.rename') }}
-            </UButton>
-          </div>
-        </UForm>
-      </template>
-    </UModal>
-
-    <ConfirmModal
-      v-model:open="archiveOpen"
-      :title="t('board.archiveConfirmTitle')"
-      :description="t('board.archiveConfirmText')"
-      :confirm-label="t('board.archiveConfirm')"
-      confirm-color="primary"
-      :loading="archiving"
-      @confirm="confirmArchive"
-    />
-
-    <ConfirmModal
-      v-model:open="deleteOpen"
-      :title="t('board.deleteConfirmTitle')"
-      :description="t('board.deleteConfirmText')"
-      :confirm-label="t('board.deleteConfirm')"
-      :loading="deleting"
-      @confirm="confirmDelete"
-    />
-  </section>
+  <ConfirmModal
+    v-model:open="deleteOpen"
+    :title="t('board.deleteConfirmTitle')"
+    :description="t('board.deleteConfirmText')"
+    :confirm-label="t('board.deleteConfirm')"
+    :loading="deleting"
+    @confirm="confirmDelete"
+  />
 </template>
