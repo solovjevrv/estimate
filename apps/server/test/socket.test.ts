@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app';
 import { ACCESS_COOKIE, TokenService } from '../src/auth';
+import { BoardsService } from '../src/boards';
 import type { AuthConfig } from '../src/config';
 import type { Db } from '../src/db';
 import { RoomsService } from '../src/rooms';
@@ -24,7 +25,8 @@ async function startApp(auth?: AuthConfig): Promise<{ app: FastifyInstance; port
   const db = { execute: vi.fn() } as unknown as Db;
   const app = buildApp({ db, auth });
   const roomsService = RoomsService.forDatabase(db, authConfig.guestSecret);
-  new SocketGateway(roomsService, { corsOrigin: '*' }).attach(app);
+  const boardsService = BoardsService.forDatabase(db);
+  new SocketGateway(roomsService, boardsService, { corsOrigin: '*' }).attach(app);
   await app.listen({ port: 0, host: '127.0.0.1' });
   return { app, port: (app.server.address() as AddressInfo).port };
 }

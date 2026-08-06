@@ -455,6 +455,7 @@ export interface BoardItem {
 }
 
 export type BoardEdgeLineKind = 'straight' | 'curved';
+export const BOARD_EDGE_LINE_KINDS: readonly BoardEdgeLineKind[] = ['straight', 'curved'];
 
 export interface BoardEdgeStyle {
   color: BoardColorToken;
@@ -498,4 +499,151 @@ export interface BoardSnapshot {
   board: Board;
   items: BoardItem[];
   edges: BoardEdge[];
+}
+
+/**
+ * Реалтайм-канал доски (12.4). Клиент отправляет операции — сервер их
+ * применяет транзакционно, инкрементирует `revision` и рассылает всем
+ * участникам целиком, включая отправителя (эхо своей же операции клиент
+ * отбрасывает по `clientOpId`). В отличие от комнат, где рассылается целиком
+ * `RoomState`, здесь протокол — дискретные операции: доска может расти до
+ * `BOARD_MAX_ITEMS` элементов, и пересылать её целиком на каждый чих
+ * неэкономно. Id новых элементов/связей генерирует клиент (UUID) — так ack
+ * не нужен для подстановки «настоящего» id вместо временного.
+ */
+export const BOARD_WS_EVENTS = {
+  JOIN: 'board:join',
+  APPLY: 'board:apply',
+  AWARENESS: 'board:awareness',
+} as const;
+
+export type BoardWsEvent = (typeof BOARD_WS_EVENTS)[keyof typeof BOARD_WS_EVENTS];
+
+export const BOARD_WS_SERVER_EVENTS = {
+  /** Подтверждённые операции — рассылается всем в комнате доски, включая отправителя */
+  OPS: 'board:ops',
+  /** Курсоры/перетаскивание — не персистится, ретранслируется всем, кроме отправителя */
+  AWARENESS: 'board:awareness',
+  /** Кто сейчас смотрит доску — на вход/выход участника */
+  PRESENCE: 'board:presence',
+} as const;
+
+export type BoardWsServerEvent =
+  (typeof BOARD_WS_SERVER_EVENTS)[keyof typeof BOARD_WS_SERVER_EVENTS];
+
+interface BoardOpBase {
+  /** id операции с клиента — по нему клиент отличает подтверждение своей же операции от чужой */
+  clientOpId: string;
+}
+
+/** Id элемента генерирует клиент (UUID) — сервер просто сохраняет его как есть */
+export interface BoardItemCreateOp extends BoardOpBase {
+  type: 'item.create';
+  item: Omit<BoardItem, 'boardId' | 'createdBy' | 'updatedAt'>;
+}
+
+export interface BoardItemPatchOp extends BoardOpBase {
+  type: 'item.patch';
+  id: string;
+  patch: Partial<Omit<BoardItem, 'id' | 'boardId' | 'createdBy' | 'updatedAt'>>;
+}
+
+export interface BoardItemDeleteOp extends BoardOpBase {
+  type: 'item.delete';
+  id: string;
+}
+
+export interface BoardEdgeCreateOp extends BoardOpBase {
+  type: 'edge.create';
+  edge: Omit<BoardEdge, 'boardId'>;
+}
+
+/** Переподключить связь к другим элементам — не нужно: проще удалить и создать заново */
+export interface BoardEdgePatchOp extends BoardOpBase {
+  type: 'edge.patch';
+  id: string;
+  patch: Partial<Pick<BoardEdge, 'sourceHandle' | 'targetHandle' | 'label' | 'style'>>;
+}
+
+export interface BoardEdgeDeleteOp extends BoardOpBase {
+  type: 'edge.delete';
+  id: string;
+}
+
+/** Дискриминированный union по `type` — та же идея, что у `BoardItemContent` */
+export type BoardOp =
+  | BoardItemCreateOp
+  | BoardItemPatchOp
+  | BoardItemDeleteOp
+  | BoardEdgeCreateOp
+  | BoardEdgePatchOp
+  | BoardEdgeDeleteOp;
+
+/** Верхняя граница числа операций в одном вызове `board:apply` — защита от гигантского батча */
+export const BOARD_OPS_BATCH_MAX = 50;
+
+export interface JoinBoardPayload {
+  boardId: string;
+  /** Ревизия, которую клиент уже применил — если укладывается в буфер, придёт только «хвост» */
+  sinceRevision?: number;
+}
+
+/**
+ * Закоммиченная операция — то, что уходит в рассылку/буфер/догон. В отличие
+ * от `BoardOp`, который присылает клиент, здесь create/patch несут уже
+ * целиком собранную запись (`item`/`edge`) с серверными полями
+ * (`boardId`/`createdBy`/`updatedAt`), а не патч, который клиенту пришлось бы
+ * мержить самому — так применение на стороне других участников сводится
+ * к простому upsert/delete по id, без реконструкции состояния.
+ */
+export type BoardCommittedOp =
+  | { type: 'item.create'; clientOpId: string; item: BoardItem }
+  | { type: 'item.patch'; clientOpId: string; item: BoardItem }
+  | { type: 'item.delete'; clientOpId: string; id: string }
+  | { type: 'edge.create'; clientOpId: string; edge: BoardEdge }
+  | { type: 'edge.patch'; clientOpId: string; edge: BoardEdge }
+  | { type: 'edge.delete'; clientOpId: string; id: string };
+
+/** Один закоммиченный батч операций — то же, что уходит и в рассылку, и в кольцевой буфер */
+export interface BoardOpsBatch {
+  revision: number;
+  ops: BoardCommittedOp[];
+}
+
+export interface JoinBoardResult {
+  revision: number;
+  /** Полный снимок — при первом входе или если `sinceRevision` вышла за пределы буфера */
+  snapshot: BoardSnapshot | null;
+  /** Догон операциями — заполнено вместо `snapshot`, если буфер покрывает разрыв */
+  catchup: BoardOpsBatch[] | null;
+}
+
+export interface ApplyBoardOpsPayload {
+  ops: BoardOp[];
+}
+
+export interface ApplyBoardOpsResult {
+  revision: number;
+}
+
+export type BoardAwarenessKind = 'cursor' | 'drag' | 'idle';
+
+/** Сервер не заглядывает внутрь `data` — только ретранслирует остальным участникам доски */
+export interface BoardAwarenessPayload {
+  kind: BoardAwarenessKind;
+  data: Record<string, unknown>;
+}
+
+export interface BoardAwarenessBroadcast {
+  userId: string;
+  name: string;
+  kind: BoardAwarenessKind;
+  data: Record<string, unknown>;
+}
+
+/** Кто сейчас смотрит доску — доски не поддерживают гостей, участник всегда авторизован */
+export interface BoardPresenceEntry {
+  userId: string;
+  name: string;
+  avatarUrl: string | null;
 }
