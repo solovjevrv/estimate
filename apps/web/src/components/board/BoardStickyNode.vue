@@ -29,6 +29,21 @@ const editing = ref(false);
 const draftText = ref('');
 const textareaEl = useTemplateRef<HTMLTextAreaElement>('textarea');
 
+/**
+ * Textarea — нативный контрол, у него нет CSS-свойства для вертикального
+ * центрирования СВОЕГО текста (в отличие от родителя-flex, который просто
+ * центрирует саму textarea как блок). Вместо этого — автовысота по
+ * содержимому, тогда `items-center` родителя центрирует уже не растянутый
+ * на весь бокс, а плотно облегающий текст блок (12.7, по просьбе
+ * пользователя — центрирование текста и у стикеров тоже).
+ */
+function autosizeTextarea(): void {
+  const el = textareaEl.value;
+  if (!el) return;
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
+
 async function startEditing(): Promise<void> {
   if (editing.value || !canEdit.value) return;
   draftText.value = content.value.text;
@@ -36,6 +51,7 @@ async function startEditing(): Promise<void> {
   await nextTick();
   textareaEl.value?.focus();
   textareaEl.value?.select();
+  autosizeTextarea();
 }
 
 // Только что созданный этим же клиентом стикер сразу входит в редактирование —
@@ -91,7 +107,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       @resize-end="onResizeEnd"
     />
     <div
-      class="board-sticky-content flex h-full w-full items-start justify-start overflow-hidden rounded-md p-4 text-sm font-semibold break-words whitespace-pre-wrap"
+      class="board-sticky-content flex h-full w-full items-center justify-center overflow-hidden rounded-md p-4 text-center text-sm font-semibold break-words whitespace-pre-wrap"
       :style="{ backgroundColor: bgColor, color: textColor }"
       @dblclick.stop="startEditing"
     >
@@ -101,9 +117,10 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
           ref="textarea"
           v-model="draftText"
           :maxlength="BOARD_ITEM_TEXT_MAX_LENGTH"
-          class="nodrag h-full w-full resize-none bg-transparent text-sm font-semibold outline-none"
+          class="nodrag max-h-full w-full resize-none bg-transparent text-center text-sm font-semibold outline-none"
           :style="{ color: textColor, fontSize: `${Math.max(10, 14 / viewport.zoom)}px` }"
           @pointerdown.stop
+          @input="autosizeTextarea"
           @keydown.esc.stop.prevent="cancelEditing"
           @blur="commitEditing"
         />
