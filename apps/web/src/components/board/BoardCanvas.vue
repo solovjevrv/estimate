@@ -5,24 +5,34 @@
  * пан, drag по пустому холсту ЛКМ — рамка мультивыбора (12.5).
  *
  * Создание/перетаскивание/резайз/редактирование/цвет/слои/удаление стикеров —
- * 12.6, с оптимистичным применением через `stores/board-session.ts`. Создать
- * можно двумя жестами (оба из макета): двойной клик по холсту в любой момент,
- * или выбрать инструмент «Стикер» в левом тулбаре — следующий одиночный клик
- * по холсту создаёт стикер там и возвращает инструмент обратно на «Выделение».
+ * 12.6, с оптимистичным применением через `stores/board-session.ts`. Фигуры
+ * (12.7) переиспользуют ту же механику — новый тип элемента = новый компонент
+ * рендера (`BoardShapeNode.vue`), без изменений протокола/стора. Создать
+ * можно двумя жестами (оба из макета): двойной клик по холсту в любой момент
+ * (всегда создаёт стикер — самый частый случай), или выбрать инструмент
+ * «Стикер»/«Фигура» в левом тулбаре — следующий одиночный клик по холсту
+ * создаёт элемент там и возвращает инструмент обратно на «Выделение». Тип
+ * элемента (стикер/прямоугольник/скруглённый/эллипс/ромб) можно сменить и
+ * ПОСЛЕ создания — единый дропдаун в плавающем тулбаре выделения конвертирует
+ * стикер в фигуру и обратно, сохраняя текст (решение пользователя). Цвет —
+ * не 7 токенов, а свободный hex: попап с палитрой из 12.7-макета плюс
+ * кастомный цвет через нативный `<input type="color">`.
  *
  * Визуальный язык — по референсу `.design/main.html` (экран "Доска"). Из
- * референса сознательно НЕ взяты: остальные 5 иконок левого тулбара
- * (фигура/стрелка/текст/картинка/эмодзи — 12.7+), порядок слоёв показан в
+ * референса сознательно НЕ взяты: остальные 3 иконки левого тулбара
+ * (стрелка/текст/картинка/эмодзи — 12.8+), порядок слоёв показан в
  * плавающем тулбаре выделения, а не в ещё не реализованном контекстном меню
  * (12.9), настройка размера шрифта вынесена в отдельную будущую задачу
- * (решение пользователя 06.08.2026), «Дублировать» не входит в объём 12.6.
+ * (решение пользователя 06.08.2026), «Дублировать» не входит в объём 12.6/12.7.
  */
 import {
   BOARD_MAX_ITEMS,
   type Board,
-  type BoardColorToken,
+  type BoardColorHex,
   type BoardEdge,
   type BoardItem,
+  type BoardItemContent,
+  type BoardItemPatchOp,
   type BoardOp,
 } from '@poker/shared';
 import type { DropdownMenuItem } from '@nuxt/ui';
@@ -47,6 +57,9 @@ import {
   maxZIndex,
   minZIndex,
   nextZIndexAbove,
+  SHAPE_DEFAULT_COLOR,
+  SHAPE_DEFAULT_HEIGHT,
+  SHAPE_DEFAULT_WIDTH,
   STICKY_DEFAULT_COLOR,
   STICKY_DEFAULT_HEIGHT,
   STICKY_DEFAULT_WIDTH,
@@ -55,7 +68,7 @@ import { BOARD_CAN_EDIT_KEY, BOARD_PENDING_EDIT_ID_KEY } from '../../lib/board/b
 import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
 import { throttle } from '../../lib/throttle';
 import { useBoardSessionStore } from '../../stores/board-session';
-import BoardSelectionToolbar from './BoardSelectionToolbar.vue';
+import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
 import BoardShapeNode from './BoardShapeNode.vue';
 import BoardStickyNode from './BoardStickyNode.vue';
 import BoardToolbar, { type BoardTool } from './BoardToolbar.vue';
@@ -193,12 +206,18 @@ function flowPositionFromEvent(event: MouseEvent): { x: number; y: number } {
   return project({ x: event.clientX - rect.left, y: event.clientY - rect.top });
 }
 
-function createSticky(center: { x: number; y: number }): void {
-  if (!props.canEdit) return;
+/** Общая проверка перед созданием любого элемента — лимит на доску (12.1) один на все типы */
+function canCreateItem(): boolean {
+  if (!props.canEdit) return false;
   if (props.items.length >= BOARD_MAX_ITEMS) {
     toast.add({ title: t('board.itemLimitReached'), color: 'error' });
-    return;
+    return false;
   }
+  return true;
+}
+
+function createSticky(center: { x: number; y: number }): void {
+  if (!canCreateItem()) return;
   const id = crypto.randomUUID();
   pendingEditId.value = id;
   void boardSession.applyOps([
@@ -221,10 +240,39 @@ function createSticky(center: { x: number; y: number }): void {
   ]);
 }
 
-/** Инструмент «Стикер» — следующий одиночный клик по пустому холсту создаёт стикер и там же */
+function createShape(center: { x: number; y: number }): void {
+  if (!canCreateItem()) return;
+  const id = crypto.randomUUID();
+  pendingEditId.value = id;
+  void boardSession.applyOps([
+    {
+      type: 'item.create',
+      clientOpId: crypto.randomUUID(),
+      item: {
+        id,
+        parentId: null,
+        x: center.x - SHAPE_DEFAULT_WIDTH / 2,
+        y: center.y - SHAPE_DEFAULT_HEIGHT / 2,
+        width: SHAPE_DEFAULT_WIDTH,
+        height: SHAPE_DEFAULT_HEIGHT,
+        rotation: 0,
+        zIndex: nextZIndexAbove(props.items),
+        content: { type: 'shape', shape: 'rectangle', text: '' },
+        style: { color: SHAPE_DEFAULT_COLOR },
+      },
+    },
+  ]);
+}
+
+/** Инструмент «Стикер»/«Фигура» — следующий одиночный клик по пустому холсту создаёт элемент и там же */
 function onPaneClick(event: MouseEvent): void {
-  if (activeTool.value !== 'sticky') return;
-  createSticky(flowPositionFromEvent(event));
+  if (activeTool.value === 'sticky') {
+    createSticky(flowPositionFromEvent(event));
+  } else if (activeTool.value === 'shape') {
+    createShape(flowPositionFromEvent(event));
+  } else {
+    return;
+  }
   activeTool.value = 'select';
 }
 
@@ -298,7 +346,59 @@ function patchSelected(patchByNode: (node: GraphNode<BoardItem>, index: number) 
   if (ops.length) void boardSession.applyOps(ops);
 }
 
-function setSelectedColor(color: BoardColorToken): void {
+/** Форма первого выделенного элемента — для иконки триггера в тулбаре выделения (12.7) */
+const selectedForm = computed<ItemFormKind>(() => {
+  const content = selectedNodes.value[0]?.data.content;
+  return content?.type === 'shape' ? content.shape : 'sticky';
+});
+
+/** Цвет первого выделенного элемента — для кружка-триггера в тулбаре выделения (12.7) */
+const selectedColor = computed<BoardColorHex>(
+  () => selectedNodes.value[0]?.data.style.color ?? STICKY_DEFAULT_COLOR,
+);
+
+/**
+ * Единый переключатель «тип элемента» (12.7) — конвертирует ЛЮБОЕ выделение
+ * (стикер, фигура, смешанное) в выбранный тип/форму, сохраняя текст.
+ * Рендер-компонент переключится сам — маппинг в `nodeTypes` идёт по
+ * `content.type`, отдельно менять его не нужно.
+ *
+ * Геометрия фигуры при конвертации В стикер не сохраняется как есть: стикер
+ * всегда квадрат (см. `keep-aspect-ratio` в `BoardStickyNode.vue`), поэтому
+ * растянутая фигура (например, широкий прямоугольник) сжимается до квадрата
+ * по МЕНЬШЕЙ стороне, с центром на прежнем месте — иначе конвертация назад
+ * в стикер "запоминала" бы вытянутые пропорции, которых у стикера в принципе
+ * не бывает (баг, найденный пользователем при ручной проверке). В обратную
+ * сторону (стикер → фигура) геометрия не трогается — фигуры не обязаны быть
+ * квадратом.
+ */
+function setSelectedForm(kind: ItemFormKind): void {
+  patchSelected((node) => {
+    const text = node.data.content.text;
+    const content: BoardItemContent =
+      kind === 'sticky' ? { type: 'sticky', text } : { type: 'shape', shape: kind, text };
+    const patch: BoardItemPatchOp['patch'] = { content };
+    if (kind === 'sticky') {
+      const { x, y } = node.computedPosition;
+      const { width, height } = node.dimensions;
+      const side = Math.min(width, height);
+      Object.assign(patch, {
+        x: x + (width - side) / 2,
+        y: y + (height - side) / 2,
+        width: side,
+        height: side,
+      });
+    }
+    return {
+      type: 'item.patch',
+      clientOpId: crypto.randomUUID(),
+      id: node.id,
+      patch,
+    };
+  });
+}
+
+function setSelectedColor(color: BoardColorHex): void {
   patchSelected((node) => ({
     type: 'item.patch',
     clientOpId: crypto.randomUUID(),
@@ -340,7 +440,7 @@ function deleteSelected(): void {
   <div
     ref="root"
     class="board-canvas-root h-full w-full bg-[var(--ui-bg)]"
-    :class="{ 'board-canvas-sticky-armed': activeTool === 'sticky' }"
+    :class="{ 'board-canvas-tool-armed': activeTool !== 'select' }"
     @dblclick.capture="onPaneDoubleClick"
   >
     <VueFlow
@@ -398,7 +498,10 @@ function deleteSelected(): void {
         v-if="selectionToolbarPosition"
         :left="selectionToolbarPosition.left"
         :top="selectionToolbarPosition.top"
+        :current-color="selectedColor"
+        :current-form="selectedForm"
         @color="setSelectedColor"
+        @form="setSelectedForm"
         @bring-to-front="bringSelectedToFront"
         @send-to-back="sendSelectedToBack"
         @delete="deleteSelected"
@@ -481,7 +584,7 @@ function deleteSelected(): void {
   height: 100vh;
 }
 
-.board-canvas-sticky-armed :deep(.vue-flow__pane) {
+.board-canvas-tool-armed :deep(.vue-flow__pane) {
   cursor: crosshair;
 }
 

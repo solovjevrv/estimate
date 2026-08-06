@@ -1,48 +1,44 @@
 /**
- * Отображение белого списка цветовых токенов (`BOARD_COLOR_TOKENS`, сервер
- * их же валидирует в `board-ops.ts`) на реальные цвета для рендера — только
- * фронтенд, в общий пакет не выносим, т.к. сервер сам в CSS/HEX не льёт.
+ * Цвет стикера/фигуры/связи (12.7) — произвольный hex, а не токен из белого
+ * списка (сервер валидирует формат, не членство в списке — см. `board-ops.ts`).
+ * Из-за этого больше нельзя предвычислить Tailwind-классы на каждый цвет
+ * (`bg-[#хардкод]` работает только для литералов, известных на этапе сборки —
+ * JIT сканирует исходники, а не рантайм-значения): цвет элемента применяется
+ * инлайн-стилем, а «затемнённый вариант того же тона» для текста — считается
+ * на лету, а не берётся из таблицы.
  */
-import type { BoardColorToken } from '@poker/shared';
+import type { BoardColorHex } from '@poker/shared';
 
-export const BOARD_COLOR_HEX: Record<BoardColorToken, string> = {
-  yellow: '#f5d90a',
-  green: '#8ce99a',
-  blue: '#74c0fc',
-  pink: '#faa2c1',
-  purple: '#d0bfff',
-  orange: '#ffc078',
-  gray: '#ced4da',
-};
+function clamp01(value: number): number {
+  return Math.min(1, Math.max(0, value));
+}
 
-export const BOARD_COLOR_CLASSES: Record<BoardColorToken, string> = {
-  yellow: 'bg-[#fff3bf] border-[#f5d90a]',
-  green: 'bg-[#ebfbee] border-[#8ce99a]',
-  blue: 'bg-[#e7f5ff] border-[#74c0fc]',
-  pink: 'bg-[#fff0f6] border-[#faa2c1]',
-  purple: 'bg-[#f3f0ff] border-[#d0bfff]',
-  orange: 'bg-[#fff4e6] border-[#ffc078]',
-  gray: 'bg-[#f1f3f5] border-[#ced4da]',
-};
+/** #RRGGBB -> [0..1, 0..1, 0..1] */
+function hexToRgb(hex: BoardColorHex): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [((n >> 16) & 0xff) / 255, ((n >> 8) & 0xff) / 255, (n & 0xff) / 255];
+}
 
-/** Только фон, без рамки — стикеры в референсе держатся на тени, а не на обводке (12.6) */
-export const BOARD_COLOR_BG_CLASSES: Record<BoardColorToken, string> = {
-  yellow: 'bg-[#fff3bf]',
-  green: 'bg-[#ebfbee]',
-  blue: 'bg-[#e7f5ff]',
-  pink: 'bg-[#fff0f6]',
-  purple: 'bg-[#f3f0ff]',
-  orange: 'bg-[#fff4e6]',
-  gray: 'bg-[#f1f3f5]',
-};
+function rgbToHex(r: number, g: number, b: number): string {
+  const toByte = (c: number) => Math.round(clamp01(c) * 255);
+  return (
+    '#' + [toByte(r), toByte(g), toByte(b)].map((b8) => b8.toString(16).padStart(2, '0')).join('')
+  );
+}
 
-/** Текст стикера — не чёрный, а затемнённый вариант того же тона (12.6, по референсу) */
-export const BOARD_COLOR_TEXT_CLASSES: Record<BoardColorToken, string> = {
-  yellow: 'text-[#856404]',
-  green: 'text-[#2b8a3e]',
-  blue: 'text-[#1864ab]',
-  pink: 'text-[#a61e4d]',
-  purple: 'text-[#5f3dc4]',
-  orange: 'text-[#d9480f]',
-  gray: 'text-[#495057]',
-};
+/** Затемнённый вариант того же цвета для текста поверх заливки — по референсу `.design/main.html` */
+export function darkenHex(hex: BoardColorHex, amount = 0.45): string {
+  const [r, g, b] = hexToRgb(hex);
+  return rgbToHex(r * (1 - amount), g * (1 - amount), b * (1 - amount));
+}
+
+/**
+ * Читаемый цвет текста поверх заливки: тёмный тон того же цвета, либо
+ * почти белый — у самых тёмных свотчей палитры (например, #1A1A1A)
+ * затемнять уже некуда, там текст должен быть светлым, а не тёмным.
+ */
+export function readableTextColor(bg: BoardColorHex): string {
+  const [r, g, b] = hexToRgb(bg);
+  const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return luminance < 0.35 ? '#f5f5f5' : darkenHex(bg);
+}

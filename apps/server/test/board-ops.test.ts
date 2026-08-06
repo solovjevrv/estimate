@@ -30,7 +30,7 @@ function stickyCreateOp(id: string): BoardOp {
       rotation: 0,
       zIndex: 0,
       content: { type: 'sticky', text: 'Привет' },
-      style: { color: 'yellow' },
+      style: { color: '#FCEB96' },
     },
   };
 }
@@ -126,7 +126,7 @@ describe('applyBoardOp — item.create', () => {
         rotation: 0,
         zIndex: 0,
         content: { type: 'sticky', text: '' },
-        style: { color: 'yellow' },
+        style: { color: '#FCEB96' },
         createdBy: ACTOR_ID,
         updatedAt: new Date().toISOString(),
       } satisfies BoardItem);
@@ -211,7 +211,7 @@ describe('applyBoardOp — item.delete', () => {
           sourceHandle: null,
           targetHandle: null,
           label: null,
-          style: { color: 'blue', line: 'straight' },
+          style: { color: '#A8CAFF', line: 'straight' },
         },
       },
       BOARD_ID,
@@ -264,7 +264,7 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
         sourceHandle: null,
         targetHandle: null,
         label: null,
-        style: { color: 'blue', line: 'straight' },
+        style: { color: '#A8CAFF', line: 'straight' },
       },
     };
   }
@@ -297,7 +297,7 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
   it('отклоняет недопустимый тип линии', () => {
     const { state, a, b } = withTwoItems();
     const op = edgeCreateOp(randomUUID(), a, b);
-    (op as { edge: { style: unknown } }).edge.style = { color: 'blue', line: 'zigzag' };
+    (op as { edge: { style: unknown } }).edge.style = { color: '#A8CAFF', line: 'zigzag' };
 
     expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID)).toThrow(ValidationError);
   });

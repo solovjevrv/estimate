@@ -19,7 +19,7 @@ const stickyItem: BoardItem = {
   rotation: 0,
   zIndex: 3,
   content: { type: 'sticky', text: 'Привет' },
-  style: { color: 'yellow' },
+  style: { color: '#FCEB96' },
   createdBy: 'u1',
   updatedAt: '2026-08-06T00:00:00.000Z',
 };
@@ -28,7 +28,7 @@ const shapeItem: BoardItem = {
   ...stickyItem,
   id: 'i2',
   content: { type: 'shape', shape: 'diamond', text: 'Решение' },
-  style: { color: 'blue' },
+  style: { color: '#A8CAFF' },
 };
 
 const straightEdge: BoardEdge = {
@@ -39,14 +39,14 @@ const straightEdge: BoardEdge = {
   sourceHandle: null,
   targetHandle: null,
   label: null,
-  style: { color: 'gray', line: 'straight' },
+  style: { color: '#7DA9F6', line: 'straight' },
 };
 
 const curvedEdge: BoardEdge = {
   ...straightEdge,
   id: 'e2',
   label: 'зависит от',
-  style: { color: 'pink', line: 'curved' },
+  style: { color: '#FFB8E8', line: 'curved' },
 };
 
 describe('boardItemToNode', () => {
@@ -70,6 +70,16 @@ describe('boardItemToNode', () => {
     const node = boardItemToNode(stickyItem);
     expect(node.draggable).toBe(true);
     expect(node.selectable).toBe(true);
+  });
+
+  it('задаёт style.width/height явно, не только поля width/height (12.7)', () => {
+    // Регрессия: @vue-flow/node-resizer после интерактивного резайза сам пишет
+    // размер в node.style (updateStyle: true) — без явного style в адаптере это
+    // значение навсегда перебивало бы любой последующий программный патч
+    // размера (например, принудительный квадрат при конвертации в стикер),
+    // потому что Vue Flow берёт style.width, только если он ещё не задан.
+    const node = boardItemToNode(stickyItem);
+    expect(node.style).toEqual({ width: '160px', height: '120px' });
   });
 
   it('toFlowNodes переносит список поэлементно', () => {
