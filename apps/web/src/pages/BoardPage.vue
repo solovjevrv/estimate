@@ -44,6 +44,20 @@ const canManage = computed(() => {
   return !!teams.current && hasTeamRole(teams.current.role, 'admin');
 });
 
+/**
+ * Право редактировать содержимое (уровень доступа `edit` из 12.4) — заметно
+ * шире `canManage`: любой участник/админ команды (не гость), не только автор
+ * доски или администратор. Личная доска — всегда сам владелец. Архивная
+ * доска доступна только на чтение — сервер и так отклонит `board:apply`,
+ * но UI не должен предлагать действие, которое заведомо отклонят.
+ */
+const canEdit = computed(() => {
+  const b = board.value;
+  if (!b || b.status === 'archived') return false;
+  if (!b.teamId) return true;
+  return !!teams.current && hasTeamRole(teams.current.role, 'member');
+});
+
 watch(() => props.id, load, { immediate: true });
 
 async function load(): Promise<void> {
@@ -179,6 +193,7 @@ async function confirmDelete(): Promise<void> {
         :board="board"
         :team-name="board.teamId ? (teams.current?.team.name ?? null) : null"
         :can-manage="canManage"
+        :can-edit="canEdit"
         :items="boardSession.items"
         :edges="boardSession.edges"
         @rename="renameOpen = true"

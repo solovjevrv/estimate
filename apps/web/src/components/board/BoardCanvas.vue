@@ -1,40 +1,77 @@
 <script setup lang="ts">
 /**
- * Холст доски поверх Vue Flow (12.5) — только рендер снимка. Раскладка
- * управления по Miro: колесо — пан, Ctrl/Cmd+колесо и пинч — зум, средняя
- * кнопка мыши или зажатый пробел+ЛКМ — пан, drag по пустому холсту ЛКМ —
- * рамка мультивыбора. Создание/перетаскивание элементов — 12.6+.
+ * Холст доски поверх Vue Flow. Раскладка управления по Miro: колесо — пан,
+ * Ctrl/Cmd+колесо и пинч — зум, средняя кнопка мыши или зажатый пробел+ЛКМ —
+ * пан, drag по пустому холсту ЛКМ — рамка мультивыбора (12.5).
  *
- * Визуальный язык (плашка названия, кластер управления) — по референсу
- * `.design/main.html` (экран "Доска", добавлен 06.08.2026). Из референса
- * сознательно НЕ взяты: левый тулбар инструментов (12.9 — сейчас нечем
- * создавать элементы), пункты меню "Дублировать"/"Экспорт в PNG" (нет
- * реализации — 15.5 и не заведённая задача), пустое состояние с иллюстрацией
- * и подсказкой "дважды кликните" (подсказка про действие, которого пока
- * не существует, — появится вместе с созданием стикеров в 12.6).
+ * Создание/перетаскивание/резайз/редактирование/цвет/слои/удаление стикеров —
+ * 12.6, с оптимистичным применением через `stores/board-session.ts`. Создать
+ * можно двумя жестами (оба из макета): двойной клик по холсту в любой момент,
+ * или выбрать инструмент «Стикер» в левом тулбаре — следующий одиночный клик
+ * по холсту создаёт стикер там и возвращает инструмент обратно на «Выделение».
+ *
+ * Визуальный язык — по референсу `.design/main.html` (экран "Доска"). Из
+ * референса сознательно НЕ взяты: остальные 5 иконок левого тулбара
+ * (фигура/стрелка/текст/картинка/эмодзи — 12.7+), порядок слоёв показан в
+ * плавающем тулбаре выделения, а не в ещё не реализованном контекстном меню
+ * (12.9), настройка размера шрифта вынесена в отдельную будущую задачу
+ * (решение пользователя 06.08.2026), «Дублировать» не входит в объём 12.6.
  */
-import type { Board, BoardEdge, BoardItem } from '@poker/shared';
+import {
+  BOARD_MAX_ITEMS,
+  type Board,
+  type BoardColorToken,
+  type BoardEdge,
+  type BoardItem,
+  type BoardOp,
+} from '@poker/shared';
 import type { DropdownMenuItem } from '@nuxt/ui';
+import { useToast } from '@nuxt/ui/composables';
 import { Background } from '@vue-flow/background';
 import { ControlButton, Controls } from '@vue-flow/controls';
 import { MiniMap } from '@vue-flow/minimap';
-import { Panel, useVueFlow, VueFlow } from '@vue-flow/core';
-import { computed, markRaw, onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue';
+import { Panel, useVueFlow, VueFlow, type GraphNode, type NodeDragEvent } from '@vue-flow/core';
+import {
+  computed,
+  markRaw,
+  onBeforeUnmount,
+  onMounted,
+  provide,
+  ref,
+  useTemplateRef,
+  watch,
+} from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import {
+  maxZIndex,
+  minZIndex,
+  nextZIndexAbove,
+  STICKY_DEFAULT_COLOR,
+  STICKY_DEFAULT_HEIGHT,
+  STICKY_DEFAULT_WIDTH,
+} from '../../lib/board/board-item-defaults';
+import { BOARD_CAN_EDIT_KEY, BOARD_PENDING_EDIT_ID_KEY } from '../../lib/board/board-canvas-keys';
 import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
+import { throttle } from '../../lib/throttle';
+import { useBoardSessionStore } from '../../stores/board-session';
+import BoardSelectionToolbar from './BoardSelectionToolbar.vue';
 import BoardShapeNode from './BoardShapeNode.vue';
 import BoardStickyNode from './BoardStickyNode.vue';
+import BoardToolbar, { type BoardTool } from './BoardToolbar.vue';
 
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/controls/dist/style.css';
 import '@vue-flow/minimap/dist/style.css';
+import '@vue-flow/node-resizer/dist/style.css';
 
 const props = defineProps<{
   board: Board;
   /** Название команды — только для командной доски, для подписи "Командная доска · Team" */
   teamName?: string | null;
   canManage: boolean;
+  /** Может редактировать содержимое (уровень доступа `edit` из 12.4) — участник/админ команды, не гость */
+  canEdit: boolean;
   items: BoardItem[];
   edges: BoardEdge[];
 }>();
@@ -47,9 +84,11 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+const toast = useToast();
+const boardSession = useBoardSessionStore();
 
-const nodes = computed(() => toFlowNodes(props.items));
-const edges = computed(() => toFlowEdges(props.edges));
+const flowNodes = computed(() => toFlowNodes(props.items));
+const flowEdges = computed(() => toFlowEdges(props.edges));
 
 // markRaw — иначе Vue оборачивает объект с компонентами в reactive() и предупреждает
 // об этом в консоли (компонент-конструктор реактивным быть не должен)
@@ -101,8 +140,23 @@ const subtitle = computed(() =>
     : t('board.personalBoardSubtitle'),
 );
 
-const { viewport } = useVueFlow();
+const { viewport, project, getSelectedNodes, setNodes, setEdges } = useVueFlow();
 const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
+
+/**
+ * Скармливаем снимок Vue Flow императивно через `setNodes`/`setEdges`, а не
+ * биндингом `:nodes`/`:edges` — Vue 3.4+ трактует их как двусторонние модели
+ * (`useModel`), и после первой же внутренней записи без слушателя (например,
+ * перетаскивания узла) их локальное значение перестаёт следовать за нашим
+ * пропом: обновления от других участников по WS переставали доходить до
+ * холста после того, как сам пользователь хоть раз что-то перетащил —
+ * подтверждено вручную (Playwright, два браузерных контекста). `setNodes`
+ * мержит по id через внутренний `parseNode` и не трогает `selected`/`dragging`
+ * полей, которых нет в наших плоских объектах, так что выделение/резайз/драг
+ * этим не задевает.
+ */
+watch(flowNodes, (next) => setNodes(next), { immediate: true });
+watch(flowEdges, (next) => setEdges(next), { immediate: true });
 
 const rootEl = useTemplateRef<HTMLElement>('root');
 const isFullscreen = ref(false);
@@ -121,15 +175,177 @@ function toggleFullscreen(): void {
 
 onMounted(() => document.addEventListener('fullscreenchange', onFullscreenChange));
 onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullscreenChange));
+
+// --- Инструменты и создание стикеров (12.6) ---
+
+const activeTool = ref<BoardTool>('select');
+/** Id только что созданного стикера — новый узел сразу входит в редактирование текста */
+const pendingEditId = ref<string | null>(null);
+provide(
+  BOARD_CAN_EDIT_KEY,
+  computed(() => props.canEdit),
+);
+provide(BOARD_PENDING_EDIT_ID_KEY, pendingEditId);
+
+function flowPositionFromEvent(event: MouseEvent): { x: number; y: number } {
+  const rect = rootEl.value?.getBoundingClientRect();
+  if (!rect) return { x: 0, y: 0 };
+  return project({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+}
+
+function createSticky(center: { x: number; y: number }): void {
+  if (!props.canEdit) return;
+  if (props.items.length >= BOARD_MAX_ITEMS) {
+    toast.add({ title: t('board.itemLimitReached'), color: 'error' });
+    return;
+  }
+  const id = crypto.randomUUID();
+  pendingEditId.value = id;
+  void boardSession.applyOps([
+    {
+      type: 'item.create',
+      clientOpId: crypto.randomUUID(),
+      item: {
+        id,
+        parentId: null,
+        x: center.x - STICKY_DEFAULT_WIDTH / 2,
+        y: center.y - STICKY_DEFAULT_HEIGHT / 2,
+        width: STICKY_DEFAULT_WIDTH,
+        height: STICKY_DEFAULT_HEIGHT,
+        rotation: 0,
+        zIndex: nextZIndexAbove(props.items),
+        content: { type: 'sticky', text: '' },
+        style: { color: STICKY_DEFAULT_COLOR },
+      },
+    },
+  ]);
+}
+
+/** Инструмент «Стикер» — следующий одиночный клик по пустому холсту создаёт стикер и там же */
+function onPaneClick(event: MouseEvent): void {
+  if (activeTool.value !== 'sticky') return;
+  createSticky(flowPositionFromEvent(event));
+  activeTool.value = 'select';
+}
+
+/**
+ * Двойной клик — всегда доступное быстрое создание, независимо от активного
+ * инструмента. Vue Flow не отдаёт отдельное событие двойного клика по пане
+ * (только по узлам), поэтому слушаем нативный dblclick сами — и обязательно
+ * в фазе перехвата (`.capture`): сам Vue Flow гасит всплытие клика по пане
+ * своим внутренним обработчиком (жестовая логика pan/selection), так что
+ * обычный `@dblclick` на предке никогда бы не сработал. Проверка класса цели
+ * отсекает клики по узлу/панели/тулбару — у них есть собственный DOM поверх
+ * фона пане.
+ */
+function onPaneDoubleClick(event: MouseEvent): void {
+  if (!(event.target as HTMLElement).classList.contains('vue-flow__pane')) return;
+  createSticky(flowPositionFromEvent(event));
+}
+
+// --- Перетаскивание: локально холст двигает сам Vue Flow, по сети —
+// throttled-патчи на каждый кадр драга плюс гарантированный финальный на
+// dragstop (12.6). Троттлер свой на элемент — иначе при мультивыборе только
+// последний по порядку элемент кадра реально долетал бы до сети.
+const dragThrottlers = new Map<string, (node: GraphNode<BoardItem>) => void>();
+
+function sendPositionPatch(node: GraphNode<BoardItem>): void {
+  void boardSession.applyOps([
+    {
+      type: 'item.patch',
+      clientOpId: crypto.randomUUID(),
+      id: node.id,
+      patch: { x: node.computedPosition.x, y: node.computedPosition.y },
+    },
+  ]);
+}
+
+function onNodeDrag({ nodes: dragged }: NodeDragEvent): void {
+  for (const node of dragged as GraphNode<BoardItem>[]) {
+    let send = dragThrottlers.get(node.id);
+    if (!send) {
+      send = throttle(sendPositionPatch, 80);
+      dragThrottlers.set(node.id, send);
+    }
+    send(node);
+  }
+}
+
+function onNodeDragStop({ nodes: dragged }: NodeDragEvent): void {
+  for (const node of dragged as GraphNode<BoardItem>[]) sendPositionPatch(node);
+}
+
+// --- Плавающий тулбар над выделением (12.6) ---
+
+const selectedNodes = computed(() => getSelectedNodes.value as GraphNode<BoardItem>[]);
+
+const selectionToolbarPosition = computed(() => {
+  const selected = selectedNodes.value;
+  if (!props.canEdit || selected.length === 0) return null;
+  const left = Math.min(...selected.map((node) => node.computedPosition.x));
+  const right = Math.max(
+    ...selected.map((node) => node.computedPosition.x + node.dimensions.width),
+  );
+  const top = Math.min(...selected.map((node) => node.computedPosition.y));
+  return {
+    left: viewport.value.x + ((left + right) / 2) * viewport.value.zoom,
+    top: viewport.value.y + top * viewport.value.zoom,
+  };
+});
+
+function patchSelected(patchByNode: (node: GraphNode<BoardItem>, index: number) => BoardOp): void {
+  const ops = selectedNodes.value.map(patchByNode);
+  if (ops.length) void boardSession.applyOps(ops);
+}
+
+function setSelectedColor(color: BoardColorToken): void {
+  patchSelected((node) => ({
+    type: 'item.patch',
+    clientOpId: crypto.randomUUID(),
+    id: node.id,
+    patch: { style: { color } },
+  }));
+}
+
+function bringSelectedToFront(): void {
+  const base = maxZIndex(props.items) + 1;
+  patchSelected((node, index) => ({
+    type: 'item.patch',
+    clientOpId: crypto.randomUUID(),
+    id: node.id,
+    patch: { zIndex: base + index },
+  }));
+}
+
+function sendSelectedToBack(): void {
+  const base = minZIndex(props.items) - selectedNodes.value.length;
+  patchSelected((node, index) => ({
+    type: 'item.patch',
+    clientOpId: crypto.randomUUID(),
+    id: node.id,
+    patch: { zIndex: base + index },
+  }));
+}
+
+function deleteSelected(): void {
+  patchSelected((node) => ({
+    type: 'item.delete',
+    clientOpId: crypto.randomUUID(),
+    id: node.id,
+  }));
+}
 </script>
 
 <template>
-  <div ref="root" class="board-canvas-root h-full w-full bg-[var(--ui-bg)]">
+  <div
+    ref="root"
+    class="board-canvas-root h-full w-full bg-[var(--ui-bg)]"
+    :class="{ 'board-canvas-sticky-armed': activeTool === 'sticky' }"
+    @dblclick.capture="onPaneDoubleClick"
+  >
     <VueFlow
-      :nodes="nodes"
-      :edges="edges"
       :node-types="nodeTypes"
-      :nodes-draggable="false"
+      :nodes-draggable="canEdit"
       :nodes-connectable="false"
       :pan-on-drag="[1]"
       selection-on-drag
@@ -142,6 +358,9 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullscr
       :max-zoom="2"
       :only-render-visible-elements="true"
       fit-view-on-init
+      @pane-click="onPaneClick"
+      @node-drag="onNodeDrag"
+      @node-drag-stop="onNodeDragStop"
     >
       <Background pattern-color="var(--brand-border)" :gap="22" variant="dots" />
       <MiniMap
@@ -154,6 +373,26 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullscr
         mask-stroke-color="var(--ui-primary)"
         :mask-stroke-width="2"
       />
+
+      <BoardToolbar v-if="canEdit" v-model="activeTool" />
+
+      <BoardSelectionToolbar
+        v-if="selectionToolbarPosition"
+        :left="selectionToolbarPosition.left"
+        :top="selectionToolbarPosition.top"
+        @color="setSelectedColor"
+        @bring-to-front="bringSelectedToFront"
+        @send-to-back="sendSelectedToBack"
+        @delete="deleteSelected"
+      />
+
+      <div v-if="items.length === 0" class="board-empty-state">
+        <UIcon name="i-lucide-sticky-note" class="text-muted size-12" />
+        <div class="font-heading text-lg font-extrabold">{{ t('board.emptyTitle') }}</div>
+        <div v-if="canEdit" class="text-muted max-w-[320px] text-center text-sm leading-relaxed">
+          {{ t('board.emptyHint') }}
+        </div>
+      </div>
 
       <!-- Плашка с названием доски поверх холста, как в Miro — не в потоке страницы (12.5) -->
       <Panel position="top-left">
@@ -191,7 +430,7 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullscr
       только переоформлены под токены приложения и в ряд, как в референсе (12.5). Иконки
       встроенных кнопок (zoom/fit-view) — тоже из пака lucide через именованные слоты
       Controls, а не сырые SVG библиотеки, для единообразия со всем остальным проектом.
-      show-interactive скрыт: переключает драг/коннект узлов, которых пока нет (12.6+) -->
+      show-interactive скрыт: переключает драг/коннект узлов вне нашего UI управления ими -->
       <Controls class="board-controls" :show-interactive="false">
         <template #icon-zoom-in>
           <UIcon name="i-lucide-plus" />
@@ -222,6 +461,22 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullscr
 .board-canvas-root:fullscreen {
   width: 100vw;
   height: 100vh;
+}
+
+.board-canvas-sticky-armed :deep(.vue-flow__pane) {
+  cursor: crosshair;
+}
+
+.board-empty-state {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  pointer-events: none;
 }
 
 /*

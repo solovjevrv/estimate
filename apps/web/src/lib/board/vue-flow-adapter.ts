@@ -1,8 +1,7 @@
 /**
  * Единственное место, где домен доски (`BoardItem`/`BoardEdge`) встречается
  * с типами Vue Flow (`Node`/`Edge`) — если холст когда-нибудь сменится
- * (см. риски в PROGRESS.md), меняется только этот файл. Пока только рендер
- * снимка (12.5): создание/перетаскивание элементов — 12.6+.
+ * (см. риски в PROGRESS.md), меняется только этот файл.
  */
 import type { BoardEdge, BoardItem } from '@poker/shared';
 import type { Edge, Node } from '@vue-flow/core';
@@ -17,9 +16,8 @@ export function boardItemToNode(item: BoardItem): Node<BoardItem> {
     width: item.width,
     height: item.height,
     zIndex: item.zIndex,
-    // Перетаскивание/резайз/выделение появятся в 12.6 вместе с оптимистичным применением
-    draggable: false,
-    selectable: false,
+    draggable: true,
+    selectable: true,
     data: item,
   };
 }
