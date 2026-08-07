@@ -26,6 +26,13 @@ import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 
 import { applyLocalBoardOp, type BoardLocalState } from '../lib/board/apply-local-op';
+import {
+  BOARD_HISTORY_LIMIT,
+  deriveInverseOps,
+  filterExistingTargets,
+  regenerateClientOpIds,
+  type BoardHistoryEntry,
+} from '../lib/board/board-op-history';
 import { createSocket, emitWithAck, type PokerSocket } from '../lib/socket';
 
 /** Ключ цели операции — общий для `BoardOp` (клиент → сервер) и `BoardCommittedOp` (рассылка) */
@@ -133,6 +140,28 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   /** clientOpId'ы, отправленные этим клиентом и ещё не подтверждённые своим же эхо */
   const ownClientOpIds = new Set<string>();
 
+  /**
+   * Стек undo/redo (12.10) — инверсные операции, не снимки: снимок в
+   * реалтайме затёр бы параллельную правку другого участника. Живёт только
+   * на время сессии текущей доски — сбрасывается в `join()`/`leave()`, как и
+   * `lastOwnOpByTarget`/`ownClientOpIds` выше.
+   */
+  const undoStack = ref<BoardHistoryEntry[]>([]);
+  const redoStack = ref<BoardHistoryEntry[]>([]);
+  const canUndo = computed(() => undoStack.value.length > 0);
+  const canRedo = computed(() => redoStack.value.length > 0);
+
+  function pushHistory(entry: BoardHistoryEntry): void {
+    undoStack.value.push(entry);
+    if (undoStack.value.length > BOARD_HISTORY_LIMIT) undoStack.value.shift();
+    redoStack.value = [];
+  }
+
+  function clearHistory(): void {
+    undoStack.value = [];
+    redoStack.value = [];
+  }
+
   let socket: PokerSocket | null = null;
   let boardId: string | null = null;
   /** Прошёл ли первый успешный вход — по нему отличаем реконнект от начального подключения */
@@ -216,6 +245,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       established = false;
       lastOwnOpByTarget.clear();
       ownClientOpIds.clear();
+      clearHistory();
     }
     boardId = id;
     joined.value = false;
@@ -268,6 +298,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     awarenessByUser.clear();
     lastOwnOpByTarget.clear();
     ownClientOpIds.clear();
+    clearHistory();
   }
 
   function requireSocket(): PokerSocket {
@@ -279,16 +310,30 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
    * Применяется сразу локально (оптимистично, до ответа сервера) и на других
    * участниках — рассылкой `board:ops`, которую отбрасывает `applyBatch` выше,
    * если это устаревшее эхо. Ошибка отправки (сеть/валидация) оптимистичное
-   * применение не откатывает — на масштабе 12.6 это осознанный компромисс,
-   * полноценный откат появится вместе с историей операций в 12.10.
+   * применение не откатывает — на масштабе 12.6 это осознанный компромисс.
+   *
+   * `record` (12.10, по умолчанию `true`) — писать ли эту операцию в историю
+   * undo/redo; `false` для промежуточных троттлед-тиков одного жеста (драг),
+   * чтобы одна отмена откатывала жест целиком, а не последние 80мс. `inverse`
+   * — явная инверсия вместо автоматической: тоже для драга, где "старое"
+   * значение — позиция на СТАРТЕ жеста, а не то, что было в `local` прямо
+   * перед этим конкретным тиком (иначе отмена откатила бы только его).
    */
-  async function applyOps(ops: BoardOp[]): Promise<number> {
+  async function applyOps(
+    ops: BoardOp[],
+    opts: { record?: boolean; inverse?: BoardOp[] } = {},
+  ): Promise<number> {
     const active = requireSocket();
+    const record = opts.record ?? true;
+    const inverseOps = record ? (opts.inverse ?? deriveInverseOps(ops, local)) : null;
     for (const op of ops) {
       ownClientOpIds.add(op.clientOpId);
       lastOwnOpByTarget.set(opTargetKey(op), op.clientOpId);
       const predicted = predictCommittedOp(op, local);
       if (predicted) applyLocalBoardOp(local, predicted);
+    }
+    if (inverseOps && inverseOps.length) {
+      pushHistory({ forward: ops, backward: inverseOps });
     }
     const result = await emitWithAck<typeof BOARD_WS_EVENTS.APPLY, ApplyBoardOpsResult>(
       active,
@@ -296,6 +341,33 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       { ops },
     );
     return result.revision;
+  }
+
+  /**
+   * Отмена/повтор (12.10) — переносят запись между стеками и заново вызывают
+   * `applyOps` с `record: false` (сама отмена в историю не пишется — иначе
+   * Ctrl+Z создавал бы свою же отменяемую запись). Перед применением цели
+   * операций перепроверяются на актуальном `local`: то, что успел удалить
+   * другой участник, отбрасывается поштучно, не руша остальные операции той
+   * же записи (см. `filterExistingTargets`) — если после фильтра применять
+   * нечего, запись просто исчезает со стека без переноса на противоположный.
+   */
+  async function undo(): Promise<void> {
+    const entry = undoStack.value.pop();
+    if (!entry) return;
+    const backward = filterExistingTargets(entry.backward, local);
+    if (!backward.length) return;
+    redoStack.value.push(entry);
+    await applyOps(regenerateClientOpIds(backward), { record: false });
+  }
+
+  async function redo(): Promise<void> {
+    const entry = redoStack.value.pop();
+    if (!entry) return;
+    const forward = filterExistingTargets(entry.forward, local);
+    if (!forward.length) return;
+    undoStack.value.push(entry);
+    await applyOps(regenerateClientOpIds(forward), { record: false });
   }
 
   /**
@@ -319,5 +391,9 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     leave,
     applyOps,
     sendAwareness,
+    canUndo,
+    canRedo,
+    undo,
+    redo,
   };
 });

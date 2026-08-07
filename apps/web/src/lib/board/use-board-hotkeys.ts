@@ -11,6 +11,9 @@
  * подпись связи) уже обрабатывается локально в каждом компоненте через
  * `@keydown.esc.stop.prevent` — `.stop` не даёт событию всплыть досюда, так что
  * конфликта с `clearSelection` ниже нет.
+ *
+ * Undo/redo (12.10) — Cmd/Ctrl+Z и Cmd/Ctrl+Shift+Z, плюс Ctrl+Y как
+ * привычная для Windows альтернатива повтору.
  */
 import { onBeforeUnmount, onMounted, type Ref } from 'vue';
 
@@ -22,6 +25,8 @@ export interface BoardHotkeyActions {
   clearSelection: () => void;
   resetZoom: () => void;
   fitView: () => void;
+  undo: () => void;
+  redo: () => void;
 }
 
 function isEditableTarget(target: EventTarget | null): boolean {
@@ -48,6 +53,22 @@ export function useBoardHotkeys(actions: BoardHotkeyActions): void {
       if (!actions.canEdit.value) return;
       event.preventDefault();
       actions.duplicateSelection();
+      return;
+    }
+    if (meta && event.key.toLowerCase() === 'z') {
+      if (!actions.canEdit.value) return;
+      event.preventDefault();
+      if (event.shiftKey) {
+        actions.redo();
+      } else {
+        actions.undo();
+      }
+      return;
+    }
+    if (meta && event.key.toLowerCase() === 'y') {
+      if (!actions.canEdit.value) return;
+      event.preventDefault();
+      actions.redo();
       return;
     }
     if (meta && event.key === '0') {

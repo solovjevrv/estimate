@@ -311,6 +311,8 @@ export default {
     personalBoardSubtitle: 'Личная доска',
     fullscreen: 'Развернуть на весь экран',
     exitFullscreen: 'Свернуть из полноэкранного режима',
+    undo: 'Отменить',
+    redo: 'Повторить',
     moreActions: 'Ещё действия',
     createTitle: 'Новая доска',
     createNamePlaceholder: 'Например, Ретро спринта 24',
