@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { BOARD_ITEM_TEXT_MAX_LENGTH, type BoardItem, type BoardShapeContent } from '@poker/shared';
-import { Handle, Position, useVueFlow, type NodeProps } from '@vue-flow/core';
+import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, nextTick, onMounted, ref, useTemplateRef } from 'vue';
 
@@ -12,12 +12,12 @@ import {
   SHAPE_MIN_HEIGHT,
   SHAPE_MIN_WIDTH,
 } from '../../lib/board/board-item-defaults';
+import { useFitFontSize } from '../../lib/board/use-fit-font-size';
 import { useBoardSessionStore } from '../../stores/board-session';
 
 const props = defineProps<NodeProps<BoardItem>>();
 
 const boardSession = useBoardSessionStore();
-const { viewport } = useVueFlow();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 const pendingEditId = inject(BOARD_PENDING_EDIT_ID_KEY, ref(null));
 
@@ -55,23 +55,21 @@ const DIAMOND_CLIP_PATH = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
 
 const editing = ref(false);
 const draftText = ref('');
+const contentBoxEl = useTemplateRef<HTMLDivElement>('contentBox');
 const textareaEl = useTemplateRef<HTMLTextAreaElement>('textarea');
+const textEl = useTemplateRef<HTMLSpanElement>('text');
 
 /**
- * Textarea — нативный контрол, у него нет CSS-свойства для вертикального
- * центрирования СВОЕГО текста (в отличие от родителя-flex, который просто
- * центрирует саму textarea как блок). Вместо готового centering-приёма —
- * автовысота по содержимому (высота textarea = высоте текста), тогда
- * `items-center` родителя центрирует уже не растянутый на весь бокс, а
- * плотно облегающий текст блок — визуально то же самое, что и в режиме
- * просмотра (там `<span>` уже так же самой своей высотой центрируется).
+ * Размер шрифта подбирается под фиксированный бокс карточки (не бокс растёт
+ * под текст) — см. `use-fit-font-size.ts`. Один и тот же расчёт для обоих
+ * режимов (просмотр/редактирование), чтобы шрифт не «прыгал» при входе в
+ * редактирование. `manageHeight` — только для textarea в момент редактирования.
  */
-function autosizeTextarea(): void {
-  const el = textareaEl.value;
-  if (!el) return;
-  el.style.height = 'auto';
-  el.style.height = `${el.scrollHeight}px`;
-}
+const fitText = computed(() => (editing.value ? draftText.value : content.value.text));
+const boxWidth = computed(() => props.data.width);
+const boxHeight = computed(() => props.data.height);
+const measureEl = computed(() => (editing.value ? textareaEl.value : textEl.value));
+const fontSize = useFitFontSize(contentBoxEl, measureEl, fitText, boxWidth, boxHeight, editing);
 
 async function startEditing(): Promise<void> {
   if (editing.value || !canEdit.value) return;
@@ -80,7 +78,6 @@ async function startEditing(): Promise<void> {
   await nextTick();
   textareaEl.value?.focus();
   textareaEl.value?.select();
-  autosizeTextarea();
 }
 
 // Только что созданная этим же клиентом фигура сразу входит в редактирование —
@@ -135,7 +132,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       @resize-end="onResizeEnd"
     />
     <div
-      class="board-node-content relative flex h-full w-full items-center justify-center overflow-hidden p-4 text-sm font-semibold break-words"
+      class="board-node-content relative flex h-full w-full items-center justify-center overflow-hidden p-4 font-semibold"
       :class="isDiamond ? '' : ['border-2', shapeClass]"
       :style="isDiamond ? {} : { backgroundColor: bgColor, borderColor, color: textColor }"
       @dblclick.stop="startEditing"
@@ -151,28 +148,55 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
         />
       </template>
       <div
-        class="relative flex h-full w-full items-center justify-center"
+        ref="contentBox"
+        class="relative flex h-full w-full items-center justify-center text-center"
         :style="isDiamond ? { color: textColor } : {}"
       >
-        <Handle type="target" :position="Position.Top" class="!opacity-0" />
         <template v-if="editing">
           <textarea
             ref="textarea"
             v-model="draftText"
             :maxlength="BOARD_ITEM_TEXT_MAX_LENGTH"
-            class="nodrag max-h-full max-w-full resize-none bg-transparent text-center text-sm font-semibold outline-none"
-            :style="{ color: textColor, fontSize: `${Math.max(10, 14 / viewport.zoom)}px` }"
+            class="nodrag h-full w-full resize-none overflow-hidden bg-transparent text-center font-semibold outline-none"
+            :style="{ color: textColor, fontSize: `${fontSize}px` }"
             @pointerdown.stop
-            @input="autosizeTextarea"
             @keydown.esc.stop.prevent="cancelEditing"
             @blur="commitEditing"
           />
         </template>
         <template v-else>
-          <span class="max-w-full text-center">{{ content.text }}</span>
+          <span
+            ref="text"
+            class="block w-full overflow-hidden break-words whitespace-pre-wrap"
+            :style="{ fontSize: `${fontSize}px` }"
+            >{{ content.text }}</span
+          >
         </template>
-        <Handle type="source" :position="Position.Bottom" class="!opacity-0" />
       </div>
     </div>
+    <!-- Связи (12.8) — см. пояснение в BoardStickyNode.vue. Вынесены за пределы
+         .board-node-content, у которой overflow-hidden обрезал бы хендлы по
+         краю (translate тянет их наполовину за границу бокса) -->
+    <template v-if="canEdit">
+      <Handle id="top" type="source" :position="Position.Top" class="board-connect-handle" />
+      <Handle id="right" type="source" :position="Position.Right" class="board-connect-handle" />
+      <Handle id="bottom" type="source" :position="Position.Bottom" class="board-connect-handle" />
+      <Handle id="left" type="source" :position="Position.Left" class="board-connect-handle" />
+    </template>
   </div>
 </template>
+
+<style scoped>
+.board-connect-handle {
+  width: 10px;
+  height: 10px;
+  background: var(--ui-primary);
+  border: 2px solid var(--ui-bg);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.vue-flow__node:hover .board-connect-handle {
+  opacity: 1;
+}
+</style>

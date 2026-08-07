@@ -9,3 +9,6 @@ import type { InjectionKey, Ref } from 'vue';
 export const BOARD_CAN_EDIT_KEY: InjectionKey<Ref<boolean>> = Symbol('boardCanEdit');
 export const BOARD_PENDING_EDIT_ID_KEY: InjectionKey<Ref<string | null>> =
   Symbol('boardPendingEditId');
+/** Id связи, которую нужно сразу открыть для ввода подписи текстом прямо на стрелке (12.8) */
+export const BOARD_PENDING_EDGE_EDIT_ID_KEY: InjectionKey<Ref<string | null>> =
+  Symbol('boardPendingEdgeEditId');

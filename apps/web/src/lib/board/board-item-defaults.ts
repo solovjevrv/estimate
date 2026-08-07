@@ -4,6 +4,8 @@
  */
 import type { BoardColorHex, BoardItem } from '@poker/shared';
 
+import { theme } from '../theme';
+
 /** Стикер — всегда квадрат (12.7): ширина и высота равны и в дефолте, и в границах резайза */
 export const STICKY_DEFAULT_WIDTH = 180;
 export const STICKY_DEFAULT_HEIGHT = 180;
@@ -18,6 +20,19 @@ export const STICKY_MAX_HEIGHT = 1200;
 export const SHAPE_DEFAULT_WIDTH = 160;
 export const SHAPE_DEFAULT_HEIGHT = 120;
 export const SHAPE_DEFAULT_COLOR: BoardColorHex = '#A8CAFF';
+
+/**
+ * Стрелки по умолчанию чёрные (не разноцветные, как стикеры/фигуры) — как в
+ * Miro (12.8). Чёрный, впрочем, не читается на тёмном фоне холста — на тёмной
+ * теме новая стрелка создаётся белой (баг, найденный пользователем 07.08.2026).
+ * Оба варианта — существующие свотчи `BOARD_COLOR_PALETTE`.
+ */
+const EDGE_DEFAULT_COLOR_LIGHT: BoardColorHex = '#1A1A1A';
+const EDGE_DEFAULT_COLOR_DARK: BoardColorHex = '#FFFFFF';
+
+export function edgeDefaultColor(): BoardColorHex {
+  return theme.value === 'dark' ? EDGE_DEFAULT_COLOR_DARK : EDGE_DEFAULT_COLOR_LIGHT;
+}
 
 /** Те же UX-границы, что у стикера (12.7) — единая логика резайза для всех типов элементов */
 export const SHAPE_MIN_WIDTH = STICKY_MIN_WIDTH;

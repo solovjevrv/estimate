@@ -8,7 +8,9 @@
  */
 import {
   BOARD_COLOR_HEX_PATTERN,
+  BOARD_EDGE_LABEL_MAX_LENGTH,
   BOARD_EDGE_LINE_KINDS,
+  BOARD_EDGE_MARKER_KINDS,
   BOARD_ITEM_TEXT_MAX_LENGTH,
   BOARD_MAX_ITEMS,
   BOARD_SHAPE_KINDS,
@@ -69,12 +71,48 @@ function validateEdgeStyle(style: unknown): BoardEdge['style'] {
   if (typeof style !== 'object' || style === null) {
     throw new ValidationError('Не указан стиль связи');
   }
-  const { color, line } = style as { color?: unknown; line?: unknown };
+  const { color, line, markerStart, markerEnd } = style as {
+    color?: unknown;
+    line?: unknown;
+    markerStart?: unknown;
+    markerEnd?: unknown;
+  };
   const validColor = requireColorHex(color, 'связи');
   if (!(BOARD_EDGE_LINE_KINDS as readonly unknown[]).includes(line)) {
     throw new ValidationError('Недопустимый тип линии связи');
   }
-  return { color: validColor, line } as BoardEdge['style'];
+  const validMarkerStart =
+    markerStart === undefined || markerStart === null
+      ? 'none'
+      : (() => {
+          if (!BOARD_EDGE_MARKER_KINDS.includes(markerStart as BoardEdge['style']['markerStart'])) {
+            throw new ValidationError('Недопустимый наконечник начала связи');
+          }
+          return markerStart as BoardEdge['style']['markerStart'];
+        })();
+  const validMarkerEnd =
+    markerEnd === undefined || markerEnd === null
+      ? 'none'
+      : (() => {
+          if (!BOARD_EDGE_MARKER_KINDS.includes(markerEnd as BoardEdge['style']['markerEnd'])) {
+            throw new ValidationError('Недопустимый наконечник конца связи');
+          }
+          return markerEnd as BoardEdge['style']['markerEnd'];
+        })();
+  return {
+    color: validColor,
+    line: line as BoardEdge['style']['line'],
+    markerStart: validMarkerStart,
+    markerEnd: validMarkerEnd,
+  } as BoardEdge['style'];
+}
+
+function validateEdgeLabel(label: unknown): string | null {
+  if (label === undefined || label === null) return null;
+  if (typeof label !== 'string' || label.length > BOARD_EDGE_LABEL_MAX_LENGTH) {
+    throw new ValidationError('Слишком длинная подпись связи');
+  }
+  return label;
 }
 
 function validateContent(content: unknown): BoardItemContent {
@@ -208,7 +246,7 @@ export function applyBoardOp(
         targetItemId,
         sourceHandle: op.edge.sourceHandle ?? null,
         targetHandle: op.edge.targetHandle ?? null,
-        label: op.edge.label ?? null,
+        label: validateEdgeLabel(op.edge.label),
         style: validateEdgeStyle(op.edge.style),
       });
       break;
@@ -223,8 +261,11 @@ export function applyBoardOp(
         ...existing,
         sourceHandle: merged.sourceHandle ?? null,
         targetHandle: merged.targetHandle ?? null,
-        label: merged.label ?? null,
-        style: op.patch.style !== undefined ? validateEdgeStyle(merged.style) : existing.style,
+        label: op.patch.label !== undefined ? validateEdgeLabel(op.patch.label) : existing.label,
+        style:
+          op.patch.style !== undefined && op.patch.style !== null
+            ? validateEdgeStyle({ ...existing.style, ...op.patch.style })
+            : existing.style,
       });
       break;
     }

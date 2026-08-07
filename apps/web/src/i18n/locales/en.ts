@@ -358,6 +358,21 @@ export default {
       ellipse: 'Ellipse',
       diamond: 'Diamond',
     },
+    edgeLineLabel: 'Line type',
+    edgeMarkerStartLabel: 'Start',
+    edgeMarkerEndLabel: 'End',
+    edgeAddText: 'Add text',
+    edgeLabelPlaceholder: 'Text',
+    edgeLines: {
+      straight: 'Straight',
+      orthogonal: 'Orthogonal',
+      curved: 'Curved',
+    },
+    edgeMarkers: {
+      none: 'None',
+      arrow: 'Arrow',
+      dot: 'Dot',
+    },
   },
   boards: {
     title: 'My boards',

@@ -3,7 +3,12 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import type { BoardEdge, BoardItem, BoardOp } from '@poker/shared';
+import {
+  BOARD_EDGE_LABEL_MAX_LENGTH,
+  type BoardEdge,
+  type BoardItem,
+  type BoardOp,
+} from '@poker/shared';
 import { describe, expect, it } from 'vitest';
 
 import { applyBoardOp, type BoardOpState } from '../src/boards/board-ops';
@@ -211,7 +216,7 @@ describe('applyBoardOp — item.delete', () => {
           sourceHandle: null,
           targetHandle: null,
           label: null,
-          style: { color: '#A8CAFF', line: 'straight' },
+          style: { color: '#A8CAFF', line: 'straight', markerStart: 'none', markerEnd: 'none' },
         },
       },
       BOARD_ID,
@@ -264,7 +269,7 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
         sourceHandle: null,
         targetHandle: null,
         label: null,
-        style: { color: '#A8CAFF', line: 'straight' },
+        style: { color: '#A8CAFF', line: 'straight', markerStart: 'none', markerEnd: 'none' },
       },
     };
   }
@@ -297,9 +302,68 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
   it('отклоняет недопустимый тип линии', () => {
     const { state, a, b } = withTwoItems();
     const op = edgeCreateOp(randomUUID(), a, b);
-    (op as { edge: { style: unknown } }).edge.style = { color: '#A8CAFF', line: 'zigzag' };
+    (op as { edge: { style: unknown } }).edge.style = {
+      color: '#A8CAFF',
+      line: 'zigzag',
+      markerStart: 'none',
+      markerEnd: 'none',
+    };
 
     expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID)).toThrow(ValidationError);
+  });
+
+  it('принимает ломаную линию', () => {
+    const { state, a, b } = withTwoItems();
+    const edgeId = randomUUID();
+    applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR_ID);
+
+    applyBoardOp(
+      state,
+      {
+        type: 'edge.patch',
+        clientOpId: randomUUID(),
+        id: edgeId,
+        patch: { style: { line: 'orthogonal' } },
+      },
+      BOARD_ID,
+      ACTOR_ID,
+    );
+
+    expect((state.edges.get(edgeId) as BoardEdge).style.line).toBe('orthogonal');
+  });
+
+  it('отклоняет недопустимый маркер', () => {
+    const { state, a, b } = withTwoItems();
+    const op = edgeCreateOp(randomUUID(), a, b);
+    (op as { edge: { style: unknown } }).edge.style = {
+      color: '#A8CAFF',
+      line: 'straight',
+      markerStart: 'star',
+      markerEnd: 'none',
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID)).toThrow(ValidationError);
+  });
+
+  it('патчит маркеры', () => {
+    const { state, a, b } = withTwoItems();
+    const edgeId = randomUUID();
+    applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR_ID);
+
+    applyBoardOp(
+      state,
+      {
+        type: 'edge.patch',
+        clientOpId: randomUUID(),
+        id: edgeId,
+        patch: { style: { markerStart: 'arrow', markerEnd: 'dot' } },
+      },
+      BOARD_ID,
+      ACTOR_ID,
+    );
+
+    expect((state.edges.get(edgeId) as BoardEdge).style.markerStart).toBe('arrow');
+    expect((state.edges.get(edgeId) as BoardEdge).style.markerEnd).toBe('dot');
   });
 
   it('патчит подпись связи', () => {
@@ -315,6 +379,22 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
     );
 
     expect((state.edges.get(edgeId) as BoardEdge).label).toBe('зависит от');
+  });
+
+  it('отклоняет слишком длинную подпись связи', () => {
+    const { state, a, b } = withTwoItems();
+    const edgeId = randomUUID();
+    applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR_ID);
+    const tooLong = 'x'.repeat(BOARD_EDGE_LABEL_MAX_LENGTH + 1);
+
+    expect(() =>
+      applyBoardOp(
+        state,
+        { type: 'edge.patch', clientOpId: randomUUID(), id: edgeId, patch: { label: tooLong } },
+        BOARD_ID,
+        ACTOR_ID,
+      ),
+    ).toThrow(ValidationError);
   });
 
   it('удаляет связь', () => {

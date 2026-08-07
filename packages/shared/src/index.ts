@@ -430,6 +430,8 @@ export const BOARD_COLOR_PALETTE: readonly BoardColorHex[] = [
 export const BOARD_TITLE_MIN_LENGTH = 1;
 export const BOARD_TITLE_MAX_LENGTH = 120;
 export const BOARD_ITEM_TEXT_MAX_LENGTH = 2000;
+/** Подпись связи (12.8) — короткая аннотация на стрелке, не текст целого стикера */
+export const BOARD_EDGE_LABEL_MAX_LENGTH = 200;
 /** Потолок элементов на доску — защита от неограниченно растущего снимка (12.1) */
 export const BOARD_MAX_ITEMS = 2000;
 
@@ -470,12 +472,21 @@ export interface BoardItem {
   updatedAt: string;
 }
 
-export type BoardEdgeLineKind = 'straight' | 'curved';
-export const BOARD_EDGE_LINE_KINDS: readonly BoardEdgeLineKind[] = ['straight', 'curved'];
+export type BoardEdgeLineKind = 'straight' | 'orthogonal' | 'curved';
+export const BOARD_EDGE_LINE_KINDS: readonly BoardEdgeLineKind[] = [
+  'straight',
+  'orthogonal',
+  'curved',
+];
+
+export type BoardEdgeMarker = 'none' | 'arrow' | 'dot';
+export const BOARD_EDGE_MARKER_KINDS: readonly BoardEdgeMarker[] = ['none', 'arrow', 'dot'];
 
 export interface BoardEdgeStyle {
   color: BoardColorHex;
   line: BoardEdgeLineKind;
+  markerStart: BoardEdgeMarker;
+  markerEnd: BoardEdgeMarker;
 }
 
 export interface BoardEdge {
@@ -578,7 +589,9 @@ export interface BoardEdgeCreateOp extends BoardOpBase {
 export interface BoardEdgePatchOp extends BoardOpBase {
   type: 'edge.patch';
   id: string;
-  patch: Partial<Pick<BoardEdge, 'sourceHandle' | 'targetHandle' | 'label' | 'style'>>;
+  patch: Partial<Pick<BoardEdge, 'sourceHandle' | 'targetHandle' | 'label'>> & {
+    style?: Partial<BoardEdgeStyle>;
+  };
 }
 
 export interface BoardEdgeDeleteOp extends BoardOpBase {
