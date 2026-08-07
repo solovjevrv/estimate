@@ -1,14 +1,21 @@
 <script setup lang="ts">
 /**
- * Левый вертикальный тулбар инструментов холста (12.6+12.7) — позиция/чехол по
- * референсу `.design/main.html` (`top:50%; left:20px`, кнопки 40×40, radius 11).
- * Из макета взяты «Выделение»/«Стикер»/«Фигура»: оставшиеся три иконки
- * (стрелка/текст/картинка/эмодзи) относятся к ещё не реализованным задачам
- * (12.8+) — рендерить их сейчас значило бы дать нерабочие кнопки.
+ * Левый вертикальный тулбар инструментов холста (12.6+12.7+12.9) — позиция/чехол
+ * по референсу `.design/main.html` (`top:50%; left:20px`, кнопки 40×40, radius 11).
+ * Из макета взяты «Выделение»/«Стикер»/«Фигура»/«Стрелка»: оставшиеся две иконки
+ * (текст/картинка/эмодзи) относятся к ещё не реализованным задачам (13.х) —
+ * рендерить их сейчас значило бы дать нерабочие кнопки.
+ *
+ * «Стрелка» (12.9) — не альтернативный механизм создания связи (он уже есть и
+ * не требует инструмента — drag от хендла карточки, `onConnect` в
+ * `BoardCanvas.vue`), а чистый affordance: пока инструмент активен, хендлы
+ * карточек становятся видны на ВСЕХ карточках сразу (не только по hover) —
+ * подсказка новичку, откуда тянуть стрелку. Решение пользователя 07.08.2026 —
+ * не городить второй, click-to-connect, механизм создания рядом с уже рабочим.
  */
 import { useI18n } from 'vue-i18n';
 
-export type BoardTool = 'select' | 'sticky' | 'shape';
+export type BoardTool = 'select' | 'sticky' | 'shape' | 'arrow';
 
 const tool = defineModel<BoardTool>({ required: true });
 
@@ -50,6 +57,16 @@ function isActive(value: BoardTool): boolean {
       @click="tool = 'shape'"
     >
       <UIcon name="i-lucide-square" class="size-[19px]" />
+    </button>
+    <button
+      type="button"
+      class="board-toolbar-btn"
+      :class="{ 'board-toolbar-btn-active': isActive('arrow') }"
+      :aria-label="t('board.toolArrow')"
+      :aria-pressed="isActive('arrow')"
+      @click="tool = 'arrow'"
+    >
+      <UIcon name="i-lucide-move-up-right" class="size-[19px]" />
     </button>
   </div>
 </template>

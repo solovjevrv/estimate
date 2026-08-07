@@ -20,6 +20,20 @@ export function applyLocalBoardOp(state: BoardLocalState, op: BoardCommittedOp):
       break;
     case 'item.delete':
       state.items.delete(op.id);
+      // Сервер каскадно удаляет связи удалённого элемента (board-ops.ts), но
+      // рассылает только сам item.delete — без этого локальный edges оставался
+      // бы с "осиротевшей" связью на несуществующий узел. Vue Flow при
+      // следующем ре-рендере падает с TypeError (source/target для неё не
+      // находится в node-lookup), что молча ломает реактивность холста
+      // ЦЕЛИКОМ до перезагрузки страницы — баг, найденный пользователем
+      // 08.08.2026 (удаление карточки со стрелкой не отражалось в реальном
+      // времени). Зеркалим тот же каскад здесь — единая точка и для
+      // оптимистичного предсказания, и для применения эха/чужих рассылок.
+      for (const [edgeId, edge] of state.edges) {
+        if (edge.sourceItemId === op.id || edge.targetItemId === op.id) {
+          state.edges.delete(edgeId);
+        }
+      }
       break;
     case 'edge.create':
     case 'edge.patch':

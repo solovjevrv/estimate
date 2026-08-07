@@ -194,6 +194,83 @@ describe('applyBoardOp — item.patch', () => {
       ),
     ).toThrow(ValidationError);
   });
+
+  it('мержит style по полям, не заменяя целиком (12.9)', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    const op = stickyCreateOp(id);
+    (op as { item: { style: unknown } }).item.style = { color: '#FCEB96', fontSize: 24 };
+    applyBoardOp(state, op, BOARD_ID, ACTOR_ID);
+
+    // Патчим только color — fontSize из предыдущего style должен уцелеть
+    applyBoardOp(
+      state,
+      {
+        type: 'item.patch',
+        clientOpId: randomUUID(),
+        id,
+        patch: { style: { color: '#A8CAFF' } },
+      },
+      BOARD_ID,
+      ACTOR_ID,
+    );
+
+    expect(state.items.get(id)!.style).toEqual({ color: '#A8CAFF', fontSize: 24 });
+  });
+
+  it('принимает fontSize/fontFamily/textColor/textAlign в допустимых границах', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    const op = stickyCreateOp(id);
+    (op as { item: { style: unknown } }).item.style = {
+      color: '#FCEB96',
+      fontSize: 32,
+      fontFamily: 'heading',
+      textColor: '#1A1A1A',
+      textAlign: 'left',
+    };
+    applyBoardOp(state, op, BOARD_ID, ACTOR_ID);
+
+    expect(state.items.get(id)!.style).toEqual({
+      color: '#FCEB96',
+      fontSize: 32,
+      fontFamily: 'heading',
+      textColor: '#1A1A1A',
+      textAlign: 'left',
+    });
+  });
+
+  it('отклоняет размер шрифта вне границ', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { style: unknown } }).item.style = { color: '#FCEB96', fontSize: 999 };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID)).toThrow(ValidationError);
+  });
+
+  it('отклоняет недопустимый шрифт', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { style: unknown } }).item.style = { color: '#FCEB96', fontFamily: 'comic' };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID)).toThrow(ValidationError);
+  });
+
+  it('отклоняет недопустимое выравнивание текста', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { style: unknown } }).item.style = { color: '#FCEB96', textAlign: 'justify' };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID)).toThrow(ValidationError);
+  });
+
+  it('отклоняет недопустимый цвет текста', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { style: unknown } }).item.style = { color: '#FCEB96', textColor: 'red' };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID)).toThrow(ValidationError);
+  });
 });
 
 describe('applyBoardOp — item.delete', () => {
@@ -330,6 +407,17 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
     );
 
     expect((state.edges.get(edgeId) as BoardEdge).style.line).toBe('orthogonal');
+  });
+
+  it('создаёт связь без явного цвета (12.9) — резолвится на фронте от темы зрителя', () => {
+    const { state, a, b } = withTwoItems();
+    const edgeId = randomUUID();
+    const op = edgeCreateOp(edgeId, a, b);
+    (op as { edge: { style: { color?: unknown } } }).edge.style.color = undefined;
+
+    applyBoardOp(state, op, BOARD_ID, ACTOR_ID);
+
+    expect(state.edges.get(edgeId)!.style.color).toBeUndefined();
   });
 
   it('отклоняет недопустимый маркер', () => {

@@ -449,8 +449,38 @@ export interface BoardShapeContent {
 /** Дискриминированный union по `type` — новый тип элемента не требует миграции схемы */
 export type BoardItemContent = BoardStickyContent | BoardShapeContent;
 
+/**
+ * Начертание текста стикера/фигуры (12.9) — не произвольный CSS font-family,
+ * а токен из двух шрифтов, уже загруженных на фронте (`main.css`):
+ * `sans` — Manrope (тело, дефолт), `heading` — Sora (акцентный, жирный).
+ * Так расширение не требует подгрузки новых веб-шрифтов.
+ */
+export type BoardFontFamily = 'sans' | 'heading';
+export const BOARD_FONT_FAMILIES: readonly BoardFontFamily[] = ['sans', 'heading'];
+
+export type BoardTextAlign = 'left' | 'center' | 'right';
+export const BOARD_TEXT_ALIGNS: readonly BoardTextAlign[] = ['left', 'center', 'right'];
+
+/**
+ * Границы ручного размера шрифта (12.9). Шире дефолтного диапазона авто-fit
+ * (`FIT_FONT_MIN/MAX` = 10–20 в `use-fit-font-size.ts`) — заданное здесь
+ * значение служит ВЕРХНЕЙ границей для авто-fit, а не заменяет его: если
+ * текста больше, чем помещается при выбранном размере, авто-fit всё равно
+ * ужимает шрифт вплоть до `BOARD_ITEM_FONT_SIZE_MIN`.
+ */
+export const BOARD_ITEM_FONT_SIZE_MIN = 10;
+export const BOARD_ITEM_FONT_SIZE_MAX = 48;
+
 export interface BoardItemStyle {
   color: BoardColorHex;
+  /** Верхняя граница авто-fit; не задано — используется дефолт авто-fit (20px) */
+  fontSize?: number;
+  /** Не задано — `sans` (Manrope, как было до 12.9) */
+  fontFamily?: BoardFontFamily;
+  /** Цвет текста отдельно от заливки; не задано — автоконтраст от `color` (`readableTextColor`) */
+  textColor?: BoardColorHex;
+  /** Не задано — `center` (как было до 12.9) */
+  textAlign?: BoardTextAlign;
 }
 
 export interface BoardItem {
@@ -483,7 +513,17 @@ export type BoardEdgeMarker = 'none' | 'arrow' | 'dot';
 export const BOARD_EDGE_MARKER_KINDS: readonly BoardEdgeMarker[] = ['none', 'arrow', 'dot'];
 
 export interface BoardEdgeStyle {
-  color: BoardColorHex;
+  /**
+   * Не задан — цвет вычисляется у каждого зрителя от ЕГО ТЕКУЩЕЙ темы (12.9,
+   * см. `resolveEdgeColor` в `lib/board/board-item-defaults.ts` на фронте):
+   * до этой правки цвет по умолчанию фиксировался на теме АВТОРА в момент
+   * создания и хранился как обычный hex — стрелка, созданная в тёмной теме,
+   * оставалась белой (и невидимой) и для тех, кто смотрит доску в светлой.
+   * Как только пользователь явно выбирает цвет в тулбаре (палитра/кастомный
+   * пикер) — сюда пишется конкретный hex и с этого момента он не зависит от
+   * темы ни у кого, включая автора.
+   */
+  color?: BoardColorHex;
   line: BoardEdgeLineKind;
   markerStart: BoardEdgeMarker;
   markerEnd: BoardEdgeMarker;
@@ -572,7 +612,10 @@ export interface BoardItemCreateOp extends BoardOpBase {
 export interface BoardItemPatchOp extends BoardOpBase {
   type: 'item.patch';
   id: string;
-  patch: Partial<Omit<BoardItem, 'id' | 'boardId' | 'createdBy' | 'updatedAt'>>;
+  patch: Partial<Omit<BoardItem, 'id' | 'boardId' | 'createdBy' | 'updatedAt' | 'style'>> & {
+    /** Партиал, не целиком (12.9) — мержится поверх текущего style, а не заменяет его */
+    style?: Partial<BoardItemStyle>;
+  };
 }
 
 export interface BoardItemDeleteOp extends BoardOpBase {

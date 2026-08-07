@@ -15,6 +15,7 @@ import {
   BOARD_CAN_EDIT_KEY,
   BOARD_PENDING_EDGE_EDIT_ID_KEY,
 } from '../../lib/board/board-canvas-keys';
+import { resolveEdgeColor } from '../../lib/board/board-item-defaults';
 import { getEdgeAnchorParams } from '../../lib/board/floating-edge-geometry';
 import { useBoardSessionStore } from '../../stores/board-session';
 
@@ -24,6 +25,9 @@ const { t } = useI18n();
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 const pendingEdgeEditId = inject(BOARD_PENDING_EDGE_EDIT_ID_KEY, ref(null));
+
+/** Не задан в data.style.color (12.9) — точка 'dot' красится так же, как линия/маркер */
+const dotColor = computed(() => resolveEdgeColor(props.data.style.color));
 
 const params = computed(() =>
   getEdgeAnchorParams(
@@ -145,14 +149,14 @@ const inputWidthCh = computed(() => Math.max(2, draftText.value.length));
     :cx="params.sx"
     :cy="params.sy"
     r="4"
-    :fill="data.style.color"
+    :fill="dotColor"
   />
   <circle
     v-if="data.style.markerEnd === 'dot'"
     :cx="params.tx"
     :cy="params.ty"
     r="4"
-    :fill="data.style.color"
+    :fill="dotColor"
   />
 
   <EdgeLabelRenderer>

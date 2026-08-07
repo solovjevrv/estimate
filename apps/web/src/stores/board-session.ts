@@ -80,7 +80,12 @@ function predictCommittedOp(op: BoardOp, local: BoardLocalState): BoardCommitted
       return {
         type: 'item.patch',
         clientOpId: op.clientOpId,
-        item: { ...existing, ...op.patch, updatedAt: new Date().toISOString() },
+        item: {
+          ...existing,
+          ...op.patch,
+          style: op.patch.style ? { ...existing.style, ...op.patch.style } : existing.style,
+          updatedAt: new Date().toISOString(),
+        },
       };
     }
     case 'item.delete':

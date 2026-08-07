@@ -27,6 +27,13 @@
  *
  * Стартует всегда с максимума и уменьшает — без хранения "предыдущего"
  * размера, иначе укороченный текст остался бы мелким (гистерезис).
+ *
+ * Верхняя граница (12.9) параметризуема через `maxFontSize` — ручной выбор
+ * размера в панели свойств (`BoardItemStyle.fontSize`) задаёт её вместо
+ * дефолтного `FIT_FONT_MAX`, но НЕ отключает сам подбор: если текста больше,
+ * чем помещается даже при выбранном размере, авто-fit всё равно ужимает
+ * шрифт вплоть до `FIT_FONT_MIN` — решение пользователя 07.08.2026 (не
+ * возвращать риск переполнения/скролла, который уже чинили в 12.8).
  */
 import { nextTick, ref, watch, type Ref } from 'vue';
 
@@ -41,8 +48,9 @@ export function useFitFontSize(
   height: Ref<number>,
   /** true только для textarea в момент редактирования — у span (просмотр) высотой не управляем */
   manageHeight: Ref<boolean>,
+  maxFontSize: Ref<number> = ref(FIT_FONT_MAX),
 ): Ref<number> {
-  const fontSize = ref(FIT_FONT_MAX);
+  const fontSize = ref(maxFontSize.value);
 
   async function recompute(): Promise<void> {
     await nextTick();
@@ -59,7 +67,7 @@ export function useFitFontSize(
     const shouldManageHeight = manageHeight.value;
     if (shouldManageHeight) content.style.height = 'auto';
 
-    let size = FIT_FONT_MAX;
+    let size = maxFontSize.value;
     content.style.fontSize = `${size}px`;
     while (size > FIT_FONT_MIN && content.scrollHeight > availableHeight) {
       size -= 1;
@@ -75,7 +83,7 @@ export function useFitFontSize(
   // contentEl — тоже источник: при переключении edit/view меняется САМ элемент
   // (textarea <-> span), а текст в моменте переключения ещё не изменился —
   // без этого источника новый элемент остался бы без применённого fontSize
-  watch([text, width, height, contentEl], recompute, { immediate: true });
+  watch([text, width, height, contentEl, maxFontSize], recompute, { immediate: true });
 
   return fontSize;
 }

@@ -63,6 +63,38 @@ describe('applyLocalBoardOp', () => {
     expect(state.items.has('i1')).toBe(false);
   });
 
+  it('item.delete каскадно убирает связи удалённого элемента (12.9-багфикс)', () => {
+    // Сервер каскадно удаляет связи вместе с элементом (board-ops.ts), но
+    // рассылает только сам item.delete — без этого локального каскада
+    // "осиротевшая" связь на несуществующий узел ломала Vue Flow (TypeError
+    // при рендере пути) и замораживала холст до перезагрузки страницы
+    const state = emptyState();
+    const item2: BoardItem = { ...item, id: 'i2' };
+    state.items.set('i1', item);
+    state.items.set('i2', item2);
+    state.edges.set('e1', edge); // sourceItemId: 'i1', targetItemId: 'i2'
+
+    applyLocalBoardOp(state, { type: 'item.delete', clientOpId: 'c3', id: 'i1' });
+
+    expect(state.items.has('i1')).toBe(false);
+    expect(state.edges.has('e1')).toBe(false);
+  });
+
+  it('item.delete не трогает связи других элементов', () => {
+    const state = emptyState();
+    const item2: BoardItem = { ...item, id: 'i2' };
+    const item3: BoardItem = { ...item, id: 'i3' };
+    state.items.set('i1', item);
+    state.items.set('i2', item2);
+    state.items.set('i3', item3);
+    const unrelatedEdge: BoardEdge = { ...edge, id: 'e2', sourceItemId: 'i2', targetItemId: 'i3' };
+    state.edges.set('e2', unrelatedEdge);
+
+    applyLocalBoardOp(state, { type: 'item.delete', clientOpId: 'c3', id: 'i1' });
+
+    expect(state.edges.has('e2')).toBe(true);
+  });
+
   it('edge.create добавляет связь', () => {
     const state = emptyState();
 

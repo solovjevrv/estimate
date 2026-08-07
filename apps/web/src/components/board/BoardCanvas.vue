@@ -19,21 +19,27 @@
  * кастомный цвет через нативный `<input type="color">`.
  *
  * Визуальный язык — по референсу `.design/main.html` (экран "Доска"). Из
- * референса сознательно НЕ взяты: остальные 3 иконки левого тулбара
- * (стрелка/текст/картинка/эмодзи — 12.8+), порядок слоёв показан в
- * плавающем тулбаре выделения, а не в ещё не реализованном контекстном меню
- * (12.9), настройка размера шрифта вынесена в отдельную будущую задачу
- * (решение пользователя 06.08.2026), «Дублировать» не входит в объём 12.6/12.7.
+ * референса сознательно НЕ взяты: 2 оставшиеся иконки левого тулбара
+ * (текст/картинка/эмодзи — 13.х, ещё не реализованы).
+ *
+ * 12.9: контекстное меню по правой кнопке (`BoardContextMenu.vue`) — слои
+ * (вперёд/назад) и дублирование теперь там, а не в тулбаре выделения; хоткеи
+ * (`use-board-hotkeys.ts`) — Delete/Backspace, Ctrl(Cmd)+A/D/0/1, Escape,
+ * Shift+drag по одной оси; размер/шрифт/цвет/выравнивание текста — в
+ * `BoardSelectionToolbar.vue`; инструмент «Стрелка» в левом тулбаре —
+ * affordance поверх уже рабочего drag-от-хендла (см. `onConnect` ниже).
  */
 import {
   BOARD_MAX_ITEMS,
   type Board,
   type BoardColorHex,
   type BoardEdge,
+  type BoardFontFamily,
   type BoardItem,
   type BoardItemContent,
   type BoardItemPatchOp,
   type BoardOp,
+  type BoardTextAlign,
 } from '@poker/shared';
 import type { DropdownMenuItem } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
@@ -50,6 +56,7 @@ import {
   type EdgeMouseEvent,
   type GraphNode,
   type NodeDragEvent,
+  type NodeMouseEvent,
 } from '@vue-flow/core';
 import {
   computed,
@@ -64,10 +71,10 @@ import {
 import { useI18n } from 'vue-i18n';
 
 import {
-  edgeDefaultColor,
   maxZIndex,
   minZIndex,
   nextZIndexAbove,
+  resolveEdgeColor,
   SHAPE_DEFAULT_COLOR,
   SHAPE_DEFAULT_HEIGHT,
   SHAPE_DEFAULT_WIDTH,
@@ -80,10 +87,14 @@ import {
   BOARD_PENDING_EDGE_EDIT_ID_KEY,
   BOARD_PENDING_EDIT_ID_KEY,
 } from '../../lib/board/board-canvas-keys';
+import { readableTextColor } from '../../lib/board/board-colors';
+import { useBoardHotkeys } from '../../lib/board/use-board-hotkeys';
+import { FIT_FONT_MAX } from '../../lib/board/use-fit-font-size';
 import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
 import { throttle } from '../../lib/throttle';
 import { useBoardSessionStore } from '../../stores/board-session';
 import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
+import BoardContextMenu, { type BoardContextMenuTarget } from './BoardContextMenu.vue';
 import BoardEdgeToolbar, {
   type BoardEdgeLineKindOption,
   type BoardEdgeMarkerOption,
@@ -176,8 +187,18 @@ const subtitle = computed(() =>
     : t('board.personalBoardSubtitle'),
 );
 
-const { viewport, project, getSelectedNodes, getSelectedEdges, getNodes, setNodes, setEdges } =
-  useVueFlow();
+const {
+  viewport,
+  project,
+  getSelectedNodes,
+  getSelectedEdges,
+  getNodes,
+  getEdges,
+  setNodes,
+  setEdges,
+  zoomTo,
+  fitView,
+} = useVueFlow();
 const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
 
 /**
@@ -233,14 +254,18 @@ function flowPositionFromEvent(event: MouseEvent): { x: number; y: number } {
   return project({ x: event.clientX - rect.left, y: event.clientY - rect.top });
 }
 
-/** Общая проверка перед созданием любого элемента — лимит на доску (12.1) один на все типы */
-function canCreateItem(): boolean {
+/** Общая проверка перед созданием любого числа элементов — лимит на доску (12.1) один на все типы */
+function canCreateItems(count: number): boolean {
   if (!props.canEdit) return false;
-  if (props.items.length >= BOARD_MAX_ITEMS) {
+  if (props.items.length + count > BOARD_MAX_ITEMS) {
     toast.add({ title: t('board.itemLimitReached'), color: 'error' });
     return false;
   }
   return true;
+}
+
+function canCreateItem(): boolean {
+  return canCreateItems(1);
 }
 
 function createSticky(center: { x: number; y: number }): void {
@@ -335,8 +360,44 @@ function sendPositionPatch(node: GraphNode<BoardItem>): void {
   ]);
 }
 
-function onNodeDrag({ nodes: dragged }: NodeDragEvent): void {
+/**
+ * Shift+drag — ограничение перетаскивания по одной оси (12.9), как в Miro.
+ * Стартовая позиция каждого узла драга запоминается на `node-drag-start`;
+ * дальше на каждом кадре, пока зажат Shift, "недоминирующая" ось (та, где
+ * смещение от старта меньше) принудительно возвращается к стартовому
+ * значению — Vue Flow обновляет `computedPosition` синхронно ДО эмита
+ * `node-drag`, так что наша правка успевает попасть в кадр до отрисовки.
+ * Ось перевычисляется на каждом кадре (не фиксируется на первом сдвиге) —
+ * упрощение, для мелкого дрожания курсора у диагонали не критично.
+ */
+const dragStartPositions = new Map<string, { x: number; y: number }>();
+
+function onNodeDragStart({ nodes: dragged }: NodeDragEvent): void {
   for (const node of dragged as GraphNode<BoardItem>[]) {
+    dragStartPositions.set(node.id, { x: node.computedPosition.x, y: node.computedPosition.y });
+  }
+}
+
+function applyAxisLock(event: NodeDragEvent): void {
+  if (!(event.event instanceof MouseEvent) || !event.event.shiftKey) return;
+  for (const node of event.nodes as GraphNode<BoardItem>[]) {
+    const start = dragStartPositions.get(node.id);
+    if (!start) continue;
+    const dx = node.computedPosition.x - start.x;
+    const dy = node.computedPosition.y - start.y;
+    if (Math.abs(dx) >= Math.abs(dy)) {
+      node.computedPosition.y = start.y;
+      node.position.y = start.y;
+    } else {
+      node.computedPosition.x = start.x;
+      node.position.x = start.x;
+    }
+  }
+}
+
+function onNodeDrag(event: NodeDragEvent): void {
+  applyAxisLock(event);
+  for (const node of event.nodes as GraphNode<BoardItem>[]) {
     let send = dragThrottlers.get(node.id);
     if (!send) {
       send = throttle(sendPositionPatch, 80);
@@ -346,8 +407,12 @@ function onNodeDrag({ nodes: dragged }: NodeDragEvent): void {
   }
 }
 
-function onNodeDragStop({ nodes: dragged }: NodeDragEvent): void {
-  for (const node of dragged as GraphNode<BoardItem>[]) sendPositionPatch(node);
+function onNodeDragStop(event: NodeDragEvent): void {
+  applyAxisLock(event);
+  for (const node of event.nodes as GraphNode<BoardItem>[]) {
+    sendPositionPatch(node);
+    dragStartPositions.delete(node.id);
+  }
 }
 
 // --- Плавающий тулбар над выделением (12.6) ---
@@ -389,8 +454,13 @@ const edgeToolbarPosition = computed(() => {
 const selectedEdgeStyle = computed<BoardEdge['style']>(() => {
   const style = selectedEdges.value[0]?.data?.style;
   if (style) return style;
-  return { color: edgeDefaultColor(), line: 'curved', markerStart: 'none', markerEnd: 'arrow' };
+  return { line: 'curved', markerStart: 'none', markerEnd: 'arrow' };
 });
+
+/** Кружок-триггер в тулбаре связи всегда нужен литеральным цветом (12.9) — резолвим авто */
+const selectedEdgeColor = computed<BoardColorHex>(() =>
+  resolveEdgeColor(selectedEdgeStyle.value.color),
+);
 
 function patchSelected(patchByNode: (node: GraphNode<BoardItem>, index: number) => BoardOp): void {
   const ops = selectedNodes.value.map(patchByNode);
@@ -531,6 +601,85 @@ function setSelectedColor(color: BoardColorHex): void {
   }));
 }
 
+/** Верхняя граница авто-fit (12.9) — не задана в style, показываем эффективный дефолт (FIT_FONT_MAX) */
+const selectedFontSize = computed<number>(
+  () => selectedNodes.value[0]?.data.style.fontSize ?? FIT_FONT_MAX,
+);
+const selectedFontFamily = computed<BoardFontFamily>(
+  () => selectedNodes.value[0]?.data.style.fontFamily ?? 'sans',
+);
+const selectedTextColor = computed<BoardColorHex>(
+  () => selectedNodes.value[0]?.data.style.textColor ?? readableTextColor(selectedColor.value),
+);
+const selectedTextAlign = computed<BoardTextAlign>(
+  () => selectedNodes.value[0]?.data.style.textAlign ?? 'center',
+);
+
+function setSelectedFontSize(fontSize: number): void {
+  patchSelected((node) => ({
+    type: 'item.patch',
+    clientOpId: globalThis.crypto.randomUUID(),
+    id: node.id,
+    patch: { style: { fontSize } },
+  }));
+}
+
+function setSelectedFontFamily(fontFamily: BoardFontFamily): void {
+  patchSelected((node) => ({
+    type: 'item.patch',
+    clientOpId: globalThis.crypto.randomUUID(),
+    id: node.id,
+    patch: { style: { fontFamily } },
+  }));
+}
+
+function setSelectedTextColor(textColor: BoardColorHex): void {
+  patchSelected((node) => ({
+    type: 'item.patch',
+    clientOpId: globalThis.crypto.randomUUID(),
+    id: node.id,
+    patch: { style: { textColor } },
+  }));
+}
+
+function setSelectedTextAlign(textAlign: BoardTextAlign): void {
+  patchSelected((node) => ({
+    type: 'item.patch',
+    clientOpId: globalThis.crypto.randomUUID(),
+    id: node.id,
+    patch: { style: { textAlign } },
+  }));
+}
+
+/** Дублирование (12.9) — копия content/style с офсетом позиции (Miro), встаёт поверх всех */
+function duplicateSelected(): void {
+  const selected = selectedNodes.value;
+  if (!selected.length || !canCreateItems(selected.length)) return;
+  const base = maxZIndex(props.items) + 1;
+  const DUPLICATE_OFFSET = 24;
+  void boardSession.applyOps(
+    selected.map(
+      (node, index) =>
+        ({
+          type: 'item.create',
+          clientOpId: globalThis.crypto.randomUUID(),
+          item: {
+            id: globalThis.crypto.randomUUID(),
+            parentId: null,
+            x: node.computedPosition.x + DUPLICATE_OFFSET,
+            y: node.computedPosition.y + DUPLICATE_OFFSET,
+            width: node.dimensions.width,
+            height: node.dimensions.height,
+            rotation: node.data.rotation,
+            zIndex: base + index,
+            content: node.data.content,
+            style: node.data.style,
+          },
+        }) satisfies BoardOp,
+    ),
+  );
+}
+
 function bringSelectedToFront(): void {
   const base = maxZIndex(props.items) + 1;
   patchSelected((node, index) => ({
@@ -559,6 +708,104 @@ function deleteSelected(): void {
   }));
 }
 
+// --- Контекстное меню по правой кнопке (12.9) ---
+
+interface ContextMenuState {
+  target: BoardContextMenuTarget;
+  left: number;
+  top: number;
+}
+
+const contextMenu = ref<ContextMenuState | null>(null);
+
+function contextMenuPositionFromEvent(event: MouseEvent | TouchEvent): {
+  left: number;
+  top: number;
+} {
+  const rect = rootEl.value?.getBoundingClientRect();
+  const point = event instanceof MouseEvent ? event : event.touches[0];
+  if (!rect || !point) return { left: 0, top: 0 };
+  return { left: point.clientX - rect.left, top: point.clientY - rect.top };
+}
+
+/**
+ * Прямая мутация `.selected` на узлах/связях вместо `addSelectedNodes`/
+ * `removeSelectedElements` из `useVueFlow()` (12.9) — на связке `:only-render-
+ * visible-elements="true"` + собственный `setNodes`-синк (см. комментарий выше
+ * про watch(flowNodes)) эти хелперы иногда уходят в ветку `multiSelectionActive`,
+ * которая только эмитит событие `nodesChange`/`edgesChange`, ничего не мутируя
+ * сама — и в момент вызова (например, сразу после program­матического клика в
+ * тестах) реального слушателя на это событие не оказывается, снятие/установка
+ * выделения молча не срабатывает. `node.selected`/`edge.selected` — обычные
+ * реактивные поля тех же объектов, что рендерит Vue Flow (подтверждено по
+ * исходникам библиотеки: `getNodesInside`/`nodeLookup` работают с одними и
+ * теми же ссылками) — мутировать их напрямую надёжнее и не зависит от этой
+ * внутренней ветки.
+ */
+function selectOnlyNode(node: GraphNode<BoardItem>): void {
+  for (const n of getNodes.value) n.selected = n.id === node.id;
+  for (const e of getEdges.value) e.selected = false;
+}
+
+function selectOnlyEdge(edge: Edge<BoardEdge>): void {
+  for (const n of getNodes.value) n.selected = false;
+  for (const e of getEdges.value) e.selected = e.id === edge.id;
+}
+
+function selectAllElements(): void {
+  for (const n of getNodes.value) n.selected = true;
+  for (const e of getEdges.value) e.selected = true;
+}
+
+function clearAllSelection(): void {
+  for (const n of getNodes.value) n.selected = false;
+  for (const e of getEdges.value) e.selected = false;
+}
+
+function onNodeContextMenu({ event, node }: NodeMouseEvent): void {
+  if (!props.canEdit) return;
+  (event as MouseEvent).preventDefault();
+  // Правый клик по НЕвыделенной карточке заменяет выделение ей (как в Figma/Miro) —
+  // иначе меню применялось бы не к той карточке, на которую кликнули
+  if (!node.selected) selectOnlyNode(node as GraphNode<BoardItem>);
+  contextMenu.value = { target: 'item', ...contextMenuPositionFromEvent(event) };
+}
+
+function onEdgeContextMenu({ event, edge }: EdgeMouseEvent): void {
+  if (!props.canEdit) return;
+  (event as MouseEvent).preventDefault();
+  if (!edge.selected) selectOnlyEdge(edge as Edge<BoardEdge>);
+  contextMenu.value = { target: 'edge', ...contextMenuPositionFromEvent(event) };
+}
+
+/** Пустой холст — своего меню нет (см. `BoardContextMenu.vue`), но браузерное всё равно гасим */
+function onPaneContextMenu(event: MouseEvent): void {
+  event.preventDefault();
+  contextMenu.value = null;
+}
+
+function closeContextMenu(): void {
+  contextMenu.value = null;
+}
+
+// --- Хоткеи (12.9): Delete/Backspace, Ctrl(Cmd)+A/D/0/1, Escape ---
+
+useBoardHotkeys({
+  canEdit: computed(() => props.canEdit),
+  deleteSelection: () => {
+    deleteSelected();
+    deleteSelectedEdges();
+  },
+  duplicateSelection: duplicateSelected,
+  selectAll: selectAllElements,
+  clearSelection: () => {
+    clearAllSelection();
+    contextMenu.value = null;
+  },
+  resetZoom: () => void zoomTo(1),
+  fitView: () => void fitView(),
+});
+
 function onConnect(event: Connection): void {
   if (!props.canEdit) return;
   const id = globalThis.crypto.randomUUID();
@@ -576,15 +823,16 @@ function onConnect(event: Connection): void {
         sourceHandle: event.sourceHandle ?? null,
         targetHandle: event.targetHandle ?? null,
         label: null,
-        style: {
-          color: edgeDefaultColor(),
-          line: 'curved',
-          markerStart: 'none',
-          markerEnd: 'arrow',
-        },
+        // Цвет не задаём (12.9) — решается на лету от темы каждого зрителя
+        // (см. resolveEdgeColor), пока пользователь явно не выберет свой
+        style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
       },
     },
   ]);
+  // Инструмент «Стрелка» (12.9) — только affordance, само создание не зависит от
+  // него (drag от хендла работает всегда), но после успешного соединения логично
+  // вернуть инструмент на «Выделение», как у стикера/фигуры
+  if (activeTool.value === 'arrow') activeTool.value = 'select';
 }
 </script>
 
@@ -592,7 +840,10 @@ function onConnect(event: Connection): void {
   <div
     ref="root"
     class="board-canvas-root h-full w-full bg-[var(--ui-bg)]"
-    :class="{ 'board-canvas-tool-armed': activeTool !== 'select' }"
+    :class="{
+      'board-canvas-tool-armed': activeTool !== 'select',
+      'board-canvas-tool-armed-arrow': activeTool === 'arrow',
+    }"
     @dblclick.capture="onPaneDoubleClick"
   >
     <VueFlow
@@ -615,9 +866,13 @@ function onConnect(event: Connection): void {
       :elevate-nodes-on-select="false"
       @connect="onConnect"
       @pane-click="onPaneClick"
+      @pane-context-menu="onPaneContextMenu"
+      @node-drag-start="onNodeDragStart"
       @node-drag="onNodeDrag"
       @node-drag-stop="onNodeDragStop"
+      @node-context-menu="onNodeContextMenu"
       @edge-double-click="onEdgeDoubleClick"
+      @edge-context-menu="onEdgeContextMenu"
     >
       <!-- snap-to-grid (был в 12.5) убран: без направляющих выравнивания (13.6, ещё не
       реализованы) фиксированная сетка только мешает — подогнать один стикер к другому
@@ -626,11 +881,12 @@ function onConnect(event: Connection): void {
       Пиксель-в-пиксель перетаскивание вернём к сетке или заменим на умные направляющие
       в 13.6.
 
-      delete-key-code выключен: встроенное удаление по Backspace/Delete работает
-      только с внутренним состоянием Vue Flow, а не через наш стор — удаление молча
-      не долетало бы до сервера/других участников и возвращалось после перезагрузки.
-      Клавиатурное удаление вернётся в 12.9 вместе с остальными хоткеями, проведённое
-      через deleteSelected(), как и кнопка в тулбаре выделения.
+      delete-key-code выключен постоянно: встроенное удаление по Backspace/Delete
+      работает только с внутренним состоянием Vue Flow, а не через наш стор —
+      удаление молча не долетало бы до сервера/других участников и возвращалось
+      после перезагрузки. Клавиатурное удаление (12.9) идёт мимо этого пропа —
+      через use-board-hotkeys.ts (глобальный keydown) и deleteSelected()/
+      deleteSelectedEdges(), как и кнопки в тулбаре/контекстном меню.
 
       elevate-nodes-on-select тоже выключен: по умолчанию Vue Flow добавляет +1000 к
       z-index ВЫДЕЛЕННОГО узла, чтобы он всегда был поверх остальных — из-за этого
@@ -663,10 +919,17 @@ function onConnect(event: Connection): void {
         :top="selectionToolbarPosition.top"
         :current-color="selectedColor"
         :current-form="selectedForm"
+        :current-font-size="selectedFontSize"
+        :current-font-family="selectedFontFamily"
+        :current-text-color="selectedTextColor"
+        :current-text-align="selectedTextAlign"
         @color="setSelectedColor"
         @form="setSelectedForm"
-        @bring-to-front="bringSelectedToFront"
-        @send-to-back="sendSelectedToBack"
+        @font-size="setSelectedFontSize"
+        @font-family="setSelectedFontFamily"
+        @text-color="setSelectedTextColor"
+        @text-align="setSelectedTextAlign"
+        @duplicate="duplicateSelected"
         @delete="deleteSelected"
       />
 
@@ -677,13 +940,26 @@ function onConnect(event: Connection): void {
         :current-line="selectedEdgeStyle.line"
         :current-marker-start="selectedEdgeStyle.markerStart"
         :current-marker-end="selectedEdgeStyle.markerEnd"
-        :current-color="selectedEdgeStyle.color"
+        :current-color="selectedEdgeColor"
         @line="patchEdgeLine"
         @marker-start="patchEdgeMarkerStart"
         @marker-end="patchEdgeMarkerEnd"
         @color="patchEdgeColor"
         @add-text="addTextToSelectedEdge"
         @delete="deleteSelectedEdges"
+      />
+
+      <BoardContextMenu
+        v-if="contextMenu"
+        :left="contextMenu.left"
+        :top="contextMenu.top"
+        :target="contextMenu.target"
+        @bring-to-front="bringSelectedToFront"
+        @send-to-back="sendSelectedToBack"
+        @duplicate="duplicateSelected"
+        @add-text="addTextToSelectedEdge"
+        @delete="contextMenu.target === 'item' ? deleteSelected() : deleteSelectedEdges()"
+        @close="closeContextMenu"
       />
 
       <div v-if="items.length === 0" class="board-empty-state">
@@ -765,6 +1041,12 @@ function onConnect(event: Connection): void {
 
 .board-canvas-tool-armed :deep(.vue-flow__pane) {
   cursor: crosshair;
+}
+
+/* Инструмент «Стрелка» (12.9) — хендлы карточек видны сразу, не только по hover,
+   чтобы подсказать новичку, откуда тянуть связь (сам drag-механизм не меняется) */
+.board-canvas-tool-armed-arrow :deep(.board-connect-handle) {
+  opacity: 1;
 }
 
 /*

@@ -224,6 +224,23 @@ describe('стор сессии доски', () => {
 
       expect(store.items[0]?.x).toBe(99);
     });
+
+    it('оптимистичный item.patch мержит style по полям, а не заменяет целиком (12.9)', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1, [item({ style: { color: '#FCEB96', fontSize: 24 } })]);
+      await store.join('board1');
+
+      socket.next = { revision: 2 };
+      await store.applyOps([
+        { type: 'item.patch', clientOpId: 'a', id: 'i1', patch: { style: { color: '#A8CAFF' } } },
+      ]);
+
+      // Патч тронул только color — fontSize из предыдущего style должен уцелеть локально,
+      // не дожидаясь эха: раньше item.patch спреддил patch.style поверх ЦЕЛОГО item,
+      // теряя остальные поля style, если патч указывал не все сразу (баг для edge.patch
+      // уже чинили раньше — здесь тот же класс ошибки для item.patch)
+      expect(store.items[0]?.style).toEqual({ color: '#A8CAFF', fontSize: 24 });
+    });
   });
 
   describe('приём рассылок board:ops', () => {

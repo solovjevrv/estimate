@@ -7,12 +7,13 @@ import { computed, inject, nextTick, onMounted, ref, useTemplateRef } from 'vue'
 import { BOARD_CAN_EDIT_KEY, BOARD_PENDING_EDIT_ID_KEY } from '../../lib/board/board-canvas-keys';
 import { darkenHex, readableTextColor } from '../../lib/board/board-colors';
 import {
+  boardFontFamilyCss,
   SHAPE_MAX_HEIGHT,
   SHAPE_MAX_WIDTH,
   SHAPE_MIN_HEIGHT,
   SHAPE_MIN_WIDTH,
 } from '../../lib/board/board-item-defaults';
-import { useFitFontSize } from '../../lib/board/use-fit-font-size';
+import { FIT_FONT_MAX, useFitFontSize } from '../../lib/board/use-fit-font-size';
 import { useBoardSessionStore } from '../../stores/board-session';
 
 const props = defineProps<NodeProps<BoardItem>>();
@@ -25,7 +26,10 @@ const content = computed(() => props.data.content as BoardShapeContent);
 const bgColor = computed(() => props.data.style.color);
 /** Обводка — заметно более тёмный вариант того же тона, не отдельный цвет */
 const borderColor = computed(() => darkenHex(bgColor.value, 0.2));
-const textColor = computed(() => readableTextColor(bgColor.value));
+const textColor = computed(() => props.data.style.textColor ?? readableTextColor(bgColor.value));
+const fontFamily = computed(() => boardFontFamilyCss(props.data.style.fontFamily));
+const textAlign = computed(() => props.data.style.textAlign ?? 'center');
+const maxFontSize = computed(() => props.data.style.fontSize ?? FIT_FONT_MAX);
 
 /** Ромб — не поворот прямоугольника (искажался бы при несимметричном резайзе), а вырез
  * по границам бокса, чтобы форма оставалась настоящим ромбом при любом соотношении сторон */
@@ -69,7 +73,15 @@ const fitText = computed(() => (editing.value ? draftText.value : content.value.
 const boxWidth = computed(() => props.data.width);
 const boxHeight = computed(() => props.data.height);
 const measureEl = computed(() => (editing.value ? textareaEl.value : textEl.value));
-const fontSize = useFitFontSize(contentBoxEl, measureEl, fitText, boxWidth, boxHeight, editing);
+const fontSize = useFitFontSize(
+  contentBoxEl,
+  measureEl,
+  fitText,
+  boxWidth,
+  boxHeight,
+  editing,
+  maxFontSize,
+);
 
 async function startEditing(): Promise<void> {
   if (editing.value || !canEdit.value) return;
@@ -157,8 +169,13 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
             ref="textarea"
             v-model="draftText"
             :maxlength="BOARD_ITEM_TEXT_MAX_LENGTH"
-            class="nodrag h-full w-full resize-none overflow-hidden bg-transparent text-center font-semibold outline-none"
-            :style="{ color: textColor, fontSize: `${fontSize}px` }"
+            class="nodrag h-full w-full resize-none overflow-hidden bg-transparent font-semibold outline-none"
+            :style="{
+              color: textColor,
+              fontSize: `${fontSize}px`,
+              fontFamily,
+              textAlign,
+            }"
             @pointerdown.stop
             @keydown.esc.stop.prevent="cancelEditing"
             @blur="commitEditing"
@@ -168,7 +185,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
           <span
             ref="text"
             class="block w-full overflow-hidden break-words whitespace-pre-wrap"
-            :style="{ fontSize: `${fontSize}px` }"
+            :style="{ fontSize: `${fontSize}px`, fontFamily, textAlign }"
             >{{ content.text }}</span
           >
         </template>

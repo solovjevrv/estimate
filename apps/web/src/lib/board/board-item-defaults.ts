@@ -2,9 +2,17 @@
  * Значения по умолчанию и границы для создания/резайза стикеров (12.6) —
  * держим их отдельно от компонентов, чтобы холст и тулбар их не дублировали.
  */
-import type { BoardColorHex, BoardItem } from '@poker/shared';
+import type { BoardColorHex, BoardFontFamily, BoardItem } from '@poker/shared';
 
 import { theme } from '../theme';
+
+/**
+ * Токен шрифта (12.9) -> CSS-переменная, уже объявленная в `main.css`.
+ * Не задан — тело текста как было до 12.9 (`--font-sans`, Manrope).
+ */
+export function boardFontFamilyCss(fontFamily: BoardFontFamily | undefined): string {
+  return fontFamily === 'heading' ? 'var(--font-heading)' : 'var(--font-sans)';
+}
 
 /** Стикер — всегда квадрат (12.7): ширина и высота равны и в дефолте, и в границах резайза */
 export const STICKY_DEFAULT_WIDTH = 180;
@@ -22,16 +30,24 @@ export const SHAPE_DEFAULT_HEIGHT = 120;
 export const SHAPE_DEFAULT_COLOR: BoardColorHex = '#A8CAFF';
 
 /**
- * Стрелки по умолчанию чёрные (не разноцветные, как стикеры/фигуры) — как в
- * Miro (12.8). Чёрный, впрочем, не читается на тёмном фоне холста — на тёмной
- * теме новая стрелка создаётся белой (баг, найденный пользователем 07.08.2026).
- * Оба варианта — существующие свотчи `BOARD_COLOR_PALETTE`.
+ * Цвет стрелки (12.9) — не хранится по умолчанию (`BoardEdgeStyle.color`
+ * опционален): если не задан явно, вычисляется здесь заново у КАЖДОГО
+ * зрителя от ЕГО ТЕКУЩЕЙ темы, а не фиксируется на теме автора в момент
+ * создания. Раньше (12.8) новая стрелка сразу получала литеральный hex
+ * (чёрный на светлой теме / белый на тёмной) — это ломалось, как только
+ * стрелку смотрел кто-то в противоположной теме: белая стрелка невидима на
+ * светлом холсте (баг, найденный пользователем 07.08.2026, разобран и
+ * переделан 08.08.2026). Как только пользователь явно выбирает цвет в
+ * тулбаре — он фиксируется как обычный hex и с этого момента не зависит от
+ * темы ни у кого. Вызывать только из реактивного контекста (computed/watch) —
+ * читает глобальный `theme`.
  */
-const EDGE_DEFAULT_COLOR_LIGHT: BoardColorHex = '#1A1A1A';
-const EDGE_DEFAULT_COLOR_DARK: BoardColorHex = '#FFFFFF';
+const EDGE_AUTO_COLOR_LIGHT: BoardColorHex = '#1A1A1A';
+const EDGE_AUTO_COLOR_DARK: BoardColorHex = '#FFFFFF';
 
-export function edgeDefaultColor(): BoardColorHex {
-  return theme.value === 'dark' ? EDGE_DEFAULT_COLOR_DARK : EDGE_DEFAULT_COLOR_LIGHT;
+export function resolveEdgeColor(color: BoardColorHex | undefined): BoardColorHex {
+  if (color) return color;
+  return theme.value === 'dark' ? EDGE_AUTO_COLOR_DARK : EDGE_AUTO_COLOR_LIGHT;
 }
 
 /** Те же UX-границы, что у стикера (12.7) — единая логика резайза для всех типов элементов */
