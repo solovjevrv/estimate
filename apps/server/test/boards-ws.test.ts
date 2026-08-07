@@ -65,6 +65,7 @@ function stickyItem(
     zIndex: 0,
     content: { type: 'sticky', text: 'Привет' },
     style: { color: '#FCEB96' },
+    reactions: [],
     ...over,
   };
 }
@@ -411,6 +412,65 @@ describeDb('WS-канал досок', () => {
       expect(ownBoard.snapshot?.items.map((i) => i.id)).toEqual([item.id]);
       const victimBoard = await joinBoard(connect(victimOwner), victimBoardId);
       expect(victimBoard.snapshot?.items).toEqual([]);
+    });
+
+    it('реакция рассылается всем участникам как item.patch и переживает пересоздание снимка (12.12)', async () => {
+      const owner = await newUser('react-owner');
+      const boardId = await newBoard(owner);
+      const senderClient = connect(owner);
+      const viewerClient = connect(owner);
+      await joinBoard(senderClient, boardId);
+      await joinBoard(viewerClient, boardId);
+      const item = stickyItem();
+      // Дожидаемся broadcast самого создания на viewerClient ДО того, как слушать
+      // следующий — иначе гонка между ack и io.to().emit() на сервере могла бы
+      // отдать этот же create-батч в опрашиваемый ниже waitFor вместо реакции
+      const createOpsPromise = waitFor<BoardOpsBatch>(viewerClient, BOARD_WS_SERVER_EVENTS.OPS);
+      await emit<ApplyBoardOpsResult>(senderClient, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: 'c1', item }],
+      });
+      await createOpsPromise;
+
+      const opsPromise = waitFor<BoardOpsBatch>(viewerClient, BOARD_WS_SERVER_EVENTS.OPS);
+      const ack = await emit<ApplyBoardOpsResult>(senderClient, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.react', clientOpId: 'c2', id: item.id, emoji: '👍' }],
+      });
+      const broadcast = await opsPromise;
+
+      expect(ack.ok).toBe(true);
+      // Рассылается как обычный item.patch — у реакций нет отдельного протокола
+      // для остальных участников (см. boards.service.ts)
+      expect(broadcast.ops).toHaveLength(1);
+      const op = broadcast.ops[0]!;
+      expect(op.type).toBe('item.patch');
+      if (op.type === 'item.patch') {
+        expect(op.item.reactions).toEqual([{ userId: owner.id, name: owner.name, emoji: '👍' }]);
+      }
+
+      // Переживает пересоздание снимка — настоящая персистентность в БД,
+      // а не только оптимистичный вид у уже подключённых клиентов
+      const fresh = await joinBoard(connect(owner), boardId);
+      expect(fresh.snapshot?.items[0]?.reactions).toEqual([
+        { userId: owner.id, name: owner.name, emoji: '👍' },
+      ]);
+    });
+
+    it('реакция на фигуру отклоняется — только стикеры (12.12)', async () => {
+      const owner = await newUser('react-shape-owner');
+      const boardId = await newBoard(owner);
+      const client = connect(owner);
+      await joinBoard(client, boardId);
+      const shape = stickyItem({ content: { type: 'shape', shape: 'rectangle', text: '' } });
+      await emit<ApplyBoardOpsResult>(client, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: 'c1', item: shape }],
+      });
+
+      const ack = await emit<ApplyBoardOpsResult>(client, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.react', clientOpId: 'c2', id: shape.id, emoji: '👍' }],
+      });
+
+      expect(ack.ok).toBe(false);
+      if (!ack.ok) expect(ack.error).toBe('bad_request');
     });
   });
 

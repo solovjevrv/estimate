@@ -1,4 +1,4 @@
-import type { BoardEdgeStyle, BoardItemContent, BoardItemStyle } from '@poker/shared';
+import type { BoardEdgeStyle, BoardItemContent, BoardItemStyle, ItemReaction } from '@poker/shared';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -224,6 +224,8 @@ export const boardItems = pgTable(
     zIndex: integer('z_index').notNull().default(0),
     content: jsonb('content').notNull().$type<BoardItemContent>(),
     style: jsonb('style').notNull().$type<BoardItemStyle>(),
+    /** Реакции-эмодзи (12.12) — только на стикерах, персистентные, не эфемерные как у комнат */
+    reactions: jsonb('reactions').notNull().$type<ItemReaction[]>().default([]),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

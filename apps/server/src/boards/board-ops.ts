@@ -18,6 +18,8 @@ import {
   BOARD_MAX_ITEMS,
   BOARD_SHAPE_KINDS,
   BOARD_TEXT_ALIGNS,
+  REACTION_EMOJIS,
+  toggleItemReaction,
   type BoardEdge,
   type BoardItem,
   type BoardItemContent,
@@ -220,6 +222,7 @@ export function applyBoardOp(
   op: BoardOp,
   boardId: string,
   actorId: string,
+  actorName: string,
 ): void {
   switch (op.type) {
     case 'item.create': {
@@ -237,6 +240,7 @@ export function applyBoardOp(
         ...geometry,
         content: validateContent(op.item.content),
         style: validateStyle(op.item.style),
+        reactions: [],
         createdBy: actorId,
         updatedAt: new Date().toISOString(),
       };
@@ -276,6 +280,24 @@ export function applyBoardOp(
           state.edges.delete(edgeId);
         }
       }
+      break;
+    }
+    case 'item.react': {
+      const existing = state.items.get(op.id);
+      if (!existing) {
+        throw new ValidationError('Элемент не найден');
+      }
+      if (existing.content.type !== 'sticky') {
+        throw new ValidationError('Реакции доступны только на стикерах');
+      }
+      if (!(REACTION_EMOJIS as readonly unknown[]).includes(op.emoji)) {
+        throw new ValidationError('Недопустимый эмодзи реакции');
+      }
+      state.items.set(op.id, {
+        ...existing,
+        reactions: toggleItemReaction(existing.reactions, actorId, actorName, op.emoji),
+        updatedAt: new Date().toISOString(),
+      });
       break;
     }
     case 'edge.create': {

@@ -166,7 +166,7 @@ export class BoardsRepository {
     createdBy: string,
     item: Omit<BoardItem, 'boardId' | 'createdBy' | 'updatedAt'>,
   ): Promise<BoardItem> {
-    const { id, parentId, x, y, width, height, rotation, zIndex, content, style } = item;
+    const { id, parentId, x, y, width, height, rotation, zIndex, content, style, reactions } = item;
     const [row] = await this.db
       .insert(schema.boardItems)
       .values({
@@ -181,6 +181,7 @@ export class BoardsRepository {
         zIndex,
         content,
         style,
+        reactions,
         createdBy,
       })
       .returning();
@@ -203,10 +204,19 @@ export class BoardsRepository {
     itemId: string,
     item: Pick<
       BoardItem,
-      'parentId' | 'x' | 'y' | 'width' | 'height' | 'rotation' | 'zIndex' | 'content' | 'style'
+      | 'parentId'
+      | 'x'
+      | 'y'
+      | 'width'
+      | 'height'
+      | 'rotation'
+      | 'zIndex'
+      | 'content'
+      | 'style'
+      | 'reactions'
     >,
   ): Promise<BoardItem | null> {
-    const { parentId, x, y, width, height, rotation, zIndex, content, style } = item;
+    const { parentId, x, y, width, height, rotation, zIndex, content, style, reactions } = item;
     const [row] = await this.db
       .update(schema.boardItems)
       .set({
@@ -219,6 +229,7 @@ export class BoardsRepository {
         zIndex,
         content,
         style,
+        reactions,
         updatedAt: new Date(),
       })
       .where(and(eq(schema.boardItems.id, itemId), eq(schema.boardItems.boardId, boardId)))
@@ -296,6 +307,7 @@ export class BoardsRepository {
       zIndex: row.zIndex,
       content: row.content,
       style: row.style,
+      reactions: row.reactions,
       createdBy: row.createdBy,
       updatedAt: row.updatedAt.toISOString(),
     };

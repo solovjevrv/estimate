@@ -8,7 +8,9 @@ import {
   TSHIRT_DECK,
   WS_EVENTS,
   hasTeamRole,
+  toggleItemReaction,
   tshirtLabel,
+  type ItemReaction,
 } from '../src/index';
 
 describe('контракты WS-событий', () => {
@@ -72,5 +74,42 @@ describe('колоды', () => {
     expect(DECK_CARDS.fibonacci).toBe(FIBONACCI_DECK);
     expect(DECK_CARDS.scale_0_5).toBe(SCALE_0_5_DECK);
     expect(DECK_CARDS.tshirt).toBe(TSHIRT_DECK);
+  });
+});
+
+describe('toggleItemReaction (12.12)', () => {
+  it('добавляет реакцию, если у пользователя её ещё нет', () => {
+    const result = toggleItemReaction([], 'u1', 'Аня', '👍');
+    expect(result).toEqual<ItemReaction[]>([{ userId: 'u1', name: 'Аня', emoji: '👍' }]);
+  });
+
+  it('повторная присылка того же эмодзи снимает реакцию', () => {
+    const withReaction: ItemReaction[] = [{ userId: 'u1', name: 'Аня', emoji: '👍' }];
+    expect(toggleItemReaction(withReaction, 'u1', 'Аня', '👍')).toEqual([]);
+  });
+
+  it('другой эмодзи от того же пользователя заменяет прежнюю реакцию, а не добавляет вторую', () => {
+    const withReaction: ItemReaction[] = [{ userId: 'u1', name: 'Аня', emoji: '👍' }];
+    const result = toggleItemReaction(withReaction, 'u1', 'Аня', '🔥');
+    expect(result).toEqual<ItemReaction[]>([{ userId: 'u1', name: 'Аня', emoji: '🔥' }]);
+  });
+
+  it('реакции разных пользователей на один элемент не мешают друг другу', () => {
+    const withReaction: ItemReaction[] = [{ userId: 'u1', name: 'Аня', emoji: '👍' }];
+    const result = toggleItemReaction(withReaction, 'u2', 'Боря', '🔥');
+    expect(result).toEqual(
+      expect.arrayContaining([
+        { userId: 'u1', name: 'Аня', emoji: '👍' },
+        { userId: 'u2', name: 'Боря', emoji: '🔥' },
+      ]),
+    );
+    expect(result).toHaveLength(2);
+  });
+
+  it('не мутирует исходный массив', () => {
+    const original: ItemReaction[] = [{ userId: 'u1', name: 'Аня', emoji: '👍' }];
+    const copy = [...original];
+    toggleItemReaction(original, 'u1', 'Аня', '🔥');
+    expect(original).toEqual(copy);
   });
 });

@@ -287,6 +287,7 @@ function createSticky(center: { x: number; y: number }): void {
         zIndex: nextZIndexAbove(props.items),
         content: { type: 'sticky', text: '' },
         style: { color: STICKY_DEFAULT_COLOR },
+        reactions: [],
       },
     },
   ]);
@@ -311,6 +312,7 @@ function createShape(center: { x: number; y: number }): void {
         zIndex: nextZIndexAbove(props.items),
         content: { type: 'shape', shape: 'rectangle', text: '' },
         style: { color: SHAPE_DEFAULT_COLOR },
+        reactions: [],
       },
     },
   ]);
@@ -701,6 +703,9 @@ function duplicateSelected(): void {
             zIndex: base + index,
             content: node.data.content,
             style: node.data.style,
+            // Реакции — личное действие конкретного участника на конкретную карточку,
+            // дубликат начинает с чистого листа, а не наследует чужие реакции
+            reactions: [],
           },
         }) satisfies BoardOp,
     ),

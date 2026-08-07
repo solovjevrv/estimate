@@ -21,7 +21,7 @@ import type {
   BoardPresenceEntry,
   JoinBoardResult,
 } from '@poker/shared';
-import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@poker/shared';
+import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, toggleItemReaction } from '@poker/shared';
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 
@@ -34,6 +34,7 @@ import {
   type BoardHistoryEntry,
 } from '../lib/board/board-op-history';
 import { createSocket, emitWithAck, type PokerSocket } from '../lib/socket';
+import { useSessionStore } from './session';
 
 /** Ключ цели операции — общий для `BoardOp` (клиент → сервер) и `BoardCommittedOp` (рассылка) */
 function opTargetKey(op: BoardOp): string {
@@ -42,6 +43,7 @@ function opTargetKey(op: BoardOp): string {
       return `item:${op.item.id}`;
     case 'item.patch':
     case 'item.delete':
+    case 'item.react':
       return `item:${op.id}`;
     case 'edge.create':
       return `edge:${op.edge.id}`;
@@ -73,7 +75,11 @@ function committedOpTargetKey(op: BoardCommittedOp): string {
  * другой не успел его изменить). Возвращает `null`, если применять нечего
  * (цель патча/удаления ещё не появилась локально — подождём настоящее эхо).
  */
-function predictCommittedOp(op: BoardOp, local: BoardLocalState): BoardCommittedOp | null {
+function predictCommittedOp(
+  op: BoardOp,
+  local: BoardLocalState,
+  self: { id: string; name: string },
+): BoardCommittedOp | null {
   switch (op.type) {
     case 'item.create':
       return {
@@ -97,6 +103,22 @@ function predictCommittedOp(op: BoardOp, local: BoardLocalState): BoardCommitted
     }
     case 'item.delete':
       return { type: 'item.delete', clientOpId: op.clientOpId, id: op.id };
+    case 'item.react': {
+      const existing = local.items.get(op.id);
+      if (!existing) return null;
+      // Рассылается как item.patch (12.12) — реакции не отдельный протокол для
+      // других участников, только для нас самих (отдельный BoardOp, чтобы
+      // сервер, а не клиент, решал toggle авторитетно)
+      return {
+        type: 'item.patch',
+        clientOpId: op.clientOpId,
+        item: {
+          ...existing,
+          reactions: toggleItemReaction(existing.reactions, self.id, self.name, op.emoji),
+          updatedAt: new Date().toISOString(),
+        },
+      };
+    }
     case 'edge.create':
       return {
         type: 'edge.create',
@@ -122,6 +144,7 @@ function predictCommittedOp(op: BoardOp, local: BoardLocalState): BoardCommitted
 }
 
 export const useBoardSessionStore = defineStore('boardSession', () => {
+  const session = useSessionStore();
   const local: BoardLocalState = reactive({ items: new Map(), edges: new Map() });
   const revision = ref(0);
   const presence = ref<BoardPresenceEntry[]>([]);
@@ -326,10 +349,11 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     const active = requireSocket();
     const record = opts.record ?? true;
     const inverseOps = record ? (opts.inverse ?? deriveInverseOps(ops, local)) : null;
+    const self = { id: session.user?.id ?? '', name: session.user?.name ?? '' };
     for (const op of ops) {
       ownClientOpIds.add(op.clientOpId);
       lastOwnOpByTarget.set(opTargetKey(op), op.clientOpId);
-      const predicted = predictCommittedOp(op, local);
+      const predicted = predictCommittedOp(op, local, self);
       if (predicted) applyLocalBoardOp(local, predicted);
     }
     if (inverseOps && inverseOps.length) {

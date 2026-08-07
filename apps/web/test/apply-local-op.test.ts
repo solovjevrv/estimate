@@ -19,6 +19,7 @@ const item: BoardItem = {
   zIndex: 0,
   content: { type: 'sticky', text: 'Привет' },
   style: { color: '#FCEB96' },
+  reactions: [],
   createdBy: 'u1',
   updatedAt: '2026-08-06T00:00:00.000Z',
 };
