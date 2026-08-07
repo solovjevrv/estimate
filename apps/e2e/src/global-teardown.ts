@@ -20,6 +20,9 @@ export default async function globalTeardown(): Promise<void> {
     // У teams нет внешнего ключа на users — удаление пользователя-создателя не каскадирует
     // саму команду (только его членство), поэтому команда чистится отдельно по тому же маркеру
     await db.delete(schema.teams).where(like(schema.teams.name, `${E2E_ROOM_PREFIX}%`));
+    // У boards.owner_id — onDelete 'set null' (не cascade, см. schema.ts), поэтому доски
+    // тоже чистятся отдельно по маркеру в названии, иначе осиротевшие ряды копились бы вечно
+    await db.delete(schema.boards).where(like(schema.boards.title, `${E2E_ROOM_PREFIX}%`));
     await db.delete(schema.users).where(like(schema.users.email, `%@${E2E_EMAIL_DOMAIN}`));
   } finally {
     await pool.end();
