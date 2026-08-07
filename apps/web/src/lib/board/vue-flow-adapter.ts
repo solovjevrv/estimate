@@ -6,6 +6,8 @@
 import type { BoardColorHex, BoardEdge, BoardEdgeMarker, BoardItem } from '@poker/shared';
 import { MarkerType, type Edge, type EdgeMarkerType, type Node } from '@vue-flow/core';
 
+import { resolveEdgeColor } from './board-item-defaults';
+
 export function boardItemToNode(item: BoardItem): Node<BoardItem> {
   return {
     id: item.id,
@@ -48,6 +50,10 @@ function toFlowMarkerType(
 }
 
 export function boardEdgeToFlowEdge(edge: BoardEdge): Edge<BoardEdge> {
+  // Не задан явно (12.9) — резолвится от текущей темы ЭТОГО зрителя, а не
+  // хранится (см. resolveEdgeColor) — читает реактивный theme, поэтому
+  // toFlowEdges должен вызываться из реактивного контекста (computed/watch)
+  const color = resolveEdgeColor(edge.style.color);
   return {
     id: edge.id,
     source: edge.sourceItemId,
@@ -59,9 +65,9 @@ export function boardEdgeToFlowEdge(edge: BoardEdge): Edge<BoardEdge> {
     // всегда один кастомный тип (12.8)
     type: 'floating',
     label: edge.label ?? undefined,
-    style: { stroke: edge.style.color, strokeWidth: 2 },
-    markerStart: toFlowMarkerType(edge.style.markerStart, edge.style.color),
-    markerEnd: toFlowMarkerType(edge.style.markerEnd, edge.style.color),
+    style: { stroke: color, strokeWidth: 2 },
+    markerStart: toFlowMarkerType(edge.style.markerStart, color),
+    markerEnd: toFlowMarkerType(edge.style.markerEnd, color),
     data: edge,
   };
 }

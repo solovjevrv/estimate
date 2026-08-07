@@ -1,6 +1,6 @@
 import type { BoardEdge, BoardItem } from '@poker/shared';
 import { MarkerType } from '@vue-flow/core';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   boardEdgeToFlowEdge,
@@ -8,6 +8,7 @@ import {
   toFlowEdges,
   toFlowNodes,
 } from '../src/lib/board/vue-flow-adapter';
+import { theme } from '../src/lib/theme';
 
 const stickyItem: BoardItem = {
   id: 'i1',
@@ -119,5 +120,38 @@ describe('boardEdgeToFlowEdge', () => {
 
   it('toFlowEdges переносит список поэлементно', () => {
     expect(toFlowEdges([straightEdge, curvedEdge]).map((e) => e.id)).toEqual(['e1', 'e2']);
+  });
+
+  describe('цвет связи не задан (12.9) — резолвится от темы зрителя', () => {
+    afterEach(() => {
+      theme.value = 'light';
+    });
+
+    it('светлая тема — почти чёрный', () => {
+      theme.value = 'light';
+      const edge: BoardEdge = {
+        ...straightEdge,
+        style: { ...straightEdge.style, color: undefined },
+      };
+      expect(boardEdgeToFlowEdge(edge).style).toMatchObject({ stroke: '#1A1A1A' });
+    });
+
+    it('тёмная тема — белый', () => {
+      theme.value = 'dark';
+      const edge: BoardEdge = {
+        ...straightEdge,
+        style: { ...straightEdge.style, color: undefined },
+      };
+      expect(boardEdgeToFlowEdge(edge).style).toMatchObject({ stroke: '#FFFFFF' });
+    });
+
+    it('заданный явно цвет побеждает тему', () => {
+      theme.value = 'dark';
+      const edge: BoardEdge = {
+        ...straightEdge,
+        style: { ...straightEdge.style, color: '#FF0000' },
+      };
+      expect(boardEdgeToFlowEdge(edge).style).toMatchObject({ stroke: '#FF0000' });
+    });
   });
 });

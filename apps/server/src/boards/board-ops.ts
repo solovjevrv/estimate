@@ -11,9 +11,13 @@ import {
   BOARD_EDGE_LABEL_MAX_LENGTH,
   BOARD_EDGE_LINE_KINDS,
   BOARD_EDGE_MARKER_KINDS,
+  BOARD_FONT_FAMILIES,
+  BOARD_ITEM_FONT_SIZE_MAX,
+  BOARD_ITEM_FONT_SIZE_MIN,
   BOARD_ITEM_TEXT_MAX_LENGTH,
   BOARD_MAX_ITEMS,
   BOARD_SHAPE_KINDS,
+  BOARD_TEXT_ALIGNS,
   type BoardEdge,
   type BoardItem,
   type BoardItemContent,
@@ -59,12 +63,55 @@ function requireColorHex(color: unknown, what: string): string {
   return color;
 }
 
+function validateFontSize(fontSize: unknown): number | undefined {
+  if (fontSize === undefined || fontSize === null) return undefined;
+  if (
+    typeof fontSize !== 'number' ||
+    !Number.isFinite(fontSize) ||
+    fontSize < BOARD_ITEM_FONT_SIZE_MIN ||
+    fontSize > BOARD_ITEM_FONT_SIZE_MAX
+  ) {
+    throw new ValidationError('Некорректный размер шрифта');
+  }
+  return fontSize;
+}
+
+function validateFontFamily(fontFamily: unknown): BoardItemStyle['fontFamily'] {
+  if (fontFamily === undefined || fontFamily === null) return undefined;
+  if (!(BOARD_FONT_FAMILIES as readonly unknown[]).includes(fontFamily)) {
+    throw new ValidationError('Недопустимый шрифт');
+  }
+  return fontFamily as BoardItemStyle['fontFamily'];
+}
+
+function validateTextAlign(textAlign: unknown): BoardItemStyle['textAlign'] {
+  if (textAlign === undefined || textAlign === null) return undefined;
+  if (!(BOARD_TEXT_ALIGNS as readonly unknown[]).includes(textAlign)) {
+    throw new ValidationError('Недопустимое выравнивание текста');
+  }
+  return textAlign as BoardItemStyle['textAlign'];
+}
+
 function validateStyle(style: unknown): BoardItemStyle {
   if (typeof style !== 'object' || style === null) {
     throw new ValidationError('Не указан стиль элемента');
   }
-  const color = requireColorHex((style as { color?: unknown }).color, 'элемента');
-  return { color };
+  const s = style as {
+    color?: unknown;
+    fontSize?: unknown;
+    fontFamily?: unknown;
+    textColor?: unknown;
+    textAlign?: unknown;
+  };
+  const color = requireColorHex(s.color, 'элемента');
+  const fontSize = validateFontSize(s.fontSize);
+  const fontFamily = validateFontFamily(s.fontFamily);
+  const textColor =
+    s.textColor === undefined || s.textColor === null
+      ? undefined
+      : requireColorHex(s.textColor, 'текста');
+  const textAlign = validateTextAlign(s.textAlign);
+  return { color, fontSize, fontFamily, textColor, textAlign };
 }
 
 function validateEdgeStyle(style: unknown): BoardEdge['style'] {
@@ -77,7 +124,9 @@ function validateEdgeStyle(style: unknown): BoardEdge['style'] {
     markerStart?: unknown;
     markerEnd?: unknown;
   };
-  const validColor = requireColorHex(color, 'связи');
+  // Не задан — цвет решается на фронте от темы зрителя (12.9), не хранится
+  const validColor =
+    color === undefined || color === null ? undefined : requireColorHex(color, 'связи');
   if (!(BOARD_EDGE_LINE_KINDS as readonly unknown[]).includes(line)) {
     throw new ValidationError('Недопустимый тип линии связи');
   }
@@ -206,7 +255,10 @@ export function applyBoardOp(
         ...geometry,
         content:
           op.patch.content !== undefined ? validateContent(merged.content) : existing.content,
-        style: op.patch.style !== undefined ? validateStyle(merged.style) : existing.style,
+        style:
+          op.patch.style !== undefined
+            ? validateStyle({ ...existing.style, ...op.patch.style })
+            : existing.style,
         updatedAt: new Date().toISOString(),
       };
       state.items.set(op.id, item);
