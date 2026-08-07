@@ -10,6 +10,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { useBoardSessionStore } from '../src/stores/board-session';
+import { useSessionStore } from '../src/stores/session';
 
 /** Фальшивый сокет: запоминает подписки и отправленные события (по образцу stores/room.ts) */
 class FakeSocket {
@@ -73,6 +74,7 @@ function item(over: Partial<BoardItem> = {}): BoardItem {
     zIndex: 0,
     content: { type: 'sticky', text: 'Привет' },
     style: { color: '#FCEB96' },
+    reactions: [],
     createdBy: 'u1',
     updatedAt: '2026-08-06T00:00:00.000Z',
     ...over,
@@ -240,6 +242,78 @@ describe('стор сессии доски', () => {
       // теряя остальные поля style, если патч указывал не все сразу (баг для edge.patch
       // уже чинили раньше — здесь тот же класс ошибки для item.patch)
       expect(store.items[0]?.style).toEqual({ color: '#A8CAFF', fontSize: 24 });
+    });
+  });
+
+  describe('реакции item.react (12.12)', () => {
+    it('оптимистично предсказывает добавление своей реакции тем же toggle, что и сервер', async () => {
+      const session = useSessionStore();
+      session.setUser({
+        id: 'me',
+        provider: 'google',
+        email: 'me@example.com',
+        name: 'Я',
+        jobTitle: null,
+        avatarUrl: null,
+      });
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1, [item({ reactions: [] })]);
+      await store.join('board1');
+      socket.next = { revision: 2 };
+
+      await store.applyOps([{ type: 'item.react', clientOpId: 'r1', id: 'i1', emoji: '👍' }], {
+        record: false,
+      });
+
+      // Эхо не приходило — реакция появилась именно из оптимистичного предсказания,
+      // тем же toggle (`toggleItemReaction`), что применит сервер
+      expect(store.items[0]?.reactions).toEqual([{ userId: 'me', name: 'Я', emoji: '👍' }]);
+    });
+
+    it('повторная присылка того же эмодзи локально снимает реакцию', async () => {
+      const session = useSessionStore();
+      session.setUser({
+        id: 'me',
+        provider: 'google',
+        email: 'me@example.com',
+        name: 'Я',
+        jobTitle: null,
+        avatarUrl: null,
+      });
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1, [
+        item({ reactions: [{ userId: 'me', name: 'Я', emoji: '👍' }] }),
+      ]);
+      await store.join('board1');
+      socket.next = { revision: 2 };
+
+      await store.applyOps([{ type: 'item.react', clientOpId: 'r1', id: 'i1', emoji: '👍' }], {
+        record: false,
+      });
+
+      expect(store.items[0]?.reactions).toEqual([]);
+    });
+
+    it('реакции не попадают в стек undo/redo', async () => {
+      const session = useSessionStore();
+      session.setUser({
+        id: 'me',
+        provider: 'google',
+        email: 'me@example.com',
+        name: 'Я',
+        jobTitle: null,
+        avatarUrl: null,
+      });
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1, [item({ reactions: [] })]);
+      await store.join('board1');
+      socket.next = { revision: 2 };
+
+      await store.applyOps([{ type: 'item.react', clientOpId: 'r1', id: 'i1', emoji: '👍' }], {
+        record: false,
+      });
+
+      expect(store.canUndo).toBe(false);
     });
   });
 

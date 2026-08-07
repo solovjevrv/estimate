@@ -139,6 +139,12 @@ export function deriveInverseOps(ops: BoardOp[], local: BoardLocalState): BoardO
         break;
       }
 
+      // Реакции — не отслеживаемое undo-действие (как в мессенджерах, повторный
+      // клик уже сам по себе toggle обратно); applyOps всегда шлёт их с
+      // record:false, так что сюда этот case реально не попадает
+      case 'item.react':
+        break;
+
       case 'edge.create':
         inverses.push({ type: 'edge.delete', clientOpId: crypto.randomUUID(), id: op.edge.id });
         break;
@@ -194,6 +200,7 @@ export function filterExistingTargets(ops: BoardOp[], local: BoardLocalState): B
         return true;
       case 'item.patch':
       case 'item.delete':
+      case 'item.react':
         return local.items.has(op.id);
       case 'edge.create':
         return (

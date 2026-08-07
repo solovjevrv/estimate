@@ -352,6 +352,8 @@ export default {
     duplicateSelected: 'Дублировать',
     deleteSelected: 'Удалить',
     itemLimitReached: 'Достигнут лимит элементов на доске',
+    reactionTriggerLabel: 'Поставить реакцию',
+    reactionBadgeLabel: 'Реакция {emoji}, поставили: {count}',
     formPickerLabel: 'Тип элемента',
     colorPickerLabel: 'Цвет',
     addCustomColor: 'Добавить цвет',

@@ -483,6 +483,39 @@ export interface BoardItemStyle {
   textAlign?: BoardTextAlign;
 }
 
+/**
+ * Реакция-эмодзи на стикере (12.12) — персистентная, в отличие от эфемерных
+ * комнатных (`Reaction`, живут только в памяти процесса на раунд). Имя
+ * денормализовано прямо в запись: у доски нет постоянного ростера всех, кто
+ * когда-либо был на ней (только live-присутствие, `BoardPresence`), так что
+ * подтянуть имя отключившегося автора позже неоткуда без отдельного запроса.
+ */
+export interface ItemReaction {
+  userId: string;
+  name: string;
+  emoji: ReactionEmoji;
+}
+
+/**
+ * Один пользователь — одна реакция на элемент; повторная присылка того же
+ * эмодзи снимает её. Чистая функция без побочных эффектов — используется и
+ * сервером (авторитетно, под блокировкой строки доски), и клиентом
+ * (оптимистичное предсказание результата до ответа сервера), чтобы не
+ * дублировать логику и не разойтись в двух местах.
+ */
+export function toggleItemReaction(
+  reactions: ItemReaction[],
+  userId: string,
+  name: string,
+  emoji: ReactionEmoji,
+): ItemReaction[] {
+  const existing = reactions.find((r) => r.userId === userId);
+  const withoutExisting = reactions.filter((r) => r.userId !== userId);
+  return existing?.emoji === emoji
+    ? withoutExisting
+    : [...withoutExisting, { userId, name, emoji }];
+}
+
 export interface BoardItem {
   id: string;
   boardId: string;
@@ -498,6 +531,8 @@ export interface BoardItem {
   zIndex: number;
   content: BoardItemContent;
   style: BoardItemStyle;
+  /** Реакции-эмодзи (12.12) — только на стикерах (`content.type === 'sticky'`), не на фигурах */
+  reactions: ItemReaction[];
   createdBy: string | null;
   updatedAt: string;
 }
@@ -612,7 +647,9 @@ export interface BoardItemCreateOp extends BoardOpBase {
 export interface BoardItemPatchOp extends BoardOpBase {
   type: 'item.patch';
   id: string;
-  patch: Partial<Omit<BoardItem, 'id' | 'boardId' | 'createdBy' | 'updatedAt' | 'style'>> & {
+  patch: Partial<
+    Omit<BoardItem, 'id' | 'boardId' | 'createdBy' | 'updatedAt' | 'style' | 'reactions'>
+  > & {
     /** Партиал, не целиком (12.9) — мержится поверх текущего style, а не заменяет его */
     style?: Partial<BoardItemStyle>;
   };
@@ -621,6 +658,20 @@ export interface BoardItemPatchOp extends BoardOpBase {
 export interface BoardItemDeleteOp extends BoardOpBase {
   type: 'item.delete';
   id: string;
+}
+
+/**
+ * Реакция-тоггл (12.12) — отдельный op, не поле `item.patch`: `emoji` сам по
+ * себе не говорит, добавить реакцию или снять — решает СЕРВЕР, авторитетно
+ * сравнивая с уже стоящей реакцией автора на этот элемент (под той же
+ * блокировкой строки доски, что и остальные операции батча). Если бы это было
+ * полем в `patch`, клиент мог бы прислать произвольный итоговый список и
+ * обойти toggle-логику.
+ */
+export interface BoardItemReactOp extends BoardOpBase {
+  type: 'item.react';
+  id: string;
+  emoji: ReactionEmoji;
 }
 
 export interface BoardEdgeCreateOp extends BoardOpBase {
@@ -647,6 +698,7 @@ export type BoardOp =
   | BoardItemCreateOp
   | BoardItemPatchOp
   | BoardItemDeleteOp
+  | BoardItemReactOp
   | BoardEdgeCreateOp
   | BoardEdgePatchOp
   | BoardEdgeDeleteOp;

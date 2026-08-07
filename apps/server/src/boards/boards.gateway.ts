@@ -62,6 +62,7 @@ export class BoardsGateway {
           }
           const { revision, ops: committed } = await this.service.applyOps(
             identity.userId,
+            identity.name,
             boardId,
             ops,
           );

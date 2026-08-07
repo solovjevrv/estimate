@@ -159,7 +159,12 @@ export class BoardsService {
    * у комнат: `SELECT ... FOR UPDATE` блокирует любую другую транзакцию,
    * пытающуюся писать эту же строку, пока текущая не завершится.
    */
-  async applyOps(actorId: string, boardId: string, ops: BoardOp[]): Promise<ApplyOpsResult> {
+  async applyOps(
+    actorId: string,
+    actorName: string,
+    boardId: string,
+    ops: BoardOp[],
+  ): Promise<ApplyOpsResult> {
     if (ops.length === 0) {
       throw new ValidationError('Пустой список операций');
     }
@@ -189,7 +194,7 @@ export class BoardsService {
       // невалидная операция бросает исключение и откатывает всю транзакцию —
       // батч применяется всё или ничего.
       for (const op of ops) {
-        applyBoardOp(state, op, boardId, actorId);
+        applyBoardOp(state, op, boardId, actorId, actorName);
       }
 
       // Состояние уже провалидировано целиком — теперь просто персистим и
@@ -227,6 +232,18 @@ export class BoardsService {
             await repo.deleteItem(boardId, op.id);
             committed.push({ type: 'item.delete', clientOpId: op.clientOpId, id: op.id });
             break;
+          case 'item.react': {
+            // Рассылается в форме item.patch — для остальных участников это
+            // обычное обновление записи по id, реакции не отдельный протокол
+            const draft = state.items.get(op.id);
+            if (draft) {
+              const item = await repo.updateItem(boardId, op.id, draft);
+              if (item) {
+                committed.push({ type: 'item.patch', clientOpId: op.clientOpId, item });
+              }
+            }
+            break;
+          }
           case 'edge.create': {
             const draft = state.edges.get(op.edge.id);
             if (draft) {

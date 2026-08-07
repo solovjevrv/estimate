@@ -352,6 +352,8 @@ export default {
     duplicateSelected: 'Duplicate',
     deleteSelected: 'Delete',
     itemLimitReached: 'Reached the item limit for this board',
+    reactionTriggerLabel: 'React',
+    reactionBadgeLabel: 'Reaction {emoji}, given by: {count}',
     formPickerLabel: 'Item type',
     colorPickerLabel: 'Color',
     addCustomColor: 'Add color',
