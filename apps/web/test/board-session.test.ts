@@ -243,6 +243,148 @@ describe('стор сессии доски', () => {
     });
   });
 
+  describe('undo/redo (12.10)', () => {
+    it('undo item.create удаляет элемент, redo восстанавливает', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      socket.next = { revision: 2 };
+      await store.applyOps([{ type: 'item.create', clientOpId: 'c1', item: item() }]);
+      expect(store.items.map((i) => i.id)).toEqual(['i1']);
+      expect(store.canUndo).toBe(true);
+
+      socket.next = { revision: 3 };
+      await store.undo();
+      expect(store.items).toHaveLength(0);
+      expect(store.canUndo).toBe(false);
+      expect(store.canRedo).toBe(true);
+
+      socket.next = { revision: 4 };
+      await store.redo();
+      expect(store.items.map((i) => i.id)).toEqual(['i1']);
+      expect(store.canRedo).toBe(false);
+    });
+
+    it('undo item.patch восстанавливает только тронутые поля', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1, [item({ x: 0, style: { color: '#FCEB96', fontSize: 24 } })]);
+      await store.join('board1');
+
+      socket.next = { revision: 2 };
+      await store.applyOps([
+        {
+          type: 'item.patch',
+          clientOpId: 'a',
+          id: 'i1',
+          patch: { x: 50, style: { color: '#A8CAFF' } },
+        },
+      ]);
+      expect(store.items[0]).toMatchObject({ x: 50, style: { color: '#A8CAFF', fontSize: 24 } });
+
+      socket.next = { revision: 3 };
+      await store.undo();
+      expect(store.items[0]).toMatchObject({ x: 0, style: { color: '#FCEB96', fontSize: 24 } });
+    });
+
+    it('undo item.delete восстанавливает элемент вместе с каскадно удалённой связью', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1, [item(), item({ id: 'i2' })], [edge()]);
+      await store.join('board1');
+
+      socket.next = { revision: 2 };
+      await store.applyOps([{ type: 'item.delete', clientOpId: 'c1', id: 'i1' }]);
+      expect(store.items.map((i) => i.id)).toEqual(['i2']);
+      expect(store.edges).toHaveLength(0);
+
+      socket.next = { revision: 3 };
+      await store.undo();
+      expect(store.items.map((i) => i.id).sort()).toEqual(['i1', 'i2']);
+      expect(store.edges.map((e) => e.id)).toEqual(['e1']);
+    });
+
+    it('новая операция после undo сбрасывает стек redo', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1, [item()]);
+      await store.join('board1');
+
+      socket.next = { revision: 2 };
+      await store.applyOps([{ type: 'item.patch', clientOpId: 'a', id: 'i1', patch: { x: 5 } }]);
+      socket.next = { revision: 3 };
+      await store.undo();
+      expect(store.canRedo).toBe(true);
+
+      socket.next = { revision: 4 };
+      await store.applyOps([{ type: 'item.patch', clientOpId: 'b', id: 'i1', patch: { x: 9 } }]);
+      expect(store.canRedo).toBe(false);
+    });
+
+    it('undo/redo без истории — no-op, без ошибок', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      await expect(store.undo()).resolves.toBeUndefined();
+      await expect(store.redo()).resolves.toBeUndefined();
+    });
+
+    it('групповая правка мультивыбора отменяется одним undo целиком', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1, [item({ id: 'i1', x: 0 }), item({ id: 'i2', x: 0 })]);
+      await store.join('board1');
+
+      socket.next = { revision: 2 };
+      await store.applyOps([
+        { type: 'item.patch', clientOpId: 'a', id: 'i1', patch: { x: 100 } },
+        { type: 'item.patch', clientOpId: 'b', id: 'i2', patch: { x: 100 } },
+      ]);
+      expect(store.items.map((i) => i.x)).toEqual([100, 100]);
+
+      socket.next = { revision: 3 };
+      await store.undo();
+      expect(store.items.map((i) => i.x)).toEqual([0, 0]);
+    });
+
+    it('отбрасывает операцию, чья цель удалена другим участником, не ломая undo', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1, [item({ x: 0 })]);
+      await store.join('board1');
+
+      socket.next = { revision: 2 };
+      await store.applyOps([{ type: 'item.patch', clientOpId: 'a', id: 'i1', patch: { x: 50 } }]);
+      expect(store.canUndo).toBe(true);
+
+      // Другой участник удалил тот же элемент между правкой и попыткой её отменить
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
+        revision: 3,
+        ops: [{ type: 'item.delete', clientOpId: 'someone-else', id: 'i1' }],
+      } satisfies BoardOpsBatch);
+      expect(store.items).toHaveLength(0);
+
+      await store.undo();
+      // Инверс-патч на уже несуществующий элемент отброшен — запись просто исчезает,
+      // ничего не отправлено на сервер и стек redo не пополняется
+      expect(store.items).toHaveLength(0);
+      expect(store.canUndo).toBe(false);
+      expect(store.canRedo).toBe(false);
+    });
+
+    it('стек истории сбрасывается при выходе с доски', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      socket.next = { revision: 2 };
+      await store.applyOps([{ type: 'item.create', clientOpId: 'c1', item: item() }]);
+      expect(store.canUndo).toBe(true);
+
+      store.leave();
+
+      expect(store.canUndo).toBe(false);
+      expect(store.canRedo).toBe(false);
+    });
+  });
+
   describe('приём рассылок board:ops', () => {
     it('применяет батч со следующей ревизией', async () => {
       const store = useBoardSessionStore();

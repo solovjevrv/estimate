@@ -310,6 +310,8 @@ export default {
     personalBoardSubtitle: 'Personal board',
     fullscreen: 'Enter fullscreen',
     exitFullscreen: 'Exit fullscreen',
+    undo: 'Undo',
+    redo: 'Redo',
     moreActions: 'More actions',
     createTitle: 'New board',
     createNamePlaceholder: 'For example, Sprint 24 retro',

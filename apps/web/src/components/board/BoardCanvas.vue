@@ -349,15 +349,21 @@ function onPaneDoubleClick(event: MouseEvent): void {
 // последний по порядку элемент кадра реально долетал бы до сети.
 const dragThrottlers = new Map<string, (node: GraphNode<BoardItem>) => void>();
 
-function sendPositionPatch(node: GraphNode<BoardItem>): void {
-  void boardSession.applyOps([
-    {
-      type: 'item.patch',
-      clientOpId: globalThis.crypto.randomUUID(),
-      id: node.id,
-      patch: { x: node.computedPosition.x, y: node.computedPosition.y },
-    },
-  ]);
+function sendPositionPatch(
+  node: GraphNode<BoardItem>,
+  opts: { record?: boolean; inverse?: BoardOp[] } = {},
+): void {
+  void boardSession.applyOps(
+    [
+      {
+        type: 'item.patch',
+        clientOpId: globalThis.crypto.randomUUID(),
+        id: node.id,
+        patch: { x: node.computedPosition.x, y: node.computedPosition.y },
+      },
+    ],
+    opts,
+  );
 }
 
 /**
@@ -400,7 +406,10 @@ function onNodeDrag(event: NodeDragEvent): void {
   for (const node of event.nodes as GraphNode<BoardItem>[]) {
     let send = dragThrottlers.get(node.id);
     if (!send) {
-      send = throttle(sendPositionPatch, 80);
+      // record: false — промежуточные тики жеста не попадают в историю undo/redo
+      // (12.10), иначе одна отмена откатывала бы только последние ~80мс драга,
+      // а не перенос целиком. Единственная запись истории — на dragstop ниже.
+      send = throttle((n: GraphNode<BoardItem>) => sendPositionPatch(n, { record: false }), 80);
       dragThrottlers.set(node.id, send);
     }
     send(node);
@@ -410,7 +419,25 @@ function onNodeDrag(event: NodeDragEvent): void {
 function onNodeDragStop(event: NodeDragEvent): void {
   applyAxisLock(event);
   for (const node of event.nodes as GraphNode<BoardItem>[]) {
-    sendPositionPatch(node);
+    const start = dragStartPositions.get(node.id);
+    const moved =
+      !start || start.x !== node.computedPosition.x || start.y !== node.computedPosition.y;
+    // Инверсия — стартовая позиция ВСЕГО жеста (12.10), не позиция перед этим
+    // конкретным финальным патчем (та уже почти совпадает с текущей из-за
+    // троттлед-тиков выше — откат по ней был бы почти незаметен). Клик без
+    // реального сдвига (start === финал) вообще не пишем в историю — иначе
+    // случайный микро-жест засорял бы стек no-op записью.
+    const inverse: BoardOp[] | undefined = start
+      ? [
+          {
+            type: 'item.patch',
+            clientOpId: globalThis.crypto.randomUUID(),
+            id: node.id,
+            patch: { x: start.x, y: start.y },
+          },
+        ]
+      : undefined;
+    sendPositionPatch(node, { record: moved, inverse });
     dragStartPositions.delete(node.id);
   }
 }
@@ -788,7 +815,7 @@ function closeContextMenu(): void {
   contextMenu.value = null;
 }
 
-// --- Хоткеи (12.9): Delete/Backspace, Ctrl(Cmd)+A/D/0/1, Escape ---
+// --- Хоткеи (12.9): Delete/Backspace, Ctrl(Cmd)+A/D/0/1, Escape; +Z/Shift+Z/Y (12.10) ---
 
 useBoardHotkeys({
   canEdit: computed(() => props.canEdit),
@@ -804,6 +831,8 @@ useBoardHotkeys({
   },
   resetZoom: () => void zoomTo(1),
   fitView: () => void fitView(),
+  undo: () => void boardSession.undo(),
+  redo: () => void boardSession.redo(),
 });
 
 function onConnect(event: Connection): void {
@@ -1019,6 +1048,24 @@ function onConnect(event: Connection): void {
         </template>
         <span class="board-controls-zoom">{{ zoomPercent }}%</span>
         <div class="board-controls-divider" />
+        <!-- Undo/redo (12.10) — только для тех, кто вообще может редактировать содержимое -->
+        <template v-if="canEdit">
+          <ControlButton
+            :disabled="!boardSession.canUndo"
+            :aria-label="t('board.undo')"
+            @click="boardSession.undo()"
+          >
+            <UIcon name="i-lucide-undo-2" />
+          </ControlButton>
+          <ControlButton
+            :disabled="!boardSession.canRedo"
+            :aria-label="t('board.redo')"
+            @click="boardSession.redo()"
+          >
+            <UIcon name="i-lucide-redo-2" />
+          </ControlButton>
+          <div class="board-controls-divider" />
+        </template>
         <!-- i-lucide-expand/shrink, не i-lucide-maximize/minimize — тот символ уже занят
         fit-view выше, а это разные действия: fitview подгоняет зум/пан под содержимое
         холста, fullscreen разворачивает окно браузера (нужен свой, отличимый символ) -->
