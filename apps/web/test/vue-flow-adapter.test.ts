@@ -1,4 +1,5 @@
 import type { BoardEdge, BoardItem } from '@poker/shared';
+import { MarkerType } from '@vue-flow/core';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -39,14 +40,14 @@ const straightEdge: BoardEdge = {
   sourceHandle: null,
   targetHandle: null,
   label: null,
-  style: { color: '#7DA9F6', line: 'straight' },
+  style: { color: '#7DA9F6', line: 'straight', markerStart: 'none', markerEnd: 'none' },
 };
 
 const curvedEdge: BoardEdge = {
   ...straightEdge,
   id: 'e2',
   label: 'зависит от',
-  style: { color: '#FFB8E8', line: 'curved' },
+  style: { color: '#FFB8E8', line: 'curved', markerStart: 'none', markerEnd: 'none' },
 };
 
 describe('boardItemToNode', () => {
@@ -88,23 +89,32 @@ describe('boardItemToNode', () => {
 });
 
 describe('boardEdgeToFlowEdge', () => {
-  it('прямая линия мапится в тип straight', () => {
+  it('всегда мапится в кастомный тип floating — форма линии решается по data.style.line', () => {
     const edge = boardEdgeToFlowEdge(straightEdge);
-    expect(edge.type).toBe('straight');
+    expect(edge.type).toBe('floating');
     expect(edge.source).toBe('i1');
     expect(edge.target).toBe('i2');
     expect(edge.sourceHandle).toBeUndefined();
     expect(edge.label).toBeUndefined();
-  });
-
-  it('кривая линия мапится в тип default (bezier)', () => {
-    expect(boardEdgeToFlowEdge(curvedEdge).type).toBe('default');
+    expect(boardEdgeToFlowEdge(curvedEdge).type).toBe('floating');
+    expect(edge.data?.style.line).toBe('straight');
+    expect(boardEdgeToFlowEdge(curvedEdge).data?.style.line).toBe('curved');
   });
 
   it('переносит подпись и цвет как inline-style с hex из белого списка токенов', () => {
     const edge = boardEdgeToFlowEdge(curvedEdge);
     expect(edge.label).toBe('зависит от');
     expect(edge.style).toMatchObject({ stroke: expect.stringMatching(/^#[0-9a-f]{6}$/i) });
+  });
+
+  it('маппит наконечник arrow в MarkerType Vue Flow цветом самой связи (не общим дефолтом), а dot оставляет неопределённым — рисуется вручную в BoardFloatingEdge, т.к. Vue Flow не умеет такой тип из коробки', () => {
+    const arrowEdge: BoardEdge = {
+      ...straightEdge,
+      style: { ...straightEdge.style, color: '#112233', markerStart: 'dot', markerEnd: 'arrow' },
+    };
+    const edge = boardEdgeToFlowEdge(arrowEdge);
+    expect(edge.markerStart).toBeUndefined();
+    expect(edge.markerEnd).toEqual({ type: MarkerType.ArrowClosed, color: '#112233' });
   });
 
   it('toFlowEdges переносит список поэлементно', () => {

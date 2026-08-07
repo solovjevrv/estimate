@@ -358,6 +358,21 @@ export default {
       ellipse: 'Эллипс',
       diamond: 'Ромб',
     },
+    edgeLineLabel: 'Тип линии',
+    edgeMarkerStartLabel: 'Начало',
+    edgeMarkerEndLabel: 'Конец',
+    edgeAddText: 'Добавить текст',
+    edgeLabelPlaceholder: 'Текст',
+    edgeLines: {
+      straight: 'Прямая',
+      orthogonal: 'Ломаная',
+      curved: 'Кривая',
+    },
+    edgeMarkers: {
+      none: 'Нет',
+      arrow: 'Стрелка',
+      dot: 'Точка',
+    },
   },
   boards: {
     title: 'Мои доски',

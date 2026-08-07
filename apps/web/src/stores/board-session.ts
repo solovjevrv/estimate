@@ -94,7 +94,15 @@ function predictCommittedOp(op: BoardOp, local: BoardLocalState): BoardCommitted
     case 'edge.patch': {
       const existing = local.edges.get(op.id);
       if (!existing) return null;
-      return { type: 'edge.patch', clientOpId: op.clientOpId, edge: { ...existing, ...op.patch } };
+      return {
+        type: 'edge.patch',
+        clientOpId: op.clientOpId,
+        edge: {
+          ...existing,
+          ...op.patch,
+          style: op.patch.style ? { ...existing.style, ...op.patch.style } : existing.style,
+        },
+      };
     }
     case 'edge.delete':
       return { type: 'edge.delete', clientOpId: op.clientOpId, id: op.id };

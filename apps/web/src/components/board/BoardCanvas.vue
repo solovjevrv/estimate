@@ -40,7 +40,17 @@ import { useToast } from '@nuxt/ui/composables';
 import { Background } from '@vue-flow/background';
 import { ControlButton, Controls } from '@vue-flow/controls';
 import { MiniMap } from '@vue-flow/minimap';
-import { Panel, useVueFlow, VueFlow, type GraphNode, type NodeDragEvent } from '@vue-flow/core';
+import {
+  ConnectionMode,
+  Panel,
+  useVueFlow,
+  VueFlow,
+  type Connection,
+  type Edge,
+  type EdgeMouseEvent,
+  type GraphNode,
+  type NodeDragEvent,
+} from '@vue-flow/core';
 import {
   computed,
   markRaw,
@@ -54,6 +64,7 @@ import {
 import { useI18n } from 'vue-i18n';
 
 import {
+  edgeDefaultColor,
   maxZIndex,
   minZIndex,
   nextZIndexAbove,
@@ -64,11 +75,20 @@ import {
   STICKY_DEFAULT_HEIGHT,
   STICKY_DEFAULT_WIDTH,
 } from '../../lib/board/board-item-defaults';
-import { BOARD_CAN_EDIT_KEY, BOARD_PENDING_EDIT_ID_KEY } from '../../lib/board/board-canvas-keys';
+import {
+  BOARD_CAN_EDIT_KEY,
+  BOARD_PENDING_EDGE_EDIT_ID_KEY,
+  BOARD_PENDING_EDIT_ID_KEY,
+} from '../../lib/board/board-canvas-keys';
 import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
 import { throttle } from '../../lib/throttle';
 import { useBoardSessionStore } from '../../stores/board-session';
 import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
+import BoardEdgeToolbar, {
+  type BoardEdgeLineKindOption,
+  type BoardEdgeMarkerOption,
+} from './BoardEdgeToolbar.vue';
+import BoardFloatingEdge from './BoardFloatingEdge.vue';
 import BoardShapeNode from './BoardShapeNode.vue';
 import BoardStickyNode from './BoardStickyNode.vue';
 import BoardToolbar, { type BoardTool } from './BoardToolbar.vue';
@@ -106,6 +126,9 @@ const flowEdges = computed(() => toFlowEdges(props.edges));
 // markRaw — иначе Vue оборачивает объект с компонентами в reactive() и предупреждает
 // об этом в консоли (компонент-конструктор реактивным быть не должен)
 const nodeTypes = markRaw({ sticky: BoardStickyNode, shape: BoardShapeNode });
+// Единственный тип связи — геометрия floating edge не зависит от типа линии
+// (12.8), тип линии/маркеры читаются самим компонентом из data.style
+const edgeTypes = markRaw({ floating: BoardFloatingEdge });
 
 const isArchived = computed(() => props.board.status === 'archived');
 
@@ -153,7 +176,8 @@ const subtitle = computed(() =>
     : t('board.personalBoardSubtitle'),
 );
 
-const { viewport, project, getSelectedNodes, setNodes, setEdges } = useVueFlow();
+const { viewport, project, getSelectedNodes, getSelectedEdges, getNodes, setNodes, setEdges } =
+  useVueFlow();
 const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
 
 /**
@@ -194,11 +218,14 @@ onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullscr
 const activeTool = ref<BoardTool>('select');
 /** Id только что созданного стикера — новый узел сразу входит в редактирование текста */
 const pendingEditId = ref<string | null>(null);
+/** Id связи, подпись которой нужно открыть для ввода текста прямо на стрелке (12.8) */
+const pendingEdgeEditId = ref<string | null>(null);
 provide(
   BOARD_CAN_EDIT_KEY,
   computed(() => props.canEdit),
 );
 provide(BOARD_PENDING_EDIT_ID_KEY, pendingEditId);
+provide(BOARD_PENDING_EDGE_EDIT_ID_KEY, pendingEdgeEditId);
 
 function flowPositionFromEvent(event: MouseEvent): { x: number; y: number } {
   const rect = rootEl.value?.getBoundingClientRect();
@@ -218,12 +245,12 @@ function canCreateItem(): boolean {
 
 function createSticky(center: { x: number; y: number }): void {
   if (!canCreateItem()) return;
-  const id = crypto.randomUUID();
+  const id = globalThis.crypto.randomUUID();
   pendingEditId.value = id;
   void boardSession.applyOps([
     {
       type: 'item.create',
-      clientOpId: crypto.randomUUID(),
+      clientOpId: globalThis.crypto.randomUUID(),
       item: {
         id,
         parentId: null,
@@ -242,12 +269,12 @@ function createSticky(center: { x: number; y: number }): void {
 
 function createShape(center: { x: number; y: number }): void {
   if (!canCreateItem()) return;
-  const id = crypto.randomUUID();
+  const id = globalThis.crypto.randomUUID();
   pendingEditId.value = id;
   void boardSession.applyOps([
     {
       type: 'item.create',
-      clientOpId: crypto.randomUUID(),
+      clientOpId: globalThis.crypto.randomUUID(),
       item: {
         id,
         parentId: null,
@@ -301,7 +328,7 @@ function sendPositionPatch(node: GraphNode<BoardItem>): void {
   void boardSession.applyOps([
     {
       type: 'item.patch',
-      clientOpId: crypto.randomUUID(),
+      clientOpId: globalThis.crypto.randomUUID(),
       id: node.id,
       patch: { x: node.computedPosition.x, y: node.computedPosition.y },
     },
@@ -326,6 +353,7 @@ function onNodeDragStop({ nodes: dragged }: NodeDragEvent): void {
 // --- Плавающий тулбар над выделением (12.6) ---
 
 const selectedNodes = computed(() => getSelectedNodes.value as GraphNode<BoardItem>[]);
+const selectedEdges = computed(() => getSelectedEdges.value as Edge<BoardEdge>[]);
 
 const selectionToolbarPosition = computed(() => {
   const selected = selectedNodes.value;
@@ -341,9 +369,105 @@ const selectionToolbarPosition = computed(() => {
   };
 });
 
+const edgeToolbarPosition = computed(() => {
+  const selected = selectedEdges.value;
+  if (!props.canEdit || selected.length === 0) return null;
+  const nodes = getNodes.value;
+  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
+  const edge = selected[0]!;
+  const sourceNode = nodeMap.get(edge.source);
+  const targetNode = nodeMap.get(edge.target);
+  if (!sourceNode || !targetNode) return null;
+  const x = (sourceNode.position.x + targetNode.position.x) / 2;
+  const y = (sourceNode.position.y + targetNode.position.y) / 2;
+  return {
+    left: viewport.value.x + x * viewport.value.zoom,
+    top: viewport.value.y + y * viewport.value.zoom,
+  };
+});
+
+const selectedEdgeStyle = computed<BoardEdge['style']>(() => {
+  const style = selectedEdges.value[0]?.data?.style;
+  if (style) return style;
+  return { color: edgeDefaultColor(), line: 'curved', markerStart: 'none', markerEnd: 'arrow' };
+});
+
 function patchSelected(patchByNode: (node: GraphNode<BoardItem>, index: number) => BoardOp): void {
   const ops = selectedNodes.value.map(patchByNode);
   if (ops.length) void boardSession.applyOps(ops);
+}
+
+function patchSelectedEdge(patchByEdge: (edge: Edge<BoardEdge>) => BoardOp): void {
+  const ops = selectedEdges.value.map(patchByEdge);
+  if (ops.length) void boardSession.applyOps(ops);
+}
+
+function patchEdgeLine(line: BoardEdgeLineKindOption): void {
+  patchSelectedEdge((edge) => {
+    const data = edge.data as BoardEdge;
+    return {
+      type: 'edge.patch',
+      clientOpId: globalThis.crypto.randomUUID(),
+      id: edge.id,
+      patch: { style: { ...data.style, line } },
+    };
+  });
+}
+
+function patchEdgeMarkerStart(marker: BoardEdgeMarkerOption): void {
+  patchSelectedEdge((edge) => {
+    const data = edge.data as BoardEdge;
+    return {
+      type: 'edge.patch',
+      clientOpId: globalThis.crypto.randomUUID(),
+      id: edge.id,
+      patch: { style: { ...data.style, markerStart: marker } },
+    };
+  });
+}
+
+function patchEdgeMarkerEnd(marker: BoardEdgeMarkerOption): void {
+  patchSelectedEdge((edge) => {
+    const data = edge.data as BoardEdge;
+    return {
+      type: 'edge.patch',
+      clientOpId: globalThis.crypto.randomUUID(),
+      id: edge.id,
+      patch: { style: { ...data.style, markerEnd: marker } },
+    };
+  });
+}
+
+function patchEdgeColor(color: BoardColorHex): void {
+  patchSelectedEdge((edge) => {
+    const data = edge.data as BoardEdge;
+    return {
+      type: 'edge.patch',
+      clientOpId: globalThis.crypto.randomUUID(),
+      id: edge.id,
+      patch: { style: { ...data.style, color } },
+    };
+  });
+}
+
+/** Текст подписи пишется прямо на стрелке (12.8, паттерн Miro), не в тулбаре — тулбар
+ * лишь открывает этот ввод, чтобы кнопка «текст» была доступна и без двойного клика */
+function addTextToSelectedEdge(): void {
+  const edge = selectedEdges.value[0];
+  if (edge) pendingEdgeEditId.value = edge.id;
+}
+
+function onEdgeDoubleClick({ edge }: EdgeMouseEvent): void {
+  if (!props.canEdit) return;
+  pendingEdgeEditId.value = edge.id;
+}
+
+function deleteSelectedEdges(): void {
+  patchSelectedEdge((edge) => ({
+    type: 'edge.delete',
+    clientOpId: globalThis.crypto.randomUUID(),
+    id: edge.id,
+  }));
 }
 
 /** Форма первого выделенного элемента — для иконки триггера в тулбаре выделения (12.7) */
@@ -391,7 +515,7 @@ function setSelectedForm(kind: ItemFormKind): void {
     }
     return {
       type: 'item.patch',
-      clientOpId: crypto.randomUUID(),
+      clientOpId: globalThis.crypto.randomUUID(),
       id: node.id,
       patch,
     };
@@ -401,7 +525,7 @@ function setSelectedForm(kind: ItemFormKind): void {
 function setSelectedColor(color: BoardColorHex): void {
   patchSelected((node) => ({
     type: 'item.patch',
-    clientOpId: crypto.randomUUID(),
+    clientOpId: globalThis.crypto.randomUUID(),
     id: node.id,
     patch: { style: { color } },
   }));
@@ -411,7 +535,7 @@ function bringSelectedToFront(): void {
   const base = maxZIndex(props.items) + 1;
   patchSelected((node, index) => ({
     type: 'item.patch',
-    clientOpId: crypto.randomUUID(),
+    clientOpId: globalThis.crypto.randomUUID(),
     id: node.id,
     patch: { zIndex: base + index },
   }));
@@ -421,7 +545,7 @@ function sendSelectedToBack(): void {
   const base = minZIndex(props.items) - selectedNodes.value.length;
   patchSelected((node, index) => ({
     type: 'item.patch',
-    clientOpId: crypto.randomUUID(),
+    clientOpId: globalThis.crypto.randomUUID(),
     id: node.id,
     patch: { zIndex: base + index },
   }));
@@ -430,9 +554,37 @@ function sendSelectedToBack(): void {
 function deleteSelected(): void {
   patchSelected((node) => ({
     type: 'item.delete',
-    clientOpId: crypto.randomUUID(),
+    clientOpId: globalThis.crypto.randomUUID(),
     id: node.id,
   }));
+}
+
+function onConnect(event: Connection): void {
+  if (!props.canEdit) return;
+  const id = globalThis.crypto.randomUUID();
+  void boardSession.applyOps([
+    {
+      type: 'edge.create',
+      clientOpId: globalThis.crypto.randomUUID(),
+      edge: {
+        id,
+        sourceItemId: event.source,
+        targetItemId: event.target,
+        // Конкретная точка на карточке (top/right/bottom/left), которую реально
+        // схватили/отпустили — не «ближайшая сторона», решение пользователя
+        // 07.08.2026 после ручной проверки (см. floating-edge-geometry.ts)
+        sourceHandle: event.sourceHandle ?? null,
+        targetHandle: event.targetHandle ?? null,
+        label: null,
+        style: {
+          color: edgeDefaultColor(),
+          line: 'curved',
+          markerStart: 'none',
+          markerEnd: 'arrow',
+        },
+      },
+    },
+  ]);
 }
 </script>
 
@@ -445,8 +597,11 @@ function deleteSelected(): void {
   >
     <VueFlow
       :node-types="nodeTypes"
+      :edge-types="edgeTypes"
       :nodes-draggable="canEdit"
-      :nodes-connectable="false"
+      :nodes-connectable="canEdit"
+      :connection-mode="ConnectionMode.Loose"
+      :connection-radius="40"
       :pan-on-drag="[1]"
       selection-on-drag
       :pan-on-scroll="true"
@@ -458,9 +613,11 @@ function deleteSelected(): void {
       fit-view-on-init
       :delete-key-code="null"
       :elevate-nodes-on-select="false"
+      @connect="onConnect"
       @pane-click="onPaneClick"
       @node-drag="onNodeDrag"
       @node-drag-stop="onNodeDragStop"
+      @edge-double-click="onEdgeDoubleClick"
     >
       <!-- snap-to-grid (был в 12.5) убран: без направляющих выравнивания (13.6, ещё не
       реализованы) фиксированная сетка только мешает — подогнать один стикер к другому
@@ -479,7 +636,13 @@ function deleteSelected(): void {
       z-index ВЫДЕЛЕННОГО узла, чтобы он всегда был поверх остальных — из-за этого
       "на передний/задний план" выглядели так, будто ничего не произошло, пока не
       снимешь выделение (наш собственный zIndex маскировался этой надбавкой). Порядок
-      слоёв теперь целиком определяется данными (zIndex), без скрытого поведения библиотеки. -->
+      слоёв теперь целиком определяется данными (zIndex), без скрытого поведения библиотеки.
+
+      connection-radius увеличен с дефолтных 20 до 40: точки соединения (12.8) —
+      маленькие 10px-кружки по сторонам карточки, целиться в них ровно по пикселю
+      неудобно. Больший радиус даёт Vue Flow подхватывать БЛИЖАЙШУЮ точку, даже если
+      отпустили курсор чуть мимо — само соединение при этом всё равно ложится на
+      конкретную точку (конкретный id хендла), а не на случайное место на карточке. -->
       <Background pattern-color="var(--brand-border)" :gap="22" variant="dots" />
       <MiniMap
         class="board-minimap"
@@ -505,6 +668,22 @@ function deleteSelected(): void {
         @bring-to-front="bringSelectedToFront"
         @send-to-back="sendSelectedToBack"
         @delete="deleteSelected"
+      />
+
+      <BoardEdgeToolbar
+        v-if="edgeToolbarPosition"
+        :left="edgeToolbarPosition.left"
+        :top="edgeToolbarPosition.top"
+        :current-line="selectedEdgeStyle.line"
+        :current-marker-start="selectedEdgeStyle.markerStart"
+        :current-marker-end="selectedEdgeStyle.markerEnd"
+        :current-color="selectedEdgeStyle.color"
+        @line="patchEdgeLine"
+        @marker-start="patchEdgeMarkerStart"
+        @marker-end="patchEdgeMarkerEnd"
+        @color="patchEdgeColor"
+        @add-text="addTextToSelectedEdge"
+        @delete="deleteSelectedEdges"
       />
 
       <div v-if="items.length === 0" class="board-empty-state">
@@ -597,6 +776,19 @@ function deleteSelected(): void {
  */
 :deep(.vue-flow__node:not(.dragging):not(.resizing)) {
   transition: transform 120ms linear;
+}
+
+/*
+ * По умолчанию у Vue Flow `.vue-flow__nodes` явно задан z-index:3, а у
+ * `.vue-flow__edge-labels` — нет (auto), поэтому позиционированные потомки с
+ * положительным z-index (карточки) красятся ПОВЕРХ него независимо от
+ * порядка в DOM. Наши floating-подписи (12.8) — HTML-инпут прямо на стрелке —
+ * из-за этого визуально проваливались под соседнюю карточку, когда середина
+ * связи оказывалась рядом с её краем (частый случай: геометрия floating edge
+ * кладёт точки почти на границу карточки). Поднимаем повыше явным z-index.
+ */
+:deep(.vue-flow__edge-labels) {
+  z-index: 5;
 }
 
 .board-empty-state {

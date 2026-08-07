@@ -31,7 +31,7 @@ const edge: BoardEdge = {
   sourceHandle: null,
   targetHandle: null,
   label: null,
-  style: { color: '#A8CAFF', line: 'straight' },
+  style: { color: '#A8CAFF', line: 'straight', markerStart: 'none', markerEnd: 'none' },
 };
 
 describe('applyLocalBoardOp', () => {
