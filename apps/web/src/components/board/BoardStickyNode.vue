@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import {
-  BOARD_ITEM_TEXT_MAX_LENGTH,
   REACTION_EMOJIS,
   type BoardItem,
   type BoardStickyContent,
@@ -8,10 +7,10 @@ import {
 } from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
-import { computed, inject, nextTick, onMounted, ref, useTemplateRef, watch } from 'vue';
+import { computed, inject, ref, toRef, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { BOARD_CAN_EDIT_KEY, BOARD_PENDING_EDIT_ID_KEY } from '../../lib/board/board-canvas-keys';
+import { BOARD_CAN_EDIT_KEY } from '../../lib/board/board-canvas-keys';
 import { readableTextColor } from '../../lib/board/board-colors';
 import {
   boardFontFamilyCss,
@@ -21,8 +20,10 @@ import {
   STICKY_MIN_WIDTH,
 } from '../../lib/board/board-item-defaults';
 import { FIT_FONT_MAX, useFitFontSize } from '../../lib/board/use-fit-font-size';
+import { useRichTextEditing } from '../../lib/board/use-rich-text-editing';
 import { useBoardSessionStore } from '../../stores/board-session';
 import { useSessionStore } from '../../stores/session';
+import BoardRichText from './BoardRichText.vue';
 
 const props = defineProps<NodeProps<BoardItem>>();
 
@@ -30,7 +31,6 @@ const { t } = useI18n();
 const boardSession = useBoardSessionStore();
 const session = useSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
-const pendingEditId = inject(BOARD_PENDING_EDIT_ID_KEY, ref(null));
 
 const content = computed(() => props.data.content as BoardStickyContent);
 const bgColor = computed(() => props.data.style.color);
@@ -39,23 +39,49 @@ const fontFamily = computed(() => boardFontFamilyCss(props.data.style.fontFamily
 const textAlign = computed(() => props.data.style.textAlign ?? 'center');
 const maxFontSize = computed(() => props.data.style.fontSize ?? FIT_FONT_MAX);
 
-const editing = ref(false);
-const draftText = ref('');
 const contentBoxEl = useTemplateRef<HTMLDivElement>('contentBox');
-const textareaEl = useTemplateRef<HTMLTextAreaElement>('textarea');
 const textEl = useTemplateRef<HTMLSpanElement>('text');
+
+const {
+  displayRuns,
+  editing,
+  liveText,
+  formatTick,
+  editableEl,
+  startEditing,
+  cancelEditing,
+  refreshActiveMarks,
+  onEditableBlur,
+  onEditableInput,
+  onEditableKeydownEnter,
+  onEditableBeforeInput,
+  onEditablePaste,
+} = useRichTextEditing({
+  itemId: props.id,
+  canEdit,
+  isSelected: toRef(props, 'selected'),
+  content,
+  buildContent: (text, runs) => ({ type: 'sticky', text, ...(runs ? { runs } : {}) }),
+});
 
 /**
  * Размер шрифта подбирается под фиксированный бокс карточки (не бокс растёт
  * под текст) — см. `use-fit-font-size.ts`. Один и тот же расчёт для обоих
  * режимов (просмотр/редактирование), чтобы шрифт не «прыгал» при входе в
- * редактирование. `manageHeight: true` — у textarea, в отличие от span, нет
- * авторазмера по контенту, высотой в режиме редактирования управляем сами.
+ * редактирование. `manageHeight: true` — у contenteditable, как и у textarea
+ * раньше, нет авторазмера по контенту, высотой в режиме редактирования
+ * управляем сами.
  */
-const fitText = computed(() => (editing.value ? draftText.value : content.value.text));
+const fitText = computed(() => {
+  // Формат (жирный/зачёркнутый) меняет ширину текста без изменения его длины —
+  // `liveText` в этот момент не поменялась бы сама по себе, поэтому дополнительно
+  // зависим от `formatTick`, чтобы авто-fit пересчитался и после клика по тулбару
+  void formatTick.value;
+  return editing.value ? liveText.value : content.value.text;
+});
 const boxWidth = computed(() => props.data.width);
 const boxHeight = computed(() => props.data.height);
-const measureEl = computed(() => (editing.value ? textareaEl.value : textEl.value));
+const measureEl = computed(() => (editing.value ? editableEl.value : textEl.value));
 const fontSize = useFitFontSize(
   contentBoxEl,
   measureEl,
@@ -65,43 +91,6 @@ const fontSize = useFitFontSize(
   editing,
   maxFontSize,
 );
-
-async function startEditing(): Promise<void> {
-  if (editing.value || !canEdit.value) return;
-  draftText.value = content.value.text;
-  editing.value = true;
-  await nextTick();
-  textareaEl.value?.focus();
-  textareaEl.value?.select();
-}
-
-// Только что созданный этим же клиентом стикер сразу входит в редактирование —
-// иначе первое, что видит пользователь после создания, это пустая карточка
-onMounted(() => {
-  if (pendingEditId.value === props.id) {
-    pendingEditId.value = null;
-    void startEditing();
-  }
-});
-
-function commitEditing(): void {
-  if (!editing.value) return;
-  editing.value = false;
-  const text = draftText.value.slice(0, BOARD_ITEM_TEXT_MAX_LENGTH);
-  if (text === content.value.text) return;
-  void boardSession.applyOps([
-    {
-      type: 'item.patch',
-      clientOpId: crypto.randomUUID(),
-      id: props.id,
-      patch: { content: { type: 'sticky', text } },
-    },
-  ]);
-}
-
-function cancelEditing(): void {
-  editing.value = false;
-}
 
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
   void boardSession.applyOps([
@@ -213,11 +202,10 @@ watch(
       @dblclick.stop="startEditing"
     >
       <template v-if="editing">
-        <textarea
-          ref="textarea"
-          v-model="draftText"
-          :maxlength="BOARD_ITEM_TEXT_MAX_LENGTH"
-          class="nodrag h-full w-full resize-none overflow-hidden bg-transparent font-semibold outline-none"
+        <div
+          ref="editable"
+          class="nodrag h-full w-full overflow-hidden bg-transparent font-semibold whitespace-pre-wrap outline-none"
+          contenteditable="true"
           :style="{
             color: textColor,
             fontSize: `${fontSize}px`,
@@ -226,7 +214,13 @@ watch(
           }"
           @pointerdown.stop
           @keydown.esc.stop.prevent="cancelEditing"
-          @blur="commitEditing"
+          @keydown.enter.prevent="onEditableKeydownEnter"
+          @beforeinput="onEditableBeforeInput"
+          @input="onEditableInput"
+          @paste="onEditablePaste"
+          @mouseup="refreshActiveMarks"
+          @keyup="refreshActiveMarks"
+          @blur="onEditableBlur"
         />
       </template>
       <template v-else>
@@ -234,8 +228,9 @@ watch(
           ref="text"
           class="block w-full overflow-hidden break-words whitespace-pre-wrap"
           :style="{ fontSize: `${fontSize}px`, fontFamily, textAlign }"
-          >{{ content.text }}</span
         >
+          <BoardRichText :runs="displayRuns" />
+        </span>
       </template>
     </div>
     <!--

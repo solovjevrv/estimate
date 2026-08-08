@@ -435,15 +435,68 @@ export const BOARD_EDGE_LABEL_MAX_LENGTH = 200;
 /** Потолок элементов на доску — защита от неограниченно растущего снимка (12.1) */
 export const BOARD_MAX_ITEMS = 2000;
 
+/**
+ * Маркер-цвет выделения текста (12.13) — токен из фиксированной небольшой
+ * палитры, не свободный hex (в отличие от заливки/цвета текста): попроще
+ * UI-выбор для частого действия, и валидация — членство в списке, а не regex.
+ */
+export type BoardHighlightColor = 'yellow' | 'green' | 'blue' | 'pink';
+export const BOARD_HIGHLIGHT_COLORS: readonly BoardHighlightColor[] = [
+  'yellow',
+  'green',
+  'blue',
+  'pink',
+];
+
+/**
+ * Ссылка внутри текста (12.13) — только http(s), тот же принцип, что и у
+ * ссылок Jira/Confluence комнаты (5.6, `rooms.service.ts#normalizeLink`), но
+ * это НЕ общий источник правды — там независимый regex-литерал с тем же
+ * смыслом, не импорт отсюда (разные домены: комната и доска не делят код).
+ */
+export const BOARD_TEXT_LINK_MAX_LENGTH = 500;
+export const BOARD_TEXT_LINK_PATTERN = /^https?:\/\//i;
+
+/**
+ * Начертание фрагмента текста (12.13) — применяется не ко всему блоку текста
+ * стикера/фигуры (это `BoardItemStyle`), а к диапазону символов внутри него
+ * (`BoardTextRun.marks`), поэтому в одном стикере можно выделить жирным одно
+ * слово. Каждое поле — самостоятельный булев/значимый тумблер, не CSS.
+ */
+export interface BoardTextMark {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  strike?: boolean;
+  highlight?: BoardHighlightColor;
+  /** `http(s)://...`, см. `BOARD_TEXT_LINK_PATTERN` */
+  link?: string;
+}
+
+/**
+ * Один непрерывный фрагмент текста с одинаковым форматированием — стандартный
+ * способ описать «rich text» без хранения сырого HTML (которое пришлось бы
+ * рендерить через `v-html` и санитизировать на каждый чих). Конкатенация
+ * `text` всех runs обязана совпадать с `BoardStickyContent.text`/
+ * `BoardShapeContent.text` — сервер это проверяет (`board-ops.ts`).
+ */
+export interface BoardTextRun {
+  text: string;
+  marks?: BoardTextMark;
+}
+
 export interface BoardStickyContent {
   type: 'sticky';
   text: string;
+  /** Не задано — обычный текст без форматирования (в т.ч. все элементы до 12.13) */
+  runs?: BoardTextRun[];
 }
 
 export interface BoardShapeContent {
   type: 'shape';
   shape: BoardShapeKind;
   text: string;
+  runs?: BoardTextRun[];
 }
 
 /** Дискриминированный union по `type` — новый тип элемента не требует миграции схемы */

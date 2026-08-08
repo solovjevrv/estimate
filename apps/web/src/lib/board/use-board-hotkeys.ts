@@ -14,8 +14,24 @@
  *
  * Undo/redo (12.10) — Cmd/Ctrl+Z и Cmd/Ctrl+Shift+Z, плюс Ctrl+Y как
  * привычная для Windows альтернатива повтору.
+ *
+ * `isEditableTarget` также считает «редактируемым» фокус внутри попапа ссылки
+ * тулбара выделения (12.13, `BOARD_TEXT_TOOLBAR_SELECTOR` — общая константа с
+ * `use-rich-text-editing.ts#onEditableBlur`, обе проверки обязаны совпадать).
+ * Это единственный попап тулбара, куда фокус реально уходит (поле URL) —
+ * остальные кнопки (Начертание/Маркер/Выравнивание/Цвет/Форма/...) либо гасят
+ * `mousedown.prevent` и вовсе не уводят фокус с contenteditable, либо (Цвет/
+ * Форма/Дублировать/Удалить) намеренно НЕ защищены — клик по ним посреди
+ * редактирования должен обычным образом закоммитить черновик, не застревать
+ * в «редактируемом» состоянии. Раньше проверка матчила весь `.board-selection-toolbar`
+ * целиком — из-за этого клик «Дублировать» посреди набора текста переставал
+ * коммитить (копировал старое содержимое, тихая потеря черновика), а глобальные
+ * хоткеи не работали после клика по любой кнопке тулбара; сузили до одного
+ * попапа, см. подробности в `use-rich-text-editing.ts`.
  */
 import { onBeforeUnmount, onMounted, type Ref } from 'vue';
+
+import { BOARD_TEXT_TOOLBAR_SELECTOR } from './board-rich-text';
 
 export interface BoardHotkeyActions {
   canEdit: Ref<boolean>;
@@ -29,9 +45,12 @@ export interface BoardHotkeyActions {
   redo: () => void;
 }
 
-function isEditableTarget(target: EventTarget | null): boolean {
+export function isEditableTarget(target: EventTarget | null): boolean {
   if (!(target instanceof HTMLElement)) return false;
-  return target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable;
+  if (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT' || target.isContentEditable) {
+    return true;
+  }
+  return !!target.closest(BOARD_TEXT_TOOLBAR_SELECTOR);
 }
 
 export function useBoardHotkeys(actions: BoardHotkeyActions): void {

@@ -54,7 +54,9 @@ test('после обрыва сети участник догоняет про�
   await pageA.locator('.vue-flow__pane').dblclick({ position: { x: 150, y: 150 } });
   await expect(pageA.locator('.vue-flow__node-sticky')).toHaveCount(1);
   const beforeId = await pageA.locator('.vue-flow__node-sticky').getAttribute('data-id');
-  const textareaBefore = pageA.locator(`.vue-flow__node[data-id="${beforeId}"] textarea`);
+  const textareaBefore = pageA.locator(
+    `.vue-flow__node[data-id="${beforeId}"] [contenteditable="true"]`,
+  );
   await textareaBefore.click();
   await textareaBefore.fill('До обрыва');
   await pageA.locator('.vue-flow__pane').click({ position: { x: 550, y: 600 } });
@@ -86,7 +88,9 @@ test('после обрыва сети участник догоняет про�
   const afterId = await pageA
     .locator(`.vue-flow__node-sticky:not([data-id="${beforeId}"])`)
     .getAttribute('data-id');
-  const textareaAfter = pageA.locator(`.vue-flow__node[data-id="${afterId}"] textarea`);
+  const textareaAfter = pageA.locator(
+    `.vue-flow__node[data-id="${afterId}"] [contenteditable="true"]`,
+  );
   await textareaAfter.click();
   await textareaAfter.fill('После обрыва');
   await pageA.locator('.vue-flow__pane').click({ position: { x: 550, y: 600 } });

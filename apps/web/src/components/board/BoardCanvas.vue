@@ -34,7 +34,6 @@ import {
   type Board,
   type BoardColorHex,
   type BoardEdge,
-  type BoardFontFamily,
   type BoardItem,
   type BoardItemContent,
   type BoardItemPatchOp,
@@ -65,6 +64,7 @@ import {
   onMounted,
   provide,
   ref,
+  shallowRef,
   useTemplateRef,
   watch,
 } from 'vue';
@@ -83,11 +83,13 @@ import {
   STICKY_DEFAULT_WIDTH,
 } from '../../lib/board/board-item-defaults';
 import {
+  BOARD_ACTIVE_TEXT_EDITOR_KEY,
   BOARD_CAN_EDIT_KEY,
   BOARD_PENDING_EDGE_EDIT_ID_KEY,
   BOARD_PENDING_EDIT_ID_KEY,
 } from '../../lib/board/board-canvas-keys';
 import { readableTextColor } from '../../lib/board/board-colors';
+import type { BoardTextEditorHandle } from '../../lib/board/board-rich-text';
 import { useBoardHotkeys } from '../../lib/board/use-board-hotkeys';
 import { FIT_FONT_MAX } from '../../lib/board/use-fit-font-size';
 import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
@@ -247,6 +249,14 @@ provide(
 );
 provide(BOARD_PENDING_EDIT_ID_KEY, pendingEditId);
 provide(BOARD_PENDING_EDGE_EDIT_ID_KEY, pendingEdgeEditId);
+/**
+ * Хэндл узла, сейчас редактирующего текст (12.13) — публикует его сам узел,
+ * см. `board-rich-text.ts`. `shallowRef`, не `ref` — иначе Vue своим
+ * `UnwrapRef` рекурсивно распаковал бы вложенный `activeMarks: Ref<...>`
+ * внутри хэндла до голого значения, ломая типы и реактивность самого поля.
+ */
+const activeTextEditor = shallowRef<BoardTextEditorHandle | null>(null);
+provide(BOARD_ACTIVE_TEXT_EDITOR_KEY, activeTextEditor);
 
 function flowPositionFromEvent(event: MouseEvent): { x: number; y: number } {
   const rect = rootEl.value?.getBoundingClientRect();
@@ -597,9 +607,12 @@ const selectedColor = computed<BoardColorHex>(
  */
 function setSelectedForm(kind: ItemFormKind): void {
   patchSelected((node) => {
-    const text = node.data.content.text;
+    // Форматирование (12.13) переживает конвертацию стикер↔фигура вместе с текстом
+    const { text, runs } = node.data.content;
     const content: BoardItemContent =
-      kind === 'sticky' ? { type: 'sticky', text } : { type: 'shape', shape: kind, text };
+      kind === 'sticky'
+        ? { type: 'sticky', text, ...(runs?.length ? { runs } : {}) }
+        : { type: 'shape', shape: kind, text, ...(runs?.length ? { runs } : {}) };
     const patch: BoardItemPatchOp['patch'] = { content };
     if (kind === 'sticky') {
       const { x, y } = node.computedPosition;
@@ -634,9 +647,6 @@ function setSelectedColor(color: BoardColorHex): void {
 const selectedFontSize = computed<number>(
   () => selectedNodes.value[0]?.data.style.fontSize ?? FIT_FONT_MAX,
 );
-const selectedFontFamily = computed<BoardFontFamily>(
-  () => selectedNodes.value[0]?.data.style.fontFamily ?? 'sans',
-);
 const selectedTextColor = computed<BoardColorHex>(
   () => selectedNodes.value[0]?.data.style.textColor ?? readableTextColor(selectedColor.value),
 );
@@ -650,15 +660,6 @@ function setSelectedFontSize(fontSize: number): void {
     clientOpId: globalThis.crypto.randomUUID(),
     id: node.id,
     patch: { style: { fontSize } },
-  }));
-}
-
-function setSelectedFontFamily(fontFamily: BoardFontFamily): void {
-  patchSelected((node) => ({
-    type: 'item.patch',
-    clientOpId: globalThis.crypto.randomUUID(),
-    id: node.id,
-    patch: { style: { fontFamily } },
   }));
 }
 
@@ -954,15 +955,18 @@ function onConnect(event: Connection): void {
         :current-color="selectedColor"
         :current-form="selectedForm"
         :current-font-size="selectedFontSize"
-        :current-font-family="selectedFontFamily"
         :current-text-color="selectedTextColor"
         :current-text-align="selectedTextAlign"
+        :editing-text="!!activeTextEditor"
+        :active-marks="activeTextEditor?.activeMarks.value ?? null"
         @color="setSelectedColor"
         @form="setSelectedForm"
         @font-size="setSelectedFontSize"
-        @font-family="setSelectedFontFamily"
         @text-color="setSelectedTextColor"
         @text-align="setSelectedTextAlign"
+        @toggle-mark="activeTextEditor?.toggle($event)"
+        @set-highlight="activeTextEditor?.setHighlight($event)"
+        @set-link="activeTextEditor?.setLink($event)"
         @duplicate="duplicateSelected"
         @delete="deleteSelected"
       />

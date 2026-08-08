@@ -146,6 +146,119 @@ describe('applyBoardOp — item.create', () => {
   });
 });
 
+describe('applyBoardOp — item.create — форматирование текста (runs, 12.13)', () => {
+  it('принимает валидные runs и сохраняет их вместе с text', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'sticky',
+      text: 'Привет мир',
+      runs: [{ text: 'Привет ' }, { text: 'мир', marks: { bold: true, highlight: 'yellow' } }],
+    };
+
+    applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    const item = state.items.get((op as { item: { id: string } }).item.id)!;
+    expect(item.content).toEqual({
+      type: 'sticky',
+      text: 'Привет мир',
+      runs: [{ text: 'Привет ' }, { text: 'мир', marks: { bold: true, highlight: 'yellow' } }],
+    });
+  });
+
+  it('отклоняет runs, чья конкатенация не совпадает с text', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'sticky',
+      text: 'Привет мир',
+      runs: [{ text: 'Другой текст' }],
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет недопустимый цвет маркера', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'sticky',
+      text: 'мир',
+      runs: [{ text: 'мир', marks: { highlight: 'purple' } }],
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет ссылку без http(s)-схемы', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'sticky',
+      text: 'мир',
+      runs: [{ text: 'мир', marks: { link: 'javascript:alert(1)' } }],
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет слишком длинную ссылку', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'sticky',
+      text: 'мир',
+      runs: [{ text: 'мир', marks: { link: `https://example.com/${'x'.repeat(600)}` } }],
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет нестроковое/небулево значение в marks', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'sticky',
+      text: 'мир',
+      runs: [{ text: 'мир', marks: { bold: 'yes' } }],
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет runs сверх лимита (защита от раздутого payload)', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'sticky',
+      text: 'a'.repeat(201),
+      runs: Array.from({ length: 201 }, () => ({ text: 'a' })),
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет run с пустым text (обходил бы лимит числа runs полезной нагрузкой в marks)', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'sticky',
+      text: '',
+      runs: [{ text: '', marks: { link: 'https://example.com' } }],
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('без runs (undefined) работает как раньше — просто текст', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    applyBoardOp(state, stickyCreateOp(id), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    expect(state.items.get(id)!.content).toEqual({ type: 'sticky', text: 'Привет' });
+  });
+});
+
 describe('applyBoardOp — item.patch', () => {
   it('обновляет геометрию, не трогая остальные поля', () => {
     const state = emptyState();
@@ -185,6 +298,53 @@ describe('applyBoardOp — item.patch', () => {
     );
 
     expect(state.items.get(id)!.content).toEqual({ type: 'sticky', text: 'Новый текст' });
+  });
+
+  it('патчит форматирование (runs, 12.13) и отклоняет рассинхрон с text', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    applyBoardOp(state, stickyCreateOp(id), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    applyBoardOp(
+      state,
+      {
+        type: 'item.patch',
+        clientOpId: randomUUID(),
+        id,
+        patch: {
+          content: {
+            type: 'sticky',
+            text: 'жирный',
+            runs: [{ text: 'жирный', marks: { bold: true } }],
+          },
+        },
+      },
+      BOARD_ID,
+      ACTOR_ID,
+      ACTOR_NAME,
+    );
+    expect(state.items.get(id)!.content).toEqual({
+      type: 'sticky',
+      text: 'жирный',
+      runs: [{ text: 'жирный', marks: { bold: true } }],
+    });
+
+    expect(() =>
+      applyBoardOp(
+        state,
+        {
+          type: 'item.patch',
+          clientOpId: randomUUID(),
+          id,
+          patch: {
+            content: { type: 'sticky', text: 'жирный', runs: [{ text: 'другое' }] },
+          },
+        },
+        BOARD_ID,
+        ACTOR_ID,
+        ACTOR_NAME,
+      ),
+    ).toThrow(ValidationError);
   });
 
   it('отклоняет патч несуществующего элемента', () => {
