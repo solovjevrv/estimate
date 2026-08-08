@@ -12,12 +12,15 @@ import {
   BOARD_EDGE_LINE_KINDS,
   BOARD_EDGE_MARKER_KINDS,
   BOARD_FONT_FAMILIES,
+  BOARD_HIGHLIGHT_COLORS,
   BOARD_ITEM_FONT_SIZE_MAX,
   BOARD_ITEM_FONT_SIZE_MIN,
   BOARD_ITEM_TEXT_MAX_LENGTH,
   BOARD_MAX_ITEMS,
   BOARD_SHAPE_KINDS,
   BOARD_TEXT_ALIGNS,
+  BOARD_TEXT_LINK_MAX_LENGTH,
+  BOARD_TEXT_LINK_PATTERN,
   REACTION_EMOJIS,
   toggleItemReaction,
   type BoardEdge,
@@ -25,6 +28,8 @@ import {
   type BoardItemContent,
   type BoardItemStyle,
   type BoardOp,
+  type BoardTextMark,
+  type BoardTextRun,
 } from '@poker/shared';
 
 import { ValidationError } from '../errors';
@@ -166,22 +171,115 @@ function validateEdgeLabel(label: unknown): string | null {
   return label;
 }
 
+/**
+ * Начертание фрагмента текста (12.13) — каждое поле независимый белый список:
+ * булевы тумблеры как есть, маркер — членство в фиксированной палитре (не
+ * regex-цвет, UI сознательно сужен до нескольких пресетов), ссылка — тот же
+ * `http(s)://`-regex, что и у ссылок Jira/Confluence комнаты (`rooms.service.ts`).
+ */
+function validateTextMark(mark: unknown): BoardTextMark | undefined {
+  if (mark === undefined || mark === null) return undefined;
+  if (typeof mark !== 'object') {
+    throw new ValidationError('Недопустимое форматирование текста');
+  }
+  const m = mark as {
+    bold?: unknown;
+    italic?: unknown;
+    underline?: unknown;
+    strike?: unknown;
+    highlight?: unknown;
+    link?: unknown;
+  };
+  const result: BoardTextMark = {};
+  for (const key of ['bold', 'italic', 'underline', 'strike'] as const) {
+    const value = m[key];
+    if (value === undefined || value === null) continue;
+    if (typeof value !== 'boolean') {
+      throw new ValidationError('Недопустимое форматирование текста');
+    }
+    if (value) result[key] = true;
+  }
+  if (m.highlight !== undefined && m.highlight !== null) {
+    if (!(BOARD_HIGHLIGHT_COLORS as readonly unknown[]).includes(m.highlight)) {
+      throw new ValidationError('Недопустимый цвет маркера');
+    }
+    result.highlight = m.highlight as BoardTextMark['highlight'];
+  }
+  if (m.link !== undefined && m.link !== null) {
+    if (
+      typeof m.link !== 'string' ||
+      m.link.length > BOARD_TEXT_LINK_MAX_LENGTH ||
+      !BOARD_TEXT_LINK_PATTERN.test(m.link)
+    ) {
+      throw new ValidationError('Недопустимая ссылка');
+    }
+    result.link = m.link;
+  }
+  return Object.keys(result).length > 0 ? result : undefined;
+}
+
+/**
+ * Runs — опциональное форматированное представление `text` (12.13). Конкатенация
+ * текста всех runs обязана буквально совпадать с уже провалидированным `text` —
+ * это не только гигиена (клиент сам её так и строит), но и защита: без этой
+ * проверки в `runs` можно было бы протащить произвольно длинный текст в обход
+ * лимита `BOARD_ITEM_TEXT_MAX_LENGTH`, наложенного только на `text`.
+ */
+/**
+ * Верхняя граница числа runs — без нее проверка «конкатенация runs == text»
+ * ограничивает только суммарную длину ТЕКСТА, а не размер самого payload:
+ * тысячи runs с пустым/однобуквенным текстом и длинной меткой (например,
+ * ссылкой до `BOARD_TEXT_LINK_MAX_LENGTH` в каждом) раздули бы `content` до
+ * мегабайта на один элемент, обходя цель `BOARD_ITEM_TEXT_MAX_LENGTH`. Реальный
+ * текст в 2000 символов даже при частом чередовании меток не требует сотен
+ * runs — лимит с большим запасом.
+ */
+const BOARD_ITEM_MAX_RUNS = 200;
+
+function validateRuns(runs: unknown, text: string): BoardTextRun[] | undefined {
+  if (runs === undefined || runs === null) return undefined;
+  if (!Array.isArray(runs) || runs.length > BOARD_ITEM_MAX_RUNS) {
+    throw new ValidationError('Недопустимое форматирование текста');
+  }
+  const result: BoardTextRun[] = runs.map((run) => {
+    if (typeof run !== 'object' || run === null) {
+      throw new ValidationError('Недопустимое форматирование текста');
+    }
+    const r = run as { text?: unknown; marks?: unknown };
+    if (typeof r.text !== 'string' || r.text.length === 0) {
+      throw new ValidationError('Недопустимое форматирование текста');
+    }
+    const marks = validateTextMark(r.marks);
+    return marks ? { text: r.text, marks } : { text: r.text };
+  });
+  if (result.map((run) => run.text).join('') !== text) {
+    throw new ValidationError('Форматирование текста не совпадает с его содержимым');
+  }
+  return result;
+}
+
 function validateContent(content: unknown): BoardItemContent {
   if (typeof content !== 'object' || content === null) {
     throw new ValidationError('Не указано содержимое элемента');
   }
-  const c = content as { type?: unknown; text?: unknown; shape?: unknown };
+  const c = content as { type?: unknown; text?: unknown; shape?: unknown; runs?: unknown };
   if (typeof c.text !== 'string' || c.text.length > BOARD_ITEM_TEXT_MAX_LENGTH) {
     throw new ValidationError('Слишком длинный текст элемента');
   }
+  const runs = validateRuns(c.runs, c.text);
   if (c.type === 'sticky') {
-    return { type: 'sticky', text: c.text };
+    return { type: 'sticky', text: c.text, ...(runs ? { runs } : {}) };
   }
   if (c.type === 'shape') {
     if (!(BOARD_SHAPE_KINDS as readonly unknown[]).includes(c.shape)) {
       throw new ValidationError('Недопустимая форма фигуры');
     }
-    return { type: 'shape', shape: c.shape as (typeof BOARD_SHAPE_KINDS)[number], text: c.text };
+    return {
+      type: 'shape',
+      shape: c.shape as (typeof BOARD_SHAPE_KINDS)[number],
+      text: c.text,
+      ...(runs ? { runs } : {}),
+    };
   }
   throw new ValidationError('Неизвестный тип элемента');
 }

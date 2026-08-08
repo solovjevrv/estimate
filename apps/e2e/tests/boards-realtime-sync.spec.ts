@@ -61,9 +61,13 @@ test('два браузера на одной доске: создание, пе
   await expect(pageA.locator('.vue-flow__node-sticky')).toHaveCount(1);
   const stickyId = await pageA.locator('.vue-flow__node-sticky').getAttribute('data-id');
 
-  // Гоча Vue Flow #7: headless Chromium не всегда честно фокусирует textarea
-  // через программный .focus() при автовходе в редактирование — кликаем сами
-  const textareaA = pageA.locator(`.vue-flow__node[data-id="${stickyId}"] textarea`);
+  // Гоча Vue Flow #7: headless Chromium не всегда честно фокусирует
+  // contenteditable через программный .focus() при автовходе в
+  // редактирование — кликаем сами. С 12.13 текст — не textarea, а
+  // contenteditable-div (форматирование по выделению).
+  const textareaA = pageA.locator(
+    `.vue-flow__node[data-id="${stickyId}"] [contenteditable="true"]`,
+  );
   await textareaA.click();
   await textareaA.fill('Первый стикер');
   await pageA.locator('.vue-flow__pane').click({ position: { x: 950, y: 450 } });
@@ -104,7 +108,9 @@ test('два браузера на одной доске: создание, пе
   const secondId = await pageA
     .locator(`.vue-flow__node-sticky:not([data-id="${stickyId}"])`)
     .getAttribute('data-id');
-  const textareaA2 = pageA.locator(`.vue-flow__node[data-id="${secondId}"] textarea`);
+  const textareaA2 = pageA.locator(
+    `.vue-flow__node[data-id="${secondId}"] [contenteditable="true"]`,
+  );
   await textareaA2.click();
   await pageA.locator('.vue-flow__pane').click({ position: { x: 950, y: 450 } });
 
