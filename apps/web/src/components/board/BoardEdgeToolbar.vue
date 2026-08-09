@@ -70,7 +70,7 @@ function onCustomColor(event: Event): void {
 
 <template>
   <div
-    class="board-edge-toolbar"
+    class="board-edge-toolbar board-toolbar-base"
     :style="{ left: `${left}px`, top: `${top}px` }"
     @click.stop
     @dblclick.stop
@@ -226,111 +226,5 @@ function onCustomColor(event: Event): void {
 </template>
 
 <style scoped>
-.board-edge-toolbar {
-  position: absolute;
-  z-index: 25;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 7px 8px;
-  white-space: nowrap;
-  background: var(--brand-surface);
-  border-radius: 12px;
-  box-shadow: var(--brand-shadow-card);
-  transform: translate(-50%, calc(-100% - 12px));
-}
-
-.board-selection-swatch {
-  box-sizing: border-box;
-  width: 20px;
-  height: 20px;
-  cursor: pointer;
-  border: none;
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 8%);
-}
-
-.board-selection-swatch-active {
-  box-shadow: inset 0 0 0 2px var(--ui-primary);
-}
-
-.board-color-menu {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  padding: 10px;
-}
-
-.board-color-add-btn {
-  display: flex;
-  width: 20px;
-  height: 20px;
-  align-items: center;
-  justify-content: center;
-  color: var(--brand-ink);
-  cursor: pointer;
-  background: var(--ui-bg-elevated);
-  border: none;
-  border-radius: 50%;
-}
-
-.board-form-menu {
-  display: flex;
-  gap: 2px;
-  padding: 6px;
-}
-
-.board-form-menu-item {
-  display: flex;
-  width: 32px;
-  height: 32px;
-  align-items: center;
-  justify-content: center;
-  color: var(--brand-ink);
-  cursor: pointer;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-}
-
-.board-form-menu-item:hover {
-  background: var(--ui-bg-elevated);
-}
-
-.board-form-menu-item-active {
-  color: var(--ui-primary);
-  background: var(--ui-bg-elevated);
-}
-
-.board-selection-divider {
-  width: 1px;
-  height: 20px;
-  margin: 0 6px;
-  background: var(--brand-border);
-}
-
-.board-selection-icon-btn {
-  display: flex;
-  width: 28px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  color: var(--brand-ink);
-  cursor: pointer;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-}
-
-.board-selection-icon-btn:hover {
-  background: var(--ui-bg-elevated);
-}
-
-.board-selection-icon-btn-danger {
-  color: var(--brand-coral);
-}
-
-.board-selection-icon-btn-danger:hover {
-  background: color-mix(in oklch, var(--brand-coral) 12%, transparent);
-}
+@import './shared/board-toolbar.css';
 </style>

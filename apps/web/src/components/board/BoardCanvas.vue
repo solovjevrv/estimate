@@ -94,6 +94,8 @@ import { useBoardHotkeys } from '../../lib/board/use-board-hotkeys';
 import { FIT_FONT_MAX } from '../../lib/board/use-fit-font-size';
 import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
 import { throttle } from '../../lib/throttle';
+import { uuid } from '../../lib/board/uuid';
+import { BOARD_DRAG_THROTTLE_MS, BOARD_DUPLICATE_OFFSET } from '../../lib/board/board-constants';
 import { useBoardSessionStore } from '../../stores/board-session';
 import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
 import BoardContextMenu, { type BoardContextMenuTarget } from './BoardContextMenu.vue';
@@ -234,7 +236,25 @@ function toggleFullscreen(): void {
 }
 
 onMounted(() => document.addEventListener('fullscreenchange', onFullscreenChange));
-onBeforeUnmount(() => document.removeEventListener('fullscreenchange', onFullscreenChange));
+onBeforeUnmount(() => {
+  document.removeEventListener('fullscreenchange', onFullscreenChange);
+  dragThrottlers.clear();
+  dragStartPositions.clear();
+});
+
+/**
+ * `dragThrottlers`/`dragStartPositions` копятся по `node.id` (17.9) —
+ * `BoardPage.vue` переиспользует один и тот же `BoardCanvas` при смене доски
+ * (меняет пропы, не размонтирует компонент), так что без явной очистки записи
+ * от уже покинутой доски продолжали бы висеть в памяти всю сессию страницы.
+ */
+watch(
+  () => props.board.id,
+  () => {
+    dragThrottlers.clear();
+    dragStartPositions.clear();
+  },
+);
 
 // --- Инструменты и создание стикеров (12.6) ---
 
@@ -280,12 +300,12 @@ function canCreateItem(): boolean {
 
 function createSticky(center: { x: number; y: number }): void {
   if (!canCreateItem()) return;
-  const id = globalThis.crypto.randomUUID();
+  const id = uuid();
   pendingEditId.value = id;
   void boardSession.applyOps([
     {
       type: 'item.create',
-      clientOpId: globalThis.crypto.randomUUID(),
+      clientOpId: uuid(),
       item: {
         id,
         parentId: null,
@@ -305,12 +325,12 @@ function createSticky(center: { x: number; y: number }): void {
 
 function createShape(center: { x: number; y: number }): void {
   if (!canCreateItem()) return;
-  const id = globalThis.crypto.randomUUID();
+  const id = uuid();
   pendingEditId.value = id;
   void boardSession.applyOps([
     {
       type: 'item.create',
-      clientOpId: globalThis.crypto.randomUUID(),
+      clientOpId: uuid(),
       item: {
         id,
         parentId: null,
@@ -369,7 +389,7 @@ function sendPositionPatch(
     [
       {
         type: 'item.patch',
-        clientOpId: globalThis.crypto.randomUUID(),
+        clientOpId: uuid(),
         id: node.id,
         patch: { x: node.computedPosition.x, y: node.computedPosition.y },
       },
@@ -421,7 +441,10 @@ function onNodeDrag(event: NodeDragEvent): void {
       // record: false — промежуточные тики жеста не попадают в историю undo/redo
       // (12.10), иначе одна отмена откатывала бы только последние ~80мс драга,
       // а не перенос целиком. Единственная запись истории — на dragstop ниже.
-      send = throttle((n: GraphNode<BoardItem>) => sendPositionPatch(n, { record: false }), 80);
+      send = throttle(
+        (n: GraphNode<BoardItem>) => sendPositionPatch(n, { record: false }),
+        BOARD_DRAG_THROTTLE_MS,
+      );
       dragThrottlers.set(node.id, send);
     }
     send(node);
@@ -443,7 +466,7 @@ function onNodeDragStop(event: NodeDragEvent): void {
       ? [
           {
             type: 'item.patch',
-            clientOpId: globalThis.crypto.randomUUID(),
+            clientOpId: uuid(),
             id: node.id,
             patch: { x: start.x, y: start.y },
           },
@@ -516,7 +539,7 @@ function patchEdgeLine(line: BoardEdgeLineKindOption): void {
     const data = edge.data as BoardEdge;
     return {
       type: 'edge.patch',
-      clientOpId: globalThis.crypto.randomUUID(),
+      clientOpId: uuid(),
       id: edge.id,
       patch: { style: { ...data.style, line } },
     };
@@ -528,7 +551,7 @@ function patchEdgeMarkerStart(marker: BoardEdgeMarkerOption): void {
     const data = edge.data as BoardEdge;
     return {
       type: 'edge.patch',
-      clientOpId: globalThis.crypto.randomUUID(),
+      clientOpId: uuid(),
       id: edge.id,
       patch: { style: { ...data.style, markerStart: marker } },
     };
@@ -540,7 +563,7 @@ function patchEdgeMarkerEnd(marker: BoardEdgeMarkerOption): void {
     const data = edge.data as BoardEdge;
     return {
       type: 'edge.patch',
-      clientOpId: globalThis.crypto.randomUUID(),
+      clientOpId: uuid(),
       id: edge.id,
       patch: { style: { ...data.style, markerEnd: marker } },
     };
@@ -552,7 +575,7 @@ function patchEdgeColor(color: BoardColorHex): void {
     const data = edge.data as BoardEdge;
     return {
       type: 'edge.patch',
-      clientOpId: globalThis.crypto.randomUUID(),
+      clientOpId: uuid(),
       id: edge.id,
       patch: { style: { ...data.style, color } },
     };
@@ -574,7 +597,7 @@ function onEdgeDoubleClick({ edge }: EdgeMouseEvent): void {
 function deleteSelectedEdges(): void {
   patchSelectedEdge((edge) => ({
     type: 'edge.delete',
-    clientOpId: globalThis.crypto.randomUUID(),
+    clientOpId: uuid(),
     id: edge.id,
   }));
 }
@@ -627,7 +650,7 @@ function setSelectedForm(kind: ItemFormKind): void {
     }
     return {
       type: 'item.patch',
-      clientOpId: globalThis.crypto.randomUUID(),
+      clientOpId: uuid(),
       id: node.id,
       patch,
     };
@@ -637,7 +660,7 @@ function setSelectedForm(kind: ItemFormKind): void {
 function setSelectedColor(color: BoardColorHex): void {
   patchSelected((node) => ({
     type: 'item.patch',
-    clientOpId: globalThis.crypto.randomUUID(),
+    clientOpId: uuid(),
     id: node.id,
     patch: { style: { color } },
   }));
@@ -657,7 +680,7 @@ const selectedTextAlign = computed<BoardTextAlign>(
 function setSelectedFontSize(fontSize: number): void {
   patchSelected((node) => ({
     type: 'item.patch',
-    clientOpId: globalThis.crypto.randomUUID(),
+    clientOpId: uuid(),
     id: node.id,
     patch: { style: { fontSize } },
   }));
@@ -666,7 +689,7 @@ function setSelectedFontSize(fontSize: number): void {
 function setSelectedTextColor(textColor: BoardColorHex): void {
   patchSelected((node) => ({
     type: 'item.patch',
-    clientOpId: globalThis.crypto.randomUUID(),
+    clientOpId: uuid(),
     id: node.id,
     patch: { style: { textColor } },
   }));
@@ -675,7 +698,7 @@ function setSelectedTextColor(textColor: BoardColorHex): void {
 function setSelectedTextAlign(textAlign: BoardTextAlign): void {
   patchSelected((node) => ({
     type: 'item.patch',
-    clientOpId: globalThis.crypto.randomUUID(),
+    clientOpId: uuid(),
     id: node.id,
     patch: { style: { textAlign } },
   }));
@@ -686,18 +709,17 @@ function duplicateSelected(): void {
   const selected = selectedNodes.value;
   if (!selected.length || !canCreateItems(selected.length)) return;
   const base = maxZIndex(props.items) + 1;
-  const DUPLICATE_OFFSET = 24;
   void boardSession.applyOps(
     selected.map(
       (node, index) =>
         ({
           type: 'item.create',
-          clientOpId: globalThis.crypto.randomUUID(),
+          clientOpId: uuid(),
           item: {
-            id: globalThis.crypto.randomUUID(),
+            id: uuid(),
             parentId: null,
-            x: node.computedPosition.x + DUPLICATE_OFFSET,
-            y: node.computedPosition.y + DUPLICATE_OFFSET,
+            x: node.computedPosition.x + BOARD_DUPLICATE_OFFSET,
+            y: node.computedPosition.y + BOARD_DUPLICATE_OFFSET,
             width: node.dimensions.width,
             height: node.dimensions.height,
             rotation: node.data.rotation,
@@ -717,7 +739,7 @@ function bringSelectedToFront(): void {
   const base = maxZIndex(props.items) + 1;
   patchSelected((node, index) => ({
     type: 'item.patch',
-    clientOpId: globalThis.crypto.randomUUID(),
+    clientOpId: uuid(),
     id: node.id,
     patch: { zIndex: base + index },
   }));
@@ -727,7 +749,7 @@ function sendSelectedToBack(): void {
   const base = minZIndex(props.items) - selectedNodes.value.length;
   patchSelected((node, index) => ({
     type: 'item.patch',
-    clientOpId: globalThis.crypto.randomUUID(),
+    clientOpId: uuid(),
     id: node.id,
     patch: { zIndex: base + index },
   }));
@@ -736,7 +758,7 @@ function sendSelectedToBack(): void {
 function deleteSelected(): void {
   patchSelected((node) => ({
     type: 'item.delete',
-    clientOpId: globalThis.crypto.randomUUID(),
+    clientOpId: uuid(),
     id: node.id,
   }));
 }
@@ -843,11 +865,11 @@ useBoardHotkeys({
 
 function onConnect(event: Connection): void {
   if (!props.canEdit) return;
-  const id = globalThis.crypto.randomUUID();
+  const id = uuid();
   void boardSession.applyOps([
     {
       type: 'edge.create',
-      clientOpId: globalThis.crypto.randomUUID(),
+      clientOpId: uuid(),
       edge: {
         id,
         sourceItemId: event.source,
