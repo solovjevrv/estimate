@@ -97,14 +97,13 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 </script>
 
 <template>
-  <div class="relative h-full w-full">
+  <div class="board-node-resizer-gap relative h-full w-full">
     <NodeResizer
       :is-visible="props.selected && !editing && canEdit"
       :min-width="TEXT_MIN_WIDTH"
       :min-height="TEXT_MIN_HEIGHT"
       :max-width="TEXT_MAX_WIDTH"
       :max-height="TEXT_MAX_HEIGHT"
-      color="var(--ui-primary)"
       @resize-end="onResizeEnd"
     />
     <div
@@ -165,6 +164,8 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 </template>
 
 <style scoped>
+@import './shared/board-node-resizer.css';
+
 /* Текстовый элемент — без фона/заливки/рамки, как в макете .design/main.html */
 
 .board-connect-handle {

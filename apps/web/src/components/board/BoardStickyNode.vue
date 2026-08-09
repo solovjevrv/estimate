@@ -184,7 +184,7 @@ watch(
 </script>
 
 <template>
-  <div class="relative h-full w-full">
+  <div class="board-node-resizer-gap relative h-full w-full">
     <NodeResizer
       :is-visible="props.selected && !editing && canEdit"
       :min-width="STICKY_MIN_WIDTH"
@@ -192,7 +192,6 @@ watch(
       :max-width="STICKY_MAX_WIDTH"
       :max-height="STICKY_MAX_HEIGHT"
       keep-aspect-ratio
-      color="var(--ui-primary)"
       @resize-end="onResizeEnd"
     />
     <div
@@ -330,6 +329,8 @@ watch(
 </template>
 
 <style scoped>
+@import './shared/board-node-resizer.css';
+
 /* Стикер держится на тени, а не на обводке (референс `.design/main.html`) — заметно
    сильнее общей `--brand-shadow-card` (та калибрована под UI-панели, не бумагу) */
 .board-sticky-content {

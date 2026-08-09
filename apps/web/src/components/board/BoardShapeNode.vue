@@ -127,14 +127,13 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 </script>
 
 <template>
-  <div class="relative h-full w-full">
+  <div class="board-node-resizer-gap relative h-full w-full">
     <NodeResizer
       :is-visible="props.selected && !editing && canEdit"
       :min-width="SHAPE_MIN_WIDTH"
       :min-height="SHAPE_MIN_HEIGHT"
       :max-width="SHAPE_MAX_WIDTH"
       :max-height="SHAPE_MAX_HEIGHT"
-      color="var(--ui-primary)"
       @resize-end="onResizeEnd"
     />
     <div
@@ -204,6 +203,8 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 </template>
 
 <style scoped>
+@import './shared/board-node-resizer.css';
+
 .board-connect-handle {
   width: 10px;
   height: 10px;
