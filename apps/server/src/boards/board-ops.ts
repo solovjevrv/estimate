@@ -13,6 +13,7 @@ import {
   BOARD_EDGE_MARKER_KINDS,
   BOARD_FONT_FAMILIES,
   BOARD_HIGHLIGHT_COLORS,
+  BOARD_IMAGE_URL_PREFIX,
   BOARD_ITEM_FONT_SIZE_MAX,
   BOARD_ITEM_FONT_SIZE_MIN,
   BOARD_ITEM_MAX_COORDINATE,
@@ -262,7 +263,45 @@ function validateContent(content: unknown): BoardItemContent {
   if (typeof content !== 'object' || content === null) {
     throw new ValidationError('Не указано содержимое элемента');
   }
-  const c = content as { type?: unknown; text?: unknown; shape?: unknown; runs?: unknown };
+  const c = content as {
+    type?: unknown;
+    text?: unknown;
+    shape?: unknown;
+    runs?: unknown;
+    url?: unknown;
+    width?: unknown;
+    height?: unknown;
+  };
+
+  // Для image — url, width, height обязательны, text/runs не требуются
+  if (c.type === 'image') {
+    if (typeof c.url !== 'string' || c.url.length === 0) {
+      throw new ValidationError('URL картинки обязателен');
+    }
+    // Валидируем, что URL — это наш путь /api/boards/.../assets/... (защита от SSRF/XSS)
+    if (!c.url.startsWith(BOARD_IMAGE_URL_PREFIX)) {
+      throw new ValidationError('Недопустимый URL картинки');
+    }
+    if (
+      typeof c.width !== 'number' ||
+      !Number.isFinite(c.width) ||
+      c.width < 1 ||
+      c.width > BOARD_ITEM_MAX_SIZE
+    ) {
+      throw new ValidationError('Некорректная ширина картинки');
+    }
+    if (
+      typeof c.height !== 'number' ||
+      !Number.isFinite(c.height) ||
+      c.height < 1 ||
+      c.height > BOARD_ITEM_MAX_SIZE
+    ) {
+      throw new ValidationError('Некорректная высота картинки');
+    }
+    return { type: 'image', url: c.url, width: c.width, height: c.height };
+  }
+
+  // Для остальных типов (sticky, shape, text) — text обязателен
   if (typeof c.text !== 'string' || c.text.length > BOARD_ITEM_TEXT_MAX_LENGTH) {
     throw new ValidationError('Слишком длинный текст элемента');
   }

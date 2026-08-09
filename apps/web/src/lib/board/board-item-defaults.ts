@@ -68,6 +68,17 @@ export const TEXT_MIN_HEIGHT = STICKY_MIN_HEIGHT;
 export const TEXT_MAX_WIDTH = STICKY_MAX_WIDTH;
 export const TEXT_MAX_HEIGHT = STICKY_MAX_HEIGHT;
 
+/**
+ * Картинка на доске (13.2) — сохраняет пропорции исходника, дефолтный бокс —
+ * 300×200 (подстроится при загрузке). Границы резайза — те же UX-лимиты.
+ */
+export const IMAGE_DEFAULT_WIDTH = 300;
+export const IMAGE_DEFAULT_HEIGHT = 200;
+export const IMAGE_MIN_WIDTH = STICKY_MIN_WIDTH;
+export const IMAGE_MIN_HEIGHT = STICKY_MIN_HEIGHT;
+export const IMAGE_MAX_WIDTH = STICKY_MAX_WIDTH;
+export const IMAGE_MAX_HEIGHT = STICKY_MAX_HEIGHT;
+
 /** На единицу выше текущего максимума — новый элемент встаёт поверх всех существующих */
 export function nextZIndexAbove(items: readonly BoardItem[]): number {
   return items.reduce((max, item) => Math.max(max, item.zIndex), 0) + 1;

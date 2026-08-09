@@ -76,9 +76,9 @@ const FORMAT_BUTTONS: readonly { key: FormatMarkKey; icon: string }[] = [
   { key: 'strike', icon: 'i-lucide-strikethrough' },
 ];
 
-export type ItemFormKind = 'sticky' | (typeof BOARD_SHAPE_KINDS)[number] | 'text';
+export type ItemFormKind = 'sticky' | (typeof BOARD_SHAPE_KINDS)[number] | 'text' | 'image';
 
-const FORM_OPTIONS: readonly ItemFormKind[] = ['sticky', ...BOARD_SHAPE_KINDS, 'text'];
+const FORM_OPTIONS: readonly ItemFormKind[] = ['sticky', ...BOARD_SHAPE_KINDS, 'text', 'image'];
 
 const FORM_ICONS: Record<ItemFormKind, string> = {
   sticky: 'i-lucide-sticky-note',
@@ -87,6 +87,7 @@ const FORM_ICONS: Record<ItemFormKind, string> = {
   ellipse: 'i-lucide-circle',
   diamond: 'i-lucide-diamond',
   text: 'i-lucide-type',
+  image: 'i-lucide-image',
 };
 
 const ALIGN_ICONS: Record<BoardTextAlign, string> = {

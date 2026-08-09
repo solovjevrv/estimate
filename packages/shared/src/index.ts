@@ -385,8 +385,8 @@ export const GUEST_NAME_MAX_LENGTH = 60;
  * (12.6 стикеры, 12.7 фигуры, 13.х текст/картинки/эмодзи) — новый тип не
  * требует миграции схемы благодаря дискриминированному union по `type`.
  */
-export type BoardItemType = 'sticky' | 'shape' | 'text';
-export const BOARD_ITEM_TYPES: readonly BoardItemType[] = ['sticky', 'shape', 'text'];
+export type BoardItemType = 'sticky' | 'shape' | 'text' | 'image';
+export const BOARD_ITEM_TYPES: readonly BoardItemType[] = ['sticky', 'shape', 'text', 'image'];
 
 export type BoardShapeKind = 'rectangle' | 'rounded' | 'ellipse' | 'diamond';
 export const BOARD_SHAPE_KINDS: readonly BoardShapeKind[] = [
@@ -438,6 +438,17 @@ export const BOARD_MAX_ITEMS = 2000;
 export const BOARD_ITEM_MAX_COORDINATE = 1_000_000;
 /** Верхняя граница ширины/высоты элемента доски */
 export const BOARD_ITEM_MAX_SIZE = 10_000;
+/** Картинки на доске (13.2) — максимальный размер исходного файла перед пережатием (8 МБ) */
+export const BOARD_IMAGE_MAX_BYTES = 8 * 1024 * 1024;
+/** Допустимые MIME-типы для загрузки картинок на доску (JPEG, PNG, WebP, GIF) */
+export const BOARD_IMAGE_ALLOWED_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/gif',
+] as const;
+/** Префикс URL наших картинок — для валидации url в validateContent (защита от SSRF/XSS) */
+export const BOARD_IMAGE_URL_PREFIX = '/api/boards/';
 
 /**
  * Маркер-цвет выделения текста (12.13) — токен из фиксированной небольшой
@@ -509,8 +520,16 @@ export interface BoardTextContent {
   runs?: BoardTextRun[];
 }
 
+export interface BoardImageContent {
+  type: 'image';
+  url: string;
+  width: number;
+  height: number;
+}
+
 /** Дискриминированный union по `type` — новый тип элемента не требует миграции схемы */
-export type BoardItemContent = BoardStickyContent | BoardShapeContent | BoardTextContent;
+export type BoardItemContent =
+  BoardStickyContent | BoardShapeContent | BoardTextContent | BoardImageContent;
 
 /**
  * Начертание текста стикера/фигуры (12.9) — не произвольный CSS font-family,

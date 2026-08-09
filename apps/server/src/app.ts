@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastif
 import fp from 'fastify-plugin';
 
 import { authPlugin, avatarPlugin, sessionCleanupPlugin } from './auth';
-import { boardsPlugin } from './boards';
+import { boardsPlugin, boardImagesPlugin } from './boards';
 import type { AuthConfig } from './config';
 import type { Db } from './db';
 import { ErrorHandler } from './http/error-handler';
@@ -29,6 +29,8 @@ export interface AppDeps {
   roomsRateLimit?: RoomsRateLimitOptions;
   /** Каталог для загруженных аватарок (10.15); без auth не используется */
   avatarsDir?: string;
+  /** Каталог для картинок досок (13.2); без auth не используется */
+  boardAssetsDir?: string;
 }
 
 export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): FastifyInstance {
@@ -79,6 +81,9 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
     void app.register(sessionCleanupPlugin);
     if (deps.avatarsDir) {
       void app.register(avatarPlugin, { avatarsDir: deps.avatarsDir });
+    }
+    if (deps.boardAssetsDir) {
+      void app.register(boardImagesPlugin, { assetsDir: deps.boardAssetsDir });
     }
     // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией
     void app.register(teamsPlugin);

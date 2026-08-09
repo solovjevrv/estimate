@@ -82,7 +82,9 @@ describe('applyBoardOp — item.create', () => {
     const item = state.items.get(id);
     expect(item).toMatchObject({ id, boardId: BOARD_ID, createdBy: ACTOR_ID, x: 10, y: 20 });
     expect(item?.content.type).toBe('text');
-    expect(item?.content.text).toBe('Текст');
+    if (item?.content.type === 'text') {
+      expect(item.content.text).toBe('Текст');
+    }
   });
 
   it('отклоняет создание элемента с уже занятым id', () => {

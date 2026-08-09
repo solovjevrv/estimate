@@ -16,7 +16,12 @@
  */
 import type { Ref } from 'vue';
 
-import type { BoardHighlightColor, BoardTextMark, BoardTextRun } from '@poker/shared';
+import type {
+  BoardHighlightColor,
+  BoardItemContent,
+  BoardTextMark,
+  BoardTextRun,
+} from '@poker/shared';
 
 /**
  * DOM-узел, уход фокуса в который НЕ должен коммитить редактирование текста
@@ -80,7 +85,9 @@ export const HIGHLIGHT_CSS: Record<BoardHighlightColor, string> = {
 const MARK_KEYS = ['bold', 'italic', 'underline', 'strike'] as const;
 type BoolMarkKey = (typeof MARK_KEYS)[number];
 
-export function runsFromContent(content: { text: string; runs?: BoardTextRun[] }): BoardTextRun[] {
+export function runsFromContent(content: BoardItemContent): BoardTextRun[] {
+  // Картинка не имеет текстового содержимого — возвращаем пустой массив
+  if (content.type === 'image') return [];
   if (content.runs && content.runs.length > 0) return content.runs;
   return content.text ? [{ text: content.text }] : [];
 }

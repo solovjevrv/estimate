@@ -1,10 +1,8 @@
 <script setup lang="ts">
 /**
- * Левый вертикальный тулбар инструментов холста (12.6+12.7+12.9) — позиция/чехол
+ * Левый вертикальный тулбар инструментов холста (12.6+12.7+12.9+13.2) — позиция/чехол
  * по референсу `.design/main.html` (`top:50%; left:20px`, кнопки 40×40, radius 11).
- * Из макета взяты «Выделение»/«Стикер»/«Фигура»/«Стрелка»: оставшиеся две иконки
- * (текст/картинка/эмодзи) относятся к ещё не реализованным задачам (13.х) —
- * рендерить их сейчас значило бы дать нерабочие кнопки.
+ * Из макета взяты «Выделение»/«Стикер»/«Фигура»/«Текст»/«Картинка»/«Стрелка».
  *
  * «Стрелка» (12.9) — не альтернативный механизм создания связи (он уже есть и
  * не требует инструмента — drag от хендла карточки, `onConnect` в
@@ -15,7 +13,7 @@
  */
 import { useI18n } from 'vue-i18n';
 
-export type BoardTool = 'select' | 'sticky' | 'shape' | 'text' | 'arrow';
+export type BoardTool = 'select' | 'sticky' | 'shape' | 'text' | 'image' | 'arrow';
 
 const tool = defineModel<BoardTool>({ required: true });
 
@@ -61,22 +59,32 @@ function isActive(value: BoardTool): boolean {
     <button
       type="button"
       class="board-toolbar-btn"
-      :class="{ 'board-toolbar-btn-active': isActive('arrow') }"
-      :aria-label="t('board.toolArrow')"
-      :aria-pressed="isActive('arrow')"
-      @click="tool = 'arrow'"
-    >
-      <UIcon name="i-lucide-move-up-right" class="size-[19px]" />
-    </button>
-    <button
-      type="button"
-      class="board-toolbar-btn"
       :class="{ 'board-toolbar-btn-active': isActive('text') }"
       :aria-label="t('board.toolText')"
       :aria-pressed="isActive('text')"
       @click="tool = 'text'"
     >
       <UIcon name="i-lucide-type" class="size-[19px]" />
+    </button>
+    <button
+      type="button"
+      class="board-toolbar-btn"
+      :class="{ 'board-toolbar-btn-active': isActive('image') }"
+      :aria-label="t('board.toolImage')"
+      :aria-pressed="isActive('image')"
+      @click="tool = 'image'"
+    >
+      <UIcon name="i-lucide-image" class="size-[19px]" />
+    </button>
+    <button
+      type="button"
+      class="board-toolbar-btn"
+      :class="{ 'board-toolbar-btn-active': isActive('arrow') }"
+      :aria-label="t('board.toolArrow')"
+      :aria-pressed="isActive('arrow')"
+      @click="tool = 'arrow'"
+    >
+      <UIcon name="i-lucide-move-up-right" class="size-[19px]" />
     </button>
   </div>
 </template>
