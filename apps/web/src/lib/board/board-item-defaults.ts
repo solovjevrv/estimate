@@ -79,6 +79,20 @@ export const IMAGE_MIN_HEIGHT = STICKY_MIN_HEIGHT;
 export const IMAGE_MAX_WIDTH = STICKY_MAX_WIDTH;
 export const IMAGE_MAX_HEIGHT = STICKY_MAX_HEIGHT;
 
+/**
+ * Вписывает исходный размер картинки в дефолтный бокс 300×200, сохраняя
+ * пропорции и никогда не увеличивая (только уменьшает большие исходники) —
+ * иначе новый элемент вставал бы на холст размером до 2048px (сервер режет
+ * загрузку по этой стороне) и был бы во много раз крупнее стикеров/фигур.
+ */
+export function fitImageToDefaultBox(
+  sourceWidth: number,
+  sourceHeight: number,
+): { width: number; height: number } {
+  const scale = Math.min(1, IMAGE_DEFAULT_WIDTH / sourceWidth, IMAGE_DEFAULT_HEIGHT / sourceHeight);
+  return { width: Math.round(sourceWidth * scale), height: Math.round(sourceHeight * scale) };
+}
+
 /** На единицу выше текущего максимума — новый элемент встаёт поверх всех существующих */
 export function nextZIndexAbove(items: readonly BoardItem[]): number {
   return items.reduce((max, item) => Math.max(max, item.zIndex), 0) + 1;

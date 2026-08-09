@@ -4,6 +4,7 @@ import fp from 'fastify-plugin';
 
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
 
+import { BoardImagesService } from './board-images.service';
 import type {
   ArchivedQuery,
   BoardIdParams,
@@ -13,6 +14,11 @@ import type {
 } from './boards.controller';
 import { BoardsController } from './boards.controller';
 import { BoardsService } from './boards.service';
+
+export interface BoardsPluginOptions {
+  /** Не задан — удаление доски не будет чистить файлы её картинок с диска (13.2) */
+  assetsDir?: string;
+}
 
 const uuid = { type: 'string', format: 'uuid' } as const;
 
@@ -115,13 +121,14 @@ const boardSnapshotResponse = {
   },
 } as const;
 
-async function boardsPluginImpl(app: FastifyInstance): Promise<void> {
+async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions): Promise<void> {
   const authenticate = app.authenticate;
   if (!authenticate) {
     throw new Error('Роуты досок требуют плагина аутентификации');
   }
 
-  const controller = new BoardsController(BoardsService.forDatabase(app.db));
+  const images = opts.assetsDir ? await BoardImagesService.forDirectory(opts.assetsDir) : undefined;
+  const controller = new BoardsController(BoardsService.forDatabase(app.db, images));
 
   app.post<{ Body: CreateBoardBody }>(
     '/api/boards',

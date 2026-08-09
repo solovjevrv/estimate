@@ -41,6 +41,8 @@ export interface Config {
   sentryDsn?: string;
   /** Куда пишутся загруженные пользователями аватарки (10.15) */
   avatarsDir: string;
+  /** Куда пишутся загруженные картинки досок (13.2) */
+  boardAssetsDir: string;
 }
 
 /**
@@ -132,5 +134,6 @@ export function loadConfig(): Config {
     auth: loadAuthConfig(webOrigin, port),
     sentryDsn: process.env.SENTRY_DSN || undefined,
     avatarsDir: process.env.AVATARS_DIR ?? join(process.cwd(), 'avatars'),
+    boardAssetsDir: process.env.BOARD_ASSETS_DIR ?? join(process.cwd(), 'board-assets'),
   };
 }

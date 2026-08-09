@@ -41,6 +41,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       :min-height="IMAGE_MIN_HEIGHT"
       :max-width="IMAGE_MAX_WIDTH"
       :max-height="IMAGE_MAX_HEIGHT"
+      keep-aspect-ratio
       @resize-end="onResizeEnd"
     />
     <div

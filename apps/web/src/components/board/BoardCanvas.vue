@@ -30,6 +30,8 @@
  * affordance поверх уже рабочего drag-от-хендла (см. `onConnect` ниже).
  */
 import {
+  BOARD_IMAGE_ALLOWED_MIME_TYPES,
+  BOARD_IMAGE_MAX_BYTES,
   BOARD_MAX_ITEMS,
   type Board,
   type BoardColorHex,
@@ -71,8 +73,7 @@ import {
 import { useI18n } from 'vue-i18n';
 
 import {
-  IMAGE_DEFAULT_HEIGHT,
-  IMAGE_DEFAULT_WIDTH,
+  fitImageToDefaultBox,
   maxZIndex,
   minZIndex,
   nextZIndexAbove,
@@ -395,13 +396,12 @@ async function createImage(center: { x: number; y: number }, file: File): Promis
   if (!props.canEdit) return;
 
   // Валидация MIME и размера на клиенте до отправки (сервер тоже проверит)
-  const allowedMime = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
+  const allowedMime: readonly string[] = BOARD_IMAGE_ALLOWED_MIME_TYPES;
   if (!allowedMime.includes(file.type)) {
     toast.add({ title: t('board.imageInvalidType'), color: 'error' });
     return;
   }
-  const maxBytes = 8 * 1024 * 1024;
-  if (file.size > maxBytes) {
+  if (file.size > BOARD_IMAGE_MAX_BYTES) {
     toast.add({ title: t('board.imageTooLarge'), color: 'error' });
     return;
   }
@@ -425,6 +425,7 @@ async function createImage(center: { x: number; y: number }, file: File): Promis
 
     toast.remove(loadingToast.id);
 
+    const { width, height } = fitImageToDefaultBox(result.width, result.height);
     void boardSession.applyOps([
       {
         type: 'item.create',
@@ -432,10 +433,10 @@ async function createImage(center: { x: number; y: number }, file: File): Promis
         item: {
           id,
           parentId: null,
-          x: center.x - IMAGE_DEFAULT_WIDTH / 2,
-          y: center.y - IMAGE_DEFAULT_HEIGHT / 2,
-          width: result.width,
-          height: result.height,
+          x: center.x - width / 2,
+          y: center.y - height / 2,
+          width,
+          height,
           rotation: 0,
           zIndex: nextZIndexAbove(props.items),
           content: { type: 'image', url: result.url, width: result.width, height: result.height },
@@ -478,15 +479,21 @@ function onPaneClick(event: MouseEvent): void {
     // Открываем файловый диалог для выбора картинки
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = 'image/jpeg,image/png,image/webp,image/gif';
+    input.accept = BOARD_IMAGE_ALLOWED_MIME_TYPES.join(',');
     input.style.display = 'none';
-    input.onchange = () => {
+    // И выбор файла, и отмена диалога должны убрать за собой скрытый input —
+    // иначе при отмене он навсегда остаётся висеть в DOM
+    const cleanup = (): void => {
+      input.remove();
+    };
+    input.addEventListener('change', () => {
       const file = input.files?.[0];
       if (file) {
         createImage(flowPositionFromEvent(event), file);
       }
-      document.body.removeChild(input);
-    };
+      cleanup();
+    });
+    input.addEventListener('cancel', cleanup);
     document.body.appendChild(input);
     input.click();
     activeTool.value = 'select';

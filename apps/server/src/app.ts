@@ -38,10 +38,12 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
   const app = Fastify({ ajv: { customOptions: { coerceTypes: false } }, ...opts });
 
   // Ответы API касаются сессии и состава команд — их нельзя держать в кэшах.
-  // Аватарки — исключение: отдаются под тем же /api/ (см. nginx/vite-прокси),
-  // но их собственный cache-control (10.15) не должен затираться этим хуком.
+  // Аватарки и картинки досок — исключение: отдаются под тем же /api/ (см.
+  // nginx/vite-прокси), но их собственный cache-control (10.15, 13.2) не
+  // должен затираться этим хуком.
+  const CACHEABLE_ASSET_PATTERN = /^\/api\/(avatars\/|boards\/[^/]+\/assets\/)/;
   app.addHook('onSend', async (req, reply) => {
-    if (req.url.startsWith('/api/') && !req.url.startsWith('/api/avatars/')) {
+    if (req.url.startsWith('/api/') && !CACHEABLE_ASSET_PATTERN.test(req.url)) {
       reply.header('cache-control', 'no-store');
     }
   });
@@ -89,7 +91,7 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
     void app.register(teamsPlugin);
     void app.register(roomsPlugin, { auth: deps.auth, rateLimit: deps.roomsRateLimit });
     // Доскам нужны и аутентификация, и проверка членства в команде — регистрируем после teamsPlugin
-    void app.register(boardsPlugin);
+    void app.register(boardsPlugin, { assetsDir: deps.boardAssetsDir });
   }
 
   if (deps.closeDb) {

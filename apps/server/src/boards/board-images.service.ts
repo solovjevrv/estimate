@@ -2,9 +2,9 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import sharp, { type OutputInfo } from 'sharp';
+import sharp from 'sharp';
 
-import { BOARD_IMAGE_URL_PREFIX } from '@poker/shared';
+import { boardImageUrl, isBoardImageUrl } from '@poker/shared';
 
 import { ValidationError } from '../errors';
 
@@ -41,9 +41,10 @@ export class BoardImagesService {
     buffer: Buffer,
   ): Promise<{ url: string; width: number; height: number }> {
     let processed: Buffer;
-    let metadata: OutputInfo;
+    let width: number;
+    let height: number;
     try {
-      const sharpInstance = sharp(buffer, { failOn: 'error' })
+      const { data, info } = await sharp(buffer, { failOn: 'error' })
         // Учитывает EXIF-ориентацию исходника, прежде чем её метаданные будут отброшены
         .rotate()
         // Ограничиваем максимальную сторону, сохраняя пропорции
@@ -51,10 +52,11 @@ export class BoardImagesService {
           fit: 'inside',
           withoutEnlargement: true,
         })
-        .webp({ quality: BOARD_IMAGE_WEBP_QUALITY });
-      processed = await sharpInstance.toBuffer();
-      const result = await sharpInstance.toBuffer({ resolveWithObject: true });
-      metadata = result.info;
+        .webp({ quality: BOARD_IMAGE_WEBP_QUALITY })
+        .toBuffer({ resolveWithObject: true });
+      processed = data;
+      width = info.width;
+      height = info.height;
     } catch {
       throw new ValidationError('Файл повреждён или это не изображение');
     }
@@ -62,19 +64,14 @@ export class BoardImagesService {
     const filename = `${randomBytes(16).toString('hex')}.webp`;
     await writeFile(join(this.dir, filename), processed);
 
-    const url = `${BOARD_IMAGE_URL_PREFIX}${boardId}/assets/${filename}`;
-    return { url, width: metadata.width, height: metadata.height };
+    return { url: boardImageUrl(boardId, filename), width, height };
   }
 
-  /** Удаляет файл, только если url указывает на наше же хранилище */
-  async deleteIfOwn(url: string | null): Promise<void> {
-    if (!url?.startsWith(BOARD_IMAGE_URL_PREFIX)) return;
+  /** Удаляет файл, только если url указывает на картинку именно этой доски */
+  async deleteIfOwn(boardId: string, url: string | null): Promise<void> {
+    if (!url || !isBoardImageUrl(boardId, url)) return;
 
-    // url имеет формат /api/boards/:boardId/assets/:filename
-    const parts = url.split('/');
-    if (parts.length < 5) return;
-    const filename = parts[parts.length - 1] ?? '';
-    if (!filename) return;
+    const filename = url.slice(url.lastIndexOf('/') + 1);
     const path = this.filePath(filename);
     if (!path) return;
     await rm(path, { force: true });

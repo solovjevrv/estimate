@@ -13,7 +13,6 @@ import {
   BOARD_EDGE_MARKER_KINDS,
   BOARD_FONT_FAMILIES,
   BOARD_HIGHLIGHT_COLORS,
-  BOARD_IMAGE_URL_PREFIX,
   BOARD_ITEM_FONT_SIZE_MAX,
   BOARD_ITEM_FONT_SIZE_MIN,
   BOARD_ITEM_MAX_COORDINATE,
@@ -24,6 +23,7 @@ import {
   BOARD_TEXT_ALIGNS,
   BOARD_TEXT_LINK_MAX_LENGTH,
   BOARD_TEXT_LINK_PATTERN,
+  isBoardImageUrl,
   REACTION_EMOJIS,
   toggleItemReaction,
   type BoardEdge,
@@ -259,7 +259,7 @@ function validateRuns(runs: unknown, text: string): BoardTextRun[] | undefined {
   return result;
 }
 
-function validateContent(content: unknown): BoardItemContent {
+function validateContent(content: unknown, boardId: string): BoardItemContent {
   if (typeof content !== 'object' || content === null) {
     throw new ValidationError('Не указано содержимое элемента');
   }
@@ -278,8 +278,9 @@ function validateContent(content: unknown): BoardItemContent {
     if (typeof c.url !== 'string' || c.url.length === 0) {
       throw new ValidationError('URL картинки обязателен');
     }
-    // Валидируем, что URL — это наш путь /api/boards/.../assets/... (защита от SSRF/XSS)
-    if (!c.url.startsWith(BOARD_IMAGE_URL_PREFIX)) {
+    // Валидируем, что URL — это путь именно к картинке этой доски, не произвольная
+    // строка/чужая доска (защита от SSRF/XSS через content.url)
+    if (!isBoardImageUrl(boardId, c.url)) {
       throw new ValidationError('Недопустимый URL картинки');
     }
     if (
@@ -378,7 +379,7 @@ export function applyBoardOp(
         id,
         boardId,
         ...geometry,
-        content: validateContent(op.item.content),
+        content: validateContent(op.item.content, boardId),
         style: validateStyle(op.item.style),
         reactions: [],
         createdBy: actorId,
@@ -398,7 +399,9 @@ export function applyBoardOp(
         ...existing,
         ...geometry,
         content:
-          op.patch.content !== undefined ? validateContent(merged.content) : existing.content,
+          op.patch.content !== undefined
+            ? validateContent(merged.content, boardId)
+            : existing.content,
         style:
           op.patch.style !== undefined
             ? validateStyle({ ...existing.style, ...op.patch.style })

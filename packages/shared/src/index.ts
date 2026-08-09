@@ -447,8 +447,23 @@ export const BOARD_IMAGE_ALLOWED_MIME_TYPES = [
   'image/webp',
   'image/gif',
 ] as const;
-/** Префикс URL наших картинок — для валидации url в validateContent (защита от SSRF/XSS) */
-export const BOARD_IMAGE_URL_PREFIX = '/api/boards/';
+/** Имя файла картинки доски — только случайный hex (см. BoardImagesService), никогда не из пользовательского ввода */
+const BOARD_IMAGE_FILENAME_RE = /^[a-f0-9]{32}\.webp$/;
+
+/** Строит относительный URL для отдачи через GET /api/boards/:id/assets/:filename (13.2) */
+export function boardImageUrl(boardId: string, filename: string): string {
+  return `/api/boards/${boardId}/assets/${filename}`;
+}
+
+/**
+ * Проверяет, что url — это путь ИМЕННО к картинке этой доски, а не произвольная
+ * строка под /api/boards/ (защита от SSRF/XSS через content.url и от подмены
+ * картинки чужой доски).
+ */
+export function isBoardImageUrl(boardId: string, url: string): boolean {
+  const prefix = boardImageUrl(boardId, '');
+  return url.startsWith(prefix) && BOARD_IMAGE_FILENAME_RE.test(url.slice(prefix.length));
+}
 
 /**
  * Маркер-цвет выделения текста (12.13) — токен из фиксированной небольшой
