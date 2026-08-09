@@ -76,9 +76,9 @@ const FORMAT_BUTTONS: readonly { key: FormatMarkKey; icon: string }[] = [
   { key: 'strike', icon: 'i-lucide-strikethrough' },
 ];
 
-export type ItemFormKind = 'sticky' | (typeof BOARD_SHAPE_KINDS)[number];
+export type ItemFormKind = 'sticky' | (typeof BOARD_SHAPE_KINDS)[number] | 'text';
 
-const FORM_OPTIONS: readonly ItemFormKind[] = ['sticky', ...BOARD_SHAPE_KINDS];
+const FORM_OPTIONS: readonly ItemFormKind[] = ['sticky', ...BOARD_SHAPE_KINDS, 'text'];
 
 const FORM_ICONS: Record<ItemFormKind, string> = {
   sticky: 'i-lucide-sticky-note',
@@ -86,6 +86,7 @@ const FORM_ICONS: Record<ItemFormKind, string> = {
   rounded: 'i-lucide-squircle',
   ellipse: 'i-lucide-circle',
   diamond: 'i-lucide-diamond',
+  text: 'i-lucide-type',
 };
 
 const ALIGN_ICONS: Record<BoardTextAlign, string> = {
@@ -211,6 +212,7 @@ function stepFontSize(delta: number): void {
     @click.stop
     @dblclick.stop
   >
+    <!-- Form picker — always visible (allows converting text ↔ sticky ↔ shape) -->
     <UPopover :content="{ side: 'top' }">
       <button
         type="button"
@@ -238,52 +240,55 @@ function stepFontSize(delta: number): void {
       </template>
     </UPopover>
 
-    <div class="board-selection-divider" />
+    <!-- Color picker — only for sticky/shape (text has no background fill) -->
+    <template v-if="props.currentForm !== 'text'">
+      <div class="board-selection-divider" />
 
-    <UPopover :content="{ side: 'top' }">
-      <button
-        type="button"
-        class="board-selection-swatch"
-        :style="{ backgroundColor: props.currentColor }"
-        :aria-label="t('board.colorPickerLabel')"
-      />
+      <UPopover :content="{ side: 'top' }">
+        <button
+          type="button"
+          class="board-selection-swatch"
+          :style="{ backgroundColor: props.currentColor }"
+          :aria-label="t('board.colorPickerLabel')"
+        />
 
-      <template #content="{ close }">
-        <div class="board-color-menu">
-          <button
-            v-for="hex in BOARD_COLOR_PALETTE"
-            :key="hex"
-            type="button"
-            class="board-selection-swatch"
-            :class="{ 'board-selection-swatch-active': hex === props.currentColor }"
-            :style="{ backgroundColor: hex }"
-            :aria-label="hex"
-            @click="
-              emit('color', hex);
-              close();
-            "
-          />
-          <button
-            type="button"
-            class="board-color-add-btn"
-            :aria-label="t('board.addCustomColor')"
-            @click="openCustomColorPicker"
-          >
-            <UIcon name="i-lucide-pipette" class="size-3.5" />
-          </button>
-          <input
-            ref="colorInput"
-            type="color"
-            class="sr-only"
-            :value="props.currentColor"
-            @input="
-              onCustomColor($event);
-              close();
-            "
-          />
-        </div>
-      </template>
-    </UPopover>
+        <template #content="{ close }">
+          <div class="board-color-menu">
+            <button
+              v-for="hex in BOARD_COLOR_PALETTE"
+              :key="hex"
+              type="button"
+              class="board-selection-swatch"
+              :class="{ 'board-selection-swatch-active': hex === props.currentColor }"
+              :style="{ backgroundColor: hex }"
+              :aria-label="hex"
+              @click="
+                emit('color', hex);
+                close();
+              "
+            />
+            <button
+              type="button"
+              class="board-color-add-btn"
+              :aria-label="t('board.addCustomColor')"
+              @click="openCustomColorPicker"
+            >
+              <UIcon name="i-lucide-pipette" class="size-3.5" />
+            </button>
+            <input
+              ref="colorInput"
+              type="color"
+              class="sr-only"
+              :value="props.currentColor"
+              @input="
+                onCustomColor($event);
+                close();
+              "
+            />
+          </div>
+        </template>
+      </UPopover>
+    </template>
 
     <div class="board-selection-divider" />
 

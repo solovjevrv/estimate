@@ -42,6 +42,26 @@ function stickyCreateOp(id: string): BoardOp {
   };
 }
 
+function textCreateOp(id: string): BoardOp {
+  return {
+    type: 'item.create',
+    clientOpId: randomUUID(),
+    item: {
+      id,
+      parentId: null,
+      x: 10,
+      y: 20,
+      width: 200,
+      height: 40,
+      rotation: 0,
+      zIndex: 0,
+      content: { type: 'text', text: 'Текст' },
+      style: { color: '#FCEB96', textColor: '#1A1A1A' },
+      reactions: [],
+    },
+  };
+}
+
 describe('applyBoardOp — item.create', () => {
   it('создаёт стикер в пустом состоянии', () => {
     const state = emptyState();
@@ -51,6 +71,18 @@ describe('applyBoardOp — item.create', () => {
 
     const item = state.items.get(id);
     expect(item).toMatchObject({ id, boardId: BOARD_ID, createdBy: ACTOR_ID, x: 10, y: 20 });
+  });
+
+  it('создаёт текстовый элемент в пустом состоянии', () => {
+    const state = emptyState();
+    const id = randomUUID();
+
+    applyBoardOp(state, textCreateOp(id), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    const item = state.items.get(id);
+    expect(item).toMatchObject({ id, boardId: BOARD_ID, createdBy: ACTOR_ID, x: 10, y: 20 });
+    expect(item?.content.type).toBe('text');
+    expect(item?.content.text).toBe('Текст');
   });
 
   it('отклоняет создание элемента с уже занятым id', () => {
@@ -113,6 +145,50 @@ describe('applyBoardOp — item.create', () => {
       type: 'shape',
       shape: 'triangle',
       text: '',
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('принимает текстовый элемент с форматированием (runs)', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    const op = textCreateOp(id);
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'text',
+      text: 'Привет мир',
+      runs: [{ text: 'Привет ' }, { text: 'мир', marks: { bold: true, highlight: 'yellow' } }],
+    };
+
+    applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    const item = state.items.get(id)!;
+    expect(item.content).toEqual({
+      type: 'text',
+      text: 'Привет мир',
+      runs: [{ text: 'Привет ' }, { text: 'мир', marks: { bold: true, highlight: 'yellow' } }],
+    });
+  });
+
+  it('отклоняет текстовый элемент, чья конкатенация runs не совпадает с text', () => {
+    const state = emptyState();
+    const op = textCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'text',
+      text: 'Привет мир',
+      runs: [{ text: 'Другой текст' }],
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет текстовый элемент с недопустимым цветом маркера', () => {
+    const state = emptyState();
+    const op = textCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'text',
+      text: 'мир',
+      runs: [{ text: 'мир', marks: { highlight: 'purple' } }],
     };
 
     expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
