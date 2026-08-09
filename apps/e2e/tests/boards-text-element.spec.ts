@@ -54,7 +54,9 @@ test.describe('Доски: текстовый элемент', () => {
     // Перезагружаем страницу — проверяем персистентность
     await page.reload();
     await expect(page.locator('.vue-flow__node-text')).toBeVisible();
-    await expect(page.locator('.vue-flow__node-text').first()).toContainText('Свободный текст на холсте');
+    await expect(page.locator('.vue-flow__node-text').first()).toContainText(
+      'Свободный текст на холсте',
+    );
   });
 
   test('конвертация текстового элемента в стикер через тулбар выделения', async ({
@@ -96,8 +98,13 @@ test.describe('Доски: текстовый элемент', () => {
     await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(1);
     const stickyNode = page.locator('.vue-flow__node-sticky').first();
     // Текст может быть внутри вложенного элемента — проверяем по всему узлу
-    await expect(stickyNode.locator('.board-sticky-content')).toContainText('Конвертируем в стикер');
+    await expect(stickyNode.locator('.board-sticky-content')).toContainText(
+      'Конвертируем в стикер',
+    );
     // У стикера есть фон (жёлтый по умолчанию)
-    await expect(stickyNode.locator('.board-sticky-content')).toHaveCSS('background-color', 'rgb(252, 235, 150)');
+    await expect(stickyNode.locator('.board-sticky-content')).toHaveCSS(
+      'background-color',
+      'rgb(252, 235, 150)',
+    );
   });
 });

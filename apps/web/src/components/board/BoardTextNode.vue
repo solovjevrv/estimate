@@ -24,7 +24,9 @@ const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 
 const content = computed(() => props.data.content as BoardTextContent);
-const textColor = computed(() => props.data.style.textColor ?? readableTextColor(props.data.style.color));
+const textColor = computed(
+  () => props.data.style.textColor ?? readableTextColor(props.data.style.color),
+);
 const fontFamily = computed(() => boardFontFamilyCss(props.data.style.fontFamily));
 const textAlign = computed(() => props.data.style.textAlign ?? 'left');
 const maxFontSize = computed(() => props.data.style.fontSize ?? FIT_FONT_MAX);
@@ -165,7 +167,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 <style scoped>
 /* Текстовый элемент — без фона/заливки/рамки, как в макете .design/main.html */
 
-.neutrag-connect-handle {
+.board-connect-handle {
   width: 10px;
   height: 10px;
   background: var(--ui-primary);
