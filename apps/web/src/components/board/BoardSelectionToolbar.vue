@@ -557,135 +557,13 @@ function stepFontSize(delta: number): void {
 </template>
 
 <style scoped>
+@import './shared/board-toolbar.css';
+
 .board-selection-toolbar {
-  position: absolute;
-  z-index: 25;
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  padding: 7px 8px;
-  white-space: nowrap;
-  background: var(--brand-surface);
-  border-radius: 12px;
-  box-shadow: var(--brand-shadow-card);
-  transform: translate(-50%, calc(-100% - 12px));
+  /* Base styles from shared/board-toolbar.css */
 }
 
-.board-selection-swatch {
-  box-sizing: border-box;
-  width: 20px;
-  height: 20px;
-  cursor: pointer;
-  border: none;
-  border-radius: 50%;
-  /* Не обводка (просьба пользователя — кружки без неё), а еле заметное кольцо
-     только для отличимости белых/светлых свотчей от фона попапа */
-  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 8%);
-}
-
-.board-selection-swatch-active {
-  box-shadow: inset 0 0 0 2px var(--ui-primary);
-}
-
-.board-color-menu {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-  padding: 10px;
-}
-
-.board-color-add-btn {
-  display: flex;
-  width: 20px;
-  height: 20px;
-  align-items: center;
-  justify-content: center;
-  color: var(--brand-ink);
-  cursor: pointer;
-  background: var(--ui-bg-elevated);
-  border: none;
-  border-radius: 50%;
-}
-
-.board-form-menu {
-  display: flex;
-  gap: 2px;
-  padding: 6px;
-}
-
-.board-form-menu-item {
-  display: flex;
-  width: 32px;
-  height: 32px;
-  align-items: center;
-  justify-content: center;
-  color: var(--brand-ink);
-  cursor: pointer;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-}
-
-.board-form-menu-item:hover {
-  background: var(--ui-bg-elevated);
-}
-
-.board-form-menu-item-active {
-  color: var(--ui-primary);
-  background: var(--ui-bg-elevated);
-}
-
-.board-form-menu-item:disabled {
-  cursor: default;
-  opacity: 0.4;
-}
-
-.board-form-menu-item:disabled:hover {
-  background: transparent;
-}
-
-.board-selection-divider {
-  width: 1px;
-  height: 20px;
-  margin: 0 6px;
-  background: var(--brand-border);
-}
-
-.board-selection-icon-btn {
-  display: flex;
-  width: 28px;
-  height: 28px;
-  align-items: center;
-  justify-content: center;
-  color: var(--brand-ink);
-  cursor: pointer;
-  background: transparent;
-  border: none;
-  border-radius: 8px;
-}
-
-.board-selection-icon-btn:hover {
-  background: var(--ui-bg-elevated);
-}
-
-.board-selection-icon-btn:disabled {
-  cursor: default;
-  opacity: 0.4;
-}
-
-.board-selection-icon-btn-active {
-  color: var(--ui-primary);
-  background: var(--ui-bg-elevated);
-}
-
-.board-selection-icon-btn-danger {
-  color: var(--brand-coral);
-}
-
-.board-selection-icon-btn-danger:hover {
-  background: color-mix(in oklch, var(--brand-coral) 12%, transparent);
-}
-
+/* Component-specific styles not in shared */
 .board-text-options-btn {
   width: auto;
   min-width: 28px;

@@ -20,6 +20,7 @@ import type {
 } from '@poker/shared';
 
 import type { BoardLocalState } from './apply-local-op';
+import { uuid } from './uuid';
 
 export interface BoardHistoryEntry {
   forward: BoardOp[];
@@ -27,7 +28,7 @@ export interface BoardHistoryEntry {
 }
 
 /** Через 100 записей самые старые вытесняются — долгая сессия не растит стек бесконечно */
-export const BOARD_HISTORY_LIMIT = 100;
+export { BOARD_HISTORY_LIMIT } from './board-constants';
 
 function pickKeys<T extends object, K extends keyof T>(source: T, keys: K[]): Pick<T, K> {
   const result = {} as Pick<T, K>;
@@ -105,19 +106,19 @@ export function deriveInverseOps(ops: BoardOp[], local: BoardLocalState): BoardO
   const scheduleEdgeCreate = (edge: BoardEdge): void => {
     if (capturedEdgeIds.has(edge.id)) return;
     capturedEdgeIds.add(edge.id);
-    edgeCreateInverses.push({ type: 'edge.create', clientOpId: crypto.randomUUID(), edge });
+    edgeCreateInverses.push({ type: 'edge.create', clientOpId: uuid(), edge });
   };
 
   for (const op of ops) {
     switch (op.type) {
       case 'item.create':
-        inverses.push({ type: 'item.delete', clientOpId: crypto.randomUUID(), id: op.item.id });
+        inverses.push({ type: 'item.delete', clientOpId: uuid(), id: op.item.id });
         break;
 
       case 'item.delete': {
         const existing = local.items.get(op.id);
         if (existing) {
-          inverses.push({ type: 'item.create', clientOpId: crypto.randomUUID(), item: existing });
+          inverses.push({ type: 'item.create', clientOpId: uuid(), item: existing });
         }
         for (const edge of local.edges.values()) {
           if (edge.sourceItemId === op.id || edge.targetItemId === op.id) {
@@ -132,7 +133,7 @@ export function deriveInverseOps(ops: BoardOp[], local: BoardLocalState): BoardO
         if (!existing) break;
         inverses.push({
           type: 'item.patch',
-          clientOpId: crypto.randomUUID(),
+          clientOpId: uuid(),
           id: op.id,
           patch: invertItemPatch(existing, op.patch),
         });
@@ -146,7 +147,7 @@ export function deriveInverseOps(ops: BoardOp[], local: BoardLocalState): BoardO
         break;
 
       case 'edge.create':
-        inverses.push({ type: 'edge.delete', clientOpId: crypto.randomUUID(), id: op.edge.id });
+        inverses.push({ type: 'edge.delete', clientOpId: uuid(), id: op.edge.id });
         break;
 
       case 'edge.delete': {
@@ -160,7 +161,7 @@ export function deriveInverseOps(ops: BoardOp[], local: BoardLocalState): BoardO
         if (!existing) break;
         inverses.push({
           type: 'edge.patch',
-          clientOpId: crypto.randomUUID(),
+          clientOpId: uuid(),
           id: op.id,
           patch: invertEdgePatch(existing, op.patch),
         });
@@ -174,7 +175,7 @@ export function deriveInverseOps(ops: BoardOp[], local: BoardLocalState): BoardO
 
 /** Свежий `clientOpId` на каждый повторный прогон — переиспользованный id из старой записи истории мог бы столкнуться с уже разрешённым в `ownClientOpIds` */
 export function regenerateClientOpIds(ops: BoardOp[]): BoardOp[] {
-  return ops.map((op) => ({ ...op, clientOpId: crypto.randomUUID() }));
+  return ops.map((op) => ({ ...op, clientOpId: uuid() }));
 }
 
 /**
