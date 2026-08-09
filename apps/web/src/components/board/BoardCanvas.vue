@@ -238,19 +238,23 @@ function toggleFullscreen(): void {
 onMounted(() => document.addEventListener('fullscreenchange', onFullscreenChange));
 onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange);
-  // Clean up drag throttlers and start positions to prevent memory leaks
   dragThrottlers.clear();
   dragStartPositions.clear();
 });
 
 /**
- * Clean up drag throttlers and start positions when board changes
- * (BoardPage.vue reuses BoardCanvas with new props, doesn't unmount it)
+ * `dragThrottlers`/`dragStartPositions` копятся по `node.id` (17.9) —
+ * `BoardPage.vue` переиспользует один и тот же `BoardCanvas` при смене доски
+ * (меняет пропы, не размонтирует компонент), так что без явной очистки записи
+ * от уже покинутой доски продолжали бы висеть в памяти всю сессию страницы.
  */
-watch(() => props.board.id, () => {
-  dragThrottlers.clear();
-  dragStartPositions.clear();
-});
+watch(
+  () => props.board.id,
+  () => {
+    dragThrottlers.clear();
+    dragStartPositions.clear();
+  },
+);
 
 // --- Инструменты и создание стикеров (12.6) ---
 
@@ -437,7 +441,10 @@ function onNodeDrag(event: NodeDragEvent): void {
       // record: false — промежуточные тики жеста не попадают в историю undo/redo
       // (12.10), иначе одна отмена откатывала бы только последние ~80мс драга,
       // а не перенос целиком. Единственная запись истории — на dragstop ниже.
-      send = throttle((n: GraphNode<BoardItem>) => sendPositionPatch(n, { record: false }), BOARD_DRAG_THROTTLE_MS);
+      send = throttle(
+        (n: GraphNode<BoardItem>) => sendPositionPatch(n, { record: false }),
+        BOARD_DRAG_THROTTLE_MS,
+      );
       dragThrottlers.set(node.id, send);
     }
     send(node);

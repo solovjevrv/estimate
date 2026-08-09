@@ -206,7 +206,7 @@ function stepFontSize(delta: number): void {
 
 <template>
   <div
-    class="board-selection-toolbar"
+    class="board-selection-toolbar board-toolbar-base"
     :style="{ left: `${left}px`, top: `${top}px` }"
     @click.stop
     @dblclick.stop
@@ -559,11 +559,6 @@ function stepFontSize(delta: number): void {
 <style scoped>
 @import './shared/board-toolbar.css';
 
-.board-selection-toolbar {
-  /* Base styles from shared/board-toolbar.css */
-}
-
-/* Component-specific styles not in shared */
 .board-text-options-btn {
   width: auto;
   min-width: 28px;

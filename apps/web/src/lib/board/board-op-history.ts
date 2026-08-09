@@ -27,7 +27,6 @@ export interface BoardHistoryEntry {
   backward: BoardOp[];
 }
 
-/** Через 100 записей самые старые вытесняются — долгая сессия не растит стек бесконечно */
 export { BOARD_HISTORY_LIMIT } from './board-constants';
 
 function pickKeys<T extends object, K extends keyof T>(source: T, keys: K[]): Pick<T, K> {

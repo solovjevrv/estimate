@@ -70,7 +70,7 @@ function onCustomColor(event: Event): void {
 
 <template>
   <div
-    class="board-edge-toolbar"
+    class="board-edge-toolbar board-toolbar-base"
     :style="{ left: `${left}px`, top: `${top}px` }"
     @click.stop
     @dblclick.stop
@@ -227,8 +227,4 @@ function onCustomColor(event: Event): void {
 
 <style scoped>
 @import './shared/board-toolbar.css';
-
-.board-edge-toolbar {
-  /* Base styles from shared/board-toolbar.css */
-}
 </style>

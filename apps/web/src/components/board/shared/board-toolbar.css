@@ -1,6 +1,7 @@
 /**
- * Shared toolbar styles for BoardSelectionToolbar.vue and BoardEdgeToolbar.vue
- * Previously duplicated ~100 lines in both components
+ * Общие стили тулбара — переиспользуются в BoardSelectionToolbar.vue и
+ * BoardEdgeToolbar.vue (раньше ~100 строк были продублированы в обоих).
+ * Требует класс .board-toolbar-base на корневом элементе компонента.
  */
 
 .board-toolbar-base {
