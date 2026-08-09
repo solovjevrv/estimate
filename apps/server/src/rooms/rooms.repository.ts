@@ -2,12 +2,9 @@ import type { DeckType, Room, RoomStats, Round } from '@poker/shared';
 import { and, desc, eq, isNull, sql } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 
-import type { Db } from '../db';
 import { schema } from '../db';
-
-/** Транзакция Drizzle: тот же интерфейс запросов, что и у соединения */
-type Transaction = Parameters<Parameters<Db['transaction']>[0]>[0];
-export type DbExecutor = Db | Transaction;
+import type { DbExecutor } from '../common/db-executor';
+export type { DbExecutor };
 
 /** Голос в текущем раунде вместе с именем голосовавшего */
 export interface VoteRecord {

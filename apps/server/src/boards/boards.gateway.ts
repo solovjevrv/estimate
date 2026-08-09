@@ -1,4 +1,5 @@
 import {
+  BOARD_RING_BUFFER_SIZE,
   BOARD_WS_EVENTS,
   BOARD_WS_SERVER_EVENTS,
   type ApplyBoardOpsPayload,
@@ -27,9 +28,6 @@ interface EventArgs<P> {
 }
 
 const NO_OP_ACK: Ack<unknown> = () => {};
-
-/** Сколько последних батчей операций держим в памяти на доску — догон дальше не работает */
-const RING_BUFFER_SIZE = 200;
 
 /**
  * Реалтайм-канал досок (12.4). Права проверяются на каждом событии по живому
@@ -163,7 +161,7 @@ export class BoardsGateway {
   private pushToBuffer(boardId: string, batch: BoardOpsBatch): void {
     const buffer = this.ringBuffers.get(boardId) ?? [];
     buffer.push(batch);
-    if (buffer.length > RING_BUFFER_SIZE) {
+    if (buffer.length > BOARD_RING_BUFFER_SIZE) {
       buffer.shift();
     }
     this.ringBuffers.set(boardId, buffer);
@@ -204,7 +202,9 @@ export class BoardsGateway {
   /** Подтверждение и полезная нагрузка могут прийти в любом сочетании — разбираем аккуратно */
   private readArgs<P>(args: unknown[]): EventArgs<P> {
     const ack = args.find((arg): arg is Ack<unknown> => typeof arg === 'function') ?? NO_OP_ACK;
-    const payload = args.find((arg) => typeof arg === 'object' && arg !== null) as P | undefined;
+    const payload = args.find(
+      (arg) => typeof arg === 'object' && arg !== null && !Array.isArray(arg),
+    ) as P | undefined;
     return { payload, ack };
   }
 

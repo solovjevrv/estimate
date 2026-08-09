@@ -434,6 +434,10 @@ export const BOARD_ITEM_TEXT_MAX_LENGTH = 2000;
 export const BOARD_EDGE_LABEL_MAX_LENGTH = 200;
 /** Потолок элементов на доску — защита от неограниченно растущего снимка (12.1) */
 export const BOARD_MAX_ITEMS = 2000;
+/** Верхняя граница модуля координаты (x/y) элемента доски — защита от переполнения при рендере */
+export const BOARD_ITEM_MAX_COORDINATE = 1_000_000;
+/** Верхняя граница ширины/высоты элемента доски */
+export const BOARD_ITEM_MAX_SIZE = 10_000;
 
 /**
  * Маркер-цвет выделения текста (12.13) — токен из фиксированной небольшой
@@ -758,6 +762,8 @@ export type BoardOp =
 
 /** Верхняя граница числа операций в одном вызове `board:apply` — защита от гигантского батча */
 export const BOARD_OPS_BATCH_MAX = 50;
+/** Сколько последних батчей операций держим в памяти на доску — догон дальше не работает */
+export const BOARD_RING_BUFFER_SIZE = 200;
 
 export interface JoinBoardPayload {
   boardId: string;

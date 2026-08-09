@@ -15,6 +15,8 @@ import {
   BOARD_HIGHLIGHT_COLORS,
   BOARD_ITEM_FONT_SIZE_MAX,
   BOARD_ITEM_FONT_SIZE_MIN,
+  BOARD_ITEM_MAX_COORDINATE,
+  BOARD_ITEM_MAX_SIZE,
   BOARD_ITEM_TEXT_MAX_LENGTH,
   BOARD_MAX_ITEMS,
   BOARD_SHAPE_KINDS,
@@ -40,8 +42,6 @@ export interface BoardOpState {
 }
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const MAX_COORDINATE = 1_000_000;
-const MAX_SIZE = 10_000;
 
 function requireUuid(id: unknown, what: string): string {
   if (typeof id !== 'string' || !UUID_PATTERN.test(id)) {
@@ -299,10 +299,10 @@ function validateGeometry(item: {
     throw new ValidationError('Группировка элементов пока не поддерживается');
   }
   return {
-    x: requireFinite(item.x, 'x', -MAX_COORDINATE, MAX_COORDINATE),
-    y: requireFinite(item.y, 'y', -MAX_COORDINATE, MAX_COORDINATE),
-    width: requireFinite(item.width, 'width', 1, MAX_SIZE),
-    height: requireFinite(item.height, 'height', 1, MAX_SIZE),
+    x: requireFinite(item.x, 'x', -BOARD_ITEM_MAX_COORDINATE, BOARD_ITEM_MAX_COORDINATE),
+    y: requireFinite(item.y, 'y', -BOARD_ITEM_MAX_COORDINATE, BOARD_ITEM_MAX_COORDINATE),
+    width: requireFinite(item.width, 'width', 1, BOARD_ITEM_MAX_SIZE),
+    height: requireFinite(item.height, 'height', 1, BOARD_ITEM_MAX_SIZE),
     rotation: requireFinite(item.rotation, 'rotation', -360, 360),
     zIndex: requireFinite(item.zIndex, 'zIndex', -1_000_000, 1_000_000),
     parentId: null,
