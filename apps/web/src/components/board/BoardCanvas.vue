@@ -81,6 +81,8 @@ import {
   STICKY_DEFAULT_COLOR,
   STICKY_DEFAULT_HEIGHT,
   STICKY_DEFAULT_WIDTH,
+  TEXT_DEFAULT_HEIGHT,
+  TEXT_DEFAULT_WIDTH,
 } from '../../lib/board/board-item-defaults';
 import {
   BOARD_ACTIVE_TEXT_EDITOR_KEY,
@@ -106,6 +108,7 @@ import BoardEdgeToolbar, {
 import BoardFloatingEdge from './BoardFloatingEdge.vue';
 import BoardShapeNode from './BoardShapeNode.vue';
 import BoardStickyNode from './BoardStickyNode.vue';
+import BoardTextNode from './BoardTextNode.vue';
 import BoardToolbar, { type BoardTool } from './BoardToolbar.vue';
 
 import '@vue-flow/core/dist/style.css';
@@ -140,7 +143,7 @@ const flowEdges = computed(() => toFlowEdges(props.edges));
 
 // markRaw — иначе Vue оборачивает объект с компонентами в reactive() и предупреждает
 // об этом в консоли (компонент-конструктор реактивным быть не должен)
-const nodeTypes = markRaw({ sticky: BoardStickyNode, shape: BoardShapeNode });
+const nodeTypes = markRaw({ sticky: BoardStickyNode, shape: BoardShapeNode, text: BoardTextNode });
 // Единственный тип связи — геометрия floating edge не зависит от типа линии
 // (12.8), тип линии/маркеры читаются самим компонентом из data.style
 const edgeTypes = markRaw({ floating: BoardFloatingEdge });
@@ -348,12 +351,39 @@ function createShape(center: { x: number; y: number }): void {
   ]);
 }
 
-/** Инструмент «Стикер»/«Фигура» — следующий одиночный клик по пустому холсту создаёт элемент и там же */
+function createText(center: { x: number; y: number }): void {
+  if (!canCreateItem()) return;
+  const id = uuid();
+  pendingEditId.value = id;
+  void boardSession.applyOps([
+    {
+      type: 'item.create',
+      clientOpId: uuid(),
+      item: {
+        id,
+        parentId: null,
+        x: center.x - TEXT_DEFAULT_WIDTH / 2,
+        y: center.y - TEXT_DEFAULT_HEIGHT / 2,
+        width: TEXT_DEFAULT_WIDTH,
+        height: TEXT_DEFAULT_HEIGHT,
+        rotation: 0,
+        zIndex: nextZIndexAbove(props.items),
+        content: { type: 'text', text: '' },
+        style: { color: STICKY_DEFAULT_COLOR, textColor: readableTextColor(STICKY_DEFAULT_COLOR) },
+        reactions: [],
+      },
+    },
+  ]);
+}
+
+/** Инструмент «Стикер»/«Фигура»/«Текст» — следующий одиночный клик по пустому холсту создаёт элемент и там же */
 function onPaneClick(event: MouseEvent): void {
   if (activeTool.value === 'sticky') {
     createSticky(flowPositionFromEvent(event));
   } else if (activeTool.value === 'shape') {
     createShape(flowPositionFromEvent(event));
+  } else if (activeTool.value === 'text') {
+    createText(flowPositionFromEvent(event));
   } else {
     return;
   }
@@ -605,7 +635,9 @@ function deleteSelectedEdges(): void {
 /** Форма первого выделенного элемента — для иконки триггера в тулбаре выделения (12.7) */
 const selectedForm = computed<ItemFormKind>(() => {
   const content = selectedNodes.value[0]?.data.content;
-  return content?.type === 'shape' ? content.shape : 'sticky';
+  if (content?.type === 'shape') return content.shape;
+  if (content?.type === 'text') return 'text';
+  return 'sticky';
 });
 
 /** Цвет первого выделенного элемента — для кружка-триггера в тулбаре выделения (12.7) */
@@ -615,7 +647,7 @@ const selectedColor = computed<BoardColorHex>(
 
 /**
  * Единый переключатель «тип элемента» (12.7) — конвертирует ЛЮБОЕ выделение
- * (стикер, фигура, смешанное) в выбранный тип/форму, сохраняя текст.
+ * (стикер, фигура, текст, смешанное) в выбранный тип/форму, сохраняя текст.
  * Рендер-компонент переключится сам — маппинг в `nodeTypes` идёт по
  * `content.type`, отдельно менять его не нужно.
  *
@@ -627,15 +659,23 @@ const selectedColor = computed<BoardColorHex>(
  * не бывает (баг, найденный пользователем при ручной проверке). В обратную
  * сторону (стикер → фигура) геометрия не трогается — фигуры не обязаны быть
  * квадратом.
+ *
+ * Текстовый элемент (13.1) — без фона/заливки/рамки, auto-width по содержимому
+ * не работает на уровне создания (нет измерения), поэтому при конвертации в
+ * текст оставляем геометрию как есть (пользователь сам ресайзит при необходимости).
  */
 function setSelectedForm(kind: ItemFormKind): void {
   patchSelected((node) => {
-    // Форматирование (12.13) переживает конвертацию стикер↔фигура вместе с текстом
+    // Форматирование (12.13) переживает конвертацию стикер↔фигура↔текст вместе с текстом
     const { text, runs } = node.data.content;
-    const content: BoardItemContent =
-      kind === 'sticky'
-        ? { type: 'sticky', text, ...(runs?.length ? { runs } : {}) }
-        : { type: 'shape', shape: kind, text, ...(runs?.length ? { runs } : {}) };
+    let content: BoardItemContent;
+    if (kind === 'sticky') {
+      content = { type: 'sticky', text, ...(runs?.length ? { runs } : {}) };
+    } else if (kind === 'text') {
+      content = { type: 'text', text, ...(runs?.length ? { runs } : {}) };
+    } else {
+      content = { type: 'shape', shape: kind, text, ...(runs?.length ? { runs } : {}) };
+    }
     const patch: BoardItemPatchOp['patch'] = { content };
     if (kind === 'sticky') {
       const { x, y } = node.computedPosition;

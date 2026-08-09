@@ -15,7 +15,7 @@
  */
 import { useI18n } from 'vue-i18n';
 
-export type BoardTool = 'select' | 'sticky' | 'shape' | 'arrow';
+export type BoardTool = 'select' | 'sticky' | 'shape' | 'text' | 'arrow';
 
 const tool = defineModel<BoardTool>({ required: true });
 
@@ -67,6 +67,16 @@ function isActive(value: BoardTool): boolean {
       @click="tool = 'arrow'"
     >
       <UIcon name="i-lucide-move-up-right" class="size-[19px]" />
+    </button>
+    <button
+      type="button"
+      class="board-toolbar-btn"
+      :class="{ 'board-toolbar-btn-active': isActive('text') }"
+      :aria-label="t('board.toolText')"
+      :aria-pressed="isActive('text')"
+      @click="tool = 'text'"
+    >
+      <UIcon name="i-lucide-type" class="size-[19px]" />
     </button>
   </div>
 </template>

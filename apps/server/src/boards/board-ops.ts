@@ -281,6 +281,9 @@ function validateContent(content: unknown): BoardItemContent {
       ...(runs ? { runs } : {}),
     };
   }
+  if (c.type === 'text') {
+    return { type: 'text', text: c.text, ...(runs ? { runs } : {}) };
+  }
   throw new ValidationError('Неизвестный тип элемента');
 }
 

@@ -56,6 +56,18 @@ export const SHAPE_MIN_HEIGHT = STICKY_MIN_HEIGHT;
 export const SHAPE_MAX_WIDTH = STICKY_MAX_WIDTH;
 export const SHAPE_MAX_HEIGHT = STICKY_MAX_HEIGHT;
 
+/**
+ * Текстовый элемент (13.1) — без фона/заливки/рамки, auto-width по содержимому.
+ * Дефолтные размеры для создания: минимальный удобный бокс.
+ * Границы резайза — те же, что у стикера/фигуры.
+ */
+export const TEXT_DEFAULT_WIDTH = 200;
+export const TEXT_DEFAULT_HEIGHT = 40;
+export const TEXT_MIN_WIDTH = STICKY_MIN_WIDTH;
+export const TEXT_MIN_HEIGHT = STICKY_MIN_HEIGHT;
+export const TEXT_MAX_WIDTH = STICKY_MAX_WIDTH;
+export const TEXT_MAX_HEIGHT = STICKY_MAX_HEIGHT;
+
 /** На единицу выше текущего максимума — новый элемент встаёт поверх всех существующих */
 export function nextZIndexAbove(items: readonly BoardItem[]): number {
   return items.reduce((max, item) => Math.max(max, item.zIndex), 0) + 1;
