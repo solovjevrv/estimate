@@ -275,46 +275,78 @@ export class BoardsService {
     });
   }
 
+  /**
+   * Переименование/архивация/удаление — каждое под блокировкой строки доски
+   * (16.1), тем же приёмом, что `applyOps`: без неё `requireBoard` читал бы
+   * права по снимку, устаревшему к моменту записи (между чтением и `UPDATE`
+   * права могли смениться, или доску могли параллельно заархивировать) —
+   * `SELECT ... FOR UPDATE` в `lockBoard` сериализует конкурентные вызовы на
+   * одной доске, включая гонку с самим `applyOps`.
+   */
   async rename(actorId: string, boardId: string, rawTitle: string): Promise<Board> {
     const title = this.normalizeTitle(rawTitle);
-    const board = await this.requireBoard(boardId);
-    await this.assertAccess(board, actorId, 'manage');
-    const updated = await this.repository.updateTitle(boardId, title);
-    if (!updated) {
-      throw new NotFoundError('Доска не найдена');
-    }
-    return updated;
+    return this.db.transaction(async (tx) => {
+      const repo = this.createBoardsRepository(tx);
+      const board = await repo.lockBoard(boardId);
+      if (!board) {
+        throw new NotFoundError('Доска не найдена');
+      }
+      await this.assertAccess(board, actorId, 'manage', this.createTeamsRepository(tx));
+      const updated = await repo.updateTitle(boardId, title);
+      if (!updated) {
+        throw new NotFoundError('Доска не найдена');
+      }
+      return updated;
+    });
   }
 
   /** Архивация: доска пропадает из основных списков, но остаётся доступна по прямой ссылке */
   async archive(actorId: string, boardId: string): Promise<Board> {
-    const board = await this.requireBoard(boardId);
-    await this.assertAccess(board, actorId, 'manage');
-    const archived = await this.repository.archiveBoard(boardId);
-    if (!archived) {
-      throw new ConflictError('Доска уже в архиве');
-    }
-    return archived;
+    return this.db.transaction(async (tx) => {
+      const repo = this.createBoardsRepository(tx);
+      const board = await repo.lockBoard(boardId);
+      if (!board) {
+        throw new NotFoundError('Доска не найдена');
+      }
+      await this.assertAccess(board, actorId, 'manage', this.createTeamsRepository(tx));
+      const archived = await repo.archiveBoard(boardId);
+      if (!archived) {
+        throw new ConflictError('Доска уже в архиве');
+      }
+      return archived;
+    });
   }
 
   async unarchive(actorId: string, boardId: string): Promise<Board> {
-    const board = await this.requireBoard(boardId);
-    await this.assertAccess(board, actorId, 'manage');
-    const restored = await this.repository.unarchiveBoard(boardId);
-    if (!restored) {
-      throw new ConflictError('Доска не в архиве');
-    }
-    return restored;
+    return this.db.transaction(async (tx) => {
+      const repo = this.createBoardsRepository(tx);
+      const board = await repo.lockBoard(boardId);
+      if (!board) {
+        throw new NotFoundError('Доска не найдена');
+      }
+      await this.assertAccess(board, actorId, 'manage', this.createTeamsRepository(tx));
+      const restored = await repo.unarchiveBoard(boardId);
+      if (!restored) {
+        throw new ConflictError('Доска не в архиве');
+      }
+      return restored;
+    });
   }
 
   /** Настоящее удаление — необратимо, доступно только для уже заархивированной доски */
   async remove(actorId: string, boardId: string): Promise<void> {
-    const board = await this.requireBoard(boardId);
-    await this.assertAccess(board, actorId, 'manage');
-    if (board.status !== 'archived') {
-      throw new ConflictError('Сначала заархивируйте доску');
-    }
-    await this.repository.deleteBoard(boardId);
+    await this.db.transaction(async (tx) => {
+      const repo = this.createBoardsRepository(tx);
+      const board = await repo.lockBoard(boardId);
+      if (!board) {
+        throw new NotFoundError('Доска не найдена');
+      }
+      await this.assertAccess(board, actorId, 'manage', this.createTeamsRepository(tx));
+      if (board.status !== 'archived') {
+        throw new ConflictError('Сначала заархивируйте доску');
+      }
+      await repo.deleteBoard(boardId);
+    });
   }
 
   private async requireBoard(boardId: string): Promise<Board> {
