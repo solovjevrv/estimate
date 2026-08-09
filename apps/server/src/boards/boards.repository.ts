@@ -1,12 +1,9 @@
 import type { Board, BoardEdge, BoardItem } from '@poker/shared';
 import { and, eq, sql } from 'drizzle-orm';
 
-import type { Db } from '../db';
 import { schema } from '../db';
-
-/** Транзакция Drizzle: тот же интерфейс запросов, что и у соединения */
-type Transaction = Parameters<Parameters<Db['transaction']>[0]>[0];
-export type DbExecutor = Db | Transaction;
+import type { DbExecutor } from '../common/db-executor';
+export type { DbExecutor };
 
 /** Все запросы к таблицам досок. Внутри транзакции создаётся с tx вместо соединения. */
 export class BoardsRepository {

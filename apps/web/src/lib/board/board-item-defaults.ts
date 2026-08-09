@@ -19,7 +19,7 @@ export const STICKY_DEFAULT_WIDTH = 180;
 export const STICKY_DEFAULT_HEIGHT = 180;
 export const STICKY_DEFAULT_COLOR: BoardColorHex = '#FCEB96';
 
-/** UX-границы резайза — заметно уже серверных (`MAX_SIZE=10000`), сервер всё равно проверит сам */
+/** UX-границы резайза — заметно уже серверных (`BOARD_ITEM_MAX_SIZE=10000`), сервер всё равно проверит сам */
 export const STICKY_MIN_WIDTH = 96;
 export const STICKY_MIN_HEIGHT = 96;
 export const STICKY_MAX_WIDTH = 1200;
