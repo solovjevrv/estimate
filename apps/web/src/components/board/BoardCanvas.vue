@@ -30,6 +30,8 @@
  * affordance поверх уже рабочего drag-от-хендла (см. `onConnect` ниже).
  */
 import {
+  BOARD_IMAGE_ALLOWED_MIME_TYPES,
+  BOARD_IMAGE_MAX_BYTES,
   BOARD_MAX_ITEMS,
   type Board,
   type BoardColorHex,
@@ -71,6 +73,7 @@ import {
 import { useI18n } from 'vue-i18n';
 
 import {
+  fitImageToDefaultBox,
   maxZIndex,
   minZIndex,
   nextZIndexAbove,
@@ -99,6 +102,7 @@ import { throttle } from '../../lib/throttle';
 import { uuid } from '../../lib/board/uuid';
 import { BOARD_DRAG_THROTTLE_MS, BOARD_DUPLICATE_OFFSET } from '../../lib/board/board-constants';
 import { useBoardSessionStore } from '../../stores/board-session';
+import { api } from '../../lib/api';
 import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
 import BoardContextMenu, { type BoardContextMenuTarget } from './BoardContextMenu.vue';
 import BoardEdgeToolbar, {
@@ -106,6 +110,7 @@ import BoardEdgeToolbar, {
   type BoardEdgeMarkerOption,
 } from './BoardEdgeToolbar.vue';
 import BoardFloatingEdge from './BoardFloatingEdge.vue';
+import BoardImageNode from './BoardImageNode.vue';
 import BoardShapeNode from './BoardShapeNode.vue';
 import BoardStickyNode from './BoardStickyNode.vue';
 import BoardTextNode from './BoardTextNode.vue';
@@ -143,7 +148,12 @@ const flowEdges = computed(() => toFlowEdges(props.edges));
 
 // markRaw — иначе Vue оборачивает объект с компонентами в reactive() и предупреждает
 // об этом в консоли (компонент-конструктор реактивным быть не должен)
-const nodeTypes = markRaw({ sticky: BoardStickyNode, shape: BoardShapeNode, text: BoardTextNode });
+const nodeTypes = markRaw({
+  sticky: BoardStickyNode,
+  shape: BoardShapeNode,
+  text: BoardTextNode,
+  image: BoardImageNode,
+});
 // Единственный тип связи — геометрия floating edge не зависит от типа линии
 // (12.8), тип линии/маркеры читаются самим компонентом из data.style
 const edgeTypes = markRaw({ floating: BoardFloatingEdge });
@@ -238,9 +248,13 @@ function toggleFullscreen(): void {
   }
 }
 
-onMounted(() => document.addEventListener('fullscreenchange', onFullscreenChange));
+onMounted(() => {
+  document.addEventListener('fullscreenchange', onFullscreenChange);
+  document.addEventListener('paste', onPaste);
+});
 onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange);
+  document.removeEventListener('paste', onPaste);
   dragThrottlers.clear();
   dragStartPositions.clear();
 });
@@ -376,7 +390,137 @@ function createText(center: { x: number; y: number }): void {
   ]);
 }
 
-/** Инструмент «Стикер»/«Фигура»/«Текст» — следующий одиночный клик по пустому холсту создаёт элемент и там же */
+/**
+ * Открывает нативный файловый диалог и резолвится выбранным файлом
+ * (`null` — диалог отменили). Общий приём для создания картинки (инструмент
+ * в тулбаре) и замены уже существующей (13.2, тулбар выделения).
+ */
+function pickImageFile(): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = BOARD_IMAGE_ALLOWED_MIME_TYPES.join(',');
+    input.style.display = 'none';
+    // И выбор файла, и отмена диалога должны убрать за собой скрытый input —
+    // иначе при отмене он навсегда остаётся висеть в DOM
+    const cleanup = (file: File | null): void => {
+      input.remove();
+      resolve(file);
+    };
+    input.addEventListener('change', () => cleanup(input.files?.[0] ?? null));
+    input.addEventListener('cancel', () => cleanup(null));
+    document.body.appendChild(input);
+    input.click();
+  });
+}
+
+/** Валидирует и загружает файл на сервер; `null` — ошибка (уже показан тост) */
+async function uploadBoardImage(
+  file: File,
+): Promise<{ url: string; width: number; height: number } | null> {
+  // Валидация MIME и размера на клиенте до отправки (сервер тоже проверит)
+  const allowedMime: readonly string[] = BOARD_IMAGE_ALLOWED_MIME_TYPES;
+  if (!allowedMime.includes(file.type)) {
+    toast.add({ title: t('board.imageInvalidType'), color: 'error' });
+    return null;
+  }
+  if (file.size > BOARD_IMAGE_MAX_BYTES) {
+    toast.add({ title: t('board.imageTooLarge'), color: 'error' });
+    return null;
+  }
+
+  const loadingToast = toast.add({ title: t('board.imageUploading'), color: 'info' });
+  try {
+    const formData = new FormData();
+    formData.append('file', file);
+    const result = await api.upload<{ url: string; width: number; height: number }>(
+      `/api/boards/${props.board.id}/assets`,
+      formData,
+    );
+    toast.remove(loadingToast.id);
+    return result;
+  } catch (err) {
+    toast.remove(loadingToast.id);
+    if (err instanceof Error && 'status' in err) {
+      const apiErr = err as { status: number; code?: string; message?: string };
+      if (apiErr.status === 413) {
+        toast.add({ title: t('board.imageTooLarge'), color: 'error' });
+      } else if (apiErr.status === 400) {
+        toast.add({ title: t('board.imageInvalidType'), color: 'error' });
+      } else if (apiErr.status === 403) {
+        toast.add({ title: t('board.imageNoPermission'), color: 'error' });
+      } else {
+        toast.add({ title: t('board.imageUploadFailed'), color: 'error' });
+      }
+    } else {
+      toast.add({ title: t('board.imageUploadFailed'), color: 'error' });
+    }
+    return null;
+  }
+}
+
+/** Создаёт элемент-картинку: сначала загружает файл на сервер, затем создаёт элемент с возвращённым URL */
+async function createImage(center: { x: number; y: number }, file: File): Promise<void> {
+  if (!canCreateItem()) return;
+  if (!props.canEdit) return;
+
+  const id = uuid();
+  pendingEditId.value = id;
+
+  const result = await uploadBoardImage(file);
+  if (!result) return;
+
+  const { width, height } = fitImageToDefaultBox(result.width, result.height);
+  void boardSession.applyOps([
+    {
+      type: 'item.create',
+      clientOpId: uuid(),
+      item: {
+        id,
+        parentId: null,
+        x: center.x - width / 2,
+        y: center.y - height / 2,
+        width,
+        height,
+        rotation: 0,
+        zIndex: nextZIndexAbove(props.items),
+        content: { type: 'image', url: result.url, width: result.width, height: result.height },
+        style: { color: STICKY_DEFAULT_COLOR },
+        reactions: [],
+      },
+    },
+  ]);
+}
+
+/**
+ * Заменяет файл у уже созданных картинок в выделении (13.2, тулбар выделения) —
+ * рамка/позиция на холсте не трогается, меняется только содержимое `<img>`
+ * (как замена картинки в Miro). Не-картинки в смешанном выделении пропускаются.
+ */
+async function replaceSelectedImage(): Promise<void> {
+  if (!props.canEdit) return;
+  const file = await pickImageFile();
+  if (!file) return;
+  const result = await uploadBoardImage(file);
+  if (!result) return;
+
+  const ops: BoardOp[] = selectedNodes.value
+    .filter((node) => node.data.content.type === 'image')
+    .map((node) => ({
+      type: 'item.patch',
+      clientOpId: uuid(),
+      id: node.id,
+      patch: {
+        content: { type: 'image', url: result.url, width: result.width, height: result.height },
+      },
+    }));
+  if (ops.length) void boardSession.applyOps(ops);
+}
+
+/** Инструмент «Стикер»/«Фигура»/«Текст»/«Картинка» — следующий одиночный клик по пустому холсту создаёт элемент и там же.
+ * Для картинки — открывает файловый диалог (как нативный input type=file), так как
+ * клик сам по себе не несёт файла. Drop и Paste работают всегда независимо от инструмента.
+ */
 function onPaneClick(event: MouseEvent): void {
   if (activeTool.value === 'sticky') {
     createSticky(flowPositionFromEvent(event));
@@ -384,6 +528,13 @@ function onPaneClick(event: MouseEvent): void {
     createShape(flowPositionFromEvent(event));
   } else if (activeTool.value === 'text') {
     createText(flowPositionFromEvent(event));
+  } else if (activeTool.value === 'image') {
+    const position = flowPositionFromEvent(event);
+    activeTool.value = 'select';
+    void pickImageFile().then((file) => {
+      if (file) void createImage(position, file);
+    });
+    return;
   } else {
     return;
   }
@@ -403,6 +554,45 @@ function onPaneClick(event: MouseEvent): void {
 function onPaneDoubleClick(event: MouseEvent): void {
   if (!(event.target as HTMLElement).classList.contains('vue-flow__pane')) return;
   createSticky(flowPositionFromEvent(event));
+}
+
+/** Drag & Drop файла на канвас — создаёт элемент-картинку в месте курсора */
+function onPaneDrop(event: DragEvent): void {
+  if (!props.canEdit) return;
+  event.preventDefault();
+  const file = event.dataTransfer?.files[0];
+  if (file) {
+    createImage(flowPositionFromEvent(event), file);
+  }
+}
+
+/** Drag over — нужен, чтобы браузер разрешил drop */
+function onPaneDragOver(event: DragEvent): void {
+  if (!props.canEdit) return;
+  event.preventDefault();
+  // Визуальная индикация (опционально) — можно добавить класс на rootEl
+}
+
+/** Вставка картинки из буфера (Ctrl+V) — создаёт элемент в центре вьюпорта */
+function onPaste(event: ClipboardEvent): void {
+  if (!props.canEdit) return;
+  const items = event.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      event.preventDefault();
+      const file = item.getAsFile();
+      if (file) {
+        // Центр текущего вьюпорта — используем размеры rootEl
+        const rect = rootEl.value?.getBoundingClientRect();
+        if (rect) {
+          const center = project({ x: rect.width / 2, y: rect.height / 2 });
+          createImage(center, file);
+        }
+      }
+      break;
+    }
+  }
 }
 
 // --- Перетаскивание: локально холст двигает сам Vue Flow, по сети —
@@ -637,6 +827,7 @@ const selectedForm = computed<ItemFormKind>(() => {
   const content = selectedNodes.value[0]?.data.content;
   if (content?.type === 'shape') return content.shape;
   if (content?.type === 'text') return 'text';
+  if (content?.type === 'image') return 'image';
   return 'sticky';
 });
 
@@ -647,7 +838,7 @@ const selectedColor = computed<BoardColorHex>(
 
 /**
  * Единый переключатель «тип элемента» (12.7) — конвертирует ЛЮБОЕ выделение
- * (стикер, фигура, текст, смешанное) в выбранный тип/форму, сохраняя текст.
+ * (стикер, фигура, текст, картинка, смешанное) в выбранный тип/форму, сохраняя текст.
  * Рендер-компонент переключится сам — маппинг в `nodeTypes` идёт по
  * `content.type`, отдельно менять его не нужно.
  *
@@ -663,20 +854,48 @@ const selectedColor = computed<BoardColorHex>(
  * Текстовый элемент (13.1) — без фона/заливки/рамки, auto-width по содержимому
  * не работает на уровне создания (нет измерения), поэтому при конвертации в
  * текст оставляем геометрию как есть (пользователь сам ресайзит при необходимости).
+ *
+ * Картинка (13.2) — при конвертации В картинку нельзя просто взять текст, нужно
+ * загрузить файл. Поэтому конвертация в 'image' через тулбар недоступна —
+ * в `BoardSelectionToolbar.vue` 'image' есть в списке для отображения текущего
+ * типа, но конвертировать в него можно только через drag&drop/paste/инструмент.
+ * Конвертация ИЗ картинки в другие типы — просто заменяет content на текстовый
+ * (текст картинки теряется, url/width/height отбрасываются).
  */
 function setSelectedForm(kind: ItemFormKind): void {
+  // Конвертация В картинку через тулбар не поддерживается (нужен файл) — просто выходим
+  if (kind === 'image') return;
+
   patchSelected((node) => {
     // Форматирование (12.13) переживает конвертацию стикер↔фигура↔текст вместе с текстом
-    const { text, runs } = node.data.content;
-    let content: BoardItemContent;
+    const content = node.data.content;
+    let newContent: BoardItemContent;
     if (kind === 'sticky') {
-      content = { type: 'sticky', text, ...(runs?.length ? { runs } : {}) };
+      if (content.type === 'image') {
+        // Конвертация из картинки — просто создаём пустой стикер
+        newContent = { type: 'sticky', text: '' };
+      } else {
+        const { text, runs } = content;
+        newContent = { type: 'sticky', text, ...(runs?.length ? { runs } : {}) };
+      }
     } else if (kind === 'text') {
-      content = { type: 'text', text, ...(runs?.length ? { runs } : {}) };
+      if (content.type === 'image') {
+        // Конвертация из картинки — пустой текст
+        newContent = { type: 'text', text: '' };
+      } else {
+        const { text, runs } = content;
+        newContent = { type: 'text', text, ...(runs?.length ? { runs } : {}) };
+      }
     } else {
-      content = { type: 'shape', shape: kind, text, ...(runs?.length ? { runs } : {}) };
+      if (content.type === 'image') {
+        // Конвертация из картинки в фигуру — пустой текст
+        newContent = { type: 'shape', shape: kind, text: '' };
+      } else {
+        const { text, runs } = content;
+        newContent = { type: 'shape', shape: kind, text, ...(runs?.length ? { runs } : {}) };
+      }
     }
-    const patch: BoardItemPatchOp['patch'] = { content };
+    const patch: BoardItemPatchOp['patch'] = { content: newContent };
     if (kind === 'sticky') {
       const { x, y } = node.computedPosition;
       const { width, height } = node.dimensions;
@@ -942,6 +1161,9 @@ function onConnect(event: Connection): void {
       'board-canvas-tool-armed-arrow': activeTool === 'arrow',
     }"
     @dblclick.capture="onPaneDoubleClick"
+    @drop="onPaneDrop"
+    @dragover="onPaneDragOver"
+    @paste="onPaste"
   >
     <VueFlow
       :node-types="nodeTypes"
@@ -1031,6 +1253,7 @@ function onConnect(event: Connection): void {
         @set-link="activeTextEditor?.setLink($event)"
         @duplicate="duplicateSelected"
         @delete="deleteSelected"
+        @replace-image="replaceSelectedImage"
       />
 
       <BoardEdgeToolbar

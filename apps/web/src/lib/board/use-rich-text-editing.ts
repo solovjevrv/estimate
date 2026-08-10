@@ -201,7 +201,10 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
   async function startEditing(): Promise<void> {
     if (editing.value || !canEdit.value) return;
     editing.value = true;
-    liveText.value = content.value.text;
+    // Проверка типа: composable используется только для текстовых типов контента
+    const c = content.value as { type: string; text?: string; runs?: BoardTextRun[] };
+    if (c.type === 'image') return;
+    liveText.value = c.text ?? '';
     await nextTick();
     const el = editableEl.value;
     if (el) {
@@ -249,8 +252,10 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
     const hasFormatting = runs.some((run) => run.marks);
     const nextContent = buildContent(text, hasFormatting ? runs : undefined);
     const existing = buildContent(
-      content.value.text,
-      content.value.runs?.length ? content.value.runs : undefined,
+      (content.value as { text?: string }).text ?? '',
+      (content.value as { runs?: BoardTextRun[] }).runs?.length
+        ? (content.value as { runs?: BoardTextRun[] }).runs
+        : undefined,
     );
     if (JSON.stringify(nextContent) === JSON.stringify(existing)) return;
     void boardSession.applyOps([

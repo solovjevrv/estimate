@@ -62,6 +62,29 @@ function textCreateOp(id: string): BoardOp {
   };
 }
 
+function imageCreateOp(
+  id: string,
+  url = `/api/boards/${BOARD_ID}/assets/${'a'.repeat(32)}.webp`,
+): BoardOp {
+  return {
+    type: 'item.create',
+    clientOpId: randomUUID(),
+    item: {
+      id,
+      parentId: null,
+      x: 10,
+      y: 20,
+      width: 300,
+      height: 200,
+      rotation: 0,
+      zIndex: 0,
+      content: { type: 'image', url, width: 1200, height: 800 },
+      style: { color: '#FCEB96' },
+      reactions: [],
+    },
+  };
+}
+
 describe('applyBoardOp — item.create', () => {
   it('создаёт стикер в пустом состоянии', () => {
     const state = emptyState();
@@ -82,7 +105,56 @@ describe('applyBoardOp — item.create', () => {
     const item = state.items.get(id);
     expect(item).toMatchObject({ id, boardId: BOARD_ID, createdBy: ACTOR_ID, x: 10, y: 20 });
     expect(item?.content.type).toBe('text');
-    expect(item?.content.text).toBe('Текст');
+    if (item?.content.type === 'text') {
+      expect(item.content.text).toBe('Текст');
+    }
+  });
+
+  it('создаёт элемент-картинку в пустом состоянии', () => {
+    const state = emptyState();
+    const id = randomUUID();
+
+    applyBoardOp(state, imageCreateOp(id), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    const item = state.items.get(id);
+    expect(item?.content.type).toBe('image');
+    if (item?.content.type === 'image') {
+      expect(item.content.url).toBe(`/api/boards/${BOARD_ID}/assets/${'a'.repeat(32)}.webp`);
+      expect(item.content.width).toBe(1200);
+      expect(item.content.height).toBe(800);
+    }
+  });
+
+  it('отклоняет url картинки другой доски (защита от подмены между досками)', () => {
+    const state = emptyState();
+    const op = imageCreateOp(randomUUID(), `/api/boards/чужая-доска/assets/${'a'.repeat(32)}.webp`);
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет произвольный url вне /api/boards/.../assets/... (защита от SSRF/XSS)', () => {
+    const state = emptyState();
+    const op = imageCreateOp(randomUUID(), 'https://evil.example.com/x.png');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет url с именем файла не по формату (не 32 hex + .webp)', () => {
+    const state = emptyState();
+    const op = imageCreateOp(randomUUID(), `/api/boards/${BOARD_ID}/assets/not-a-real-name.webp`);
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет картинку без width/height', () => {
+    const state = emptyState();
+    const op = imageCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'image',
+      url: `/api/boards/${BOARD_ID}/assets/${'a'.repeat(32)}.webp`,
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
   });
 
   it('отклоняет создание элемента с уже занятым id', () => {

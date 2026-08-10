@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastif
 import fp from 'fastify-plugin';
 
 import { authPlugin, avatarPlugin, sessionCleanupPlugin } from './auth';
-import { boardsPlugin } from './boards';
+import { boardsPlugin, boardImagesPlugin } from './boards';
 import type { AuthConfig } from './config';
 import type { Db } from './db';
 import { ErrorHandler } from './http/error-handler';
@@ -29,6 +29,8 @@ export interface AppDeps {
   roomsRateLimit?: RoomsRateLimitOptions;
   /** Каталог для загруженных аватарок (10.15); без auth не используется */
   avatarsDir?: string;
+  /** Каталог для картинок досок (13.2); без auth не используется */
+  boardAssetsDir?: string;
 }
 
 export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): FastifyInstance {
@@ -36,10 +38,12 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
   const app = Fastify({ ajv: { customOptions: { coerceTypes: false } }, ...opts });
 
   // Ответы API касаются сессии и состава команд — их нельзя держать в кэшах.
-  // Аватарки — исключение: отдаются под тем же /api/ (см. nginx/vite-прокси),
-  // но их собственный cache-control (10.15) не должен затираться этим хуком.
+  // Аватарки и картинки досок — исключение: отдаются под тем же /api/ (см.
+  // nginx/vite-прокси), но их собственный cache-control (10.15, 13.2) не
+  // должен затираться этим хуком.
+  const CACHEABLE_ASSET_PATTERN = /^\/api\/(avatars\/|boards\/[^/]+\/assets\/)/;
   app.addHook('onSend', async (req, reply) => {
-    if (req.url.startsWith('/api/') && !req.url.startsWith('/api/avatars/')) {
+    if (req.url.startsWith('/api/') && !CACHEABLE_ASSET_PATTERN.test(req.url)) {
       reply.header('cache-control', 'no-store');
     }
   });
@@ -80,11 +84,14 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
     if (deps.avatarsDir) {
       void app.register(avatarPlugin, { avatarsDir: deps.avatarsDir });
     }
+    if (deps.boardAssetsDir) {
+      void app.register(boardImagesPlugin, { assetsDir: deps.boardAssetsDir });
+    }
     // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией
     void app.register(teamsPlugin);
     void app.register(roomsPlugin, { auth: deps.auth, rateLimit: deps.roomsRateLimit });
     // Доскам нужны и аутентификация, и проверка членства в команде — регистрируем после teamsPlugin
-    void app.register(boardsPlugin);
+    void app.register(boardsPlugin, { assetsDir: deps.boardAssetsDir });
   }
 
   if (deps.closeDb) {

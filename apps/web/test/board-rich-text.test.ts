@@ -1,4 +1,4 @@
-import type { BoardTextRun } from '@poker/shared';
+import type { BoardItemContent, BoardTextRun } from '@poker/shared';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -20,15 +20,28 @@ import {
 describe('runsFromContent', () => {
   it('возвращает runs как есть, если они заданы', () => {
     const runs: BoardTextRun[] = [{ text: 'a' }, { text: 'b', marks: { bold: true } }];
-    expect(runsFromContent({ text: 'ab', runs })).toBe(runs);
+    const content: BoardItemContent = { type: 'sticky', text: 'ab', runs };
+    expect(runsFromContent(content)).toBe(runs);
   });
 
   it('строит один run из text, если runs не заданы', () => {
-    expect(runsFromContent({ text: 'привет' })).toEqual([{ text: 'привет' }]);
+    const content: BoardItemContent = { type: 'sticky', text: 'привет' };
+    expect(runsFromContent(content)).toEqual([{ text: 'привет' }]);
   });
 
   it('пустой text без runs — пустой массив', () => {
-    expect(runsFromContent({ text: '' })).toEqual([]);
+    const content: BoardItemContent = { type: 'sticky', text: '' };
+    expect(runsFromContent(content)).toEqual([]);
+  });
+
+  it('картинка — пустой массив', () => {
+    const content: BoardItemContent = {
+      type: 'image',
+      url: '/api/boards/1/assets/abc.webp',
+      width: 100,
+      height: 100,
+    };
+    expect(runsFromContent(content)).toEqual([]);
   });
 });
 

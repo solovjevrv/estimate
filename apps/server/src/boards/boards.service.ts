@@ -16,6 +16,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '.
 import { TeamsRepository } from '../teams';
 import type { DbExecutor as TeamsDbExecutor } from '../teams/teams.repository';
 
+import type { BoardImagesService } from './board-images.service';
 import { applyBoardOp, type BoardOpState } from './board-ops';
 import { BoardsRepository, type DbExecutor as BoardsDbExecutor } from './boards.repository';
 
@@ -69,15 +70,32 @@ export class BoardsService {
     private readonly createTeamsRepository: (executor: TeamsDbExecutor) => TeamsRepository = (
       executor,
     ) => new TeamsRepository(executor),
+    /** Не задан — на диске файлы картинок досок не чистятся (13.2) */
+    private readonly images?: BoardImagesService,
   ) {}
 
-  static forDatabase(db: Db): BoardsService {
+  static forDatabase(db: Db, images?: BoardImagesService): BoardsService {
     return new BoardsService(
       db,
       new BoardsRepository(db),
       new TeamsRepository(db),
       new UsersRepository(db),
+      (executor) => new BoardsRepository(executor),
+      (executor) => new TeamsRepository(executor),
+      images,
     );
+  }
+
+  /** Не даёт упасть основной операции из-за проблем с файлом на диске — чистка на лучшее усилие */
+  private async cleanupImages(boardId: string, urls: readonly string[]): Promise<void> {
+    if (!this.images) return;
+    for (const url of urls) {
+      try {
+        await this.images.deleteIfOwn(boardId, url);
+      } catch (err) {
+        console.error('Не удалось удалить файл картинки доски', err);
+      }
+    }
   }
 
   async create(actorId: string, input: CreateBoardInput): Promise<Board> {
@@ -141,6 +159,13 @@ export class BoardsService {
     return board;
   }
 
+  /** Доступ на редактирование — используется загрузкой файлов на доску (13.2) */
+  async assertEditAccess(actorId: string, boardId: string): Promise<Board> {
+    const board = await this.requireBoard(boardId);
+    await this.assertAccess(board, actorId, 'edit');
+    return board;
+  }
+
   /** Готовит вход на доску по WS: проверяет доступ и подтягивает профиль для presence (12.4) */
   async prepareBoardJoin(actorId: string, boardId: string): Promise<BoardJoinProfile> {
     const board = await this.assertViewAccess(actorId, boardId);
@@ -172,7 +197,11 @@ export class BoardsService {
       throw new ValidationError(`Слишком много операций за раз (максимум ${BOARD_OPS_BATCH_MAX})`);
     }
 
-    return this.db.transaction(async (tx) => {
+    const {
+      revision,
+      ops: committed,
+      orphanedImageUrls,
+    } = await this.db.transaction(async (tx) => {
       const repo = this.createBoardsRepository(tx);
       const board = await repo.lockBoard(boardId);
       if (!board) {
@@ -195,6 +224,22 @@ export class BoardsService {
       // батч применяется всё или ничего.
       for (const op of ops) {
         applyBoardOp(state, op, boardId, actorId, actorName);
+      }
+
+      // Картинки, ставшие недостижимыми этим батчем (элемент удалён или его
+      // content больше не ссылается на этот файл) — файлы на диске не входят
+      // в транзакцию БД, поэтому сам rm() делаем после коммита (13.2)
+      const orphanedImageUrls: string[] = [];
+      for (const before of items) {
+        if (before.content.type !== 'image') continue;
+        const after = state.items.get(before.id);
+        const stillReferenced =
+          after !== undefined &&
+          after.content.type === 'image' &&
+          after.content.url === before.content.url;
+        if (!stillReferenced) {
+          orphanedImageUrls.push(before.content.url);
+        }
       }
 
       // Состояние уже провалидировано целиком — теперь просто персистим и
@@ -271,8 +316,11 @@ export class BoardsService {
       }
 
       const revision = await repo.bumpRevision(boardId);
-      return { revision, ops: committed };
+      return { revision, ops: committed, orphanedImageUrls };
     });
+
+    await this.cleanupImages(boardId, orphanedImageUrls);
+    return { revision, ops: committed };
   }
 
   /**
@@ -335,7 +383,7 @@ export class BoardsService {
 
   /** Настоящее удаление — необратимо, доступно только для уже заархивированной доски */
   async remove(actorId: string, boardId: string): Promise<void> {
-    await this.db.transaction(async (tx) => {
+    const orphanedImageUrls = await this.db.transaction(async (tx) => {
       const repo = this.createBoardsRepository(tx);
       const board = await repo.lockBoard(boardId);
       if (!board) {
@@ -345,8 +393,19 @@ export class BoardsService {
       if (board.status !== 'archived') {
         throw new ConflictError('Сначала заархивируйте доску');
       }
+      // Элементы уйдут каскадом вместе с доской — файлы картинок на диске от
+      // этого каскада не зависят, чистим отдельно после коммита (13.2)
+      const items = await repo.listItems(boardId);
+      const imageUrls: string[] = [];
+      for (const item of items) {
+        if (item.content.type === 'image') {
+          imageUrls.push(item.content.url);
+        }
+      }
       await repo.deleteBoard(boardId);
+      return imageUrls;
     });
+    await this.cleanupImages(boardId, orphanedImageUrls);
   }
 
   private async requireBoard(boardId: string): Promise<Board> {

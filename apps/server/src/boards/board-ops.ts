@@ -23,6 +23,7 @@ import {
   BOARD_TEXT_ALIGNS,
   BOARD_TEXT_LINK_MAX_LENGTH,
   BOARD_TEXT_LINK_PATTERN,
+  isBoardImageUrl,
   REACTION_EMOJIS,
   toggleItemReaction,
   type BoardEdge,
@@ -258,11 +259,50 @@ function validateRuns(runs: unknown, text: string): BoardTextRun[] | undefined {
   return result;
 }
 
-function validateContent(content: unknown): BoardItemContent {
+function validateContent(content: unknown, boardId: string): BoardItemContent {
   if (typeof content !== 'object' || content === null) {
     throw new ValidationError('Не указано содержимое элемента');
   }
-  const c = content as { type?: unknown; text?: unknown; shape?: unknown; runs?: unknown };
+  const c = content as {
+    type?: unknown;
+    text?: unknown;
+    shape?: unknown;
+    runs?: unknown;
+    url?: unknown;
+    width?: unknown;
+    height?: unknown;
+  };
+
+  // Для image — url, width, height обязательны, text/runs не требуются
+  if (c.type === 'image') {
+    if (typeof c.url !== 'string' || c.url.length === 0) {
+      throw new ValidationError('URL картинки обязателен');
+    }
+    // Валидируем, что URL — это путь именно к картинке этой доски, не произвольная
+    // строка/чужая доска (защита от SSRF/XSS через content.url)
+    if (!isBoardImageUrl(boardId, c.url)) {
+      throw new ValidationError('Недопустимый URL картинки');
+    }
+    if (
+      typeof c.width !== 'number' ||
+      !Number.isFinite(c.width) ||
+      c.width < 1 ||
+      c.width > BOARD_ITEM_MAX_SIZE
+    ) {
+      throw new ValidationError('Некорректная ширина картинки');
+    }
+    if (
+      typeof c.height !== 'number' ||
+      !Number.isFinite(c.height) ||
+      c.height < 1 ||
+      c.height > BOARD_ITEM_MAX_SIZE
+    ) {
+      throw new ValidationError('Некорректная высота картинки');
+    }
+    return { type: 'image', url: c.url, width: c.width, height: c.height };
+  }
+
+  // Для остальных типов (sticky, shape, text) — text обязателен
   if (typeof c.text !== 'string' || c.text.length > BOARD_ITEM_TEXT_MAX_LENGTH) {
     throw new ValidationError('Слишком длинный текст элемента');
   }
@@ -339,7 +379,7 @@ export function applyBoardOp(
         id,
         boardId,
         ...geometry,
-        content: validateContent(op.item.content),
+        content: validateContent(op.item.content, boardId),
         style: validateStyle(op.item.style),
         reactions: [],
         createdBy: actorId,
@@ -359,7 +399,9 @@ export function applyBoardOp(
         ...existing,
         ...geometry,
         content:
-          op.patch.content !== undefined ? validateContent(merged.content) : existing.content,
+          op.patch.content !== undefined
+            ? validateContent(merged.content, boardId)
+            : existing.content,
         style:
           op.patch.style !== undefined
             ? validateStyle({ ...existing.style, ...op.patch.style })

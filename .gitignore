@@ -9,8 +9,10 @@ coverage/
 .vite/
 .eslintcache
 
-# Загруженные аватарки (10.15) — локальное хранилище для dev/e2e, на проде отдельный volume
+# Загруженные аватарки (10.15) и картинки досок (13.2) — локальное хранилище
+# для dev/e2e, на проде отдельный volume
 apps/server/avatars/
+apps/server/board-assets/
 
 # Типы, которые генерирует плагин Nuxt UI при каждой сборке
 apps/web/auto-imports.d.ts

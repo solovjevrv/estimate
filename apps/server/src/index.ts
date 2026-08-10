@@ -1,5 +1,5 @@
 import { buildApp } from './app';
-import { BoardsService } from './boards';
+import { BoardImagesService, BoardsService } from './boards';
 import { loadConfig } from './config';
 import { createDb } from './db';
 import { attachSentryErrorHandler, initSentry } from './monitoring';
@@ -20,6 +20,7 @@ async function main(): Promise<void> {
       auth: config.auth,
       docsEnabled: config.docsEnabled,
       avatarsDir: config.avatarsDir,
+      boardAssetsDir: config.boardAssetsDir,
     },
     { logger: true },
   );
@@ -28,7 +29,8 @@ async function main(): Promise<void> {
   }
 
   const roomsService = RoomsService.forDatabase(db, config.auth.guestSecret);
-  const boardsService = BoardsService.forDatabase(db);
+  const boardImagesService = await BoardImagesService.forDirectory(config.boardAssetsDir);
+  const boardsService = BoardsService.forDatabase(db, boardImagesService);
   new SocketGateway(roomsService, boardsService, { corsOrigin: config.webOrigin }).attach(app);
 
   // Одна неудачная операция не должна уносить процесс вместе со всеми комнатами
