@@ -1,0 +1,196 @@
+/**
+ * Копирование/вставка выделения через системный буфер обмена (13.5), в т.ч.
+ * между досками. Формат — JSON с маркером `source`/`version` в text/plain,
+ * чтобы отличать наш payload от произвольного скопированного текста и не
+ * ломать обычную вставку текста в чужих приложениях/полях.
+ *
+ * Картинка на сервере board-scoped (URL валиден только для своей доски), так
+ * что при копировании сразу тянем байты и кладём в буфер как base64 —
+ * вставка тогда работает и на другой доске без обращения к исходному URL.
+ * Остальные типы контента копируются как есть.
+ */
+import type { BoardImageContent, BoardItemContent, BoardItemStyle } from '@poker/shared';
+
+export const BOARD_CLIPBOARD_SOURCE = 'poker-board';
+export const BOARD_CLIPBOARD_VERSION = 1;
+
+export interface BoardClipboardImageContent {
+  type: 'image';
+  base64: string;
+  mimeType: string;
+  width: number;
+  height: number;
+}
+
+export type BoardClipboardContent =
+  Exclude<BoardItemContent, BoardImageContent> | BoardClipboardImageContent;
+
+export interface BoardClipboardItem {
+  content: BoardClipboardContent;
+  style: BoardItemStyle;
+  rotation: number;
+  width: number;
+  height: number;
+  /** Позиция относительно центра bounding box всего скопированного выделения */
+  relX: number;
+  relY: number;
+}
+
+export interface BoardClipboardPayload {
+  source: typeof BOARD_CLIPBOARD_SOURCE;
+  version: typeof BOARD_CLIPBOARD_VERSION;
+  items: BoardClipboardItem[];
+}
+
+export interface BoardClipboardSourceItem {
+  content: BoardItemContent;
+  style: BoardItemStyle;
+  rotation: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function selectionCenter(items: readonly BoardClipboardSourceItem[]): { x: number; y: number } {
+  const left = Math.min(...items.map((item) => item.x));
+  const right = Math.max(...items.map((item) => item.x + item.width));
+  const top = Math.min(...items.map((item) => item.y));
+  const bottom = Math.max(...items.map((item) => item.y + item.height));
+  return { x: (left + right) / 2, y: (top + bottom) / 2 };
+}
+
+/** Blob -> data URL (base64) */
+export function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error('blobToBase64 failed'));
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** data URL (base64) -> File — для повторной загрузки картинки при вставке */
+export function base64ToFile(dataUrl: string, mimeType: string, fileName: string): File {
+  const [, data] = dataUrl.split(',');
+  if (!data) throw new Error('Invalid data URL');
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return new File([bytes], fileName, { type: mimeType });
+}
+
+async function serializeContent(
+  content: BoardItemContent,
+  fetchImpl: typeof fetch,
+): Promise<BoardClipboardContent | null> {
+  if (content.type !== 'image') return content;
+  try {
+    const response = await fetchImpl(content.url);
+    const blob = await response.blob();
+    const base64 = await blobToBase64(blob);
+    return {
+      type: 'image',
+      base64,
+      mimeType: blob.type || 'image/webp',
+      width: content.width,
+      height: content.height,
+    };
+  } catch {
+    // Не удалось скачать байты (сеть/CORS) — эту картинку теряем, но не роняем
+    // копирование остального выделения
+    return null;
+  }
+}
+
+/** Сериализует выделение в JSON-строку для системного буфера (Ctrl/Cmd+C) */
+export async function serializeSelection(
+  items: readonly BoardClipboardSourceItem[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  const center = selectionCenter(items);
+  const resolved = await Promise.all(
+    items.map(async (item): Promise<BoardClipboardItem | null> => {
+      const content = await serializeContent(item.content, fetchImpl);
+      if (!content) return null;
+      return {
+        content,
+        style: item.style,
+        rotation: item.rotation,
+        width: item.width,
+        height: item.height,
+        relX: item.x - center.x,
+        relY: item.y - center.y,
+      };
+    }),
+  );
+  const payload: BoardClipboardPayload = {
+    source: BOARD_CLIPBOARD_SOURCE,
+    version: BOARD_CLIPBOARD_VERSION,
+    items: resolved.filter((item): item is BoardClipboardItem => item !== null),
+  };
+  return JSON.stringify(payload);
+}
+
+/**
+ * Настоящее текстовое поле (input/textarea, например поле URL в тулбаре
+ * выделения) — буфер там всегда должен работать как обычный текст, наш
+ * формат не перехватываем никогда.
+ */
+export function isPlainTextField(target: EventTarget | null): boolean {
+  return (
+    target instanceof HTMLElement && (target.tagName === 'TEXTAREA' || target.tagName === 'INPUT')
+  );
+}
+
+function closestContentEditable(node: Node | null): Element | null {
+  const el = node instanceof Element ? node : (node?.parentElement ?? null);
+  return el?.closest('[contenteditable]') ?? null;
+}
+
+/**
+ * Реально выделен текст (протянут курсор) внутри ОДНОГО текстового поля, а не
+ * просто коллапсированный caret. Текст стикера/фигуры/текстового блока —
+ * `contenteditable` всегда (не только в момент активного редактирования), так
+ * что после обычного клика на выделение элемента фокус обычно и так стоит
+ * внутри contenteditable с коллапсированным caret — в этом состоянии
+ * нативному copy всё равно нечего копировать, так что Ctrl+C безопасно
+ * перехватывать под элемент доски.
+ *
+ * Shift-клик по ВТОРОМУ элементу (добавление к выделению узлов на холсте)
+ * попутно расширяет и нативный DOM-selection браузера от каретки в первом
+ * элементе до точки клика во втором — у него получается непустой
+ * `selection.toString()` (перевод строки/пробелы между блоками), хотя
+ * пользователь не выделял текст осознанно. Поэтому засчитываем только
+ * выделение, чьи начало и конец лежат в одном и том же contenteditable.
+ */
+export function hasActiveTextSelection(): boolean {
+  const selection = window.getSelection();
+  if (!selection || selection.isCollapsed) return false;
+  if (!selection.toString().trim()) return false;
+  const anchorEditable = closestContentEditable(selection.anchorNode);
+  const focusEditable = closestContentEditable(selection.focusNode);
+  return !!anchorEditable && anchorEditable === focusEditable;
+}
+
+/** Разбирает текст из буфера в payload; `null` — не наш формат/битый JSON/чужая версия */
+export function parseClipboardPayload(text: string): BoardClipboardPayload | null {
+  let data: unknown;
+  try {
+    data = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!data || typeof data !== 'object') return null;
+  const record = data as Record<string, unknown>;
+  if (
+    record.source !== BOARD_CLIPBOARD_SOURCE ||
+    record.version !== BOARD_CLIPBOARD_VERSION ||
+    !Array.isArray(record.items)
+  ) {
+    return null;
+  }
+  return data as BoardClipboardPayload;
+}
