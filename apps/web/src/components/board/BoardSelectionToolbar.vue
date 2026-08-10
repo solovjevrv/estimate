@@ -58,10 +58,12 @@ import {
   BOARD_TEXT_ALIGNS,
   BOARD_TEXT_LINK_MAX_LENGTH,
   BOARD_TEXT_LINK_PATTERN,
+  REACTION_EMOJIS,
   type BoardColorHex,
   type BoardHighlightColor,
   type BoardTextAlign,
   type BoardTextMark,
+  type ReactionEmoji,
 } from '@poker/shared';
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -76,9 +78,16 @@ const FORMAT_BUTTONS: readonly { key: FormatMarkKey; icon: string }[] = [
   { key: 'strike', icon: 'i-lucide-strikethrough' },
 ];
 
-export type ItemFormKind = 'sticky' | (typeof BOARD_SHAPE_KINDS)[number] | 'text' | 'image';
+export type ItemFormKind =
+  'sticky' | (typeof BOARD_SHAPE_KINDS)[number] | 'text' | 'image' | 'emoji';
 
-const FORM_OPTIONS: readonly ItemFormKind[] = ['sticky', ...BOARD_SHAPE_KINDS, 'text', 'image'];
+const FORM_OPTIONS: readonly ItemFormKind[] = [
+  'sticky',
+  ...BOARD_SHAPE_KINDS,
+  'text',
+  'image',
+  'emoji',
+];
 
 const FORM_ICONS: Record<ItemFormKind, string> = {
   sticky: 'i-lucide-sticky-note',
@@ -88,6 +97,7 @@ const FORM_ICONS: Record<ItemFormKind, string> = {
   diamond: 'i-lucide-diamond',
   text: 'i-lucide-type',
   image: 'i-lucide-image',
+  emoji: 'i-lucide-smile',
 };
 
 const ALIGN_ICONS: Record<BoardTextAlign, string> = {
@@ -125,6 +135,7 @@ const emit = defineEmits<{
   duplicate: [];
   delete: [];
   replaceImage: [];
+  emoji: [emoji: ReactionEmoji];
 }>();
 
 const { t } = useI18n();
@@ -139,6 +150,9 @@ const textColorInputEl = useTemplateRef<HTMLInputElement>('textColorInput');
  * переключателя формы показывается «Заменить картинку».
  */
 const isImage = computed(() => props.currentForm === 'image');
+
+/** Эмодзи (13.3) — не имеет заливки/текста/фигуры, только выбор эмодзи и размер */
+const isEmoji = computed(() => props.currentForm === 'emoji');
 
 /** Нет активного выделения текста — кнопки начертания/маркера/ссылки недоступны (12.13) */
 const formattingDisabled = computed(() => !props.editingText || props.activeMarks === null);
@@ -235,6 +249,35 @@ function stepFontSize(delta: number): void {
       <UIcon name="i-lucide-image-up" class="size-3.5" />
     </button>
 
+    <!-- Эмодзи (13.3): вместо переключателя формы — выбор эмодзи -->
+    <UPopover v-else-if="isEmoji" :content="{ side: 'top' }">
+      <button
+        type="button"
+        class="board-selection-icon-btn"
+        :aria-label="t('board.emojiPickerLabel')"
+      >
+        <UIcon name="i-lucide-smile" class="size-3.5" />
+      </button>
+
+      <template #content="{ close }">
+        <div class="board-emoji-menu">
+          <button
+            v-for="emoji in REACTION_EMOJIS"
+            :key="emoji"
+            type="button"
+            class="board-emoji-menu-item"
+            :aria-label="emoji"
+            @click="
+              emit('emoji', emoji);
+              close();
+            "
+          >
+            {{ emoji }}
+          </button>
+        </div>
+      </template>
+    </UPopover>
+
     <!-- Form picker — always visible (allows converting text ↔ sticky ↔ shape) -->
     <UPopover v-else :content="{ side: 'top' }">
       <button
@@ -263,8 +306,8 @@ function stepFontSize(delta: number): void {
       </template>
     </UPopover>
 
-    <!-- Color picker — только для стикера/фигуры (у текста нет заливки, у картинки — цвета) -->
-    <template v-if="props.currentForm !== 'text' && !isImage">
+    <!-- Color picker — только для стикера/фигуры (у текста нет заливки, у картинки/эмодзи — цвета) -->
+    <template v-if="props.currentForm !== 'text' && !isImage && !isEmoji">
       <div class="board-selection-divider" />
 
       <UPopover :content="{ side: 'top' }">
@@ -313,9 +356,9 @@ function stepFontSize(delta: number): void {
       </UPopover>
     </template>
 
-    <!-- Текстовые регуляторы (Aa/выравнивание/начертание/маркер/ссылка) — картинке
-         они не нужны вовсе (текста нет), не только когда он сейчас не редактируется -->
-    <template v-if="!isImage">
+    <!-- Текстовые регуляторы (Aa/выравнивание/начертание/маркер/ссылка) — картинке/эмодзи
+     они не нужны вовсе (текста нет), не только когда он сейчас не редактируется -->
+    <template v-if="!isImage && !isEmoji">
       <div class="board-selection-divider" />
 
       <!-- Aa — только размер шрифта и цвет текста (гарнитура убрана, см. шапку файла) -->
@@ -367,7 +410,7 @@ function stepFontSize(delta: number): void {
                   :style="{ backgroundColor: hex }"
                   :aria-label="hex"
                   @click="emit('textColor', hex)"
-                />
+                ></button>
                 <button
                   type="button"
                   class="board-color-add-btn"

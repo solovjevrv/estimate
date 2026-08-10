@@ -41,6 +41,7 @@ import {
   type BoardItemPatchOp,
   type BoardOp,
   type BoardTextAlign,
+  type ReactionEmoji,
 } from '@poker/shared';
 import type { DropdownMenuItem } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
@@ -73,6 +74,8 @@ import {
 import { useI18n } from 'vue-i18n';
 
 import {
+  EMOJI_DEFAULT_HEIGHT,
+  EMOJI_DEFAULT_WIDTH,
   fitImageToDefaultBox,
   maxZIndex,
   minZIndex,
@@ -114,6 +117,7 @@ import BoardImageNode from './BoardImageNode.vue';
 import BoardShapeNode from './BoardShapeNode.vue';
 import BoardStickyNode from './BoardStickyNode.vue';
 import BoardTextNode from './BoardTextNode.vue';
+import BoardEmojiNode from './BoardEmojiNode.vue';
 import BoardToolbar, { type BoardTool } from './BoardToolbar.vue';
 
 import '@vue-flow/core/dist/style.css';
@@ -153,6 +157,7 @@ const nodeTypes = markRaw({
   shape: BoardShapeNode,
   text: BoardTextNode,
   image: BoardImageNode,
+  emoji: BoardEmojiNode,
 });
 // Единственный тип связи — геометрия floating edge не зависит от типа линии
 // (12.8), тип линии/маркеры читаются самим компонентом из data.style
@@ -391,6 +396,40 @@ function createText(center: { x: number; y: number }): void {
 }
 
 /**
+ * Эмодзи (13.3) — единственный «инструмент», у которого нет режима
+ * арм+клик-по-холсту: кнопка в `BoardToolbar.vue` сама открывает список,
+ * выбор сразу вставляет элемент в центр текущего вьюпорта — тем же приёмом,
+ * что paste картинки (`onPaste` ниже), без лишнего клика по пустому месту.
+ */
+function createEmojiAtCenter(emoji: ReactionEmoji): void {
+  if (!props.canEdit || !canCreateItem()) return;
+  const rect = rootEl.value?.getBoundingClientRect();
+  if (!rect) return;
+  const center = project({ x: rect.width / 2, y: rect.height / 2 });
+
+  const id = uuid();
+  void boardSession.applyOps([
+    {
+      type: 'item.create',
+      clientOpId: uuid(),
+      item: {
+        id,
+        parentId: null,
+        x: center.x - EMOJI_DEFAULT_WIDTH / 2,
+        y: center.y - EMOJI_DEFAULT_HEIGHT / 2,
+        width: EMOJI_DEFAULT_WIDTH,
+        height: EMOJI_DEFAULT_HEIGHT,
+        rotation: 0,
+        zIndex: nextZIndexAbove(props.items),
+        content: { type: 'emoji', emoji },
+        style: { color: STICKY_DEFAULT_COLOR },
+        reactions: [],
+      },
+    },
+  ]);
+}
+
+/**
  * Открывает нативный файловый диалог и резолвится выбранным файлом
  * (`null` — диалог отменили). Общий приём для создания картинки (инструмент
  * в тулбаре) и замены уже существующей (13.2, тулбар выделения).
@@ -519,7 +558,9 @@ async function replaceSelectedImage(): Promise<void> {
 
 /** Инструмент «Стикер»/«Фигура»/«Текст»/«Картинка» — следующий одиночный клик по пустому холсту создаёт элемент и там же.
  * Для картинки — открывает файловый диалог (как нативный input type=file), так как
- * клик сам по себе не несёт файла. Drop и Paste работают всегда независимо от инструмента.
+ * клик сам по себе не несёт файла. Эмодзи в этот список не входит — у него
+ * нет режима «инструмент+клик», см. `createEmojiAtCenter`. Drop и Paste
+ * работают всегда независимо от инструмента.
  */
 function onPaneClick(event: MouseEvent): void {
   if (activeTool.value === 'sticky') {
@@ -828,6 +869,7 @@ const selectedForm = computed<ItemFormKind>(() => {
   if (content?.type === 'shape') return content.shape;
   if (content?.type === 'text') return 'text';
   if (content?.type === 'image') return 'image';
+  if (content?.type === 'emoji') return 'emoji';
   return 'sticky';
 });
 
@@ -863,32 +905,34 @@ const selectedColor = computed<BoardColorHex>(
  * (текст картинки теряется, url/width/height отбрасываются).
  */
 function setSelectedForm(kind: ItemFormKind): void {
-  // Конвертация В картинку через тулбар не поддерживается (нужен файл) — просто выходим
-  if (kind === 'image') return;
+  // Конвертация В картинку/эмодзи через общий пикер не поддерживается (нужен файл
+  // или конкретный выбранный символ) — у обеих свой отдельный путь создания/замены
+  if (kind === 'image' || kind === 'emoji') return;
 
   patchSelected((node) => {
     // Форматирование (12.13) переживает конвертацию стикер↔фигура↔текст вместе с текстом
     const content = node.data.content;
     let newContent: BoardItemContent;
     if (kind === 'sticky') {
-      if (content.type === 'image') {
-        // Конвертация из картинки — просто создаём пустой стикер
+      if (content.type === 'image' || content.type === 'emoji') {
+        // Конвертация из картинки/эмодзи — просто создаём пустой стикер
         newContent = { type: 'sticky', text: '' };
       } else {
         const { text, runs } = content;
         newContent = { type: 'sticky', text, ...(runs?.length ? { runs } : {}) };
       }
     } else if (kind === 'text') {
-      if (content.type === 'image') {
-        // Конвертация из картинки — пустой текст
+      if (content.type === 'image' || content.type === 'emoji') {
+        // Конвертация из картинки/эмодзи — пустой текст
         newContent = { type: 'text', text: '' };
       } else {
         const { text, runs } = content;
         newContent = { type: 'text', text, ...(runs?.length ? { runs } : {}) };
       }
     } else {
-      if (content.type === 'image') {
-        // Конвертация из картинки в фигуру — пустой текст
+      // kind is a BoardShapeKind
+      if (content.type === 'image' || content.type === 'emoji') {
+        // Конвертация из картинки/эмодзи в фигуру — пустой текст
         newContent = { type: 'shape', shape: kind, text: '' };
       } else {
         const { text, runs } = content;
@@ -961,6 +1005,20 @@ function setSelectedTextAlign(textAlign: BoardTextAlign): void {
     id: node.id,
     patch: { style: { textAlign } },
   }));
+}
+
+/** Смена эмодзи (13.3) — патчим content.emoji */
+/** Смена эмодзи (13.3) — как и замена картинки, не-эмодзи в смешанном выделении пропускаются */
+function setSelectedEmoji(emoji: ReactionEmoji): void {
+  const ops: BoardOp[] = selectedNodes.value
+    .filter((node) => node.data.content.type === 'emoji')
+    .map((node) => ({
+      type: 'item.patch',
+      clientOpId: uuid(),
+      id: node.id,
+      patch: { content: { type: 'emoji', emoji } },
+    }));
+  if (ops.length) void boardSession.applyOps(ops);
 }
 
 /** Дублирование (12.9) — копия content/style с офсетом позиции (Miro), встаёт поверх всех */
@@ -1230,7 +1288,7 @@ function onConnect(event: Connection): void {
         :mask-stroke-width="2"
       />
 
-      <BoardToolbar v-if="canEdit" v-model="activeTool" />
+      <BoardToolbar v-if="canEdit" v-model="activeTool" @emoji="createEmojiAtCenter" />
 
       <BoardSelectionToolbar
         v-if="selectionToolbarPosition"
@@ -1254,6 +1312,7 @@ function onConnect(event: Connection): void {
         @duplicate="duplicateSelected"
         @delete="deleteSelected"
         @replace-image="replaceSelectedImage"
+        @emoji="setSelectedEmoji"
       />
 
       <BoardEdgeToolbar
@@ -1373,7 +1432,6 @@ function onConnect(event: Connection): void {
     </VueFlow>
   </div>
 </template>
-
 <style scoped>
 .board-canvas-root:fullscreen {
   width: 100vw;

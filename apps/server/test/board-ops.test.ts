@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   BOARD_EDGE_LABEL_MAX_LENGTH,
+  REACTION_EMOJIS,
   type BoardEdge,
   type BoardItem,
   type BoardOp,
@@ -85,6 +86,26 @@ function imageCreateOp(
   };
 }
 
+function emojiCreateOp(id: string, emoji: string = REACTION_EMOJIS[0]): BoardOp {
+  return {
+    type: 'item.create',
+    clientOpId: randomUUID(),
+    item: {
+      id,
+      parentId: null,
+      x: 10,
+      y: 20,
+      width: 120,
+      height: 120,
+      rotation: 0,
+      zIndex: 0,
+      content: { type: 'emoji', emoji } as BoardItem['content'],
+      style: { color: '#FCEB96' },
+      reactions: [],
+    },
+  };
+}
+
 describe('applyBoardOp — item.create', () => {
   it('создаёт стикер в пустом состоянии', () => {
     const state = emptyState();
@@ -153,6 +174,34 @@ describe('applyBoardOp — item.create', () => {
       type: 'image',
       url: `/api/boards/${BOARD_ID}/assets/${'a'.repeat(32)}.webp`,
     };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('создаёт элемент-эмодзи в пустом состоянии', () => {
+    const state = emptyState();
+    const id = randomUUID();
+
+    applyBoardOp(state, emojiCreateOp(id, REACTION_EMOJIS[3]), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    const item = state.items.get(id);
+    expect(item?.content.type).toBe('emoji');
+    if (item?.content.type === 'emoji') {
+      expect(item.content.emoji).toBe(REACTION_EMOJIS[3]);
+    }
+  });
+
+  it('отклоняет эмодзи вне фиксированного набора (13.3, произвольный unicode запрещён)', () => {
+    const state = emptyState();
+    const op = emojiCreateOp(randomUUID(), '🦄');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет эмодзи без самого поля emoji', () => {
+    const state = emptyState();
+    const op = emojiCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = { type: 'emoji' };
 
     expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
   });
