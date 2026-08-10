@@ -1,0 +1,238 @@
+import type { BoardItemContent, BoardItemStyle } from '@poker/shared';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+
+import {
+  base64ToFile,
+  BOARD_CLIPBOARD_SOURCE,
+  BOARD_CLIPBOARD_VERSION,
+  type BoardClipboardSourceItem,
+  blobToBase64,
+  hasActiveTextSelection,
+  isPlainTextField,
+  parseClipboardPayload,
+  serializeSelection,
+} from '../src/lib/board/board-clipboard';
+
+const STYLE: BoardItemStyle = { color: '#FCEB96' };
+
+function sourceItem(
+  content: BoardItemContent,
+  overrides: Partial<BoardClipboardSourceItem> = {},
+): BoardClipboardSourceItem {
+  return {
+    content,
+    style: STYLE,
+    rotation: 0,
+    x: 0,
+    y: 0,
+    width: 120,
+    height: 120,
+    ...overrides,
+  };
+}
+
+describe('blobToBase64 / base64ToFile', () => {
+  it('конвертирует Blob в data URL и обратно в File с теми же байтами', async () => {
+    const blob = new Blob(['hello board'], { type: 'text/plain' });
+    const dataUrl = await blobToBase64(blob);
+    expect(dataUrl).toMatch(/^data:text\/plain;base64,/);
+
+    const file = base64ToFile(dataUrl, 'text/plain', 'copy.txt');
+    expect(file.name).toBe('copy.txt');
+    expect(file.type).toBe('text/plain');
+    expect(await file.text()).toBe('hello board');
+  });
+
+  it('base64ToFile бросает на некорректный data URL', () => {
+    expect(() => base64ToFile('not-a-data-url', 'image/webp', 'x.webp')).toThrow();
+  });
+});
+
+describe('serializeSelection / parseClipboardPayload — round-trip', () => {
+  it('не-картиночные типы контента копируются как есть, позиции — относительно центра выделения', async () => {
+    const sticky = sourceItem(
+      { type: 'sticky', text: 'Привет' },
+      { x: 0, y: 0, width: 100, height: 100 },
+    );
+    const emoji = sourceItem(
+      { type: 'emoji', emoji: '🎉' },
+      { x: 200, y: 0, width: 100, height: 100 },
+    );
+
+    const json = await serializeSelection([sticky, emoji]);
+    const payload = parseClipboardPayload(json);
+
+    expect(payload).not.toBeNull();
+    expect(payload?.source).toBe(BOARD_CLIPBOARD_SOURCE);
+    expect(payload?.version).toBe(BOARD_CLIPBOARD_VERSION);
+    expect(payload?.items).toHaveLength(2);
+    // bounding box [0,300) по x -> центр 150; sticky слева на 150, emoji справа на 150
+    expect(payload?.items[0]).toMatchObject({
+      content: { type: 'sticky', text: 'Привет' },
+      relX: -150,
+      relY: -50,
+    });
+    expect(payload?.items[1]).toMatchObject({
+      content: { type: 'emoji', emoji: '🎉' },
+      relX: 50,
+      relY: -50,
+    });
+  });
+
+  it('картинка сериализуется в base64 через fetch, а не как исходный URL', async () => {
+    const blob = new Blob([new Uint8Array([1, 2, 3])], { type: 'image/webp' });
+    const fetchMock = vi.fn().mockResolvedValue({ blob: () => Promise.resolve(blob) });
+
+    const image = sourceItem(
+      { type: 'image', url: '/api/boards/1/assets/a.webp', width: 300, height: 200 },
+      { width: 150, height: 100 },
+    );
+
+    const json = await serializeSelection([image], fetchMock as unknown as typeof fetch);
+    const payload = parseClipboardPayload(json);
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/boards/1/assets/a.webp');
+    expect(payload?.items).toHaveLength(1);
+    const content = payload?.items[0]?.content;
+    expect(content?.type).toBe('image');
+    expect(content && 'base64' in content ? content.base64 : undefined).toMatch(
+      /^data:image\/webp;base64,/,
+    );
+    expect(content && 'url' in content).toBe(false);
+  });
+
+  it('если байты картинки не удалось скачать — этот элемент выпадает из payload, остальные остаются', async () => {
+    const fetchMock = vi.fn().mockRejectedValue(new Error('network error'));
+    const image = sourceItem({
+      type: 'image',
+      url: '/api/boards/1/assets/a.webp',
+      width: 100,
+      height: 100,
+    });
+    const sticky = sourceItem({ type: 'sticky', text: 'ok' });
+
+    const json = await serializeSelection([image, sticky], fetchMock as unknown as typeof fetch);
+    const payload = parseClipboardPayload(json);
+
+    expect(payload?.items).toHaveLength(1);
+    expect(payload?.items[0]?.content).toEqual({ type: 'sticky', text: 'ok' });
+  });
+
+  it('пустое выделение сериализуется в payload с пустым items', async () => {
+    const json = await serializeSelection([]);
+    const payload = parseClipboardPayload(json);
+    expect(payload?.items).toEqual([]);
+  });
+});
+
+describe('parseClipboardPayload — валидация формата', () => {
+  it('чужой source — null', () => {
+    expect(
+      parseClipboardPayload(JSON.stringify({ source: 'other-app', version: 1, items: [] })),
+    ).toBeNull();
+  });
+
+  it('несовпадающая версия — null', () => {
+    expect(
+      parseClipboardPayload(
+        JSON.stringify({ source: BOARD_CLIPBOARD_SOURCE, version: 999, items: [] }),
+      ),
+    ).toBeNull();
+  });
+
+  it('items не массив — null', () => {
+    expect(
+      parseClipboardPayload(
+        JSON.stringify({
+          source: BOARD_CLIPBOARD_SOURCE,
+          version: BOARD_CLIPBOARD_VERSION,
+          items: {},
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('битый JSON — null, не бросает исключение', () => {
+    expect(() => parseClipboardPayload('{ not valid json')).not.toThrow();
+    expect(parseClipboardPayload('{ not valid json')).toBeNull();
+  });
+
+  it('произвольный скопированный текст (не JSON) — null', () => {
+    expect(parseClipboardPayload('просто скопированный текст из другого приложения')).toBeNull();
+  });
+});
+
+describe('isPlainTextField', () => {
+  it('true для input/textarea, false для contenteditable-div и не-элементов', () => {
+    expect(isPlainTextField(document.createElement('input'))).toBe(true);
+    expect(isPlainTextField(document.createElement('textarea'))).toBe(true);
+    const div = document.createElement('div');
+    div.setAttribute('contenteditable', 'true');
+    expect(isPlainTextField(div)).toBe(false);
+    expect(isPlainTextField(null)).toBe(false);
+  });
+});
+
+describe('hasActiveTextSelection', () => {
+  function makeEditable(text: string): HTMLDivElement {
+    const el = document.createElement('div');
+    el.setAttribute('contenteditable', 'true');
+    el.textContent = text;
+    document.body.appendChild(el);
+    return el;
+  }
+
+  afterEach(() => {
+    window.getSelection()?.removeAllRanges();
+    document.body.innerHTML = '';
+  });
+
+  it('нет selection — false', () => {
+    window.getSelection()?.removeAllRanges();
+    expect(hasActiveTextSelection()).toBe(false);
+  });
+
+  it('коллапсированный caret (просто клик, без протяжки) — false', () => {
+    const el = makeEditable('привет');
+    const range = document.createRange();
+    range.setStart(el.firstChild!, 2);
+    range.collapse(true);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    expect(hasActiveTextSelection()).toBe(false);
+  });
+
+  it('реально протянутое выделение текста в одном поле — true', () => {
+    const el = makeEditable('привет мир');
+    const range = document.createRange();
+    range.setStart(el.firstChild!, 0);
+    range.setEnd(el.firstChild!, 6);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    expect(hasActiveTextSelection()).toBe(true);
+  });
+
+  it('выделение, растянутое shift-кликом между ДВУМЯ разными полями — false', () => {
+    const first = makeEditable('первый');
+    const second = makeEditable('второй');
+    const range = document.createRange();
+    range.setStart(first.firstChild!, 2);
+    range.setEnd(second.firstChild!, 2);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    // Именно этот кейс ловит баг 13.5: shift-клик по второму узлу холста
+    // (добавление к выделению элементов) попутно тянет и нативный DOM-selection
+    // через оба contenteditable — это не осознанное выделение текста
+    expect(hasActiveTextSelection()).toBe(false);
+  });
+
+  it('выделение только из пробелов/переноса строки — false', () => {
+    const el = makeEditable('  \n  ');
+    const range = document.createRange();
+    range.setStart(el.firstChild!, 0);
+    range.setEnd(el.firstChild!, el.firstChild!.textContent!.length);
+    window.getSelection()?.removeAllRanges();
+    window.getSelection()?.addRange(range);
+    expect(hasActiveTextSelection()).toBe(false);
+  });
+});

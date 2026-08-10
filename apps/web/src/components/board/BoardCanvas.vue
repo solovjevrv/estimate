@@ -63,6 +63,7 @@ import {
 import {
   computed,
   markRaw,
+  nextTick,
   onBeforeUnmount,
   onMounted,
   provide,
@@ -100,6 +101,14 @@ import {
 } from '../../lib/board/board-canvas-keys';
 import { readableTextColor } from '../../lib/board/board-colors';
 import type { BoardTextEditorHandle } from '../../lib/board/board-rich-text';
+import {
+  base64ToFile,
+  type BoardClipboardItem,
+  hasActiveTextSelection,
+  isPlainTextField,
+  parseClipboardPayload,
+  serializeSelection,
+} from '../../lib/board/board-clipboard';
 import { useBoardHotkeys } from '../../lib/board/use-board-hotkeys';
 import { FIT_FONT_MAX } from '../../lib/board/use-fit-font-size';
 import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
@@ -222,6 +231,8 @@ const {
   getEdges,
   setNodes,
   setEdges,
+  addSelectedNodes,
+  removeSelectedNodes,
   zoomTo,
   fitView,
 } = useVueFlow();
@@ -238,8 +249,29 @@ const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
  * мержит по id через внутренний `parseNode` и не трогает `selected`/`dragging`
  * полей, которых нет в наших плоских объектах, так что выделение/резайз/драг
  * этим не задевает.
+ *
+ * Позицию (`position`) при мерже `setNodes` ВСЁ ЖЕ перезаписывает — при драге
+ * ГРУППЫ узлов (13.5) это дёргало элементы: троттлед-патчи по разным узлам
+ * долетают до стора не одновременно, и как только позиция одного узла в
+ * сторе обновляется (оптимистично, ещё до ответа сервера — см. `applyOps`),
+ * `flowNodes` пересчитывается и этот watcher применяет `setNodes(next)` для
+ * ВСЕХ узлов сразу — для остальных, ещё не долетевших до стора, это откатывало
+ * бы их позицию к додраговой поверх текущего живого перетаскивания. Пока
+ * `dragStartPositions` не пуст — сам пользователь тащит группу локально,
+ * пропускаем применение снимка; на `dragStop` карта синхронно пустеет, и
+ * следующий реактивный проход применяется как обычно с согласованными
+ * позициями. Другие участники, кто-то другой двигает карточку параллельно —
+ * тот кейс уже отдельно проверен (см. абзац выше), это не задевается.
  */
-watch(flowNodes, (next) => setNodes(next), { immediate: true });
+const dragStartPositions = new Map<string, { x: number; y: number }>();
+watch(
+  flowNodes,
+  (next) => {
+    if (dragStartPositions.size > 0) return;
+    setNodes(next);
+  },
+  { immediate: true },
+);
 watch(flowEdges, (next) => setEdges(next), { immediate: true });
 
 const rootEl = useTemplateRef<HTMLElement>('root');
@@ -260,10 +292,12 @@ function toggleFullscreen(): void {
 onMounted(() => {
   document.addEventListener('fullscreenchange', onFullscreenChange);
   document.addEventListener('paste', onPaste);
+  document.addEventListener('copy', onCopy);
 });
 onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange);
   document.removeEventListener('paste', onPaste);
+  document.removeEventListener('copy', onCopy);
   dragThrottlers.clear();
   dragStartPositions.clear();
 });
@@ -650,9 +684,29 @@ function onPaneDragOver(event: DragEvent): void {
   // Визуальная индикация (опционально) — можно добавить класс на rootEl
 }
 
-/** Вставка картинки из буфера (Ctrl+V) — создаёт элемент в центре вьюпорта */
+/**
+ * Вставка (Ctrl/Cmd+V) — сначала пробуем наш формат (элементы доски, в т.ч.
+ * скопированные с другой доски), иначе — как раньше, картинка из ОС-буфера.
+ * В настоящих текстовых полях (input URL-ссылки) наш формат не перехватываем
+ * никогда. Текст стикера/фигуры — `contenteditable` всегда, а не только в
+ * момент активного редактирования, так что фокус там стоит и после обычного
+ * клика на выделение элемента — но раз распознали наш JSON в буфере, значит
+ * пользователь только что скопировал именно элемент доски, а не текст; вставлять
+ * этот JSON как есть в contenteditable всё равно было бы бессмысленно.
+ */
 function onPaste(event: ClipboardEvent): void {
   if (!props.canEdit) return;
+
+  if (!isPlainTextField(event.target)) {
+    const text = event.clipboardData?.getData('text/plain');
+    const payload = text ? parseClipboardPayload(text) : null;
+    if (payload) {
+      event.preventDefault();
+      void pasteBoardItems(payload.items);
+      return;
+    }
+  }
+
   const items = event.clipboardData?.items;
   if (!items) return;
   for (const item of items) {
@@ -670,6 +724,109 @@ function onPaste(event: ClipboardEvent): void {
       break;
     }
   }
+}
+
+/**
+ * Копирование выделения в системный буфер (Ctrl/Cmd+C, 13.5). Пишем через
+ * `navigator.clipboard.writeText` (не `event.clipboardData.setData`) —
+ * сериализация картинок асинхронная (fetch байтов), а `clipboardData` из
+ * события валиден для записи только синхронно в момент диспатча события,
+ * запись после `await` в браузере молча не сработает.
+ *
+ * Не используем общий `isEditableTarget` из хоткеев: текст стикера/фигуры —
+ * `contenteditable` всегда, а не только в момент активного редактирования,
+ * так что он получает фокус уже от одного клика на выделение элемента —
+ * `isEditableTarget` был бы true почти всегда, когда что-то выделено, и
+ * Ctrl+C никогда бы не копировал элемент. Настоящий сигнал «пользователь
+ * хочет скопировать именно текст» — протянутое (не коллапсированное)
+ * текстовое выделение, см. `hasActiveTextSelection`.
+ */
+async function onCopy(event: ClipboardEvent): Promise<void> {
+  if (!props.canEdit) return;
+  if (isPlainTextField(event.target) || hasActiveTextSelection()) return;
+
+  const selected = selectedNodes.value;
+  if (!selected.length) return;
+  event.preventDefault();
+
+  const payload = await serializeSelection(
+    selected.map((node) => ({
+      content: node.data.content,
+      style: node.data.style,
+      rotation: node.data.rotation,
+      x: node.computedPosition.x,
+      y: node.computedPosition.y,
+      width: node.dimensions.width,
+      height: node.dimensions.height,
+    })),
+  );
+  try {
+    await navigator.clipboard.writeText(payload);
+  } catch {
+    // Буфер недоступен (нет прав/небезопасный контекст) — молча игнорируем
+  }
+}
+
+/** Вставка элементов доски из буфера (наш формат, 13.5) — работает и между досками */
+async function pasteBoardItems(items: BoardClipboardItem[]): Promise<void> {
+  if (!props.canEdit || !items.length) return;
+  if (!canCreateItems(items.length)) return;
+
+  const rect = rootEl.value?.getBoundingClientRect();
+  if (!rect) return;
+  const viewportCenter = project({ x: rect.width / 2, y: rect.height / 2 });
+  const baseZIndex = maxZIndex(props.items) + 1;
+  const ops: BoardOp[] = [];
+  const newIds: string[] = [];
+
+  for (const [index, item] of items.entries()) {
+    let content: BoardItemContent;
+    let width = item.width;
+    let height = item.height;
+
+    if (item.content.type === 'image') {
+      // Картинка board-scoped на сервере — байты из буфера грузим как новый ассет текущей доски
+      const file = base64ToFile(item.content.base64, item.content.mimeType, `${uuid()}.webp`);
+      const result = await uploadBoardImage(file);
+      if (!result) continue;
+      const fitted = fitImageToDefaultBox(result.width, result.height);
+      width = fitted.width;
+      height = fitted.height;
+      content = { type: 'image', url: result.url, width: result.width, height: result.height };
+    } else {
+      content = item.content;
+    }
+
+    const id = uuid();
+    newIds.push(id);
+    ops.push({
+      type: 'item.create',
+      clientOpId: uuid(),
+      item: {
+        id,
+        parentId: null,
+        x: viewportCenter.x + item.relX - width / 2,
+        y: viewportCenter.y + item.relY - height / 2,
+        width,
+        height,
+        rotation: item.rotation,
+        zIndex: baseZIndex + index,
+        content,
+        style: item.style,
+        reactions: [],
+      },
+    });
+  }
+
+  if (!ops.length) return;
+  void boardSession.applyOps(ops);
+  // Вставленные элементы сразу остаются выделенными (как в Miro) — иначе
+  // пришлось бы заново выделять их, чтобы подвинуть на нужное место (13.5).
+  // `setNodes` из `watch(flowNodes, ...)` применяется реактивно, не синхронно —
+  // ждём тика, иначе Vue Flow ещё не знает о только что созданных узлах
+  await nextTick();
+  removeSelectedNodes(getSelectedNodes.value);
+  addSelectedNodes(newIds.map((id) => ({ id }) as GraphNode<BoardItem>));
 }
 
 // --- Перетаскивание: локально холст двигает сам Vue Flow, по сети —
@@ -697,15 +854,15 @@ function sendPositionPatch(
 
 /**
  * Shift+drag — ограничение перетаскивания по одной оси (12.9), как в Miro.
- * Стартовая позиция каждого узла драга запоминается на `node-drag-start`;
- * дальше на каждом кадре, пока зажат Shift, "недоминирующая" ось (та, где
- * смещение от старта меньше) принудительно возвращается к стартовому
+ * Стартовая позиция каждого узла драга запоминается на `node-drag-start`
+ * (в `dragStartPositions`, объявлена выше вместе с watcher'ом `flowNodes` —
+ * 13.5); дальше на каждом кадре, пока зажат Shift, "недоминирующая" ось (та,
+ * где смещение от старта меньше) принудительно возвращается к стартовому
  * значению — Vue Flow обновляет `computedPosition` синхронно ДО эмита
  * `node-drag`, так что наша правка успевает попасть в кадр до отрисовки.
  * Ось перевычисляется на каждом кадре (не фиксируется на первом сдвиге) —
  * упрощение, для мелкого дрожания курсора у диагонали не критично.
  */
-const dragStartPositions = new Map<string, { x: number; y: number }>();
 
 function onNodeDragStart({ nodes: dragged }: NodeDragEvent): void {
   for (const node of dragged as GraphNode<BoardItem>[]) {
@@ -1271,7 +1428,6 @@ function onConnect(event: Connection): void {
     @dblclick.capture="onPaneDoubleClick"
     @drop="onPaneDrop"
     @dragover="onPaneDragOver"
-    @paste="onPaste"
   >
     <VueFlow
       :node-types="nodeTypes"
@@ -1281,7 +1437,7 @@ function onConnect(event: Connection): void {
       :connection-mode="ConnectionMode.Loose"
       :connection-radius="40"
       :pan-on-drag="[1]"
-      selection-on-drag
+      :selection-key-code="true"
       :pan-on-scroll="true"
       :zoom-on-scroll="false"
       :zoom-on-pinch="true"
@@ -1526,6 +1682,18 @@ function onConnect(event: Connection): void {
  */
 :deep(.vue-flow__edge-labels) {
   z-index: 5;
+}
+
+/*
+ * Рамка выделения (drag-select, 13.5) — базовый `style.css` Vue Flow задаёт
+ * ей только z-index, видимый вид (заливка/бордер) живёт в НЕ подключённом
+ * у нас `theme-default.css` (не тянем его целиком — конфликтовал бы с уже
+ * кастомизированными узлами/хендлами/контролами). Выделение при этом реально
+ * работало и без стилей — просто не было видно саму рамку во время протяжки.
+ */
+:deep(.vue-flow__selection) {
+  background: color-mix(in oklch, var(--ui-primary) 8%, transparent);
+  border: 1px dashed var(--ui-primary);
 }
 
 .board-empty-state {
