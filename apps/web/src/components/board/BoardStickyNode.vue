@@ -297,7 +297,7 @@ watch(
     </div>
 
     <template v-if="canEdit">
-      <UPopover :content="{ side: 'top' }">
+      <UPopover :content="{ side: 'top', sideOffset: 20 }">
         <button
           type="button"
           class="board-reaction-trigger nodrag absolute -top-1.5 -right-1.5 flex size-[22px] cursor-pointer items-center justify-center rounded-full border bg-[var(--brand-surface)] shadow-[var(--brand-shadow-card)] dark:border-transparent"
@@ -330,6 +330,7 @@ watch(
 
 <style scoped>
 @import './shared/board-node-resizer.css';
+@import './shared/board-connect-handle.css';
 
 /* Стикер держится на тени, а не на обводке (референс `.design/main.html`) — заметно
    сильнее общей `--brand-shadow-card` (та калибрована под UI-панели, не бумагу) */

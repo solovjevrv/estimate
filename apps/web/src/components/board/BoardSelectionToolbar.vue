@@ -258,7 +258,7 @@ function stepFontSize(delta: number): void {
     </button>
 
     <!-- Эмодзи (13.3): вместо переключателя формы — выбор эмодзи -->
-    <UPopover v-else-if="isEmoji" :content="{ side: 'top' }">
+    <UPopover v-else-if="isEmoji" :content="{ side: 'top', sideOffset: 20 }">
       <button
         type="button"
         class="board-selection-icon-btn"
@@ -288,7 +288,7 @@ function stepFontSize(delta: number): void {
 
     <!-- Стикер (13.4): вместо переключателя формы — выбор стикера
          (BoardStickerPicker — общий с левым тулбаром) -->
-    <UPopover v-else-if="isSticker" :content="{ side: 'top' }">
+    <UPopover v-else-if="isSticker" :content="{ side: 'top', sideOffset: 20 }">
       <button
         type="button"
         class="board-selection-icon-btn"
@@ -310,7 +310,7 @@ function stepFontSize(delta: number): void {
     </UPopover>
 
     <!-- Form picker — always visible (allows converting text ↔ sticky ↔ shape) -->
-    <UPopover v-else :content="{ side: 'top' }">
+    <UPopover v-else :content="{ side: 'top', sideOffset: 20 }">
       <button
         type="button"
         class="board-selection-icon-btn"
@@ -341,7 +341,7 @@ function stepFontSize(delta: number): void {
     <template v-if="props.currentForm !== 'text' && !isImage && !isEmoji && !isSticker">
       <div class="board-selection-divider" />
 
-      <UPopover :content="{ side: 'top' }">
+      <UPopover :content="{ side: 'top', sideOffset: 20 }">
         <button
           type="button"
           class="board-selection-swatch"
@@ -393,7 +393,7 @@ function stepFontSize(delta: number): void {
       <div class="board-selection-divider" />
 
       <!-- Aa — только размер шрифта и цвет текста (гарнитура убрана, см. шапку файла) -->
-      <UPopover :content="{ side: 'top' }">
+      <UPopover :content="{ side: 'top', sideOffset: 20 }">
         <button
           type="button"
           class="board-selection-icon-btn board-text-options-btn"
@@ -466,7 +466,7 @@ function stepFontSize(delta: number): void {
       <div class="board-selection-divider" />
 
       <!-- Выравнивание — своя кнопка (было строкой внутри Aa) -->
-      <UPopover :content="{ side: 'top' }">
+      <UPopover :content="{ side: 'top', sideOffset: 20 }">
         <button
           type="button"
           class="board-selection-icon-btn"
@@ -506,7 +506,11 @@ function stepFontSize(delta: number): void {
       мимо» (`pointerDownOutside`) не тронуто, попап всё ещё закрывается им.
     -->
       <UPopover
-        :content="{ side: 'top', onFocusOutside: (event: Event) => event.preventDefault() }"
+        :content="{
+          side: 'top',
+          sideOffset: 20,
+          onFocusOutside: (event: Event) => event.preventDefault(),
+        }"
       >
         <button
           type="button"
@@ -542,7 +546,11 @@ function stepFontSize(delta: number): void {
 
       <!-- Маркер (12.13) — та же логика mousedown.prevent/onFocusOutside, что и у начертания -->
       <UPopover
-        :content="{ side: 'top', onFocusOutside: (event: Event) => event.preventDefault() }"
+        :content="{
+          side: 'top',
+          sideOffset: 20,
+          onFocusOutside: (event: Event) => event.preventDefault(),
+        }"
       >
         <button
           type="button"
@@ -594,7 +602,7 @@ function stepFontSize(delta: number): void {
       содержимое ЭТОГО попапа несёт `data-board-text-toolbar` — см. шапку файла
       и `BOARD_TEXT_TOOLBAR_SELECTOR` в `board-rich-text.ts`.
     -->
-      <UPopover v-model:open="linkPopoverOpen" :content="{ side: 'top' }">
+      <UPopover v-model:open="linkPopoverOpen" :content="{ side: 'top', sideOffset: 20 }">
         <button
           type="button"
           class="board-selection-icon-btn"

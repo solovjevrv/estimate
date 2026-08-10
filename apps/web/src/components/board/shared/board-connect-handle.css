@@ -1,0 +1,26 @@
+/**
+ * Позиционирование коннект-хендлов (.board-connect-handle) — переиспользуется
+ * во всех узлах доски (Sticky/Shape/Text/Image/Emoji/Sticker).
+ *
+ * Библиотека (базовый style.css, подключён в BoardCanvas.vue) центрирует
+ * хендл ровно на границе карточки (0px). Рамка выделения (board-node-resizer.css)
+ * вынесена на 6px наружу — из-за этого хендлы визуально оказывались внутри
+ * рамки выделения, а не на ней. Здесь тот же зазор 6px, чтобы хендл сел на
+ * саму рамку.
+ */
+
+.board-connect-handle.vue-flow__handle-top {
+  top: -6px;
+}
+
+.board-connect-handle.vue-flow__handle-bottom {
+  bottom: -6px;
+}
+
+.board-connect-handle.vue-flow__handle-left {
+  left: -6px;
+}
+
+.board-connect-handle.vue-flow__handle-right {
+  right: -6px;
+}

@@ -75,7 +75,7 @@ function onCustomColor(event: Event): void {
     @click.stop
     @dblclick.stop
   >
-    <UPopover :content="{ side: 'top' }">
+    <UPopover :content="{ side: 'top', sideOffset: 20 }">
       <button type="button" class="board-selection-icon-btn" :aria-label="t('board.edgeLineLabel')">
         <UIcon :name="LINE_ICONS[props.currentLine]" class="size-3.5" />
       </button>
@@ -100,7 +100,7 @@ function onCustomColor(event: Event): void {
 
     <div class="board-selection-divider" />
 
-    <UPopover :content="{ side: 'top' }">
+    <UPopover :content="{ side: 'top', sideOffset: 20 }">
       <button
         type="button"
         class="board-selection-icon-btn"
@@ -127,7 +127,7 @@ function onCustomColor(event: Event): void {
       </template>
     </UPopover>
 
-    <UPopover :content="{ side: 'top' }">
+    <UPopover :content="{ side: 'top', sideOffset: 20 }">
       <button
         type="button"
         class="board-selection-icon-btn"
@@ -156,7 +156,7 @@ function onCustomColor(event: Event): void {
 
     <div class="board-selection-divider" />
 
-    <UPopover :content="{ side: 'top' }">
+    <UPopover :content="{ side: 'top', sideOffset: 20 }">
       <button
         type="button"
         class="board-selection-swatch"
