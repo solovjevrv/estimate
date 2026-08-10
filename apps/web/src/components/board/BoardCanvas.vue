@@ -76,6 +76,8 @@ import { useI18n } from 'vue-i18n';
 import {
   EMOJI_DEFAULT_HEIGHT,
   EMOJI_DEFAULT_WIDTH,
+  STICKER_DEFAULT_HEIGHT,
+  STICKER_DEFAULT_WIDTH,
   fitImageToDefaultBox,
   maxZIndex,
   minZIndex,
@@ -118,6 +120,7 @@ import BoardShapeNode from './BoardShapeNode.vue';
 import BoardStickyNode from './BoardStickyNode.vue';
 import BoardTextNode from './BoardTextNode.vue';
 import BoardEmojiNode from './BoardEmojiNode.vue';
+import BoardStickerNode from './BoardStickerNode.vue';
 import BoardToolbar, { type BoardTool } from './BoardToolbar.vue';
 
 import '@vue-flow/core/dist/style.css';
@@ -158,6 +161,7 @@ const nodeTypes = markRaw({
   text: BoardTextNode,
   image: BoardImageNode,
   emoji: BoardEmojiNode,
+  sticker: BoardStickerNode,
 });
 // Единственный тип связи — геометрия floating edge не зависит от типа линии
 // (12.8), тип линии/маркеры читаются самим компонентом из data.style
@@ -422,6 +426,38 @@ function createEmojiAtCenter(emoji: ReactionEmoji): void {
         rotation: 0,
         zIndex: nextZIndexAbove(props.items),
         content: { type: 'emoji', emoji },
+        style: { color: STICKY_DEFAULT_COLOR },
+        reactions: [],
+      },
+    },
+  ]);
+}
+
+/**
+ * Стикер (13.4) — как эмодзи, выбор из поповера сразу вставляет элемент
+ * в центр текущего вьюпорта, без промежуточного клика по холсту.
+ */
+function createStickerAtCenter(pack: string, id: string): void {
+  if (!props.canEdit || !canCreateItem()) return;
+  const rect = rootEl.value?.getBoundingClientRect();
+  if (!rect) return;
+  const center = project({ x: rect.width / 2, y: rect.height / 2 });
+
+  const itemId = uuid();
+  void boardSession.applyOps([
+    {
+      type: 'item.create',
+      clientOpId: uuid(),
+      item: {
+        id: itemId,
+        parentId: null,
+        x: center.x - STICKER_DEFAULT_WIDTH / 2,
+        y: center.y - STICKER_DEFAULT_HEIGHT / 2,
+        width: STICKER_DEFAULT_WIDTH,
+        height: STICKER_DEFAULT_HEIGHT,
+        rotation: 0,
+        zIndex: nextZIndexAbove(props.items),
+        content: { type: 'sticker', pack, id },
         style: { color: STICKY_DEFAULT_COLOR },
         reactions: [],
       },
@@ -870,6 +906,7 @@ const selectedForm = computed<ItemFormKind>(() => {
   if (content?.type === 'text') return 'text';
   if (content?.type === 'image') return 'image';
   if (content?.type === 'emoji') return 'emoji';
+  if (content?.type === 'sticker') return 'sticker';
   return 'sticky';
 });
 
@@ -905,25 +942,25 @@ const selectedColor = computed<BoardColorHex>(
  * (текст картинки теряется, url/width/height отбрасываются).
  */
 function setSelectedForm(kind: ItemFormKind): void {
-  // Конвертация В картинку/эмодзи через общий пикер не поддерживается (нужен файл
-  // или конкретный выбранный символ) — у обеих свой отдельный путь создания/замены
-  if (kind === 'image' || kind === 'emoji') return;
+  // Конвертация В картинку/эмодзи/стикер через общий пикер не поддерживается (нужен файл
+  // или конкретный выбранный символ/пак) — у всех трёх свой отдельный путь создания/замены
+  if (kind === 'image' || kind === 'emoji' || kind === 'sticker') return;
 
   patchSelected((node) => {
     // Форматирование (12.13) переживает конвертацию стикер↔фигура↔текст вместе с текстом
     const content = node.data.content;
     let newContent: BoardItemContent;
     if (kind === 'sticky') {
-      if (content.type === 'image' || content.type === 'emoji') {
-        // Конвертация из картинки/эмодзи — просто создаём пустой стикер
+      if (content.type === 'image' || content.type === 'emoji' || content.type === 'sticker') {
+        // Конвертация из картинки/эмодзи/стикера — просто создаём пустой стикер
         newContent = { type: 'sticky', text: '' };
       } else {
         const { text, runs } = content;
         newContent = { type: 'sticky', text, ...(runs?.length ? { runs } : {}) };
       }
     } else if (kind === 'text') {
-      if (content.type === 'image' || content.type === 'emoji') {
-        // Конвертация из картинки/эмодзи — пустой текст
+      if (content.type === 'image' || content.type === 'emoji' || content.type === 'sticker') {
+        // Конвертация из картинки/эмодзи/стикера — пустой текст
         newContent = { type: 'text', text: '' };
       } else {
         const { text, runs } = content;
@@ -931,8 +968,8 @@ function setSelectedForm(kind: ItemFormKind): void {
       }
     } else {
       // kind is a BoardShapeKind
-      if (content.type === 'image' || content.type === 'emoji') {
-        // Конвертация из картинки/эмодзи в фигуру — пустой текст
+      if (content.type === 'image' || content.type === 'emoji' || content.type === 'sticker') {
+        // Конвертация из картинки/эмодзи/стикера в фигуру — пустой текст
         newContent = { type: 'shape', shape: kind, text: '' };
       } else {
         const { text, runs } = content;
@@ -1017,6 +1054,19 @@ function setSelectedEmoji(emoji: ReactionEmoji): void {
       clientOpId: uuid(),
       id: node.id,
       patch: { content: { type: 'emoji', emoji } },
+    }));
+  if (ops.length) void boardSession.applyOps(ops);
+}
+
+/** Смена стикера (13.4) — патчим content.pack и content.id, не-стикеры пропускаются */
+function setSelectedSticker(pack: string, id: string): void {
+  const ops: BoardOp[] = selectedNodes.value
+    .filter((node) => node.data.content.type === 'sticker')
+    .map((node) => ({
+      type: 'item.patch',
+      clientOpId: uuid(),
+      id: node.id,
+      patch: { content: { type: 'sticker', pack, id } },
     }));
   if (ops.length) void boardSession.applyOps(ops);
 }
@@ -1288,7 +1338,12 @@ function onConnect(event: Connection): void {
         :mask-stroke-width="2"
       />
 
-      <BoardToolbar v-if="canEdit" v-model="activeTool" @emoji="createEmojiAtCenter" />
+      <BoardToolbar
+        v-if="canEdit"
+        v-model="activeTool"
+        @emoji="createEmojiAtCenter"
+        @sticker="createStickerAtCenter"
+      />
 
       <BoardSelectionToolbar
         v-if="selectionToolbarPosition"
@@ -1313,6 +1368,7 @@ function onConnect(event: Connection): void {
         @delete="deleteSelected"
         @replace-image="replaceSelectedImage"
         @emoji="setSelectedEmoji"
+        @sticker="setSelectedSticker"
       />
 
       <BoardEdgeToolbar

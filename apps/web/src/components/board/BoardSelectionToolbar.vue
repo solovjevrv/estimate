@@ -70,6 +70,7 @@ import { useI18n } from 'vue-i18n';
 
 import { HIGHLIGHT_CSS } from '../../lib/board/board-rich-text';
 import type { FormatMarkKey } from '../../lib/board/use-rich-text-editing';
+import BoardStickerPicker from './BoardStickerPicker.vue';
 
 const FORMAT_BUTTONS: readonly { key: FormatMarkKey; icon: string }[] = [
   { key: 'bold', icon: 'i-lucide-bold' },
@@ -79,7 +80,7 @@ const FORMAT_BUTTONS: readonly { key: FormatMarkKey; icon: string }[] = [
 ];
 
 export type ItemFormKind =
-  'sticky' | (typeof BOARD_SHAPE_KINDS)[number] | 'text' | 'image' | 'emoji';
+  'sticky' | (typeof BOARD_SHAPE_KINDS)[number] | 'text' | 'image' | 'emoji' | 'sticker';
 
 const FORM_OPTIONS: readonly ItemFormKind[] = [
   'sticky',
@@ -98,6 +99,9 @@ const FORM_ICONS: Record<ItemFormKind, string> = {
   text: 'i-lucide-type',
   image: 'i-lucide-image',
   emoji: 'i-lucide-smile',
+  // Никогда не рендерится через FORM_OPTIONS (стикер не в списке) — только для
+  // exhaustiveness Record<ItemFormKind, string>, сам пикер у стикера свой (см. isSticker)
+  sticker: 'i-lucide-sticker',
 };
 
 const ALIGN_ICONS: Record<BoardTextAlign, string> = {
@@ -136,6 +140,7 @@ const emit = defineEmits<{
   delete: [];
   replaceImage: [];
   emoji: [emoji: ReactionEmoji];
+  sticker: [pack: string, id: string];
 }>();
 
 const { t } = useI18n();
@@ -153,6 +158,9 @@ const isImage = computed(() => props.currentForm === 'image');
 
 /** Эмодзи (13.3) — не имеет заливки/текста/фигуры, только выбор эмодзи и размер */
 const isEmoji = computed(() => props.currentForm === 'emoji');
+
+/** Стикер (13.4) — не имеет заливки/текста/фигуры, только выбор стикера и размер */
+const isSticker = computed(() => props.currentForm === 'sticker');
 
 /** Нет активного выделения текста — кнопки начертания/маркера/ссылки недоступны (12.13) */
 const formattingDisabled = computed(() => !props.editingText || props.activeMarks === null);
@@ -278,6 +286,29 @@ function stepFontSize(delta: number): void {
       </template>
     </UPopover>
 
+    <!-- Стикер (13.4): вместо переключателя формы — выбор стикера
+         (BoardStickerPicker — общий с левым тулбаром) -->
+    <UPopover v-else-if="isSticker" :content="{ side: 'top' }">
+      <button
+        type="button"
+        class="board-selection-icon-btn"
+        :aria-label="t('board.stickerPickerLabel')"
+      >
+        <UIcon name="i-lucide-sticker" class="size-3.5" />
+      </button>
+
+      <template #content="{ close }">
+        <BoardStickerPicker
+          @select="
+            (pack, id) => {
+              emit('sticker', pack, id);
+              close();
+            }
+          "
+        />
+      </template>
+    </UPopover>
+
     <!-- Form picker — always visible (allows converting text ↔ sticky ↔ shape) -->
     <UPopover v-else :content="{ side: 'top' }">
       <button
@@ -306,8 +337,8 @@ function stepFontSize(delta: number): void {
       </template>
     </UPopover>
 
-    <!-- Color picker — только для стикера/фигуры (у текста нет заливки, у картинки/эмодзи — цвета) -->
-    <template v-if="props.currentForm !== 'text' && !isImage && !isEmoji">
+    <!-- Color picker — только для стикера/фигуры (у текста нет заливки, у картинки/эмодзи/стикера — цвета) -->
+    <template v-if="props.currentForm !== 'text' && !isImage && !isEmoji && !isSticker">
       <div class="board-selection-divider" />
 
       <UPopover :content="{ side: 'top' }">
@@ -356,9 +387,9 @@ function stepFontSize(delta: number): void {
       </UPopover>
     </template>
 
-    <!-- Текстовые регуляторы (Aa/выравнивание/начертание/маркер/ссылка) — картинке/эмодзи
+    <!-- Текстовые регуляторы (Aa/выравнивание/начертание/маркер/ссылка) — картинке/эмодзи/стикеру
      они не нужны вовсе (текста нет), не только когда он сейчас не редактируется -->
-    <template v-if="!isImage && !isEmoji">
+    <template v-if="!isImage && !isEmoji && !isSticker">
       <div class="board-selection-divider" />
 
       <!-- Aa — только размер шрифта и цвет текста (гарнитура убрана, см. шапку файла) -->

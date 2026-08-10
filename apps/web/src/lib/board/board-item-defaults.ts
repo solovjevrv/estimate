@@ -96,6 +96,18 @@ export const EMOJI_MAX_WIDTH = STICKY_MAX_WIDTH;
 export const EMOJI_MAX_HEIGHT = STICKY_MAX_HEIGHT;
 
 /**
+ * Стикер на доске (13.4) — векторное/растровое изображение из фиксированного набора паков,
+ * без фона/заливки. Рендерится как `<img>` с `object-contain` + `keep-aspect-ratio` на ресайзере.
+ * Дефолтный размер — 120×120 (как у эмодзи), границы резайза — те же UX-лимиты.
+ */
+export const STICKER_DEFAULT_WIDTH = 120;
+export const STICKER_DEFAULT_HEIGHT = 120;
+export const STICKER_MIN_WIDTH = 48; // как у эмодзи — стикер читаем и мельче
+export const STICKER_MIN_HEIGHT = 48;
+export const STICKER_MAX_WIDTH = STICKY_MAX_WIDTH;
+export const STICKER_MAX_HEIGHT = STICKY_MAX_HEIGHT;
+
+/**
  * Вписывает исходный размер картинки в дефолтный бокс 300×200, сохраняя
  * пропорции и никогда не увеличивая (только уменьшает большие исходники) —
  * иначе новый элемент вставал бы на холст размером до 2048px (сервер режет

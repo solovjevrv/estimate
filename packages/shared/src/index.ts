@@ -382,16 +382,17 @@ export const GUEST_NAME_MAX_LENGTH = 60;
  * Доски (Epic 12+) — простой холст для брейншторма/планирования/ретро, по
  * образцу Miro. Командные (`teamId` заполнен) и личные (`teamId: null`),
  * аналогично комнатам (7.25). Набор типов элементов растёт по мере эпиков
- * (12.6 стикеры, 12.7 фигуры, 13.х текст/картинки/эмодзи) — новый тип не
+ * (12.6 стикеры, 12.7 фигуры, 13.х текст/картинки/эмодзи/стикеры) — новый тип не
  * требует миграции схемы благодаря дискриминированному union по `type`.
  */
-export type BoardItemType = 'sticky' | 'shape' | 'text' | 'image' | 'emoji';
+export type BoardItemType = 'sticky' | 'shape' | 'text' | 'image' | 'emoji' | 'sticker';
 export const BOARD_ITEM_TYPES: readonly BoardItemType[] = [
   'sticky',
   'shape',
   'text',
   'image',
   'emoji',
+  'sticker',
 ];
 
 export type BoardShapeKind = 'rectangle' | 'rounded' | 'ellipse' | 'diamond';
@@ -553,9 +554,20 @@ export interface BoardEmojiContent {
   emoji: ReactionEmoji;
 }
 
+export interface BoardStickerContent {
+  type: 'sticker';
+  pack: string;
+  id: string;
+}
+
 /** Дискриминированный union по `type` — новый тип элемента не требует миграции схемы */
 export type BoardItemContent =
-  BoardStickyContent | BoardShapeContent | BoardTextContent | BoardImageContent | BoardEmojiContent;
+  | BoardStickyContent
+  | BoardShapeContent
+  | BoardTextContent
+  | BoardImageContent
+  | BoardEmojiContent
+  | BoardStickerContent;
 
 /**
  * Начертание текста стикера/фигуры (12.9) — не произвольный CSS font-family,
