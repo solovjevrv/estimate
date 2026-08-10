@@ -271,7 +271,16 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
     url?: unknown;
     width?: unknown;
     height?: unknown;
+    emoji?: unknown;
   };
+
+  // Для emoji — только сам символ из фиксированного набора, text/runs не требуются
+  if (c.type === 'emoji') {
+    if (!(REACTION_EMOJIS as readonly unknown[]).includes(c.emoji)) {
+      throw new ValidationError('Недопустимый эмодзи');
+    }
+    return { type: 'emoji', emoji: c.emoji as (typeof REACTION_EMOJIS)[number] };
+  }
 
   // Для image — url, width, height обязательны, text/runs не требуются
   if (c.type === 'image') {

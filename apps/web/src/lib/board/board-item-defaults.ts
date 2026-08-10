@@ -80,6 +80,21 @@ export const IMAGE_MAX_WIDTH = STICKY_MAX_WIDTH;
 export const IMAGE_MAX_HEIGHT = STICKY_MAX_HEIGHT;
 
 /**
+ * Эмодзи на доске (13.3) — просто большой unicode-символ, без фона/заливки.
+ * Отдельного поля размера шрифта в контенте нет — символ всегда занимает
+ * `EMOJI_FONT_SIZE_RATIO` от меньшей стороны бокса (см. `BoardEmojiNode.vue`),
+ * так резайз хендлами (как у картинки) — единственный и работающий способ
+ * изменить видимый размер, а не мёртвый параметр рядом с реальным размером бокса.
+ */
+export const EMOJI_DEFAULT_WIDTH = 120;
+export const EMOJI_DEFAULT_HEIGHT = 120;
+export const EMOJI_FONT_SIZE_RATIO = 0.6;
+export const EMOJI_MIN_WIDTH = STICKY_MIN_WIDTH;
+export const EMOJI_MIN_HEIGHT = STICKY_MIN_HEIGHT;
+export const EMOJI_MAX_WIDTH = STICKY_MAX_WIDTH;
+export const EMOJI_MAX_HEIGHT = STICKY_MAX_HEIGHT;
+
+/**
  * Вписывает исходный размер картинки в дефолтный бокс 300×200, сохраняя
  * пропорции и никогда не увеличивая (только уменьшает большие исходники) —
  * иначе новый элемент вставал бы на холст размером до 2048px (сервер режет

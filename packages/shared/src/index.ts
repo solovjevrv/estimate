@@ -385,8 +385,14 @@ export const GUEST_NAME_MAX_LENGTH = 60;
  * (12.6 стикеры, 12.7 фигуры, 13.х текст/картинки/эмодзи) — новый тип не
  * требует миграции схемы благодаря дискриминированному union по `type`.
  */
-export type BoardItemType = 'sticky' | 'shape' | 'text' | 'image';
-export const BOARD_ITEM_TYPES: readonly BoardItemType[] = ['sticky', 'shape', 'text', 'image'];
+export type BoardItemType = 'sticky' | 'shape' | 'text' | 'image' | 'emoji';
+export const BOARD_ITEM_TYPES: readonly BoardItemType[] = [
+  'sticky',
+  'shape',
+  'text',
+  'image',
+  'emoji',
+];
 
 export type BoardShapeKind = 'rectangle' | 'rounded' | 'ellipse' | 'diamond';
 export const BOARD_SHAPE_KINDS: readonly BoardShapeKind[] = [
@@ -542,9 +548,14 @@ export interface BoardImageContent {
   height: number;
 }
 
+export interface BoardEmojiContent {
+  type: 'emoji';
+  emoji: ReactionEmoji;
+}
+
 /** Дискриминированный union по `type` — новый тип элемента не требует миграции схемы */
 export type BoardItemContent =
-  BoardStickyContent | BoardShapeContent | BoardTextContent | BoardImageContent;
+  BoardStickyContent | BoardShapeContent | BoardTextContent | BoardImageContent | BoardEmojiContent;
 
 /**
  * Начертание текста стикера/фигуры (12.9) — не произвольный CSS font-family,

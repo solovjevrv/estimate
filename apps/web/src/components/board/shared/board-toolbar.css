@@ -139,3 +139,30 @@
 .board-selection-icon-btn-danger:hover {
   background: color-mix(in oklch, var(--brand-coral) 12%, transparent);
 }
+
+/* Сетка эмодзи (13.3) — переиспользуется и в тулбаре выделения (замена
+   эмодзи), и в левом тулбаре инструментов (создание) */
+.board-emoji-menu {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 2px;
+  width: 180px;
+  padding: 6px;
+}
+
+.board-emoji-menu-item {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  font-size: 18px;
+}
+
+.board-emoji-menu-item:hover {
+  background: var(--ui-bg-elevated);
+}
