@@ -90,19 +90,32 @@ const items = computed(() =>
 
   .board-snap-guide {
     position: absolute;
-    opacity: 0.5;
+    opacity: 0.4;
     pointer-events: none;
-    border: 1px dashed var(--ui-primary);
     box-sizing: border-box;
   }
 
   .board-snap-guide--vertical {
     width: 1px;
     left: 0;
+    background: repeating-linear-gradient(
+      to bottom,
+      var(--brand-ink2) 0,
+      var(--brand-ink2) 3px,
+      transparent 3px,
+      transparent 7px
+    );
   }
 
   .board-snap-guide--horizontal {
     height: 1px;
     top: 0;
+    background: repeating-linear-gradient(
+      to right,
+      var(--brand-ink2) 0,
+      var(--brand-ink2) 3px,
+      transparent 3px,
+      transparent 7px
+    );
   }
 </style>
