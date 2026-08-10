@@ -272,6 +272,8 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
     width?: unknown;
     height?: unknown;
     emoji?: unknown;
+    pack?: unknown;
+    id?: unknown;
   };
 
   // Для emoji — только сам символ из фиксированного набора, text/runs не требуются
@@ -280,6 +282,20 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
       throw new ValidationError('Недопустимый эмодзи');
     }
     return { type: 'emoji', emoji: c.emoji as (typeof REACTION_EMOJIS)[number] };
+  }
+
+  // Для sticker — pack и id обязательны, формат /^[a-z0-9-]{1,64}$/ (13.4)
+  // Валидируем формат, но НЕ сверяем с манифестом (он только на фронте) —
+  // компонент рендера на фронте сам покажет плейсхолдер для неизвестного pack/id.
+  if (c.type === 'sticker') {
+    const PACK_ID_PATTERN = /^[a-z0-9-]{1,64}$/;
+    if (typeof c.pack !== 'string' || c.pack.length === 0 || !PACK_ID_PATTERN.test(c.pack)) {
+      throw new ValidationError('Недопустимый идентификатор пака стикеров');
+    }
+    if (typeof c.id !== 'string' || c.id.length === 0 || !PACK_ID_PATTERN.test(c.id)) {
+      throw new ValidationError('Недопустимый идентификатор стикера');
+    }
+    return { type: 'sticker', pack: c.pack, id: c.id };
   }
 
   // Для image — url, width, height обязательны, text/runs не требуются

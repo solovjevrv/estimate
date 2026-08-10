@@ -43,6 +43,11 @@ describe('runsFromContent', () => {
     };
     expect(runsFromContent(content)).toEqual([]);
   });
+
+  it('стикер — пустой массив', () => {
+    const content: BoardItemContent = { type: 'sticker', pack: 'ragememes', id: '01' };
+    expect(runsFromContent(content)).toEqual([]);
+  });
 });
 
 describe('runsPlainText', () => {

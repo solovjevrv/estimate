@@ -106,6 +106,30 @@ function emojiCreateOp(id: string, emoji: string = REACTION_EMOJIS[0]): BoardOp 
   };
 }
 
+function stickerCreateOp(
+  id: string,
+  pack: string = 'eduardkonstantinovich',
+  itemId: string = '01',
+): BoardOp {
+  return {
+    type: 'item.create',
+    clientOpId: randomUUID(),
+    item: {
+      id,
+      parentId: null,
+      x: 10,
+      y: 20,
+      width: 120,
+      height: 120,
+      rotation: 0,
+      zIndex: 0,
+      content: { type: 'sticker', pack, id: itemId } as BoardItem['content'],
+      style: { color: '#FCEB96' },
+      reactions: [],
+    },
+  };
+}
+
 describe('applyBoardOp — item.create', () => {
   it('создаёт стикер в пустом состоянии', () => {
     const state = emptyState();
@@ -194,6 +218,73 @@ describe('applyBoardOp — item.create', () => {
   it('отклоняет эмодзи вне фиксированного набора (13.3, произвольный unicode запрещён)', () => {
     const state = emptyState();
     const op = emojiCreateOp(randomUUID(), '🦄');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('создаёт элемент-стикер в пустом состоянии', () => {
+    const state = emptyState();
+    const id = randomUUID();
+
+    applyBoardOp(
+      state,
+      stickerCreateOp(id, 'eduardkonstantinovich', '01'),
+      BOARD_ID,
+      ACTOR_ID,
+      ACTOR_NAME,
+    );
+
+    const item = state.items.get(id);
+    expect(item?.content.type).toBe('sticker');
+    if (item?.content.type === 'sticker') {
+      expect(item.content.pack).toBe('eduardkonstantinovich');
+      expect(item.content.id).toBe('01');
+    }
+  });
+
+  it('отклоняет стикер с некорректным pack (пустой)', () => {
+    const state = emptyState();
+    const op = stickerCreateOp(randomUUID(), '', '01');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет стикер с некорректным pack (спецсимволы)', () => {
+    const state = emptyState();
+    const op = stickerCreateOp(randomUUID(), 'Invalid_Pack!', '01');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет стикер с некорректным id (пустой)', () => {
+    const state = emptyState();
+    const op = stickerCreateOp(randomUUID(), 'eduardkonstantinovich', '');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет стикер с некорректным id (спецсимволы)', () => {
+    const state = emptyState();
+    const op = stickerCreateOp(randomUUID(), 'eduardkonstantinovich', 'Invalid_ID!');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет стикер без поля pack', () => {
+    const state = emptyState();
+    const op = stickerCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = { type: 'sticker', id: '01' };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет стикер без поля id', () => {
+    const state = emptyState();
+    const op = stickerCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'sticker',
+      pack: 'eduardkonstantinovich',
+    };
 
     expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
   });
