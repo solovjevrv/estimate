@@ -165,6 +165,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 
 <style scoped>
 @import './shared/board-node-resizer.css';
+@import './shared/board-connect-handle.css';
 
 /* Текстовый элемент — без фона/заливки/рамки, как в макете .design/main.html */
 

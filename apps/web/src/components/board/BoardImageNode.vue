@@ -62,6 +62,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 
 <style scoped>
 @import './shared/board-node-resizer.css';
+@import './shared/board-connect-handle.css';
 
 .board-connect-handle {
   width: 10px;

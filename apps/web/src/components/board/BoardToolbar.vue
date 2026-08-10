@@ -101,7 +101,7 @@ function isActive(value: BoardTool): boolean {
     <!-- Эмодзи (13.3) — не "инструмент" в духе стикера/фигуры/текста: сразу
          открывает список, клик по эмодзи сразу вставляет его на доску
          (в центр текущего вьюпорта), без промежуточного клика по холсту. -->
-    <UPopover :content="{ side: 'right' }">
+    <UPopover :content="{ side: 'right', sideOffset: 20 }">
       <button type="button" class="board-toolbar-btn" :aria-label="t('board.toolEmoji')">
         <UIcon name="i-lucide-smile" class="size-[19px]" />
       </button>
@@ -128,7 +128,7 @@ function isActive(value: BoardTool): boolean {
     <!-- Стикер-паки (13.4) — не "инструмент": кнопка открывает поповер с
          BoardStickerPicker (общий с «Заменить стикер» в тулбаре выделения),
          клик по стикеру сразу вставляет его на доску в центр вьюпорта. -->
-    <UPopover :content="{ side: 'right' }">
+    <UPopover :content="{ side: 'right', sideOffset: 20 }">
       <button type="button" class="board-toolbar-btn" :aria-label="t('board.toolSticker')">
         <UIcon name="i-lucide-sticker" class="size-[19px]" />
       </button>

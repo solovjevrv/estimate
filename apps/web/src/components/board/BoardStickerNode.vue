@@ -88,6 +88,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 
 <style scoped>
 @import './shared/board-node-resizer.css';
+@import './shared/board-connect-handle.css';
 
 /* Стикер-элемент — без фона/заливки/рамки, просто картинка */
 
