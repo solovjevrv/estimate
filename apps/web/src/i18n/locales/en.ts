@@ -359,6 +359,7 @@ export default {
     imageInvalidType: 'Only JPEG, PNG, WebP and GIF are supported',
     imageNoPermission: 'No permission to upload images to this board',
     imageUploadFailed: 'Failed to upload image',
+    replaceImageLabel: 'Replace image',
     reactionTriggerLabel: 'React',
     reactionBadgeLabel: 'Reaction {emoji}, given by: {count}',
     formPickerLabel: 'Item type',

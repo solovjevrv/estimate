@@ -359,6 +359,7 @@ export default {
     imageInvalidType: 'Поддерживаются только JPEG, PNG, WebP и GIF',
     imageNoPermission: 'Нет прав загружать картинки на эту доску',
     imageUploadFailed: 'Не удалось загрузить картинку',
+    replaceImageLabel: 'Заменить картинку',
     reactionTriggerLabel: 'Поставить реакцию',
     reactionBadgeLabel: 'Реакция {emoji}, поставили: {count}',
     formPickerLabel: 'Тип элемента',

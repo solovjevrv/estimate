@@ -390,31 +390,46 @@ function createText(center: { x: number; y: number }): void {
   ]);
 }
 
-/** Создаёт элемент-картинку: сначала загружает файл на сервер, затем создаёт элемент с возвращённым URL */
-async function createImage(center: { x: number; y: number }, file: File): Promise<void> {
-  if (!canCreateItem()) return;
-  if (!props.canEdit) return;
+/**
+ * Открывает нативный файловый диалог и резолвится выбранным файлом
+ * (`null` — диалог отменили). Общий приём для создания картинки (инструмент
+ * в тулбаре) и замены уже существующей (13.2, тулбар выделения).
+ */
+function pickImageFile(): Promise<File | null> {
+  return new Promise((resolve) => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = BOARD_IMAGE_ALLOWED_MIME_TYPES.join(',');
+    input.style.display = 'none';
+    // И выбор файла, и отмена диалога должны убрать за собой скрытый input —
+    // иначе при отмене он навсегда остаётся висеть в DOM
+    const cleanup = (file: File | null): void => {
+      input.remove();
+      resolve(file);
+    };
+    input.addEventListener('change', () => cleanup(input.files?.[0] ?? null));
+    input.addEventListener('cancel', () => cleanup(null));
+    document.body.appendChild(input);
+    input.click();
+  });
+}
 
+/** Валидирует и загружает файл на сервер; `null` — ошибка (уже показан тост) */
+async function uploadBoardImage(
+  file: File,
+): Promise<{ url: string; width: number; height: number } | null> {
   // Валидация MIME и размера на клиенте до отправки (сервер тоже проверит)
   const allowedMime: readonly string[] = BOARD_IMAGE_ALLOWED_MIME_TYPES;
   if (!allowedMime.includes(file.type)) {
     toast.add({ title: t('board.imageInvalidType'), color: 'error' });
-    return;
+    return null;
   }
   if (file.size > BOARD_IMAGE_MAX_BYTES) {
     toast.add({ title: t('board.imageTooLarge'), color: 'error' });
-    return;
+    return null;
   }
 
-  const id = uuid();
-  pendingEditId.value = id;
-
-  // Показываем состояние загрузки
-  const loadingToast = toast.add({
-    title: t('board.imageUploading'),
-    color: 'info',
-  });
-
+  const loadingToast = toast.add({ title: t('board.imageUploading'), color: 'info' });
   try {
     const formData = new FormData();
     formData.append('file', file);
@@ -422,29 +437,8 @@ async function createImage(center: { x: number; y: number }, file: File): Promis
       `/api/boards/${props.board.id}/assets`,
       formData,
     );
-
     toast.remove(loadingToast.id);
-
-    const { width, height } = fitImageToDefaultBox(result.width, result.height);
-    void boardSession.applyOps([
-      {
-        type: 'item.create',
-        clientOpId: uuid(),
-        item: {
-          id,
-          parentId: null,
-          x: center.x - width / 2,
-          y: center.y - height / 2,
-          width,
-          height,
-          rotation: 0,
-          zIndex: nextZIndexAbove(props.items),
-          content: { type: 'image', url: result.url, width: result.width, height: result.height },
-          style: { color: STICKY_DEFAULT_COLOR },
-          reactions: [],
-        },
-      },
-    ]);
+    return result;
   } catch (err) {
     toast.remove(loadingToast.id);
     if (err instanceof Error && 'status' in err) {
@@ -461,7 +455,66 @@ async function createImage(center: { x: number; y: number }, file: File): Promis
     } else {
       toast.add({ title: t('board.imageUploadFailed'), color: 'error' });
     }
+    return null;
   }
+}
+
+/** Создаёт элемент-картинку: сначала загружает файл на сервер, затем создаёт элемент с возвращённым URL */
+async function createImage(center: { x: number; y: number }, file: File): Promise<void> {
+  if (!canCreateItem()) return;
+  if (!props.canEdit) return;
+
+  const id = uuid();
+  pendingEditId.value = id;
+
+  const result = await uploadBoardImage(file);
+  if (!result) return;
+
+  const { width, height } = fitImageToDefaultBox(result.width, result.height);
+  void boardSession.applyOps([
+    {
+      type: 'item.create',
+      clientOpId: uuid(),
+      item: {
+        id,
+        parentId: null,
+        x: center.x - width / 2,
+        y: center.y - height / 2,
+        width,
+        height,
+        rotation: 0,
+        zIndex: nextZIndexAbove(props.items),
+        content: { type: 'image', url: result.url, width: result.width, height: result.height },
+        style: { color: STICKY_DEFAULT_COLOR },
+        reactions: [],
+      },
+    },
+  ]);
+}
+
+/**
+ * Заменяет файл у уже созданных картинок в выделении (13.2, тулбар выделения) —
+ * рамка/позиция на холсте не трогается, меняется только содержимое `<img>`
+ * (как замена картинки в Miro). Не-картинки в смешанном выделении пропускаются.
+ */
+async function replaceSelectedImage(): Promise<void> {
+  if (!props.canEdit) return;
+  const file = await pickImageFile();
+  if (!file) return;
+  const result = await uploadBoardImage(file);
+  if (!result) return;
+
+  const ops: BoardOp[] = selectedNodes.value
+    .filter((node) => node.data.content.type === 'image')
+    .map((node) => ({
+      type: 'item.patch',
+      clientOpId: uuid(),
+      id: node.id,
+      patch: {
+        content: { type: 'image', url: result.url, width: result.width, height: result.height },
+      },
+    }));
+  if (ops.length) void boardSession.applyOps(ops);
 }
 
 /** Инструмент «Стикер»/«Фигура»/«Текст»/«Картинка» — следующий одиночный клик по пустому холсту создаёт элемент и там же.
@@ -476,27 +529,11 @@ function onPaneClick(event: MouseEvent): void {
   } else if (activeTool.value === 'text') {
     createText(flowPositionFromEvent(event));
   } else if (activeTool.value === 'image') {
-    // Открываем файловый диалог для выбора картинки
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = BOARD_IMAGE_ALLOWED_MIME_TYPES.join(',');
-    input.style.display = 'none';
-    // И выбор файла, и отмена диалога должны убрать за собой скрытый input —
-    // иначе при отмене он навсегда остаётся висеть в DOM
-    const cleanup = (): void => {
-      input.remove();
-    };
-    input.addEventListener('change', () => {
-      const file = input.files?.[0];
-      if (file) {
-        createImage(flowPositionFromEvent(event), file);
-      }
-      cleanup();
-    });
-    input.addEventListener('cancel', cleanup);
-    document.body.appendChild(input);
-    input.click();
+    const position = flowPositionFromEvent(event);
     activeTool.value = 'select';
+    void pickImageFile().then((file) => {
+      if (file) void createImage(position, file);
+    });
     return;
   } else {
     return;
@@ -1216,6 +1253,7 @@ function onConnect(event: Connection): void {
         @set-link="activeTextEditor?.setLink($event)"
         @duplicate="duplicateSelected"
         @delete="deleteSelected"
+        @replace-image="replaceSelectedImage"
       />
 
       <BoardEdgeToolbar

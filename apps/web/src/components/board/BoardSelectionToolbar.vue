@@ -124,12 +124,21 @@ const emit = defineEmits<{
   setLink: [url: string | null];
   duplicate: [];
   delete: [];
+  replaceImage: [];
 }>();
 
 const { t } = useI18n();
 
 const colorInputEl = useTemplateRef<HTMLInputElement>('colorInput');
 const textColorInputEl = useTemplateRef<HTMLInputElement>('textColorInput');
+
+/**
+ * Картинка (13.2) — не текстовый элемент и не меняет форму: цвет/текстовые
+ * регуляторы (Aa/выравнивание/начертание/маркер/ссылка) и переключатель формы
+ * для неё не имеют смысла (нет текста, нет фигуры для смены) — вместо
+ * переключателя формы показывается «Заменить картинку».
+ */
+const isImage = computed(() => props.currentForm === 'image');
 
 /** Нет активного выделения текста — кнопки начертания/маркера/ссылки недоступны (12.13) */
 const formattingDisabled = computed(() => !props.editingText || props.activeMarks === null);
@@ -213,8 +222,21 @@ function stepFontSize(delta: number): void {
     @click.stop
     @dblclick.stop
   >
+    <!-- Картинка (13.2): вместо переключателя формы — замена файла, конвертация в другую
+         форму для неё бессмысленна (нет текста/заливки, которые можно перенести) -->
+    <button
+      v-if="isImage"
+      type="button"
+      class="board-selection-icon-btn"
+      :aria-label="t('board.replaceImageLabel')"
+      :title="t('board.replaceImageLabel')"
+      @click="emit('replaceImage')"
+    >
+      <UIcon name="i-lucide-image-up" class="size-3.5" />
+    </button>
+
     <!-- Form picker — always visible (allows converting text ↔ sticky ↔ shape) -->
-    <UPopover :content="{ side: 'top' }">
+    <UPopover v-else :content="{ side: 'top' }">
       <button
         type="button"
         class="board-selection-icon-btn"
@@ -241,8 +263,8 @@ function stepFontSize(delta: number): void {
       </template>
     </UPopover>
 
-    <!-- Color picker — only for sticky/shape (text has no background fill) -->
-    <template v-if="props.currentForm !== 'text'">
+    <!-- Color picker — только для стикера/фигуры (у текста нет заливки, у картинки — цвета) -->
+    <template v-if="props.currentForm !== 'text' && !isImage">
       <div class="board-selection-divider" />
 
       <UPopover :content="{ side: 'top' }">
@@ -291,112 +313,115 @@ function stepFontSize(delta: number): void {
       </UPopover>
     </template>
 
-    <div class="board-selection-divider" />
+    <!-- Текстовые регуляторы (Aa/выравнивание/начертание/маркер/ссылка) — картинке
+         они не нужны вовсе (текста нет), не только когда он сейчас не редактируется -->
+    <template v-if="!isImage">
+      <div class="board-selection-divider" />
 
-    <!-- Aa — только размер шрифта и цвет текста (гарнитура убрана, см. шапку файла) -->
-    <UPopover :content="{ side: 'top' }">
-      <button
-        type="button"
-        class="board-selection-icon-btn board-text-options-btn"
-        :aria-label="t('board.textOptionsLabel')"
-      >
-        Aa
-      </button>
+      <!-- Aa — только размер шрифта и цвет текста (гарнитура убрана, см. шапку файла) -->
+      <UPopover :content="{ side: 'top' }">
+        <button
+          type="button"
+          class="board-selection-icon-btn board-text-options-btn"
+          :aria-label="t('board.textOptionsLabel')"
+        >
+          Aa
+        </button>
 
-      <template #content>
-        <div class="board-text-menu">
-          <div class="board-text-menu-row">
-            <span class="board-text-menu-label">{{ t('board.fontSizeLabel') }}</span>
-            <div class="board-stepper">
-              <button
-                type="button"
-                class="board-stepper-btn"
-                :disabled="currentFontSize <= BOARD_ITEM_FONT_SIZE_MIN"
-                :aria-label="t('board.fontSizeDecrease')"
-                @click="stepFontSize(-FONT_SIZE_STEP)"
-              >
-                <UIcon name="i-lucide-minus" class="size-3" />
-              </button>
-              <span class="board-stepper-value">{{ currentFontSize }}</span>
-              <button
-                type="button"
-                class="board-stepper-btn"
-                :disabled="currentFontSize >= BOARD_ITEM_FONT_SIZE_MAX"
-                :aria-label="t('board.fontSizeIncrease')"
-                @click="stepFontSize(FONT_SIZE_STEP)"
-              >
-                <UIcon name="i-lucide-plus" class="size-3" />
-              </button>
+        <template #content>
+          <div class="board-text-menu">
+            <div class="board-text-menu-row">
+              <span class="board-text-menu-label">{{ t('board.fontSizeLabel') }}</span>
+              <div class="board-stepper">
+                <button
+                  type="button"
+                  class="board-stepper-btn"
+                  :disabled="currentFontSize <= BOARD_ITEM_FONT_SIZE_MIN"
+                  :aria-label="t('board.fontSizeDecrease')"
+                  @click="stepFontSize(-FONT_SIZE_STEP)"
+                >
+                  <UIcon name="i-lucide-minus" class="size-3" />
+                </button>
+                <span class="board-stepper-value">{{ currentFontSize }}</span>
+                <button
+                  type="button"
+                  class="board-stepper-btn"
+                  :disabled="currentFontSize >= BOARD_ITEM_FONT_SIZE_MAX"
+                  :aria-label="t('board.fontSizeIncrease')"
+                  @click="stepFontSize(FONT_SIZE_STEP)"
+                >
+                  <UIcon name="i-lucide-plus" class="size-3" />
+                </button>
+              </div>
+            </div>
+
+            <div class="board-text-menu-row">
+              <span class="board-text-menu-label">{{ t('board.textColorLabel') }}</span>
+              <div class="board-text-menu-swatches">
+                <button
+                  v-for="hex in BOARD_COLOR_PALETTE"
+                  :key="hex"
+                  type="button"
+                  class="board-selection-swatch"
+                  :class="{ 'board-selection-swatch-active': hex === props.currentTextColor }"
+                  :style="{ backgroundColor: hex }"
+                  :aria-label="hex"
+                  @click="emit('textColor', hex)"
+                />
+                <button
+                  type="button"
+                  class="board-color-add-btn"
+                  :aria-label="t('board.addCustomColor')"
+                  @click="openCustomTextColorPicker"
+                >
+                  <UIcon name="i-lucide-pipette" class="size-3.5" />
+                </button>
+                <input
+                  ref="textColorInput"
+                  type="color"
+                  class="sr-only"
+                  :value="props.currentTextColor"
+                  @input="onCustomTextColor"
+                />
+              </div>
             </div>
           </div>
+        </template>
+      </UPopover>
 
-          <div class="board-text-menu-row">
-            <span class="board-text-menu-label">{{ t('board.textColorLabel') }}</span>
-            <div class="board-text-menu-swatches">
-              <button
-                v-for="hex in BOARD_COLOR_PALETTE"
-                :key="hex"
-                type="button"
-                class="board-selection-swatch"
-                :class="{ 'board-selection-swatch-active': hex === props.currentTextColor }"
-                :style="{ backgroundColor: hex }"
-                :aria-label="hex"
-                @click="emit('textColor', hex)"
-              />
-              <button
-                type="button"
-                class="board-color-add-btn"
-                :aria-label="t('board.addCustomColor')"
-                @click="openCustomTextColorPicker"
-              >
-                <UIcon name="i-lucide-pipette" class="size-3.5" />
-              </button>
-              <input
-                ref="textColorInput"
-                type="color"
-                class="sr-only"
-                :value="props.currentTextColor"
-                @input="onCustomTextColor"
-              />
-            </div>
+      <div class="board-selection-divider" />
+
+      <!-- Выравнивание — своя кнопка (было строкой внутри Aa) -->
+      <UPopover :content="{ side: 'top' }">
+        <button
+          type="button"
+          class="board-selection-icon-btn"
+          :aria-label="t('board.textAlignLabel')"
+        >
+          <UIcon :name="ALIGN_ICONS[props.currentTextAlign]" class="size-3.5" />
+        </button>
+
+        <template #content>
+          <div class="board-form-menu">
+            <button
+              v-for="align in BOARD_TEXT_ALIGNS"
+              :key="align"
+              type="button"
+              class="board-form-menu-item"
+              :class="{ 'board-form-menu-item-active': align === props.currentTextAlign }"
+              :aria-label="t(`board.aligns.${align}`)"
+              :title="t(`board.aligns.${align}`)"
+              @click="emit('textAlign', align)"
+            >
+              <UIcon :name="ALIGN_ICONS[align]" class="size-4" />
+            </button>
           </div>
-        </div>
-      </template>
-    </UPopover>
+        </template>
+      </UPopover>
 
-    <div class="board-selection-divider" />
+      <div class="board-selection-divider" />
 
-    <!-- Выравнивание — своя кнопка (было строкой внутри Aa) -->
-    <UPopover :content="{ side: 'top' }">
-      <button
-        type="button"
-        class="board-selection-icon-btn"
-        :aria-label="t('board.textAlignLabel')"
-      >
-        <UIcon :name="ALIGN_ICONS[props.currentTextAlign]" class="size-3.5" />
-      </button>
-
-      <template #content>
-        <div class="board-form-menu">
-          <button
-            v-for="align in BOARD_TEXT_ALIGNS"
-            :key="align"
-            type="button"
-            class="board-form-menu-item"
-            :class="{ 'board-form-menu-item-active': align === props.currentTextAlign }"
-            :aria-label="t(`board.aligns.${align}`)"
-            :title="t(`board.aligns.${align}`)"
-            @click="emit('textAlign', align)"
-          >
-            <UIcon :name="ALIGN_ICONS[align]" class="size-4" />
-          </button>
-        </div>
-      </template>
-    </UPopover>
-
-    <div class="board-selection-divider" />
-
-    <!--
+      <!--
       Начертание (12.13) — по выделению внутри редактируемого текста, не на
       весь блок. `@mousedown.prevent` — на триггере И на каждой кнопке внутри
       попапа: без него фокус ушёл бы с contenteditable уже при открытии
@@ -406,84 +431,88 @@ function stepFontSize(delta: number): void {
       выделения в `applyRangePatch` после каждого клика) — обычное «кликнули
       мимо» (`pointerDownOutside`) не тронуто, попап всё ещё закрывается им.
     -->
-    <UPopover :content="{ side: 'top', onFocusOutside: (event: Event) => event.preventDefault() }">
-      <button
-        type="button"
-        class="board-selection-icon-btn"
-        :class="{ 'board-selection-icon-btn-active': anyFormatActive }"
-        :aria-label="t('board.formatLabel')"
-        @mousedown.prevent
+      <UPopover
+        :content="{ side: 'top', onFocusOutside: (event: Event) => event.preventDefault() }"
       >
-        <UIcon name="i-lucide-bold" class="size-3.5" />
-      </button>
+        <button
+          type="button"
+          class="board-selection-icon-btn"
+          :class="{ 'board-selection-icon-btn-active': anyFormatActive }"
+          :aria-label="t('board.formatLabel')"
+          @mousedown.prevent
+        >
+          <UIcon name="i-lucide-bold" class="size-3.5" />
+        </button>
 
-      <template #content>
-        <div class="board-form-menu" data-board-text-toolbar>
-          <button
-            v-for="format in FORMAT_BUTTONS"
-            :key="format.key"
-            type="button"
-            class="board-form-menu-item"
-            :class="{ 'board-form-menu-item-active': !!activeMarks?.[format.key] }"
-            :disabled="formattingDisabled"
-            :aria-label="t(`board.formats.${format.key}`)"
-            :title="t(`board.formats.${format.key}`)"
-            @mousedown.prevent
-            @click="emit('toggleMark', format.key)"
-          >
-            <UIcon :name="format.icon" class="size-4" />
-          </button>
-        </div>
-      </template>
-    </UPopover>
+        <template #content>
+          <div class="board-form-menu" data-board-text-toolbar>
+            <button
+              v-for="format in FORMAT_BUTTONS"
+              :key="format.key"
+              type="button"
+              class="board-form-menu-item"
+              :class="{ 'board-form-menu-item-active': !!activeMarks?.[format.key] }"
+              :disabled="formattingDisabled"
+              :aria-label="t(`board.formats.${format.key}`)"
+              :title="t(`board.formats.${format.key}`)"
+              @mousedown.prevent
+              @click="emit('toggleMark', format.key)"
+            >
+              <UIcon :name="format.icon" class="size-4" />
+            </button>
+          </div>
+        </template>
+      </UPopover>
 
-    <div class="board-selection-divider" />
+      <div class="board-selection-divider" />
 
-    <!-- Маркер (12.13) — та же логика mousedown.prevent/onFocusOutside, что и у начертания -->
-    <UPopover :content="{ side: 'top', onFocusOutside: (event: Event) => event.preventDefault() }">
-      <button
-        type="button"
-        class="board-selection-icon-btn"
-        :class="{ 'board-selection-icon-btn-active': !!activeMarks?.highlight }"
-        :aria-label="t('board.highlightLabel')"
-        @mousedown.prevent
+      <!-- Маркер (12.13) — та же логика mousedown.prevent/onFocusOutside, что и у начертания -->
+      <UPopover
+        :content="{ side: 'top', onFocusOutside: (event: Event) => event.preventDefault() }"
       >
-        <UIcon name="i-lucide-highlighter" class="size-3.5" />
-      </button>
+        <button
+          type="button"
+          class="board-selection-icon-btn"
+          :class="{ 'board-selection-icon-btn-active': !!activeMarks?.highlight }"
+          :aria-label="t('board.highlightLabel')"
+          @mousedown.prevent
+        >
+          <UIcon name="i-lucide-highlighter" class="size-3.5" />
+        </button>
 
-      <template #content>
-        <div class="board-text-menu-swatches board-inline-menu" data-board-text-toolbar>
-          <button
-            v-for="hl in BOARD_HIGHLIGHT_COLORS"
-            :key="hl"
-            type="button"
-            class="board-highlight-swatch"
-            :class="{ 'board-selection-swatch-active': hl === activeMarks?.highlight }"
-            :style="{ backgroundColor: HIGHLIGHT_CSS[hl] }"
-            :disabled="formattingDisabled"
-            :aria-label="t(`board.highlights.${hl}`)"
-            :title="t(`board.highlights.${hl}`)"
-            @mousedown.prevent
-            @click="emit('setHighlight', hl === activeMarks?.highlight ? null : hl)"
-          />
-          <button
-            v-if="activeMarks?.highlight"
-            type="button"
-            class="board-color-add-btn"
-            :aria-label="t('board.highlightClear')"
-            :title="t('board.highlightClear')"
-            @mousedown.prevent
-            @click="emit('setHighlight', null)"
-          >
-            <UIcon name="i-lucide-x" class="size-3.5" />
-          </button>
-        </div>
-      </template>
-    </UPopover>
+        <template #content>
+          <div class="board-text-menu-swatches board-inline-menu" data-board-text-toolbar>
+            <button
+              v-for="hl in BOARD_HIGHLIGHT_COLORS"
+              :key="hl"
+              type="button"
+              class="board-highlight-swatch"
+              :class="{ 'board-selection-swatch-active': hl === activeMarks?.highlight }"
+              :style="{ backgroundColor: HIGHLIGHT_CSS[hl] }"
+              :disabled="formattingDisabled"
+              :aria-label="t(`board.highlights.${hl}`)"
+              :title="t(`board.highlights.${hl}`)"
+              @mousedown.prevent
+              @click="emit('setHighlight', hl === activeMarks?.highlight ? null : hl)"
+            />
+            <button
+              v-if="activeMarks?.highlight"
+              type="button"
+              class="board-color-add-btn"
+              :aria-label="t('board.highlightClear')"
+              :title="t('board.highlightClear')"
+              @mousedown.prevent
+              @click="emit('setHighlight', null)"
+            >
+              <UIcon name="i-lucide-x" class="size-3.5" />
+            </button>
+          </div>
+        </template>
+      </UPopover>
 
-    <div class="board-selection-divider" />
+      <div class="board-selection-divider" />
 
-    <!--
+      <!--
       Ссылка (12.13) — открытие попапа тоже гасит mousedown (фокус остаётся на
       contenteditable), но поле URL всё равно требует НАСТОЯЩЕГО фокуса, чтобы
       в него печатать — это единственный момент, когда фокус реально уходит
@@ -491,55 +520,56 @@ function stepFontSize(delta: number): void {
       содержимое ЭТОГО попапа несёт `data-board-text-toolbar` — см. шапку файла
       и `BOARD_TEXT_TOOLBAR_SELECTOR` в `board-rich-text.ts`.
     -->
-    <UPopover v-model:open="linkPopoverOpen" :content="{ side: 'top' }">
-      <button
-        type="button"
-        class="board-selection-icon-btn"
-        :class="{ 'board-selection-icon-btn-active': !!activeMarks?.link }"
-        :disabled="!editingText"
-        :aria-label="t('board.linkLabel')"
-        @mousedown.prevent
-      >
-        <UIcon name="i-lucide-link" class="size-3.5" />
-      </button>
+      <UPopover v-model:open="linkPopoverOpen" :content="{ side: 'top' }">
+        <button
+          type="button"
+          class="board-selection-icon-btn"
+          :class="{ 'board-selection-icon-btn-active': !!activeMarks?.link }"
+          :disabled="!editingText"
+          :aria-label="t('board.linkLabel')"
+          @mousedown.prevent
+        >
+          <UIcon name="i-lucide-link" class="size-3.5" />
+        </button>
 
-      <template #content>
-        <div class="board-link-menu" data-board-text-toolbar>
-          <!-- Кнопка-триггер активна уже в момент редактирования (иначе клик по ней
+        <template #content>
+          <div class="board-link-menu" data-board-text-toolbar>
+            <!-- Кнопка-триггер активна уже в момент редактирования (иначе клик по ней
                без предварительного выделения молча ничего не делал бы) — подсказка
                вместо формы, пока реально нечего форматировать -->
-          <span v-if="formattingDisabled" class="board-link-hint">
-            {{ t('board.linkSelectTextHint') }}
-          </span>
-          <form v-else class="board-link-form" @submit.prevent="submitLink">
-            <input
-              ref="linkInput"
-              v-model="linkDraft"
-              type="text"
-              inputmode="url"
-              class="board-link-input"
-              placeholder="https://..."
-              @input="linkError = false"
-              @keydown.esc.stop.prevent="linkPopoverOpen = false"
-            />
-            <button type="submit" class="board-link-apply-btn">
-              {{ t('board.linkApply') }}
-            </button>
-            <button
-              v-if="activeMarks?.link"
-              type="button"
-              class="board-color-add-btn"
-              :aria-label="t('board.linkRemove')"
-              :title="t('board.linkRemove')"
-              @click="clearLink"
-            >
-              <UIcon name="i-lucide-link-2-off" class="size-3.5" />
-            </button>
-          </form>
-          <span v-if="linkError" class="board-link-error">{{ t('board.linkInvalid') }}</span>
-        </div>
-      </template>
-    </UPopover>
+            <span v-if="formattingDisabled" class="board-link-hint">
+              {{ t('board.linkSelectTextHint') }}
+            </span>
+            <form v-else class="board-link-form" @submit.prevent="submitLink">
+              <input
+                ref="linkInput"
+                v-model="linkDraft"
+                type="text"
+                inputmode="url"
+                class="board-link-input"
+                placeholder="https://..."
+                @input="linkError = false"
+                @keydown.esc.stop.prevent="linkPopoverOpen = false"
+              />
+              <button type="submit" class="board-link-apply-btn">
+                {{ t('board.linkApply') }}
+              </button>
+              <button
+                v-if="activeMarks?.link"
+                type="button"
+                class="board-color-add-btn"
+                :aria-label="t('board.linkRemove')"
+                :title="t('board.linkRemove')"
+                @click="clearLink"
+              >
+                <UIcon name="i-lucide-link-2-off" class="size-3.5" />
+              </button>
+            </form>
+            <span v-if="linkError" class="board-link-error">{{ t('board.linkInvalid') }}</span>
+          </div>
+        </template>
+      </UPopover>
+    </template>
 
     <div class="board-selection-divider" />
     <button
