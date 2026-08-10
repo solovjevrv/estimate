@@ -115,6 +115,12 @@ import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
 import { throttle } from '../../lib/throttle';
 import { uuid } from '../../lib/board/uuid';
 import { BOARD_DRAG_THROTTLE_MS, BOARD_DUPLICATE_OFFSET } from '../../lib/board/board-constants';
+import {
+  computeSnapGuides,
+  SNAP_THRESHOLD_PX,
+  type SnapGuide,
+  type SnapRect,
+} from '../../lib/board/board-snap';
 import { useBoardSessionStore } from '../../stores/board-session';
 import { api } from '../../lib/api';
 import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
@@ -126,6 +132,7 @@ import BoardEdgeToolbar, {
 import BoardFloatingEdge from './BoardFloatingEdge.vue';
 import BoardImageNode from './BoardImageNode.vue';
 import BoardShapeNode from './BoardShapeNode.vue';
+import BoardSnapGuides from './BoardSnapGuides.vue';
 import BoardStickyNode from './BoardStickyNode.vue';
 import BoardTextNode from './BoardTextNode.vue';
 import BoardEmojiNode from './BoardEmojiNode.vue';
@@ -264,6 +271,9 @@ const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
  * тот кейс уже отдельно проверен (см. абзац выше), это не задевается.
  */
 const dragStartPositions = new Map<string, { x: number; y: number }>();
+/** Активные snap-направляющие для отрисовки во время drag (13.6) */
+const activeSnapGuides = ref<SnapGuide[]>([]);
+
 watch(
   flowNodes,
   (next) => {
@@ -835,6 +845,17 @@ async function pasteBoardItems(items: BoardClipboardItem[]): Promise<void> {
 // последний по порядку элемент кадра реально долетал бы до сети.
 const dragThrottlers = new Map<string, (node: GraphNode<BoardItem>) => void>();
 
+/** Конвертирует узел Vue Flow в SnapRect для вычисления snap guide */
+function nodeToSnapRect(node: GraphNode<BoardItem>): SnapRect {
+  return {
+    id: node.id,
+    x: node.computedPosition.x,
+    y: node.computedPosition.y,
+    width: node.dimensions.width,
+    height: node.dimensions.height,
+  };
+}
+
 function sendPositionPatch(
   node: GraphNode<BoardItem>,
   opts: { record?: boolean; inverse?: BoardOp[] } = {},
@@ -870,6 +891,90 @@ function onNodeDragStart({ nodes: dragged }: NodeDragEvent): void {
   }
 }
 
+/**
+ * Сравнение по значениям (id таргетов + позиция + диапазон линии), не только
+ * по длине — используется в `updateSnapGuides`, чтобы не писать в
+ * `activeSnapGuides` (и не гонять лишний ре-рендер `BoardSnapGuides`) на
+ * кадрах драга, где набор гидов не изменился относительно предыдущего кадра.
+ * Чаще всего оба массива пустые (курсор далеко от порога притяжения) — в этом
+ * случае сравнение почти бесплатное (обе длины 0).
+ */
+function guidesEqual(a: SnapGuide[], b: SnapGuide[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const g1 = a[i]!;
+    const g2 = b[i]!;
+    if (
+      g1.orientation !== g2.orientation ||
+      g1.position !== g2.position ||
+      g1.from !== g2.from ||
+      g1.to !== g2.to ||
+      g1.targetIds.length !== g2.targetIds.length ||
+      g1.targetIds.some((id, idx) => id !== g2.targetIds[idx])
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Snap-направляющие при перетаскивании (13.6): вычисляем притягивание к
+ * краям/центрам статичных элементов и сохраняем активные гиды для визуального
+ * отображения в `BoardSnapGuides`. Только отображение — позиция узлов НЕ
+ * меняется (иначе Vue Flow «залипает»: он использует изменённую `position` как
+ * новую базовую для следующего кадра drag). Снап позиции применяется
+ * отдельной функцией `applySnapPosition` только на dragStop.
+ * Порог переводится из скриншотных пикселей в canvas-координаты через viewport.zoom.
+ *
+ * Расчёт (`computeSnapGuides`) не троттлится — он должен реагировать на каждый
+ * кадр, чтобы направляющая появлялась/исчезала без задержки. Троттлится (через
+ * `guidesEqual`) только реактивная запись: пропускаем её, если новый набор
+ * гидов совпадает с уже отображаемым — иначе на каждом кадре драга без снапа
+ * (частый случай) `activeSnapGuides.value = []` всё равно создавала бы новый
+ * массив и триггерила реактивность/ре-рендер `BoardSnapGuides` впустую.
+ */
+function updateSnapGuides(event: NodeDragEvent): void {
+  const dragged = event.nodes as GraphNode<BoardItem>[];
+  if (dragged.length === 0) {
+    if (activeSnapGuides.value.length > 0) activeSnapGuides.value = [];
+    return;
+  }
+  const draggedIds = new Set(dragged.map((n) => n.id));
+  const staticRects = getNodes.value.filter((n) => !draggedIds.has(n.id)).map(nodeToSnapRect);
+  const draggedRects = dragged.map(nodeToSnapRect);
+  const threshold = SNAP_THRESHOLD_PX / Math.max(viewport.value.zoom, 0.1);
+  const result = computeSnapGuides(draggedRects, staticRects, threshold);
+  if (!guidesEqual(result.guides, activeSnapGuides.value)) {
+    activeSnapGuides.value = result.guides;
+  }
+}
+
+/**
+ * Применяет snap-позицию к узлам — только на dragStop, чтобы не ломать
+ * Vue Flow-драг (см. updateSnapGuides). Если узел близок к выравниванию,
+ * его позиция округляется до неё.
+ */
+function applySnapPosition(event: NodeDragEvent): void {
+  const dragged = event.nodes as GraphNode<BoardItem>[];
+  if (dragged.length === 0) return;
+  const draggedIds = new Set(dragged.map((n) => n.id));
+  const staticRects = getNodes.value.filter((n) => !draggedIds.has(n.id)).map(nodeToSnapRect);
+  const draggedRects = dragged.map(nodeToSnapRect);
+  const threshold = SNAP_THRESHOLD_PX / Math.max(viewport.value.zoom, 0.1);
+  const result = computeSnapGuides(draggedRects, staticRects, threshold);
+
+  for (const node of dragged) {
+    const snapped = result.positions.get(node.id);
+    if (snapped) {
+      node.computedPosition.x = snapped.x;
+      node.computedPosition.y = snapped.y;
+      node.position.x = snapped.x;
+      node.position.y = snapped.y;
+    }
+  }
+}
+
 function applyAxisLock(event: NodeDragEvent): void {
   if (!(event.event instanceof MouseEvent) || !event.event.shiftKey) return;
   for (const node of event.nodes as GraphNode<BoardItem>[]) {
@@ -889,6 +994,7 @@ function applyAxisLock(event: NodeDragEvent): void {
 
 function onNodeDrag(event: NodeDragEvent): void {
   applyAxisLock(event);
+  updateSnapGuides(event);
   for (const node of event.nodes as GraphNode<BoardItem>[]) {
     let send = dragThrottlers.get(node.id);
     if (!send) {
@@ -907,6 +1013,8 @@ function onNodeDrag(event: NodeDragEvent): void {
 
 function onNodeDragStop(event: NodeDragEvent): void {
   applyAxisLock(event);
+  applySnapPosition(event);
+  activeSnapGuides.value = [];
   for (const node of event.nodes as GraphNode<BoardItem>[]) {
     const start = dragStartPositions.get(node.id);
     const moved =
@@ -1494,6 +1602,13 @@ function onConnect(event: Connection): void {
         :mask-stroke-width="2"
       />
 
+      <BoardSnapGuides
+        v-if="activeSnapGuides.length"
+        :guides="activeSnapGuides"
+        :viewport-x="viewport.x"
+        :viewport-y="viewport.y"
+        :viewport-zoom="viewport.zoom"
+      />
       <BoardToolbar
         v-if="canEdit"
         v-model="activeTool"
