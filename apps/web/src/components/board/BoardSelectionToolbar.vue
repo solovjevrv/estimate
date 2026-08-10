@@ -810,8 +810,8 @@ function stepFontSize(delta: number): void {
   font-weight: 700;
 }
 
-.board-link-error {
-  color: var(--brand-coral);
-  font-size: 11px;
-}
+  .board-link-error {
+    color: var(--brand-coral);
+    font-size: 11px;
+  }
 </style>
