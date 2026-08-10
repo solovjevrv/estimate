@@ -892,6 +892,33 @@ function onNodeDragStart({ nodes: dragged }: NodeDragEvent): void {
 }
 
 /**
+ * Сравнение по значениям (id таргетов + позиция + диапазон линии), не только
+ * по длине — используется в `updateSnapGuides`, чтобы не писать в
+ * `activeSnapGuides` (и не гонять лишний ре-рендер `BoardSnapGuides`) на
+ * кадрах драга, где набор гидов не изменился относительно предыдущего кадра.
+ * Чаще всего оба массива пустые (курсор далеко от порога притяжения) — в этом
+ * случае сравнение почти бесплатное (обе длины 0).
+ */
+function guidesEqual(a: SnapGuide[], b: SnapGuide[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const g1 = a[i]!;
+    const g2 = b[i]!;
+    if (
+      g1.orientation !== g2.orientation ||
+      g1.position !== g2.position ||
+      g1.from !== g2.from ||
+      g1.to !== g2.to ||
+      g1.targetIds.length !== g2.targetIds.length ||
+      g1.targetIds.some((id, idx) => id !== g2.targetIds[idx])
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * Snap-направляющие при перетаскивании (13.6): вычисляем притягивание к
  * краям/центрам статичных элементов и сохраняем активные гиды для визуального
  * отображения в `BoardSnapGuides`. Только отображение — позиция узлов НЕ
@@ -899,11 +926,18 @@ function onNodeDragStart({ nodes: dragged }: NodeDragEvent): void {
  * новую базовую для следующего кадра drag). Снап позиции применяется
  * отдельной функцией `applySnapPosition` только на dragStop.
  * Порог переводится из скриншотных пикселей в canvas-координаты через viewport.zoom.
+ *
+ * Расчёт (`computeSnapGuides`) не троттлится — он должен реагировать на каждый
+ * кадр, чтобы направляющая появлялась/исчезала без задержки. Троттлится (через
+ * `guidesEqual`) только реактивная запись: пропускаем её, если новый набор
+ * гидов совпадает с уже отображаемым — иначе на каждом кадре драга без снапа
+ * (частый случай) `activeSnapGuides.value = []` всё равно создавала бы новый
+ * массив и триггерила реактивность/ре-рендер `BoardSnapGuides` впустую.
  */
 function updateSnapGuides(event: NodeDragEvent): void {
   const dragged = event.nodes as GraphNode<BoardItem>[];
   if (dragged.length === 0) {
-    activeSnapGuides.value = [];
+    if (activeSnapGuides.value.length > 0) activeSnapGuides.value = [];
     return;
   }
   const draggedIds = new Set(dragged.map((n) => n.id));
@@ -911,7 +945,9 @@ function updateSnapGuides(event: NodeDragEvent): void {
   const draggedRects = dragged.map(nodeToSnapRect);
   const threshold = SNAP_THRESHOLD_PX / Math.max(viewport.value.zoom, 0.1);
   const result = computeSnapGuides(draggedRects, staticRects, threshold);
-  activeSnapGuides.value = result.guides;
+  if (!guidesEqual(result.guides, activeSnapGuides.value)) {
+    activeSnapGuides.value = result.guides;
+  }
 }
 
 /**

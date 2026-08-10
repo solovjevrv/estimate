@@ -27,9 +27,9 @@ const Y_KEYS: readonly SnapAlignKeyY[] = ['top', 'center', 'bottom'];
 
 /** Все точки имеют одинаковый приоритет: при равных расстояниях выбирается
  * первая в массиве (left/top), что позволяет snap по краям работать для
- * одинаковых элементов (иначе центр всегда «перекрывал» краевые линии) */
-const X_KEY_PRIORITY: Record<SnapAlignKeyX, number> = { left: 1, center: 1, right: 1 };
-const Y_KEY_PRIORITY: Record<SnapAlignKeyY, number> = { top: 1, center: 1, bottom: 1 };
+ * одинаковых элементов (иначе центр всегда «перекрывал» краевые линии).
+ * Строгое неравенство `diff < best...Diff` в цикле ниже само даёт этот
+ * порядок — отдельный механизм приоритетов не нужен. */
 
 /** Прямоугольник элемента в canvas-координатах */
 export interface SnapRect {
@@ -117,7 +117,6 @@ export function computeSnapGuides(
   for (const d of dragged) {
     // --- X axis ---
     let bestXDiff = Infinity;
-    let bestXPriority = Infinity;
     let snapX: number | null = null;
     let snapXGuidePos = 0;
     let snapXSource = '';
@@ -128,10 +127,8 @@ export function computeSnapGuides(
         const dVal = xOf(d, xKey);
         const sVal = xOf(s, xKey);
         const diff = Math.abs(dVal - sVal);
-        const priority = X_KEY_PRIORITY[xKey];
-        if (diff < threshold && (diff < bestXDiff || (diff === bestXDiff && priority < bestXPriority))) {
+        if (diff < threshold && diff < bestXDiff) {
           bestXDiff = diff;
-          bestXPriority = priority;
           snapXGuidePos = sVal;
           snapXSource = s.id;
           // Сдвигаем d так, чтобы её xKey совпала с sVal:
@@ -143,7 +140,6 @@ export function computeSnapGuides(
 
     // --- Y axis ---
     let bestYDiff = Infinity;
-    let bestYPriority = Infinity;
     let snapY: number | null = null;
     let snapYGuidePos = 0;
     let snapYSource = '';
@@ -154,10 +150,8 @@ export function computeSnapGuides(
         const dVal = yOf(d, yKey);
         const sVal = yOf(s, yKey);
         const diff = Math.abs(dVal - sVal);
-        const priority = Y_KEY_PRIORITY[yKey];
-        if (diff < threshold && (diff < bestYDiff || (diff === bestYDiff && priority < bestYPriority))) {
+        if (diff < threshold && diff < bestYDiff) {
           bestYDiff = diff;
-          bestYPriority = priority;
           snapYGuidePos = sVal;
           snapYSource = s.id;
           snapY = sVal - (yOf(d, yKey) - d.y);
