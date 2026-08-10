@@ -89,8 +89,9 @@ export const IMAGE_MAX_HEIGHT = STICKY_MAX_HEIGHT;
 export const EMOJI_DEFAULT_WIDTH = 120;
 export const EMOJI_DEFAULT_HEIGHT = 120;
 export const EMOJI_FONT_SIZE_RATIO = 0.6;
-export const EMOJI_MIN_WIDTH = STICKY_MIN_WIDTH;
-export const EMOJI_MIN_HEIGHT = STICKY_MIN_HEIGHT;
+/** Ниже, чем у стикера/фигуры (96) — символ сам по себе читаем и мельче (решение пользователя) */
+export const EMOJI_MIN_WIDTH = 48;
+export const EMOJI_MIN_HEIGHT = 48;
 export const EMOJI_MAX_WIDTH = STICKY_MAX_WIDTH;
 export const EMOJI_MAX_HEIGHT = STICKY_MAX_HEIGHT;
 
