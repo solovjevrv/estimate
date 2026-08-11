@@ -82,14 +82,6 @@ const style = computed(() => {
   filter: drop-shadow(0 1px 2px color-mix(in oklch, var(--brand-shadow) 25%, transparent));
 }
 
-/* Цветовые вариации курсора по тинту аватарки (board-colors.ts) */
-.board-cursor-tip--primary {
-  border-bottom-color: var(--ui-primary);
-}
-.board-cursor-tip--muted {
-  border-bottom-color: var(--brand-ink3);
-}
-
 /* Имя участника рядом с курсором — чуть меньше шрифтом, близко к треугольнику */
 .board-cursor-name {
   position: absolute;
