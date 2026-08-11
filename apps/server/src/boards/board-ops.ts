@@ -476,6 +476,14 @@ export function applyBoardOp(
         updatedAt: new Date().toISOString(),
       };
       state.items.set(op.id, item);
+      // Если патч демотировал контейнер (frame/group) до обычного элемента —
+      // дети осираются (parentId → null), иначе остаются с висячим parentId
+      // на не-контейнере, нарушая инвариант «только контейнер может быть родителем»
+      if (isBoardContainer(existing.content.type) && !isBoardContainer(item.content.type)) {
+        for (const child of state.items.values()) {
+          if (child.parentId === op.id) child.parentId = null;
+        }
+      }
       break;
     }
     case 'item.delete': {

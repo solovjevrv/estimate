@@ -197,4 +197,48 @@ describe('applyLocalBoardOp — фреймы и группы (14.3)', () => {
     expect(state.items.has('child')).toBe(true);
     expect(state.items.get('child')!.parentId).toBeNull();
   });
+
+  it('item.patch, демотирующий контейнер до стикера, осирает детей', () => {
+    const state = emptyState();
+    const frame: BoardItem = {
+      ...item,
+      id: 'frame',
+      content: { type: 'frame', title: 'Группа' },
+      parentId: null,
+    };
+    const child: BoardItem = { ...item, id: 'child', parentId: 'frame' };
+    state.items.set('frame', frame);
+    state.items.set('child', child);
+
+    applyLocalBoardOp(state, {
+      type: 'item.patch',
+      clientOpId: 'c4',
+      item: { ...frame, content: { type: 'sticky', text: '' } },
+    });
+
+    expect(state.items.get('frame')!.content.type).toBe('sticky');
+    expect(state.items.get('child')!.parentId).toBeNull();
+  });
+
+  it('item.patch, меняющий frame → group, НЕ осирает детей (group тоже контейнер)', () => {
+    const state = emptyState();
+    const frame: BoardItem = {
+      ...item,
+      id: 'frame',
+      content: { type: 'frame', title: 'Группа' },
+      parentId: null,
+    };
+    const child: BoardItem = { ...item, id: 'child', parentId: 'frame' };
+    state.items.set('frame', frame);
+    state.items.set('child', child);
+
+    applyLocalBoardOp(state, {
+      type: 'item.patch',
+      clientOpId: 'c5',
+      item: { ...frame, content: { type: 'group' } },
+    });
+
+    expect(state.items.get('frame')!.content.type).toBe('group');
+    expect(state.items.get('child')!.parentId).toBe('frame');
+  });
 });

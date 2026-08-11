@@ -1362,4 +1362,78 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
 
     expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
   });
+
+  it('patch content.type с контейнера на обычный элемент осирает детей', () => {
+    const state = emptyState();
+    const frameId = randomUUID();
+    const childId = randomUUID();
+    applyBoardOp(state, frameCreateOp(frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+    applyBoardOp(state, childItemOp(childId, frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    applyBoardOp(
+      state,
+      {
+        type: 'item.patch',
+        clientOpId: randomUUID(),
+        id: frameId,
+        patch: { content: { type: 'sticky', text: '' } },
+      },
+      BOARD_ID,
+      ACTOR_ID,
+      ACTOR_NAME,
+    );
+
+    const demoted = state.items.get(frameId)!;
+    expect(demoted.content.type).toBe('sticky');
+    expect(state.items.get(childId)!.parentId).toBeNull();
+  });
+
+  it('patch content.type с группы на обычный элемент осирает детей', () => {
+    const state = emptyState();
+    const groupId = randomUUID();
+    const childId = randomUUID();
+    applyBoardOp(state, groupCreateOp(groupId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+    applyBoardOp(state, childItemOp(childId, groupId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    applyBoardOp(
+      state,
+      {
+        type: 'item.patch',
+        clientOpId: randomUUID(),
+        id: groupId,
+        patch: { content: { type: 'sticky', text: '' } },
+      },
+      BOARD_ID,
+      ACTOR_ID,
+      ACTOR_NAME,
+    );
+
+    expect(state.items.get(groupId)!.content.type).toBe('sticky');
+    expect(state.items.get(childId)!.parentId).toBeNull();
+  });
+
+  it('patch content.type НЕ осирает, если тип остаётся контейнером (frame → group)', () => {
+    const state = emptyState();
+    const frameId = randomUUID();
+    const childId = randomUUID();
+    applyBoardOp(state, frameCreateOp(frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+    applyBoardOp(state, childItemOp(childId, frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    applyBoardOp(
+      state,
+      {
+        type: 'item.patch',
+        clientOpId: randomUUID(),
+        id: frameId,
+        patch: { content: { type: 'group' } },
+      },
+      BOARD_ID,
+      ACTOR_ID,
+      ACTOR_NAME,
+    );
+
+    expect(state.items.get(frameId)!.content.type).toBe('group');
+    // Дети НЕ осираются — group тоже контейнер
+    expect(state.items.get(childId)!.parentId).toBe(frameId);
+  });
 });
