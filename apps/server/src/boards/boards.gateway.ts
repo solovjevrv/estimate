@@ -87,6 +87,7 @@ export class BoardsGateway {
         socket.volatile.to(boardId).emit(BOARD_WS_SERVER_EVENTS.AWARENESS, {
           userId: identity.userId,
           name: identity.name,
+          avatarUrl: identity.avatarUrl,
           kind: payload.kind,
           data: payload.data,
         });

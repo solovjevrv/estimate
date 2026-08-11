@@ -114,7 +114,11 @@ import { FIT_FONT_MAX } from '../../lib/board/use-fit-font-size';
 import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
 import { throttle } from '../../lib/throttle';
 import { uuid } from '../../lib/board/uuid';
-import { BOARD_DRAG_THROTTLE_MS, BOARD_DUPLICATE_OFFSET } from '../../lib/board/board-constants';
+import {
+  BOARD_DRAG_THROTTLE_MS,
+  BOARD_CURSOR_THROTTLE_MS,
+  BOARD_DUPLICATE_OFFSET,
+} from '../../lib/board/board-constants';
 import {
   computeSnapGuides,
   SNAP_THRESHOLD_PX,
@@ -122,9 +126,11 @@ import {
   type SnapRect,
 } from '../../lib/board/board-snap';
 import { useBoardSessionStore } from '../../stores/board-session';
+import { useSessionStore } from '../../stores/session';
 import { api } from '../../lib/api';
 import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
 import BoardContextMenu, { type BoardContextMenuTarget } from './BoardContextMenu.vue';
+import BoardCursor from './BoardCursor.vue';
 import BoardEdgeToolbar, {
   type BoardEdgeLineKindOption,
   type BoardEdgeMarkerOption,
@@ -286,6 +292,33 @@ watch(flowEdges, (next) => setEdges(next), { immediate: true });
 
 const rootEl = useTemplateRef<HTMLElement>('root');
 const isFullscreen = ref(false);
+
+/**
+ * Курсоры участников (14.1). Позиция мыши проецируется в canvas-координаты
+ * через `project()` и уходит на сервер throttled `sendAwareness('cursor')` —
+ * как в Miro: чужой курсор рисуется в world-координатах и не зависит от
+ * зума/панорамирования зрителя. Видят курсоры все участники доски (и редакторы,
+ * и зрители), а посылать свой может только редактор — зрительный курсор не
+ * интересен, его движение ничего не меняет.
+ */
+const selfUserId = useSessionStore().user?.id ?? '';
+
+/** Инициалы из имени для fallback-аватарки (14.1) */
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '';
+  if (parts.length === 1) return parts[0]![0]!.toUpperCase();
+  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
+}
+
+function onPaneMouseMove(event: MouseEvent): void {
+  if (!props.canEdit) return;
+  const point = flowPositionFromEvent(event);
+  void boardSession.sendAwareness('cursor', { x: point.x, y: point.y });
+}
+
+/** Throttle-обёртка над sendAwareness, как для драга (BOARD_CURSOR_THROTTLE_MS) */
+const cursorThrottler = throttle(onPaneMouseMove, BOARD_CURSOR_THROTTLE_MS);
 
 function onFullscreenChange(): void {
   isFullscreen.value = document.fullscreenElement === rootEl.value;
@@ -1558,6 +1591,7 @@ function onConnect(event: Connection): void {
       @connect="onConnect"
       @pane-click="onPaneClick"
       @pane-context-menu="onPaneContextMenu"
+      @mousemove="cursorThrottler"
       @node-drag-start="onNodeDragStart"
       @node-drag="onNodeDrag"
       @node-drag-stop="onNodeDragStop"
@@ -1711,11 +1745,37 @@ function onConnect(event: Connection): void {
         </div>
       </Panel>
 
-      <!-- Кластер управления снизу-слева — компоненты @vue-flow/controls (не свои кнопки),
-      только переоформлены под токены приложения и в ряд, как в референсе (12.5). Иконки
-      встроенных кнопок (zoom/fit-view) — тоже из пака lucide через именованные слоты
-      Controls, а не сырые SVG библиотеки, для единообразия со всем остальным проектом.
-      show-interactive скрыт: переключает драг/коннект узлов вне нашего UI управления ими -->
+      <!-- Кто сейчас на доске (14.1) — список presence. Показываем всегда,
+           когда больше одного участника; себя выделяем жирнее -->
+      <Panel v-if="boardSession.presence.length > 1" position="top-right">
+        <div class="board-presence surface-card flex items-center gap-1.5 py-1.5 pr-2.5 pl-2.5">
+          <UIcon name="i-lucide-users-2" class="text-muted size-4" />
+          <div class="flex items-center gap-1">
+            <div
+              v-for="entry in boardSession.presence"
+              :key="entry.userId"
+              :class="[
+                'board-presence-item',
+                { 'board-presence-item--self': entry.userId === selfUserId },
+              ]"
+              :aria-label="entry.userId === selfUserId ? t('board.you') : entry.name"
+            >
+              <img
+                v-if="entry.avatarUrl"
+                :src="entry.avatarUrl"
+                :alt="entry.name"
+                class="board-presence-avatar"
+              />
+              <span v-else class="board-presence-fallback">{{ initials(entry.name) }}</span>
+              <span class="board-presence-name">{{ entry.name }}</span>
+            </div>
+          </div>
+        </div>
+      </Panel>
+      только переоформлены под токены приложения и в ряд, как в референсе (12.5). Иконки встроенных
+      кнопок (zoom/fit-view) — тоже из пака lucide через именованные слоты Controls, а не сырые SVG
+      библиотеки, для единообразия со всем остальным проектом. show-interactive скрыт: переключает
+      драг/коннект узлов вне нашего UI управления ими -->
       <Controls class="board-controls" :show-interactive="false">
         <template #icon-zoom-in>
           <UIcon name="i-lucide-plus" />
@@ -1757,6 +1817,16 @@ function onConnect(event: Connection): void {
         </ControlButton>
       </Controls>
     </VueFlow>
+
+    <!-- Чужие курсоры участников (14.1) — позиционируются в world-координатах,
+         как в Miro: курсор рисуется на том же месте у всех зрителей. `key` по
+         userId, чтобы Vue не перерожал компонент при обновлении позиции -->
+    <BoardCursor
+      v-for="entry in boardSession.awareness"
+      :key="entry.userId"
+      :entry="entry"
+      :self-user-id="selfUserId"
+    />
   </div>
 </template>
 <style scoped>
@@ -1889,5 +1959,58 @@ function onConnect(event: Connection): void {
   border-radius: 1.5rem;
   box-shadow: var(--brand-shadow-card);
   overflow: hidden;
+}
+
+/* Панель «кто на доске» (14.1) */
+.board-presence {
+  border-radius: 12px;
+  padding: 4px 10px;
+  gap: 6px;
+  max-width: 240px;
+  overflow: hidden;
+}
+
+.board-presence-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  border-radius: 8px;
+  padding: 2px 4px;
+  font-size: 12px;
+  color: var(--brand-ink2);
+  background: var(--ui-bg);
+}
+
+.board-presence-item--self {
+  font-weight: 600;
+  color: var(--ui-primary);
+}
+
+.board-presence-avatar {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.board-presence-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--brand-ink);
+  background: var(--brand-border);
+}
+
+.board-presence-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

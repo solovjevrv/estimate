@@ -549,5 +549,29 @@ describeDb('WS-канал досок', () => {
       expect(received.kind).toBe('cursor');
       expect(receivedBySender).toBe(false);
     });
+
+    it('ретранслирует avatarUrl участника вместе с курсором', async () => {
+      const owner = await newUser('awareness-avatar');
+      const boardId = await newBoard(owner);
+      const senderClient = connect(owner);
+      const viewerClient = connect(owner);
+      await joinBoard(senderClient, boardId);
+      await joinBoard(viewerClient, boardId);
+
+      const awarenessPromise = waitFor<{ userId: string; avatarUrl: string | null }>(
+        viewerClient,
+        BOARD_WS_SERVER_EVENTS.AWARENESS,
+      );
+      senderClient.emit(BOARD_WS_EVENTS.AWARENESS, {
+        kind: 'cursor',
+        data: { x: 10, y: 20 },
+      });
+      const received = await awarenessPromise;
+
+      // avatarUrl должен прилететь отправителю — клиент использует его
+      // для цвета курсора (14.1)
+      expect(received.userId).toBe(owner.id);
+      expect(received.avatarUrl).toBeNull();
+    });
   });
 });

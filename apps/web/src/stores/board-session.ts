@@ -293,8 +293,16 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
           void performJoin(id);
         }
       });
-      active.on('disconnect', () => {
+      active.on('disconnect', (reason: string) => {
         connected.value = false;
+        // Socket.io сам не переподключается только при 'io server disconnect' —
+        // единственной причине, когда сервер намеренно разорвал соединение (деплой,
+        // рестарт). В остальных случаях (сеть, таймаут) клиент стянет себя — для
+        // presence/cursors (14.1) это критично: без принудительного reconnect после
+        // рестарта сервера участники зависнут на мёртвом сокете. Остальное — как у room.ts.
+        if (reason === 'io server disconnect' && established) {
+          active.connect();
+        }
       });
     }
 

@@ -425,6 +425,9 @@ export default {
       arrow: 'Стрелка',
       dot: 'Точка',
     },
+    you: 'Вы',
+    presence: 'На доске',
+    cursorPlaceholder: 'Двигайте мышью, чтобы увидеть свой курсор',
   },
   boards: {
     title: 'Мои доски',

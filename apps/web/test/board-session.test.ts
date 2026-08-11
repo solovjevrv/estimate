@@ -500,6 +500,80 @@ describe('стор сессии доски', () => {
     expect(store.presence).toEqual(entries);
   });
 
+  it('принимает и хранит эфемерные курсоры участников по userId', async () => {
+    const store = useBoardSessionStore();
+    socket.next = snapshotResult(1);
+    await store.join('board1');
+
+    // Два разных участника пришли с курсором
+    socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+      userId: 'u1',
+      name: 'Иван',
+      avatarUrl: null,
+      kind: 'cursor',
+      data: { x: 100, y: 200 },
+    });
+    socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+      userId: 'u2',
+      name: 'Мария',
+      avatarUrl: 'https://example.com/avatar.png',
+      kind: 'cursor',
+      data: { x: 50, y: 75 },
+    });
+
+    expect(store.awareness).toHaveLength(2);
+    const byId = new Map(store.awareness.map((a) => [a.userId, a]));
+    expect(byId.get('u1')?.data).toEqual({ x: 100, y: 200 });
+    expect(byId.get('u2')?.avatarUrl).toBe('https://example.com/avatar.png');
+  });
+
+  it('перезаписывает состояние курсора того же участника (LWW по userId)', async () => {
+    const store = useBoardSessionStore();
+    socket.next = snapshotResult(1);
+    await store.join('board1');
+
+    socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+      userId: 'u1',
+      name: 'Иван',
+      avatarUrl: null,
+      kind: 'cursor',
+      data: { x: 10, y: 20 },
+    });
+    socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+      userId: 'u1',
+      name: 'Иван',
+      avatarUrl: null,
+      kind: 'cursor',
+      data: { x: 30, y: 40 },
+    });
+
+    // Один участник — один курсор, последняя позиция
+    expect(store.awareness).toHaveLength(1);
+    expect(store.awareness[0]?.data).toEqual({ x: 30, y: 40 });
+  });
+
+  it('отправка собственного курсора шлёт awareness с canvas-координатами', async () => {
+    const session = useSessionStore();
+    session.setUser({
+      id: 'me',
+      provider: 'google',
+      email: 'me@example.com',
+      name: 'Я',
+      jobTitle: null,
+      avatarUrl: null,
+    });
+    const store = useBoardSessionStore();
+    socket.next = snapshotResult(1);
+    await store.join('board1');
+
+    store.sendAwareness('cursor', { x: 42, y: 84 });
+
+    expect(socket.sent.at(-1)).toMatchObject({
+      event: BOARD_WS_EVENTS.AWARENESS,
+      payload: { kind: 'cursor', data: { x: 42, y: 84 } },
+    });
+  });
+
   it('после выхода забывает состояние доски', async () => {
     const store = useBoardSessionStore();
     socket.next = snapshotResult(3, [item()]);
@@ -528,6 +602,45 @@ describe('стор сессии доски', () => {
       event: BOARD_WS_EVENTS.JOIN,
       payload: { boardId: 'board1', sinceRevision: 4 },
     });
+  });
+
+  it('при disconnect по причине io server disconnect переподключается и входит заново', async () => {
+    const store = useBoardSessionStore();
+    socket.next = snapshotResult(2);
+    await store.join('board1');
+    socket.sent.length = 0;
+    expect(store.connected).toBe(true);
+
+    // Socket.io сам не переподключается при 'io server disconnect' — наш
+    // хендшер (17.3) должен вызвать connect() вручную, и после connect
+    // выполнить повторный вход с sinceRevision
+    socket.disconnect('io server disconnect');
+
+    socket.next = snapshotResult(2);
+    socket.connect();
+    await Promise.resolve();
+
+    // Повторный JOIN с sinceRevision — как и при обычном переподключении
+    expect(socket.sent[0]).toMatchObject({
+      event: BOARD_WS_EVENTS.JOIN,
+      payload: { boardId: 'board1', sinceRevision: 2 },
+    });
+    expect(store.joined).toBe(true);
+    expect(store.connected).toBe(true);
+  });
+
+  it('при обычном disconnect (не server) НЕ переподключается сам', async () => {
+    const store = useBoardSessionStore();
+    socket.next = snapshotResult(2);
+    await store.join('board1');
+    socket.sent.length = 0;
+
+    // Обычный disconnect (сеть/таймаут) — Socket.io сам переподключится, но
+    // в FakeSocket это не имитировано: connected остаётся false и JOIN не
+    // отправляется до ручного connect()
+    socket.disconnect('io client disconnect');
+    expect(store.connected).toBe(false);
+    expect(socket.sent).toHaveLength(0);
   });
 
   it('при переходе на другую доску сбрасывает прошлое состояние', async () => {

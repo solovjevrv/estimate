@@ -8,3 +8,6 @@ export const BOARD_DUPLICATE_OFFSET = 24;
 
 /** Через 100 записей самые старые вытесняются — долгая сессия не растит стек undo/redo бесконечно */
 export const BOARD_HISTORY_LIMIT = 100;
+
+/** Интервал throttle-рассылки позиции курсора (мс) */
+export const BOARD_CURSOR_THROTTLE_MS = 80;

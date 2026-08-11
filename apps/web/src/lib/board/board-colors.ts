@@ -42,3 +42,17 @@ export function readableTextColor(bg: BoardColorHex): string {
   const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
   return luminance < 0.35 ? '#f5f5f5' : darkenHex(bg);
 }
+
+/**
+ * Цвет курсора участника (14.1). Аватарка — произвольный URL, а не hex,
+ * поэтому цвет не выводится из неё в реальном времени (это требовало бы
+ * рендерить её на canvas — тяжело). Достаточно двух вариантов: у участника
+ * с аватаркой — акцентный цвет темы, без неё — серый. Сам лейбл с аватаркой
+ * уже даёт персональную идентификацию.
+ */
+export type AvatarTint = 'ink' | 'primary' | 'muted';
+
+export function avatarTint(avatarUrl: string | null): AvatarTint {
+  if (avatarUrl) return 'primary';
+  return 'muted';
+}
