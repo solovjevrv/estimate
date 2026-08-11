@@ -1599,31 +1599,6 @@ function onConnect(event: Connection): void {
       @edge-double-click="onEdgeDoubleClick"
       @edge-context-menu="onEdgeContextMenu"
     >
-      <!-- snap-to-grid (был в 12.5) убран: без направляющих выравнивания (13.6, ещё не
-      реализованы) фиксированная сетка только мешает — подогнать один стикер к другому
-      не получается точно, если их края не кратны шагу сетки, драг либо перелетает,
-      либо не дотягивает до нужной позиции (жалоба пользователя после ручной проверки).
-      Пиксель-в-пиксель перетаскивание вернём к сетке или заменим на умные направляющие
-      в 13.6.
-
-      delete-key-code выключен постоянно: встроенное удаление по Backspace/Delete
-      работает только с внутренним состоянием Vue Flow, а не через наш стор —
-      удаление молча не долетало бы до сервера/других участников и возвращалось
-      после перезагрузки. Клавиатурное удаление (12.9) идёт мимо этого пропа —
-      через use-board-hotkeys.ts (глобальный keydown) и deleteSelected()/
-      deleteSelectedEdges(), как и кнопки в тулбаре/контекстном меню.
-
-      elevate-nodes-on-select тоже выключен: по умолчанию Vue Flow добавляет +1000 к
-      z-index ВЫДЕЛЕННОГО узла, чтобы он всегда был поверх остальных — из-за этого
-      "на передний/задний план" выглядели так, будто ничего не произошло, пока не
-      снимешь выделение (наш собственный zIndex маскировался этой надбавкой). Порядок
-      слоёв теперь целиком определяется данными (zIndex), без скрытого поведения библиотеки.
-
-      connection-radius увеличен с дефолтных 20 до 40: точки соединения (12.8) —
-      маленькие 10px-кружки по сторонам карточки, целиться в них ровно по пикселю
-      неудобно. Больший радиус даёт Vue Flow подхватывать БЛИЖАЙШУЮ точку, даже если
-      отпустили курсор чуть мимо — само соединение при этом всё равно ложится на
-      конкретную точку (конкретный id хендла), а не на случайное место на карточке. -->
       <Background pattern-color="var(--brand-border)" :gap="22" variant="dots" />
       <MiniMap
         class="board-minimap"
@@ -1745,37 +1720,44 @@ function onConnect(event: Connection): void {
         </div>
       </Panel>
 
-      <!-- Кто сейчас на доске (14.1) — список presence. Показываем всегда,
-           когда больше одного участника; себя выделяем жирнее -->
+      <!-- Кто сейчас на доске (14.1) — компактный список аватарок с наездом,
+           как в Miro. Показываем, когда >1 участник: аватарка себя выделена.
+           Наведение — tooltip с именем. -->
       <Panel v-if="boardSession.presence.length > 1" position="top-right">
-        <div class="board-presence surface-card flex items-center gap-1.5 py-1.5 pr-2.5 pl-2.5">
+        <div
+          class="board-presence surface-card flex items-center gap-1 py-1.5 pr-2.5 pl-3"
+          :aria-label="t('board.presence')"
+        >
           <UIcon name="i-lucide-users-2" class="text-muted size-4" />
-          <div class="flex items-center gap-1">
+          <div class="board-presence-stack">
             <div
               v-for="entry in boardSession.presence"
               :key="entry.userId"
               :class="[
-                'board-presence-item',
-                { 'board-presence-item--self': entry.userId === selfUserId },
+                'board-presence-avatar',
+                { 'board-presence-avatar--self': entry.userId === selfUserId },
               ]"
-              :aria-label="entry.userId === selfUserId ? t('board.you') : entry.name"
+              :data-user-id="entry.userId"
+              :title="entry.userId === selfUserId ? t('board.you') : entry.name"
             >
               <img
                 v-if="entry.avatarUrl"
                 :src="entry.avatarUrl"
                 :alt="entry.name"
-                class="board-presence-avatar"
+                class="board-presence-img"
               />
-              <span v-else class="board-presence-fallback">{{ initials(entry.name) }}</span>
-              <span class="board-presence-name">{{ entry.name }}</span>
+              <span v-else class="board-presence-initials">{{ initials(entry.name) }}</span>
+              <span class="board-presence-count">{{ boardSession.presence.length }}</span>
             </div>
           </div>
         </div>
       </Panel>
-      только переоформлены под токены приложения и в ряд, как в референсе (12.5). Иконки встроенных
-      кнопок (zoom/fit-view) — тоже из пака lucide через именованные слоты Controls, а не сырые SVG
-      библиотеки, для единообразия со всем остальным проектом. show-interactive скрыт: переключает
-      драг/коннект узлов вне нашего UI управления ими -->
+
+      <!-- Кластер управления снизу-слева — компоненты @vue-flow/controls (не свои кнопки),
+        только переоформлены под токены приложения и в ряд, как в референсе (12.5). Иконки
+        встроенных кнопок (zoom/fit-view) — тоже из пака lucide через именованные слоты
+        Controls, а не сырые SVG библиотеки, для единообразия со всем остальным проектом.
+        show-interactive скрыт: переключает драг/коннект узлов вне нашего UI управления ими -->
       <Controls class="board-controls" :show-interactive="false">
         <template #icon-zoom-in>
           <UIcon name="i-lucide-plus" />
@@ -1961,7 +1943,7 @@ function onConnect(event: Connection): void {
   overflow: hidden;
 }
 
-/* Панель «кто на доске» (14.1) */
+/* Панель «кто на доске» (14.1) — компактный стек аватарок с наездом */
 .board-presence {
   border-radius: 12px;
   padding: 4px 10px;
@@ -1970,47 +1952,62 @@ function onConnect(event: Connection): void {
   overflow: hidden;
 }
 
-.board-presence-item {
+/* Стек аватарок: каждая наезжает на предыдущую (-50% ширины) */
+.board-presence-stack {
   display: flex;
   align-items: center;
-  gap: 5px;
-  border-radius: 8px;
-  padding: 2px 4px;
-  font-size: 12px;
-  color: var(--brand-ink2);
-  background: var(--ui-bg);
-}
-
-.board-presence-item--self {
-  font-weight: 600;
-  color: var(--ui-primary);
+  justify-content: flex-end;
+  gap: -10px;
 }
 
 .board-presence-avatar {
-  width: 20px;
-  height: 20px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--ui-bg);
+  border: 2px solid var(--brand-surface);
+  overflow: visible;
+}
+
+/* Себя выделяем акцентной обводкой */
+.board-presence-avatar--self {
+  border-color: var(--ui-primary);
+}
+
+.board-presence-img {
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   object-fit: cover;
 }
 
-.board-presence-fallback {
+.board-presence-initials {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--brand-ink);
+}
+
+/* Счётчик участников — маленький значок справа от стека */
+.board-presence-count {
+  position: absolute;
+  top: -2px;
+  right: -2px;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  font-size: 9px;
-  font-weight: 700;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  font-size: 11px;
+  font-weight: 600;
   color: var(--brand-ink);
-  background: var(--brand-border);
-}
-
-.board-presence-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  background: var(--brand-surface);
+  border: 1px solid var(--brand-border);
+  border-radius: 10px;
 }
 </style>

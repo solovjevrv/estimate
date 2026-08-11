@@ -6,9 +6,11 @@
  * координаты через `project()` и передаёт уже готовые canvas-координаты, а
  * тут мы их обратно в viewport через `viewport` из `useVueFlow()`.
  *
- * Цвет курсора берётся от аватарки участника: если есть — извлекаем доминирующий
- * цвет аватарки (аватары на доске могут быть любыми), иначе — акцентный цвет темы.
- * Это даёт визуально различимые курсоры без фиксированной палитры.
+ * Чужой курсор плавно интерполирует позицию (transition transform) — как и
+ * чужие карточки (см. `.vue-flow__node:not(.dragging)` в BoardCanvas.vue):
+ * throttled-рассылка (~80мс) дискретна, без сглаживания движение дергается.
+ * Собственный курсор зритель не видит (он на клиенте отправителя не рендерится),
+ * поэтому задержка интерполяции для чужого курсора допустима.
  */
 import type { BoardAwarenessBroadcast } from '@poker/shared';
 import { useVueFlow } from '@vue-flow/core';
@@ -32,7 +34,7 @@ const visible = computed(
 
 /**
  * Позиция — canvas-координаты, которые сервер ретранслирует как есть. Чтобы
- * нарисовать курсор в правильной точке viewport'а конкретного зрителя,
+ * нарисовать курсор в правильной точне viewport'а конкретного зрителя,
  * проецируем canvas → viewport через `viewport`.
  */
 const style = computed(() => {
@@ -51,20 +53,23 @@ const tint = computed(() => avatarTint(props.entry.avatarUrl));
 
 <template>
   <div v-show="visible" :style="style" class="board-cursor" :data-user-id="entry.userId">
+    <!-- SVG-иконка курсора (не крестик) — стилизована под цвет аватарки -->
     <svg
       :class="['board-cursor-icon', `board-cursor-icon--${tint}`]"
       width="20"
-      height="20"
-      viewBox="0 0 24 24"
+      height="24"
+      viewBox="0 0 20 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
     >
       <path
-        d="M4 4L20 20M20 4L4 20"
+        d="M2 2L2 18L6 18L6 14L14 14L14 18L18 18L18 2L14 2L14 10L6 10L6 2Z"
         stroke="currentColor"
         stroke-width="1.5"
         stroke-linecap="round"
+        stroke-linejoin="round"
       />
+      <circle cx="11" cy="7" r="1.5" fill="currentColor" />
     </svg>
     <div class="board-cursor-label">
       <span
@@ -82,15 +87,18 @@ const tint = computed(() => avatarTint(props.entry.avatarUrl));
   position: absolute;
   z-index: 10;
   pointer-events: none;
-  /* Чужие курсоры не должны конфликтовать с нашими кликами */
+  /* Плавное движение чужого курсора между throttled-патчами (14.1) */
+  transition:
+    left 80ms linear,
+    top 80ms linear;
 }
 
-/* Приблипание: курсор рядом с именем не должен перекрывать их */
 .board-cursor-icon {
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--brand-ink2);
+  /* Небольшая тень — курсор читается на любом фоне холста */
   filter: drop-shadow(0 1px 2px color-mix(in oklch, var(--brand-shadow) 25%, transparent));
 }
 
@@ -100,7 +108,7 @@ const tint = computed(() => avatarTint(props.entry.avatarUrl));
   left: 0;
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   padding: 2px 6px;
   border-radius: 10px;
   background: var(--brand-surface);
@@ -110,21 +118,23 @@ const tint = computed(() => avatarTint(props.entry.avatarUrl));
   font-weight: 600;
   color: var(--brand-ink2);
   pointer-events: none;
+  /* Лейбл плавно следует за курсором */
+  transition:
+    left 80ms linear,
+    top 80ms linear;
 }
 
 .board-cursor-avatar {
   display: block;
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   border-radius: 50%;
-  background-size: cover;
-  background-position: center;
+  object-fit: cover;
   border: 1px solid var(--brand-border);
 }
 
 .board-cursor-name {
-  /* Обрезаем длинные имена, чтобы подпись не выходила за край экрана */
   max-width: 140px;
   overflow: hidden;
   text-overflow: ellipsis;

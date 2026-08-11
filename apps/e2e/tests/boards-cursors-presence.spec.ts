@@ -44,7 +44,7 @@ test('курсоры участников и список «кто на доск
   await pageB.goto(boardUrl);
   await expect(pageB.locator('.vue-flow__pane')).toBeVisible();
 
-  // --- Панель presence: оба участника видны ---
+  // Панель presence: оба участника видны
   // Один пользователь в двух вкладках — presence deduplication по userId
   // (см. BoardPresence.list) даст одну запись, поэтому проверяем, что панель
   // появилась (длина списка > 1 означает минимум 2 уникальных пользователя;
@@ -59,10 +59,9 @@ test('курсоры участников и список «кто на доск
 
   // Панель «кто на доске» появляется, когда >1 уникального участника
   await expect(pageA.locator('.board-presence')).toBeVisible();
-  await expect(pageA.locator('.board-presence-item')).toHaveCount(2);
+  await expect(pageA.locator('.board-presence-avatar')).toHaveCount(2);
   // Себя выделяем
-  const selfItem = pageA.locator('.board-presence-item--self');
-  await expect(selfItem).toBeVisible();
+  await expect(pageA.locator('.board-presence-avatar--self')).toHaveCount(1);
 
   // 1. Движение мыши в A — чужой курсор появляется в B
   await pageA.mouse.move(400, 300);
