@@ -574,6 +574,112 @@ describe('стор сессии доски', () => {
     });
   });
 
+  describe('мягкая блокировка редактирования (14.2)', () => {
+    it('kind=editing active=true кладёт запись в editingByItem, не трогая awarenessByUser', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        userId: 'u1',
+        name: 'Иван',
+        avatarUrl: null,
+        kind: 'editing',
+        data: { itemId: 'item-1', active: true },
+      });
+
+      expect(store.editingByItem.get('item-1')).toMatchObject({
+        userId: 'u1',
+        name: 'Иван',
+      });
+      // editing-запись не должна попасть в курсорную карту awareness
+      expect(store.awareness).toHaveLength(0);
+    });
+
+    it('active=false от того же userId убирает блокировку; от другого userId — не убирает', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      // U1 начал редактировать элемент
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        userId: 'u1',
+        name: 'Иван',
+        avatarUrl: null,
+        kind: 'editing',
+        data: { itemId: 'item-1', active: true },
+      });
+      expect(store.editingByItem.get('item-1')).toBeDefined();
+
+      // U2 пытается снять чужую блокировку — запись должна остаться
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        userId: 'u2',
+        name: 'Мария',
+        avatarUrl: null,
+        kind: 'editing',
+        data: { itemId: 'item-1', active: false },
+      });
+      expect(store.editingByItem.get('item-1')).toMatchObject({ userId: 'u1' });
+
+      // U1 снимает свою блокировку — запись исчезает
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        userId: 'u1',
+        name: 'Иван',
+        avatarUrl: null,
+        kind: 'editing',
+        data: { itemId: 'item-1', active: false },
+      });
+      expect(store.editingByItem.get('item-1')).toBeUndefined();
+    });
+
+    it('выход участника из presence чистит его записи из editingByItem (анти-призрак)', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      // U1 начал редактировать, U2 — курсор
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        userId: 'u1',
+        name: 'Иван',
+        avatarUrl: null,
+        kind: 'editing',
+        data: { itemId: 'item-1', active: true },
+      });
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        userId: 'u2',
+        name: 'Мария',
+        avatarUrl: null,
+        kind: 'cursor',
+        data: { x: 10, y: 20 },
+      });
+
+      // U1 и U2 оба вышли с доски — presence стал пустым списком
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, []);
+
+      expect(store.editingByItem.get('item-1')).toBeUndefined();
+      expect(store.awareness).toHaveLength(0);
+    });
+
+    it('leave() чистит editingByItem', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        userId: 'u1',
+        name: 'Иван',
+        avatarUrl: null,
+        kind: 'editing',
+        data: { itemId: 'item-1', active: true },
+      });
+      expect(store.editingByItem.get('item-1')).toBeDefined();
+
+      store.leave();
+
+      expect(store.editingByItem.get('item-1')).toBeUndefined();
+    });
+  });
+
   it('после выхода забывает состояние доски', async () => {
     const store = useBoardSessionStore();
     socket.next = snapshotResult(3, [item()]);

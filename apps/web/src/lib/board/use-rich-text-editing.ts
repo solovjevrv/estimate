@@ -75,6 +75,8 @@ import {
   watch,
   type Ref,
 } from 'vue';
+import { useToast } from '@nuxt/ui/composables';
+import { useI18n } from 'vue-i18n';
 
 import { BOARD_ACTIVE_TEXT_EDITOR_KEY, BOARD_PENDING_EDIT_ID_KEY } from './board-canvas-keys';
 import {
@@ -92,6 +94,7 @@ import {
   type BoardTextEditorHandle,
 } from './board-rich-text';
 import { useBoardSessionStore } from '../../stores/board-session';
+import { useSessionStore } from '../../stores/session';
 
 export type FormatMarkKey = 'bold' | 'italic' | 'underline' | 'strike';
 
@@ -109,6 +112,21 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
 ) {
   const { itemId, canEdit, isSelected, content, buildContent } = options;
   const boardSession = useBoardSessionStore();
+  const { t } = useI18n();
+  const toast = useToast();
+  const session = useSessionStore();
+  const selfUserId = computed(() => session.user?.id ?? '');
+
+  /**
+   * Мягкая блокировка (14.2): если элемент сейчас редактирует ДРУГОЙ участник —
+   * возвращаем его запись, чтобы UI показывал бейдж и блокировал вход в редактирование.
+   * Своя же блокировка (`userId === selfUserId`) в `lockedBy` не попадает — чтобы
+   * можно было снять выделение и заново войти в редактирование своего же элемента.
+   */
+  const lockedBy = computed(() => {
+    const lock = boardSession.editingByItem.get(itemId);
+    return lock && lock.userId !== selfUserId.value ? lock : null;
+  });
   const pendingEditId = inject(BOARD_PENDING_EDIT_ID_KEY, ref(null));
   const activeTextEditor = inject(BOARD_ACTIVE_TEXT_EDITOR_KEY, shallowRef(null));
 
@@ -200,6 +218,13 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
 
   async function startEditing(): Promise<void> {
     if (editing.value || !canEdit.value) return;
+    if (lockedBy.value) {
+      toast.add({
+        title: t('board.editingLocked', { name: lockedBy.value.name }),
+        color: 'warning',
+      });
+      return;
+    }
     editing.value = true;
     // Проверка типа: composable используется только для текстовых типов контента
     const c = content.value as { type: string; text?: string; runs?: BoardTextRun[] };
@@ -277,6 +302,26 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
    *  даже если фокус застрял в поле ссылки тулбара и обычный blur не долетел до commitEditing() */
   watch(isSelected, (selected) => {
     if (!selected && editing.value) commitEditing();
+  });
+
+  /**
+   * Единая точка рассылки блокировки (14.2) — реагирует на ЛЮБОЕ изменение `editing`,
+   * независимо от того, какой код его вызвал: commitEditing/cancelEditing/
+   * watch(isSelected)/onEditableBlur. Если расставить sendAwareness('editing')
+   * в каждом из выходов по отдельности — велик риск забыть один путь и оставить
+   * блокировку висеть, пока вкладка живёт. `canEdit` глушит рассылку для зрителей —
+   * блокировку шлёт только редактор, как и курсор.
+   *
+   * Следование за фактическим значением ref (а не за конкретным вызовом) также
+   * нейтрализует гонку 12.26: `startEditing()`'s `await nextTick()` может
+   * резолвиться после снятия выделения, и `editing` может залипнуть в true —
+   * поведение остаётся корректным, потому что рассылка следует за итоговым
+   * значением, а не за тем, как оно достигнуто. Саму гонку 12.26 не чиним — это
+   * отдельный бэклог-пункт.
+   */
+  watch(editing, (isEditing) => {
+    if (!canEdit.value) return;
+    void boardSession.sendAwareness('editing', { itemId, active: isEditing });
   });
 
   function onEditableBlur(event: FocusEvent): void {
@@ -359,6 +404,7 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
   return {
     displayRuns,
     editing,
+    lockedBy,
     liveText,
     formatTick,
     editableEl,

@@ -429,6 +429,8 @@ export default {
     presence: 'На доске',
     presenceCount: '{count} человек на доске',
     cursorPlaceholder: 'Двигайте мышью, чтобы увидеть свой курсор',
+    editingBy: '{name} печатает…',
+    editingLocked: '{name} сейчас редактирует этот элемент',
   },
   boards: {
     title: 'Мои доски',

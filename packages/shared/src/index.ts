@@ -872,7 +872,7 @@ export interface ApplyBoardOpsResult {
   revision: number;
 }
 
-export type BoardAwarenessKind = 'cursor' | 'drag' | 'idle';
+export type BoardAwarenessKind = 'cursor' | 'drag' | 'idle' | 'editing';
 
 /** Сервер не заглядывает внутрь `data` — только ретранслирует остальным участникам доски */
 export interface BoardAwarenessPayload {

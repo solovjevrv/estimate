@@ -16,6 +16,7 @@ import {
 import { FIT_FONT_MAX, useFitFontSize } from '../../lib/board/use-fit-font-size';
 import { useRichTextEditing } from '../../lib/board/use-rich-text-editing';
 import { useBoardSessionStore } from '../../stores/board-session';
+import BoardEditingBadge from './shared/BoardEditingBadge.vue';
 import BoardRichText from './BoardRichText.vue';
 
 const props = defineProps<NodeProps<BoardItem>>();
@@ -37,6 +38,7 @@ const textEl = useTemplateRef<HTMLSpanElement>('text');
 const {
   displayRuns,
   editing,
+  lockedBy,
   liveText,
   formatTick,
   editableEl,
@@ -98,8 +100,9 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 
 <template>
   <div class="board-node-resizer-gap relative h-full w-full">
+    <BoardEditingBadge v-if="lockedBy" :name="lockedBy.name" />
     <NodeResizer
-      :is-visible="props.selected && !editing && canEdit"
+      :is-visible="props.selected && !editing && canEdit && !lockedBy"
       :min-width="TEXT_MIN_WIDTH"
       :min-height="TEXT_MIN_HEIGHT"
       :max-width="TEXT_MAX_WIDTH"
