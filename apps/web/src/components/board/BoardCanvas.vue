@@ -1726,19 +1726,17 @@ function onConnect(event: Connection): void {
 
       <!-- Кто сейчас на доске (14.1) — компактный список аватарок с наездом,
            как в Miro. Показываем, когда >1 участник: аватарка себя выделена.
-           Наведение — tooltip с именем. -->
+           Наведение — tooltip с именем. Иконка+счётчик — отдельная серая
+           пилюля, аватарки дальше идут без общей карточки-подложки — так на
+           референсе, не единая широкая карточка на всю строку. -->
       <Panel v-if="boardSession.presence.length > 1" position="top-right">
-        <div
-          class="board-presence surface-card flex items-center gap-2 py-1.5 pr-2.5 pl-3"
-          :aria-label="t('board.presence')"
-        >
-          <UIcon name="i-lucide-users-2" class="text-muted size-4" />
-          <!-- Счётчик участников — бейдж между иконкой и аватарками, как на референсе -->
+        <div class="board-presence flex items-center" :aria-label="t('board.presence')">
           <div
-            class="board-presence-badge"
+            class="board-presence-count"
             :title="t('board.presenceCount', { count: boardSession.presence.length })"
           >
-            {{ boardSession.presence.length }}
+            <UIcon name="i-lucide-users-2" class="size-4" />
+            <span>{{ boardSession.presence.length }}</span>
           </div>
           <div class="board-presence-stack">
             <div
@@ -1954,13 +1952,11 @@ function onConnect(event: Connection): void {
   overflow: hidden;
 }
 
-/* Панель «кто на доске» (14.1) */
+/* Панель «кто на доске» (14.1) — сама по себе без фона/карточки, это просто
+   ряд из двух самостоятельных элементов: пилюля счётчика и стек аватарок */
 .board-presence {
-  border-radius: 12px;
-  padding: 4px 10px;
-  gap: 6px;
-  max-width: 240px;
-  overflow: hidden;
+  gap: 8px;
+  max-width: 260px;
 }
 
 /* Стек аватарок: каждая наезжает на предыдущую */
@@ -2008,19 +2004,23 @@ function onConnect(event: Connection): void {
   color: var(--brand-ink);
 }
 
-/* Счётчик участников — бейдж рядом с иконкой (как в Miro) */
-.board-presence-badge {
+/* Иконка + счётчик участников — одна серая пилюля (как на референсе), не
+   общая карточка на весь блок presence */
+.board-presence-count {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
-  justify-content: center;
-  min-width: 20px;
-  height: 20px;
-  padding: 0 4px;
-  font-size: 11px;
+  gap: 5px;
+  height: 32px;
+  padding: 0 12px;
+  color: var(--brand-ink2);
+  background: var(--ui-bg);
+  border-radius: 16px;
+}
+
+.board-presence-count span {
+  font-size: 12px;
   font-weight: 600;
   color: var(--brand-ink);
-  background: var(--ui-bg);
-  border: 1px solid var(--brand-border);
-  border-radius: 10px;
 }
 </style>
