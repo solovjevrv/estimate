@@ -427,6 +427,7 @@ export default {
     },
     you: 'You',
     presence: 'On the board',
+    presenceCount: '{count} on the board',
     cursorPlaceholder: 'Move the mouse to show your cursor',
   },
   boards: {

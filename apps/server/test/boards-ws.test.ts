@@ -88,13 +88,13 @@ describeDb('WS-канал досок', () => {
     };
   }
 
-  async function newUser(label: string): Promise<AuthUser> {
+  async function newUser(label: string, avatarUrl: string | null = null): Promise<AuthUser> {
     const id = randomUUID();
     const user = await new UsersRepository(db).upsertFromOAuth('google', {
       providerId: `${label}-${id}`,
       email: `${label}-${id}@example.com`,
       name: `Пользователь ${label}`,
-      avatarUrl: null,
+      avatarUrl,
     });
     userIds.push(user.id);
     return user;
@@ -551,7 +551,9 @@ describeDb('WS-канал досок', () => {
     });
 
     it('ретранслирует avatarUrl участника вместе с курсором', async () => {
-      const owner = await newUser('awareness-avatar');
+      // Непустой avatarUrl — иначе тест не отличил бы реальную ретрансляцию
+      // identity.avatarUrl от захардкоженного null где-нибудь на пути
+      const owner = await newUser('awareness-avatar', 'https://example.com/avatar.png');
       const boardId = await newBoard(owner);
       const senderClient = connect(owner);
       const viewerClient = connect(owner);
@@ -571,7 +573,7 @@ describeDb('WS-канал досок', () => {
       // avatarUrl должен прилететь отправителю — клиент использует его
       // для цвета курсора (14.1)
       expect(received.userId).toBe(owner.id);
-      expect(received.avatarUrl).toBeNull();
+      expect(received.avatarUrl).toBe('https://example.com/avatar.png');
     });
   });
 });

@@ -427,6 +427,7 @@ export default {
     },
     you: 'Вы',
     presence: 'На доске',
+    presenceCount: '{count} человек на доске',
     cursorPlaceholder: 'Двигайте мышью, чтобы увидеть свой курсор',
   },
   boards: {

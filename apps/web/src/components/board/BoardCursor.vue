@@ -6,15 +6,15 @@
  * координаты через `project()` и передаёт уже готовые canvas-координаты, а
  * тут мы их обратно в viewport через `viewport` из `useVueFlow()`.
  *
- * Цвет курсора берётся от аватарки участника: если есть — извлекаем доминирующий
- * цвет аватарки (аватары на доске могут быть любыми), иначе — акцентный цвет темы.
- * Это даёт визуально различимые курсоры без фиксированной палитры.
+ * Чужой курсор плавно интерполирует позицию (transition transform) — как и
+ * чужие карточки (см. `.vue-flow__node:not(.dragging)` в BoardCanvas.vue):
+ * throttled-рассылка (~80мс) дискретна, без сглаживания движение дергается.
+ * Собственный курсор зритель не видит (он на клиенте отправителя не рендерится),
+ * поэтому задержка интерполяции для чужого курсора допустима.
  */
 import type { BoardAwarenessBroadcast } from '@poker/shared';
 import { useVueFlow } from '@vue-flow/core';
 import { computed } from 'vue';
-
-import { avatarTint } from '../../lib/board/board-colors';
 
 const props = defineProps<{
   /** Состояние awareness этого участника (курсор/перетаскивание/idle) */
@@ -32,7 +32,7 @@ const visible = computed(
 
 /**
  * Позиция — canvas-координаты, которые сервер ретранслирует как есть. Чтобы
- * нарисовать курсор в правильной точке viewport'а конкретного зрителя,
+ * нарисовать курсор в правильной точне viewport'а конкретного зрителя,
  * проецируем canvas → viewport через `viewport`.
  */
 const style = computed(() => {
@@ -45,35 +45,14 @@ const style = computed(() => {
     transform: 'translate(-50%, -50%)',
   };
 });
-
-const tint = computed(() => avatarTint(props.entry.avatarUrl));
 </script>
 
 <template>
   <div v-show="visible" :style="style" class="board-cursor" :data-user-id="entry.userId">
-    <svg
-      :class="['board-cursor-icon', `board-cursor-icon--${tint}`]"
-      width="20"
-      height="20"
-      viewBox="0 0 24 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M4 4L20 20M20 4L4 20"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-      />
-    </svg>
-    <div class="board-cursor-label">
-      <span
-        v-if="entry.avatarUrl"
-        class="board-cursor-avatar"
-        :style="{ backgroundImage: `url(${entry.avatarUrl})` }"
-      />
-      <span class="board-cursor-name">{{ entry.name }}</span>
-    </div>
+    <!-- CSS-курсор: маленький неравносторонний треугольник -->
+    <div class="board-cursor-tip" />
+    <!-- Имя пользователя рядом с курсором -->
+    <div class="board-cursor-name">{{ entry.name }}</div>
   </div>
 </template>
 
@@ -82,64 +61,43 @@ const tint = computed(() => avatarTint(props.entry.avatarUrl));
   position: absolute;
   z-index: 10;
   pointer-events: none;
-  /* Чужие курсоры не должны конфликтовать с нашими кликами */
+  /* Плавное движение чужого курсора между throttled-патчами (14.1),
+     как и для чужих карточек в BoardCanvas.vue */
+  transition:
+    left 80ms linear,
+    top 80ms linear;
 }
 
-/* Приблипание: курсор рядом с именем не должен перекрывать их */
-.board-cursor-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--brand-ink2);
+/* Маленький неравносторонний треугольник — чужой курсор (14.1) */
+.board-cursor-tip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -50%) rotate(205deg);
+  width: 0;
+  height: 0;
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 10px solid var(--brand-ink2);
   filter: drop-shadow(0 1px 2px color-mix(in oklch, var(--brand-shadow) 25%, transparent));
 }
 
-.board-cursor-label {
+/* Имя участника рядом с курсором — чуть меньше шрифтом, близко к треугольнику */
+.board-cursor-name {
   position: absolute;
-  top: 24px;
+  top: 12px;
   left: 0;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 10px;
+  padding: 1px 4px;
+  border-radius: 4px;
   background: var(--brand-surface);
   box-shadow: var(--brand-shadow-card);
-  white-space: nowrap;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--brand-ink2);
-  pointer-events: none;
-}
-
-.board-cursor-avatar {
-  display: block;
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  background-size: cover;
-  background-position: center;
-  border: 1px solid var(--brand-border);
-}
-
-.board-cursor-name {
-  /* Обрезаем длинные имена, чтобы подпись не выходила за край экрана */
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
-  vertical-align: middle;
-}
-
-/* Цветовые вариации курсора по тинту аватарки (board-colors.ts) */
-.board-cursor-icon--ink {
-  color: var(--brand-ink2);
-}
-.board-cursor-icon--primary {
-  color: var(--ui-primary);
-}
-.board-cursor-icon--muted {
-  color: var(--brand-ink3);
+  pointer-events: none;
+  transition:
+    left 80ms linear,
+    top 80ms linear;
 }
 </style>

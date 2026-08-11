@@ -70,7 +70,11 @@ async function load(): Promise<void> {
     if (snapshot.board.teamId) {
       await teams.loadTeam(snapshot.board.teamId);
     }
-    void boardSession.join(props.id);
+    // При провале реконнекта (доступ отозвали, пока вкладка простаивала, и т.п.)
+    // синк молча не оживёт сам — предупреждаем и предлагаем перезайти на доску
+    void boardSession.join(props.id, () => {
+      toast.add({ title: t('board.loadError'), color: 'error' });
+    });
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
       notFound.value = true;

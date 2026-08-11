@@ -1028,6 +1028,10 @@ function applyAxisLock(event: NodeDragEvent): void {
 function onNodeDrag(event: NodeDragEvent): void {
   applyAxisLock(event);
   updateSnapGuides(event);
+  // Во время драга узла реальный mousemove на пейне не долетает до
+  // cursorThrottler (указатель перехвачен драгом Vue Flow) — без этого чужой
+  // курсор замирал бы, пока сам элемент продолжает двигаться под ним.
+  if (event.event instanceof MouseEvent) cursorThrottler(event.event);
   for (const node of event.nodes as GraphNode<BoardItem>[]) {
     let send = dragThrottlers.get(node.id);
     if (!send) {
@@ -1599,31 +1603,6 @@ function onConnect(event: Connection): void {
       @edge-double-click="onEdgeDoubleClick"
       @edge-context-menu="onEdgeContextMenu"
     >
-      <!-- snap-to-grid (был в 12.5) убран: без направляющих выравнивания (13.6, ещё не
-      реализованы) фиксированная сетка только мешает — подогнать один стикер к другому
-      не получается точно, если их края не кратны шагу сетки, драг либо перелетает,
-      либо не дотягивает до нужной позиции (жалоба пользователя после ручной проверки).
-      Пиксель-в-пиксель перетаскивание вернём к сетке или заменим на умные направляющие
-      в 13.6.
-
-      delete-key-code выключен постоянно: встроенное удаление по Backspace/Delete
-      работает только с внутренним состоянием Vue Flow, а не через наш стор —
-      удаление молча не долетало бы до сервера/других участников и возвращалось
-      после перезагрузки. Клавиатурное удаление (12.9) идёт мимо этого пропа —
-      через use-board-hotkeys.ts (глобальный keydown) и deleteSelected()/
-      deleteSelectedEdges(), как и кнопки в тулбаре/контекстном меню.
-
-      elevate-nodes-on-select тоже выключен: по умолчанию Vue Flow добавляет +1000 к
-      z-index ВЫДЕЛЕННОГО узла, чтобы он всегда был поверх остальных — из-за этого
-      "на передний/задний план" выглядели так, будто ничего не произошло, пока не
-      снимешь выделение (наш собственный zIndex маскировался этой надбавкой). Порядок
-      слоёв теперь целиком определяется данными (zIndex), без скрытого поведения библиотеки.
-
-      connection-radius увеличен с дефолтных 20 до 40: точки соединения (12.8) —
-      маленькие 10px-кружки по сторонам карточки, целиться в них ровно по пикселю
-      неудобно. Больший радиус даёт Vue Flow подхватывать БЛИЖАЙШУЮ точку, даже если
-      отпустили курсор чуть мимо — само соединение при этом всё равно ложится на
-      конкретную точку (конкретный id хендла), а не на случайное место на карточке. -->
       <Background pattern-color="var(--brand-border)" :gap="22" variant="dots" />
       <MiniMap
         class="board-minimap"
@@ -1745,37 +1724,53 @@ function onConnect(event: Connection): void {
         </div>
       </Panel>
 
-      <!-- Кто сейчас на доске (14.1) — список presence. Показываем всегда,
-           когда больше одного участника; себя выделяем жирнее -->
+      <!-- Кто сейчас на доске (14.1) — компактный список аватарок с наездом,
+           как в Miro. Показываем, когда >1 участник: аватарка себя выделена.
+           Наведение — tooltip с именем. Вся панель — на общей белой
+           карточке-подложке (surface-card), а иконка+счётчик внутри неё —
+           дополнительно на своей серой пилюле (вложенная подложка, как на
+           референсе), аватарки — прямо на белой карточке, без своей. -->
       <Panel v-if="boardSession.presence.length > 1" position="top-right">
-        <div class="board-presence surface-card flex items-center gap-1.5 py-1.5 pr-2.5 pl-2.5">
-          <UIcon name="i-lucide-users-2" class="text-muted size-4" />
-          <div class="flex items-center gap-1">
+        <div
+          class="board-presence surface-card flex items-center"
+          :aria-label="t('board.presence')"
+        >
+          <div
+            class="board-presence-count"
+            :title="t('board.presenceCount', { count: boardSession.presence.length })"
+          >
+            <UIcon name="i-lucide-users-2" class="size-4" />
+            <span>{{ boardSession.presence.length }}</span>
+          </div>
+          <div class="board-presence-stack">
             <div
-              v-for="entry in boardSession.presence"
+              v-for="(entry, index) in boardSession.presence"
               :key="entry.userId"
               :class="[
-                'board-presence-item',
-                { 'board-presence-item--self': entry.userId === selfUserId },
+                'board-presence-avatar',
+                { 'board-presence-avatar--self': entry.userId === selfUserId },
               ]"
-              :aria-label="entry.userId === selfUserId ? t('board.you') : entry.name"
+              :style="{ zIndex: boardSession.presence.length - index }"
+              :data-user-id="entry.userId"
+              :title="entry.userId === selfUserId ? t('board.you') : entry.name"
             >
               <img
                 v-if="entry.avatarUrl"
                 :src="entry.avatarUrl"
                 :alt="entry.name"
-                class="board-presence-avatar"
+                class="board-presence-img"
               />
-              <span v-else class="board-presence-fallback">{{ initials(entry.name) }}</span>
-              <span class="board-presence-name">{{ entry.name }}</span>
+              <span v-else class="board-presence-initials">{{ initials(entry.name) }}</span>
             </div>
           </div>
         </div>
       </Panel>
-      только переоформлены под токены приложения и в ряд, как в референсе (12.5). Иконки встроенных
-      кнопок (zoom/fit-view) — тоже из пака lucide через именованные слоты Controls, а не сырые SVG
-      библиотеки, для единообразия со всем остальным проектом. show-interactive скрыт: переключает
-      драг/коннект узлов вне нашего UI управления ими -->
+
+      <!-- Кластер управления снизу-слева — компоненты @vue-flow/controls (не свои кнопки),
+        только переоформлены под токены приложения и в ряд, как в референсе (12.5). Иконки
+        встроенных кнопок (zoom/fit-view) — тоже из пака lucide через именованные слоты
+        Controls, а не сырые SVG библиотеки, для единообразия со всем остальным проектом.
+        show-interactive скрыт: переключает драг/коннект узлов вне нашего UI управления ими -->
       <Controls class="board-controls" :show-interactive="false">
         <template #icon-zoom-in>
           <UIcon name="i-lucide-plus" />
@@ -1961,56 +1956,78 @@ function onConnect(event: Connection): void {
   overflow: hidden;
 }
 
-/* Панель «кто на доске» (14.1) */
+/* Панель «кто на доске» (14.1) — общая карточка-подложка, внутри неё —
+   пилюля счётчика и стек аватарок */
 .board-presence {
-  border-radius: 12px;
-  padding: 4px 10px;
-  gap: 6px;
-  max-width: 240px;
+  gap: 8px;
+  max-width: 260px;
+  padding: 6px;
+  border-radius: 20px;
   overflow: hidden;
 }
 
-.board-presence-item {
+/* Стек аватарок: каждая наезжает на предыдущую */
+.board-presence-stack {
   display: flex;
   align-items: center;
-  gap: 5px;
-  border-radius: 8px;
-  padding: 2px 4px;
-  font-size: 12px;
-  color: var(--brand-ink2);
-  background: var(--ui-bg);
-}
-
-.board-presence-item--self {
-  font-weight: 600;
-  color: var(--ui-primary);
 }
 
 .board-presence-avatar {
-  width: 20px;
-  height: 20px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--ui-bg);
+  border: 2px solid var(--brand-surface);
+  overflow: visible;
+  z-index: 0;
+}
+
+/* gap не поддерживает отрицательные значения (невалидное CSS-объявление
+   отбрасывается целиком) — наезд аватарок делаем отрицательным margin */
+.board-presence-avatar + .board-presence-avatar {
+  margin-left: -11px;
+}
+
+/* Себя выделяем акцентной обводкой */
+.board-presence-avatar--self {
+  border-color: var(--ui-primary);
+}
+
+.board-presence-img {
+  width: 100%;
+  height: 100%;
   border-radius: 50%;
   object-fit: cover;
 }
 
-.board-presence-fallback {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  font-size: 9px;
+.board-presence-initials {
+  font-size: 11px;
   font-weight: 700;
   color: var(--brand-ink);
-  background: var(--brand-border);
 }
 
-.board-presence-name {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+/* Иконка + счётчик участников — одна серая пилюля (как на референсе), не
+   общая карточка на весь блок presence */
+.board-presence-count {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 5px;
+  height: 32px;
+  padding: 0 12px;
+  color: var(--brand-ink2);
+  background: var(--ui-bg);
+  border-radius: 16px;
+}
+
+.board-presence-count span {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-ink);
 }
 </style>
