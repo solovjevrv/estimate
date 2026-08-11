@@ -242,3 +242,57 @@ describe('filterExistingTargets', () => {
     expect(filterExistingTargets(ops, state())).toEqual([]);
   });
 });
+
+describe('deriveInverseOps — фреймы и группы (14.3)', () => {
+  it('удаление контейнера восстанавливает parentId детей в inverse', () => {
+    const frameId = 'frame';
+    const childId = 'child';
+    const frame = item({ id: frameId, content: { type: 'frame', title: 'Группа' } });
+    const child = item({ id: childId, parentId: frameId });
+    const op: BoardOp = { type: 'item.delete', clientOpId: 'c1', id: frameId };
+
+    const inverses = deriveInverseOps([op], state([frame, child]));
+
+    // item.create для фрейма + item.patch для ребёнка с parentId → frameId
+    expect(inverses).toContainEqual(expect.objectContaining({ type: 'item.create', item: frame }));
+    expect(inverses).toContainEqual(
+      expect.objectContaining({ type: 'item.patch', id: childId, patch: { parentId: frameId } }),
+    );
+  });
+
+  it('удаление группы тоже осирает и восстанавливает детей', () => {
+    const groupId = 'group';
+    const childId = 'child';
+    const group = item({ id: groupId, content: { type: 'group' } });
+    const child = item({ id: childId, parentId: groupId });
+    const op: BoardOp = { type: 'item.delete', clientOpId: 'c1', id: groupId };
+
+    const inverses = deriveInverseOps([op], state([group, child]));
+
+    expect(inverses).toContainEqual(
+      expect.objectContaining({ type: 'item.patch', id: childId, patch: { parentId: groupId } }),
+    );
+  });
+
+  it('item.patch parentId → null: inverse восстанавливает старый parentId', () => {
+    const frameId = 'frame';
+    const childId = 'child';
+    const frame = item({ id: frameId, content: { type: 'frame', title: '' } });
+    const child = item({ id: childId, parentId: frameId });
+    const op: BoardOp = {
+      type: 'item.patch',
+      clientOpId: 'c1',
+      id: childId,
+      patch: { parentId: null },
+    };
+
+    const inverses = deriveInverseOps([op], state([frame, child]));
+
+    expect(inverses).toHaveLength(1);
+    expect(inverses[0]).toMatchObject({
+      type: 'item.patch',
+      id: childId,
+      patch: { parentId: frameId },
+    });
+  });
+});

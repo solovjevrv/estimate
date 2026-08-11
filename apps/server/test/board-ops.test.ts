@@ -130,6 +130,54 @@ function stickerCreateOp(
   };
 }
 
+/** Фрейм (14.3) — видимый контейнер с заголовком, parentId обязан быть null */
+function frameCreateOp(id: string, title = ''): BoardOp {
+  return {
+    type: 'item.create',
+    clientOpId: randomUUID(),
+    item: {
+      id,
+      parentId: null,
+      x: 10,
+      y: 20,
+      width: 640,
+      height: 400,
+      rotation: 0,
+      zIndex: 0,
+      content: { type: 'frame', title },
+      style: { color: '#FCEB96' },
+      reactions: [],
+    },
+  };
+}
+
+/** Группа (14.3) — невидимый контейнер, parentId обязан быть null */
+function groupCreateOp(id: string): BoardOp {
+  return {
+    type: 'item.create',
+    clientOpId: randomUUID(),
+    item: {
+      id,
+      parentId: null,
+      x: 10,
+      y: 20,
+      width: 320,
+      height: 240,
+      rotation: 0,
+      zIndex: 0,
+      content: { type: 'group' },
+      style: { color: '#FCEB96' },
+      reactions: [],
+    },
+  };
+}
+
+function childItemOp(id: string, parentId: string): BoardOp {
+  const op = stickyCreateOp(id);
+  (op as { item: { parentId: string } }).item.parentId = parentId;
+  return op;
+}
+
 describe('applyBoardOp — item.create', () => {
   it('создаёт стикер в пустом состоянии', () => {
     const state = emptyState();
@@ -342,7 +390,7 @@ describe('applyBoardOp — item.create', () => {
     expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
   });
 
-  it('отклоняет parentId — группировка ещё не поддерживается (14.3)', () => {
+  it('отклоняет parentId, если указанный родитель не существует', () => {
     const state = emptyState();
     const op = stickyCreateOp(randomUUID());
     (op as { item: { parentId: unknown } }).item.parentId = randomUUID();
@@ -1132,5 +1180,186 @@ describe('applyBoardOp — батч операций подряд', () => {
     );
 
     expect(state.items.has(id)).toBe(false);
+  });
+});
+
+describe('applyBoardOp — фреймы и группы (14.3)', () => {
+  it('создаёт фрейм с заголовком и parentId: null', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    applyBoardOp(state, frameCreateOp(id, 'Мой фрейм'), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    const item = state.items.get(id)!;
+    expect(item.content).toEqual({ type: 'frame', title: 'Мой фрейм' });
+    expect(item.parentId).toBeNull();
+  });
+
+  it('создаёт группу (без заголовка) с parentId: null', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    applyBoardOp(state, groupCreateOp(id), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    const item = state.items.get(id)!;
+    expect(item.content).toEqual({ type: 'group' });
+    expect(item.parentId).toBeNull();
+  });
+
+  it('отклоняет фрейм с parentId != null (контейнер не может иметь родителя)', () => {
+    const state = emptyState();
+    const op = frameCreateOp(randomUUID());
+    (op as { item: { parentId: unknown } }).item.parentId = randomUUID();
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('отклоняет группу с parentId != null', () => {
+    const state = emptyState();
+    const op = groupCreateOp(randomUUID());
+    (op as { item: { parentId: unknown } }).item.parentId = randomUUID();
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
+  });
+
+  it('принимает элемент с parentId, указывающим на существующий фрейм', () => {
+    const state = emptyState();
+    const frameId = randomUUID();
+    applyBoardOp(state, frameCreateOp(frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    const childId = randomUUID();
+    applyBoardOp(state, childItemOp(childId, frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    const child = state.items.get(childId)!;
+    expect(child.parentId).toBe(frameId);
+  });
+
+  it('принимает элемент с parentId, указывающим на существующую группу', () => {
+    const state = emptyState();
+    const groupId = randomUUID();
+    applyBoardOp(state, groupCreateOp(groupId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    const childId = randomUUID();
+    applyBoardOp(state, childItemOp(childId, groupId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    const child = state.items.get(childId)!;
+    expect(child.parentId).toBe(groupId);
+  });
+
+  it('отклоняет элемент, чей parentId указывает на НЕ контейнер (стикер)', () => {
+    const state = emptyState();
+    const stickyId = randomUUID();
+    applyBoardOp(state, stickyCreateOp(stickyId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    const childId = randomUUID();
+    expect(() =>
+      applyBoardOp(state, childItemOp(childId, stickyId), BOARD_ID, ACTOR_ID, ACTOR_NAME),
+    ).toThrow(ValidationError);
+  });
+
+  it('удаление контейнера осирает детей (parentId → null), не удаляя их', () => {
+    const state = emptyState();
+    const frameId = randomUUID();
+    const childId = randomUUID();
+    applyBoardOp(state, frameCreateOp(frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+    applyBoardOp(state, childItemOp(childId, frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    applyBoardOp(
+      state,
+      { type: 'item.delete', clientOpId: randomUUID(), id: frameId },
+      BOARD_ID,
+      ACTOR_ID,
+      ACTOR_NAME,
+    );
+
+    expect(state.items.has(frameId)).toBe(false);
+    const child = state.items.get(childId)!;
+    expect(child.parentId).toBeNull();
+  });
+
+  it('удаление контейнера осирает детей даже через item.patch в том же батче', () => {
+    const state = emptyState();
+    const frameId = randomUUID();
+    const childId = randomUUID();
+    applyBoardOp(state, frameCreateOp(frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+    applyBoardOp(state, childItemOp(childId, frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    // Удаляем контейнер — ребёнок должен осироть даже если мы патчим его в том же батче
+    applyBoardOp(
+      state,
+      { type: 'item.patch', clientOpId: randomUUID(), id: childId, patch: { x: 999 } },
+      BOARD_ID,
+      ACTOR_ID,
+      ACTOR_NAME,
+    );
+
+    expect(state.items.get(childId)!.parentId).toBe(frameId);
+    expect(state.items.get(childId)!.x).toBe(999);
+  });
+
+  it('patch item.parentId на существующий контейнер — ок', () => {
+    const state = emptyState();
+    const frameId = randomUUID();
+    const childId = randomUUID();
+    applyBoardOp(state, frameCreateOp(frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+    applyBoardOp(state, stickyCreateOp(childId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    applyBoardOp(
+      state,
+      { type: 'item.patch', clientOpId: randomUUID(), id: childId, patch: { parentId: frameId } },
+      BOARD_ID,
+      ACTOR_ID,
+      ACTOR_NAME,
+    );
+
+    expect(state.items.get(childId)!.parentId).toBe(frameId);
+  });
+
+  it('patch item.parentId на несуществующий контейнер — отказ', () => {
+    const state = emptyState();
+    const childId = randomUUID();
+    applyBoardOp(state, stickyCreateOp(childId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    expect(() =>
+      applyBoardOp(
+        state,
+        {
+          type: 'item.patch',
+          clientOpId: randomUUID(),
+          id: childId,
+          patch: { parentId: randomUUID() },
+        },
+        BOARD_ID,
+        ACTOR_ID,
+        ACTOR_NAME,
+      ),
+    ).toThrow(ValidationError);
+  });
+
+  it('patch item.parentId в null — осирает элемент', () => {
+    const state = emptyState();
+    const frameId = randomUUID();
+    const childId = randomUUID();
+    applyBoardOp(state, frameCreateOp(frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+    applyBoardOp(state, childItemOp(childId, frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    applyBoardOp(
+      state,
+      { type: 'item.patch', clientOpId: randomUUID(), id: childId, patch: { parentId: null } },
+      BOARD_ID,
+      ACTOR_ID,
+      ACTOR_NAME,
+    );
+
+    expect(state.items.get(childId)!.parentId).toBeNull();
+  });
+
+  it('отклоняет слишком длинный заголовок фрейма', () => {
+    const state = emptyState();
+    const op = frameCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'frame',
+      title: 'x'.repeat(201),
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR_ID, ACTOR_NAME)).toThrow(ValidationError);
   });
 });

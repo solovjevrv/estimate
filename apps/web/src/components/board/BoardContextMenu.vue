@@ -28,6 +28,8 @@ const emit = defineEmits<{
   bringToFront: [];
   sendToBack: [];
   duplicate: [];
+  group: [];
+  ungroup: [];
   addText: [];
   delete: [];
   close: [];
@@ -84,6 +86,15 @@ function act(fn: () => void): void {
       <button type="button" class="board-context-menu-item" @click="act(() => emit('duplicate'))">
         <UIcon name="i-lucide-copy" class="size-4" />
         {{ t('board.duplicateSelected') }}
+      </button>
+      <!-- Группировка (14.3) — только для элементов, не для связей -->
+      <button type="button" class="board-context-menu-item" @click="act(() => emit('group'))">
+        <UIcon name="i-lucide-frame" class="size-4" />
+        {{ t('board.groupSelection') }}
+      </button>
+      <button type="button" class="board-context-menu-item" @click="act(() => emit('ungroup'))">
+        <UIcon name="i-lucide-ungroup" class="size-4" />
+        {{ t('board.ungroupSelection') }}
       </button>
       <div class="board-context-menu-divider" />
     </template>

@@ -80,7 +80,14 @@ const FORMAT_BUTTONS: readonly { key: FormatMarkKey; icon: string }[] = [
 ];
 
 export type ItemFormKind =
-  'sticky' | (typeof BOARD_SHAPE_KINDS)[number] | 'text' | 'image' | 'emoji' | 'sticker';
+  | 'sticky'
+  | (typeof BOARD_SHAPE_KINDS)[number]
+  | 'text'
+  | 'image'
+  | 'emoji'
+  | 'sticker'
+  | 'frame'
+  | 'group';
 
 const FORM_OPTIONS: readonly ItemFormKind[] = [
   'sticky',
@@ -102,6 +109,9 @@ const FORM_ICONS: Record<ItemFormKind, string> = {
   // Никогда не рендерится через FORM_OPTIONS (стикер не в списке) — только для
   // exhaustiveness Record<ItemFormKind, string>, сам пикер у стикера свой (см. isSticker)
   sticker: 'i-lucide-sticker',
+  // Фрейм/группа (14.3) — не в FORM_OPTIONS, но нужны иконки для Record
+  frame: 'i-lucide-frame',
+  group: 'i-lucide-ungroup',
 };
 
 const ALIGN_ICONS: Record<BoardTextAlign, string> = {
@@ -161,6 +171,10 @@ const isEmoji = computed(() => props.currentForm === 'emoji');
 
 /** Стикер (13.4) — не имеет заливки/текста/фигуры, только выбор стикера и размер */
 const isSticker = computed(() => props.currentForm === 'sticker');
+
+/** Фрейм/группа (14.3) — контейнеры без текстовых регуляторов: только
+ * дублирование/удаление. Выбор формы, цвет,Aa/выравнивание — бессмысленны. */
+const isContainer = computed(() => props.currentForm === 'frame' || props.currentForm === 'group');
 
 /** Нет активного выделения текста — кнопки начертания/маркера/ссылки недоступны (12.13) */
 const formattingDisabled = computed(() => !props.editingText || props.activeMarks === null);
@@ -310,7 +324,7 @@ function stepFontSize(delta: number): void {
     </UPopover>
 
     <!-- Form picker — always visible (allows converting text ↔ sticky ↔ shape) -->
-    <UPopover v-else :content="{ side: 'top', sideOffset: 20 }">
+    <UPopover v-else-if="!isContainer" :content="{ side: 'top', sideOffset: 20 }">
       <button
         type="button"
         class="board-selection-icon-btn"
@@ -337,8 +351,10 @@ function stepFontSize(delta: number): void {
       </template>
     </UPopover>
 
-    <!-- Color picker — только для стикера/фигуры (у текста нет заливки, у картинки/эмодзи/стикера — цвета) -->
-    <template v-if="props.currentForm !== 'text' && !isImage && !isEmoji && !isSticker">
+    <!-- Color picker — только для стикера/фигуры (у текста нет заливки, у картинки/эмодзи/стикера цвета, у фрейма — цвет рамки, но он задаётся при создании) -->
+    <template
+      v-if="!isContainer && props.currentForm !== 'text' && !isImage && !isEmoji && !isSticker"
+    >
       <div class="board-selection-divider" />
 
       <UPopover :content="{ side: 'top', sideOffset: 20 }">
@@ -388,8 +404,8 @@ function stepFontSize(delta: number): void {
     </template>
 
     <!-- Текстовые регуляторы (Aa/выравнивание/начертание/маркер/ссылка) — картинке/эмодзи/стикеру
-     они не нужны вовсе (текста нет), не только когда он сейчас не редактируется -->
-    <template v-if="!isImage && !isEmoji && !isSticker">
+      они не нужны вовсе (текста нет), не только когда он сейчас не редактируется. Фрейм/группа — тоже не текстовые (14.3) -->
+    <template v-if="!isContainer && !isImage && !isEmoji && !isSticker">
       <div class="board-selection-divider" />
 
       <!-- Aa — только размер шрифта и цвет текста (гарнитура убрана, см. шапку файла) -->
@@ -810,8 +826,8 @@ function stepFontSize(delta: number): void {
   font-weight: 700;
 }
 
-  .board-link-error {
-    color: var(--brand-coral);
-    font-size: 11px;
-  }
+.board-link-error {
+  color: var(--brand-coral);
+  font-size: 11px;
+}
 </style>

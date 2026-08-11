@@ -118,6 +118,8 @@ import {
   BOARD_DRAG_THROTTLE_MS,
   BOARD_CURSOR_THROTTLE_MS,
   BOARD_DUPLICATE_OFFSET,
+  FRAME_DEFAULT_HEIGHT,
+  FRAME_DEFAULT_WIDTH,
 } from '../../lib/board/board-constants';
 import {
   computeSnapGuides,
@@ -144,6 +146,7 @@ import BoardTextNode from './BoardTextNode.vue';
 import BoardEmojiNode from './BoardEmojiNode.vue';
 import BoardStickerNode from './BoardStickerNode.vue';
 import BoardToolbar, { type BoardTool } from './BoardToolbar.vue';
+import BoardFrameNode from './BoardFrameNode.vue';
 
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/controls/dist/style.css';
@@ -184,6 +187,9 @@ const nodeTypes = markRaw({
   image: BoardImageNode,
   emoji: BoardEmojiNode,
   sticker: BoardStickerNode,
+  // Фрейм и группа (14.3) — один и тот же компонент, различаются content.type
+  frame: BoardFrameNode,
+  group: BoardFrameNode,
 });
 // Единственный тип связи — геометрия floating edge не зависит от типа линии
 // (12.8), тип линии/маркеры читаются самим компонентом из data.style
@@ -543,10 +549,97 @@ function createStickerAtCenter(pack: string, id: string): void {
 }
 
 /**
- * Открывает нативный файловый диалог и резолвится выбранным файлом
- * (`null` — диалог отменили). Общий приём для создания картинки (инструмент
- * в тулбаре) и замены уже существующей (13.2, тулбар выделения).
+ * Создание фрейма (14.3) — видимого контейнера с заголовком. Схож с созданием
+ * стикера: клик по пустому холсту в режиме инструмента «Фрейм» создаёт его
+ * в точке клика и возвращает инструмент на «Выделение».
  */
+function createFrame(center: { x: number; y: number }): void {
+  if (!canCreateItem()) return;
+  const id = uuid();
+  pendingEditId.value = id;
+  void boardSession.applyOps([
+    {
+      type: 'item.create',
+      clientOpId: uuid(),
+      item: {
+        id,
+        parentId: null,
+        x: center.x - FRAME_DEFAULT_WIDTH / 2,
+        y: center.y - FRAME_DEFAULT_HEIGHT / 2,
+        width: FRAME_DEFAULT_WIDTH,
+        height: FRAME_DEFAULT_HEIGHT,
+        rotation: 0,
+        zIndex: nextZIndexAbove(props.items),
+        content: { type: 'frame', title: '' },
+        style: { color: STICKY_DEFAULT_COLOR },
+        reactions: [],
+      },
+    },
+  ]);
+}
+
+/**
+ * Группировка выделения (14.3) — создаёт невидимую группу (container) и
+ * переставляет выделенных элементов `parentId` на неё. Группа позиционируется
+ * в центе выделения, а элементы внутри неё становятся относительными к ней.
+ *
+ * Это атомарный батч: создали группу + перепривязали всех детей — сервер
+ * применит всё по порядку (group.create сначала, потом patches с parentId),
+ * так что FK-валидация не будет ругаться на несуществующего родителя.
+ */
+function groupSelection(): void {
+  const selected = selectedNodes.value;
+  if (!selected.length || !canCreateItem()) return;
+
+  const left = Math.min(...selected.map((n) => n.computedPosition.x));
+  const top = Math.min(...selected.map((n) => n.computedPosition.y));
+  const right = Math.max(...selected.map((n) => n.computedPosition.x + n.dimensions.width));
+  const bottom = Math.max(...selected.map((n) => n.computedPosition.y + n.dimensions.height));
+
+  const groupId = uuid();
+  const ops: BoardOp[] = [
+    {
+      type: 'item.create',
+      clientOpId: uuid(),
+      item: {
+        id: groupId,
+        parentId: null,
+        x: left,
+        y: top,
+        width: right - left,
+        height: bottom - top,
+        rotation: 0,
+        zIndex: nextZIndexAbove(props.items),
+        content: { type: 'group' },
+        style: { color: STICKY_DEFAULT_COLOR },
+        reactions: [],
+      },
+    },
+    ...selected.map(
+      (node) =>
+        ({
+          type: 'item.patch',
+          clientOpId: uuid(),
+          id: node.id,
+          patch: { parentId: groupId },
+        }) as BoardOp,
+    ),
+  ];
+  void boardSession.applyOps(ops);
+}
+
+/** Разгруппировка (11.3) — снимает parentId у выделенных, возвращая детей в корень */
+function ungroupSelection(): void {
+  const selected = selectedNodes.value.filter((n) => n.data.parentId !== null);
+  if (!selected.length) return;
+  patchSelected((node) => ({
+    type: 'item.patch',
+    clientOpId: uuid(),
+    id: node.id,
+    patch: { parentId: null },
+  }));
+}
+
 function pickImageFile(): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
@@ -689,6 +782,8 @@ function onPaneClick(event: MouseEvent): void {
       if (file) void createImage(position, file);
     });
     return;
+  } else if (activeTool.value === 'frame') {
+    createFrame(flowPositionFromEvent(event));
   } else {
     return;
   }
@@ -1074,6 +1169,11 @@ function onNodeDragStop(event: NodeDragEvent): void {
     sendPositionPatch(node, { record: moved, inverse });
     dragStartPositions.delete(node.id);
   }
+  // After drag, check if any child node was dragged outside its parent container
+  // (14.3). Vue Flow с extent:'parent' удерживает детей внутри, но если родитель
+  // удалён или ребёнок перемещён в корень — позиции становятся абсолютными.
+  // Здесь мы просто синхронизируем: если parentId стал null в сторе, Vue Flow
+  // сам перестраивает позицию узла в world-координаты.
 }
 
 // --- Плавающий тулбар над выделением (12.6) ---
@@ -1209,6 +1309,8 @@ const selectedForm = computed<ItemFormKind>(() => {
   if (content?.type === 'image') return 'image';
   if (content?.type === 'emoji') return 'emoji';
   if (content?.type === 'sticker') return 'sticker';
+  if (content?.type === 'frame') return 'frame';
+  if (content?.type === 'group') return 'group';
   return 'sticky';
 });
 
@@ -1247,6 +1349,9 @@ function setSelectedForm(kind: ItemFormKind): void {
   // Конвертация В картинку/эмодзи/стикер через общий пикер не поддерживается (нужен файл
   // или конкретный выбранный символ/пак) — у всех трёх свой отдельный путь создания/замены
   if (kind === 'image' || kind === 'emoji' || kind === 'sticker') return;
+  // Фрейм/группа (14.3) — контейнеры, конвертировать их в другие типы или наоборот
+  // через общий переключатель не поддерживается — они управляются отдельными действиями
+  if (kind === 'frame' || kind === 'group') return;
 
   patchSelected((node) => {
     // Форматирование (12.13) переживает конвертацию стикер↔фигура↔текст вместе с текстом
@@ -1256,6 +1361,8 @@ function setSelectedForm(kind: ItemFormKind): void {
       if (content.type === 'image' || content.type === 'emoji' || content.type === 'sticker') {
         // Конвертация из картинки/эмодзи/стикера — просто создаём пустой стикер
         newContent = { type: 'sticky', text: '' };
+      } else if (content.type === 'frame' || content.type === 'group') {
+        newContent = { type: 'sticky', text: '' };
       } else {
         const { text, runs } = content;
         newContent = { type: 'sticky', text, ...(runs?.length ? { runs } : {}) };
@@ -1263,6 +1370,8 @@ function setSelectedForm(kind: ItemFormKind): void {
     } else if (kind === 'text') {
       if (content.type === 'image' || content.type === 'emoji' || content.type === 'sticker') {
         // Конвертация из картинки/эмодзи/стикера — пустой текст
+        newContent = { type: 'text', text: '' };
+      } else if (content.type === 'frame' || content.type === 'group') {
         newContent = { type: 'text', text: '' };
       } else {
         const { text, runs } = content;
@@ -1272,6 +1381,8 @@ function setSelectedForm(kind: ItemFormKind): void {
       // kind is a BoardShapeKind
       if (content.type === 'image' || content.type === 'emoji' || content.type === 'sticker') {
         // Конвертация из картинки/эмодзи/стикера в фигуру — пустой текст
+        newContent = { type: 'shape', shape: kind, text: '' };
+      } else if (content.type === 'frame' || content.type === 'group') {
         newContent = { type: 'shape', shape: kind, text: '' };
       } else {
         const { text, runs } = content;
@@ -1679,6 +1790,8 @@ function onConnect(event: Connection): void {
         @bring-to-front="bringSelectedToFront"
         @send-to-back="sendSelectedToBack"
         @duplicate="duplicateSelected"
+        @group="groupSelection"
+        @ungroup="ungroupSelection"
         @add-text="addTextToSelectedEdge"
         @delete="contextMenu.target === 'item' ? deleteSelected() : deleteSelectedEdges()"
         @close="closeContextMenu"

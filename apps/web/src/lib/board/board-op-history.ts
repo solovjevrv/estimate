@@ -124,6 +124,22 @@ export function deriveInverseOps(ops: BoardOp[], local: BoardLocalState): BoardO
             scheduleEdgeCreate(edge);
           }
         }
+        // Удаление контейнера (frame/group, 14.3) осирают детей (parentId → null,
+        // board-ops.ts + apply-local-op.ts): в inverse восстанавливаем их связь
+        // `parentId → <id удаляемого контейнера>`. Т.к. `item.create` этого
+        // контейнера уже запланирован выше, а сервер применяет батч по порядку,
+        // дети ссыются на уже созданный к этому моменту родитель — порядок
+        // сохраняется автоматически.
+        for (const child of local.items.values()) {
+          if (child.parentId === op.id) {
+            inverses.push({
+              type: 'item.patch',
+              clientOpId: uuid(),
+              id: child.id,
+              patch: { parentId: op.id },
+            });
+          }
+        }
         break;
       }
 

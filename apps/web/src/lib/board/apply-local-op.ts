@@ -34,6 +34,14 @@ export function applyLocalBoardOp(state: BoardLocalState, op: BoardCommittedOp):
           state.edges.delete(edgeId);
         }
       }
+      // Удаление контейнера (frame/group, 14.3) НЕ каскадит детей — они
+      // осираются (parentId → null), остаются на доске. Сервер делает
+      // то же самое через DB-FK ON DELETE SET NULL + board-ops.ts, а здесь
+      // зеркалируем в памяти — иначе локальная копия ребёнка следующего
+      // batch-оператора увидела бы уже уничтоженный parentNode через Vue Flow.
+      for (const child of state.items.values()) {
+        if (child.parentId === op.id) child.parentId = null;
+      }
       break;
     case 'edge.create':
     case 'edge.patch':

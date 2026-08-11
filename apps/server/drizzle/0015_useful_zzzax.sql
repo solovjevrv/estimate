@@ -1,0 +1,1 @@
+ALTER TABLE "board_items" ADD CONSTRAINT "board_items_parent_id_board_items_id_fk" FOREIGN KEY ("parent_id") REFERENCES "public"."board_items"("id") ON DELETE set null ON UPDATE no action;

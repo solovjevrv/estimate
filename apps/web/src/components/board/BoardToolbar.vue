@@ -26,7 +26,7 @@ import { useI18n } from 'vue-i18n';
 
 import BoardStickerPicker from './BoardStickerPicker.vue';
 
-export type BoardTool = 'select' | 'sticky' | 'shape' | 'text' | 'image' | 'arrow';
+export type BoardTool = 'select' | 'sticky' | 'shape' | 'text' | 'image' | 'arrow' | 'frame';
 
 const tool = defineModel<BoardTool>({ required: true });
 
@@ -153,6 +153,17 @@ function isActive(value: BoardTool): boolean {
       @click="tool = 'arrow'"
     >
       <UIcon name="i-lucide-move-up-right" class="size-[19px]" />
+    </button>
+    <!-- Фрейм (14.3) — инструмент "клик по пустому холсту создаёт фрейм", как у стикера -->
+    <button
+      type="button"
+      class="board-toolbar-btn"
+      :class="{ 'board-toolbar-btn-active': isActive('frame') }"
+      :aria-label="t('board.toolFrame')"
+      :aria-pressed="isActive('frame')"
+      @click="tool = 'frame'"
+    >
+      <UIcon name="i-lucide-frame" class="size-[19px]" />
     </button>
   </div>
 </template>

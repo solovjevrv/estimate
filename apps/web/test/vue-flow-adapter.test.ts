@@ -45,6 +45,40 @@ const straightEdge: BoardEdge = {
   style: { color: '#7DA9F6', line: 'straight', markerStart: 'none', markerEnd: 'none' },
 };
 
+const frameItem: BoardItem = {
+  id: 'f1',
+  boardId: 'b1',
+  parentId: null,
+  x: 100,
+  y: 100,
+  width: 640,
+  height: 400,
+  rotation: 0,
+  zIndex: 1,
+  content: { type: 'frame', title: 'Группа задач' },
+  style: { color: '#FCEB96' },
+  reactions: [],
+  createdBy: 'u1',
+  updatedAt: '2026-08-06T00:00:00.000Z',
+};
+
+const childItem: BoardItem = {
+  id: 'c1',
+  boardId: 'b1',
+  parentId: 'f1',
+  x: 120,
+  y: 120,
+  width: 160,
+  height: 120,
+  rotation: 0,
+  zIndex: 2,
+  content: { type: 'sticky', text: 'Внутри фрейма' },
+  style: { color: '#A8CAFF' },
+  reactions: [],
+  createdBy: 'u1',
+  updatedAt: '2026-08-06T00:00:00.000Z',
+};
+
 const curvedEdge: BoardEdge = {
   ...straightEdge,
   id: 'e2',
@@ -154,5 +188,38 @@ describe('boardEdgeToFlowEdge', () => {
       };
       expect(boardEdgeToFlowEdge(edge).style).toMatchObject({ stroke: '#FF0000' });
     });
+  });
+});
+
+describe('boardItemToNode — фреймы и группы (14.3)', () => {
+  it('контейнер (frame) без parentId получает extent: "parent"', () => {
+    const node = boardItemToNode(frameItem);
+    expect(node.extent).toBe('parent');
+    expect(node.parentNode).toBeUndefined();
+  });
+
+  it('дочерний элемент получает parentNode = parentId', () => {
+    const node = boardItemToNode(childItem);
+    expect(node.parentNode).toBe('f1');
+    expect(node.extent).toBeUndefined();
+  });
+
+  it('контейнер (group) без parentId тоже extent: "parent"', () => {
+    const group: BoardItem = { ...frameItem, id: 'g1', content: { type: 'group' } };
+    const node = boardItemToNode(group);
+    expect(node.extent).toBe('parent');
+    expect(node.parentNode).toBeUndefined();
+  });
+
+  it('toFlowNodes сортирует родителей перед дочерними', () => {
+    const nodes = toFlowNodes([childItem, frameItem, stickyItem]);
+    const ids = nodes.map((n) => n.id);
+    expect(ids.indexOf('f1')).toBeLessThan(ids.indexOf('c1'));
+  });
+
+  it('toFlowNodes с ребёнком, чей родитель не в списке — не падает', () => {
+    const orphan: BoardItem = { ...childItem, parentId: 'missing' };
+    const nodes = toFlowNodes([orphan, stickyItem]);
+    expect(nodes.map((n) => n.id)).toContain('c1');
   });
 });

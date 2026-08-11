@@ -4,12 +4,13 @@
  * (см. риски в PROGRESS.md), меняется только этот файл.
  */
 import type { BoardColorHex, BoardEdge, BoardEdgeMarker, BoardItem } from '@poker/shared';
+import { isBoardContainer } from '@poker/shared';
 import { MarkerType, type Edge, type EdgeMarkerType, type Node } from '@vue-flow/core';
 
 import { resolveEdgeColor } from './board-item-defaults';
 
 export function boardItemToNode(item: BoardItem): Node<BoardItem> {
-  return {
+  const node: Node<BoardItem> = {
     id: item.id,
     type: item.content.type,
     position: { x: item.x, y: item.y },
@@ -30,10 +31,38 @@ export function boardItemToNode(item: BoardItem): Node<BoardItem> {
     selectable: true,
     data: item,
   };
+  // Фрейм/группа (14.3) — контейнеры: Vue Flow родительский узел нужно явно
+  // задать через `parentNode`, а `extent: 'parent'` заставит дочерние
+  // перетаскиваться вместе с ним (кастомное поведение — см. BoardCanvas.vue,
+  // onNodeDragStop). Без extent='parent' дети "выходят" за границы родителя.
+  if (item.parentId !== null) {
+    node.parentNode = item.parentId;
+  } else if (isBoardContainer(item.content.type)) {
+    node.extent = 'parent';
+  }
+  return node;
 }
 
 export function toFlowNodes(items: readonly BoardItem[]): Node<BoardItem>[] {
-  return items.map(boardItemToNode);
+  // Vue Flow должна увидеть родительский узел (frame/group, 14.3) ДО потомков,
+  // чтобы `parentNode`/`extent: 'parent'` корректно сработали при `setNodes`.
+  // Топологическая сортировка по parentId: сначала узлы без родителя, потом
+  // дочерние — глубина ограничена одним уровнем (вложенность запрещена сервером).
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const result: Node<BoardItem>[] = [];
+  const visited = new Set<string>();
+
+  function visit(id: string): void {
+    if (visited.has(id)) return;
+    visited.add(id);
+    const item = byId.get(id);
+    if (!item) return;
+    if (item.parentId !== null) visit(item.parentId);
+    result.push(boardItemToNode(item));
+  }
+
+  for (const item of items) visit(item.id);
+  return result;
 }
 
 /**
