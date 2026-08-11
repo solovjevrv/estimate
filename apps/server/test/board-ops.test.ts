@@ -1275,14 +1275,13 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
     expect(child.parentId).toBeNull();
   });
 
-  it('удаление контейнера осирает детей даже через item.patch в том же батче', () => {
+  it('item.patch поля, отличного от parentId, не трогает существующий parentId ребёнка', () => {
     const state = emptyState();
     const frameId = randomUUID();
     const childId = randomUUID();
     applyBoardOp(state, frameCreateOp(frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
     applyBoardOp(state, childItemOp(childId, frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
 
-    // Удаляем контейнер — ребёнок должен осироть даже если мы патчим его в том же батче
     applyBoardOp(
       state,
       { type: 'item.patch', clientOpId: randomUUID(), id: childId, patch: { x: 999 } },
@@ -1292,6 +1291,39 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
     );
 
     expect(state.items.get(childId)!.parentId).toBe(frameId);
+    expect(state.items.get(childId)!.x).toBe(999);
+  });
+
+  it('удаление контейнера осирает ребёнка ВНУТРИ БАТЧА — последующий item.patch того же батча видит уже осиротевшего ребёнка', () => {
+    // Регрессия: applyBoardOp мутирует общий `state` последовательно op за op в
+    // рамках одного батча (см. BoardOpState/board-ops.ts) — эта проверка
+    // фиксирует, что item.delete контейнера орошает ребёнка НЕМЕДЛЕННО, а не
+    // только по завершении батча, так что следующий item.patch того же батча
+    // (например, пользователь двигал и контейнер, и ребёнка одним жестом)
+    // применяется к уже актуальному parentId, не к устаревшему
+    const state = emptyState();
+    const frameId = randomUUID();
+    const childId = randomUUID();
+    applyBoardOp(state, frameCreateOp(frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+    applyBoardOp(state, childItemOp(childId, frameId), BOARD_ID, ACTOR_ID, ACTOR_NAME);
+
+    applyBoardOp(
+      state,
+      { type: 'item.delete', clientOpId: randomUUID(), id: frameId },
+      BOARD_ID,
+      ACTOR_ID,
+      ACTOR_NAME,
+    );
+    applyBoardOp(
+      state,
+      { type: 'item.patch', clientOpId: randomUUID(), id: childId, patch: { x: 999 } },
+      BOARD_ID,
+      ACTOR_ID,
+      ACTOR_NAME,
+    );
+
+    expect(state.items.has(frameId)).toBe(false);
+    expect(state.items.get(childId)!.parentId).toBeNull();
     expect(state.items.get(childId)!.x).toBe(999);
   });
 

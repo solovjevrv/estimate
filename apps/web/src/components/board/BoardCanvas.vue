@@ -33,6 +33,7 @@ import {
   BOARD_IMAGE_ALLOWED_MIME_TYPES,
   BOARD_IMAGE_MAX_BYTES,
   BOARD_MAX_ITEMS,
+  isBoardContainer,
   type Board,
   type BoardColorHex,
   type BoardEdge,
@@ -407,6 +408,39 @@ function canCreateItem(): boolean {
   return canCreateItems(1);
 }
 
+/**
+ * Контейнер (frame/group, 14.3), в чьи границы попадает точка — фрейм задуман
+ * как мини-холст (референс Miro): всё, что создаётся или перетаскивается
+ * внутрь его границ, сразу становится его содержимым (`parentId`), а не
+ * лежит поверх него отдельным несвязанным элементом. Если точка попадает
+ * сразу в несколько перекрывающихся контейнеров — берём наименьший по
+ * площади (обычно самый "внутренний" визуально). `excludeId` — не
+ * рассматривать сам себя (при перетаскивании контейнера он не должен
+ * попытаться стать своим же родителем).
+ */
+function containerAt(point: { x: number; y: number }, excludeId?: string): BoardItem | undefined {
+  let best: BoardItem | undefined;
+  let bestArea = Infinity;
+  for (const candidate of props.items) {
+    if (candidate.id === excludeId) continue;
+    if (!isBoardContainer(candidate.content.type)) continue;
+    if (
+      point.x < candidate.x ||
+      point.x > candidate.x + candidate.width ||
+      point.y < candidate.y ||
+      point.y > candidate.y + candidate.height
+    ) {
+      continue;
+    }
+    const area = candidate.width * candidate.height;
+    if (area < bestArea) {
+      best = candidate;
+      bestArea = area;
+    }
+  }
+  return best;
+}
+
 function createSticky(center: { x: number; y: number }): void {
   if (!canCreateItem()) return;
   const id = uuid();
@@ -417,7 +451,7 @@ function createSticky(center: { x: number; y: number }): void {
       clientOpId: uuid(),
       item: {
         id,
-        parentId: null,
+        parentId: containerAt(center)?.id ?? null,
         x: center.x - STICKY_DEFAULT_WIDTH / 2,
         y: center.y - STICKY_DEFAULT_HEIGHT / 2,
         width: STICKY_DEFAULT_WIDTH,
@@ -442,7 +476,7 @@ function createShape(center: { x: number; y: number }): void {
       clientOpId: uuid(),
       item: {
         id,
-        parentId: null,
+        parentId: containerAt(center)?.id ?? null,
         x: center.x - SHAPE_DEFAULT_WIDTH / 2,
         y: center.y - SHAPE_DEFAULT_HEIGHT / 2,
         width: SHAPE_DEFAULT_WIDTH,
@@ -467,7 +501,7 @@ function createText(center: { x: number; y: number }): void {
       clientOpId: uuid(),
       item: {
         id,
-        parentId: null,
+        parentId: containerAt(center)?.id ?? null,
         x: center.x - TEXT_DEFAULT_WIDTH / 2,
         y: center.y - TEXT_DEFAULT_HEIGHT / 2,
         width: TEXT_DEFAULT_WIDTH,
@@ -501,7 +535,7 @@ function createEmojiAtCenter(emoji: ReactionEmoji): void {
       clientOpId: uuid(),
       item: {
         id,
-        parentId: null,
+        parentId: containerAt(center)?.id ?? null,
         x: center.x - EMOJI_DEFAULT_WIDTH / 2,
         y: center.y - EMOJI_DEFAULT_HEIGHT / 2,
         width: EMOJI_DEFAULT_WIDTH,
@@ -533,7 +567,7 @@ function createStickerAtCenter(pack: string, id: string): void {
       clientOpId: uuid(),
       item: {
         id: itemId,
-        parentId: null,
+        parentId: containerAt(center)?.id ?? null,
         x: center.x - STICKER_DEFAULT_WIDTH / 2,
         y: center.y - STICKER_DEFAULT_HEIGHT / 2,
         width: STICKER_DEFAULT_WIDTH,
@@ -569,7 +603,10 @@ function createFrame(center: { x: number; y: number }): void {
         width: FRAME_DEFAULT_WIDTH,
         height: FRAME_DEFAULT_HEIGHT,
         rotation: 0,
-        zIndex: nextZIndexAbove(props.items),
+        // Фрейм создаётся ПОЗАДИ уже существующих элементов (как в Miro) —
+        // иначе он визуально накрывал бы всё, что уже было на доске, заставляя
+        // пользователя вручную слать фрейм назад или все остальные элементы вперёд
+        zIndex: minZIndex(props.items) - 1,
         content: { type: 'frame', title: '' },
         style: { color: STICKY_DEFAULT_COLOR },
         reactions: [],
@@ -579,17 +616,37 @@ function createFrame(center: { x: number; y: number }): void {
 }
 
 /**
+ * Можно сгруппировать: 2+ элемента выделено и среди них НЕТ уже готового
+ * контейнера (frame/group) — сервер всё равно отклонит вложенность
+ * контейнера в контейнер (без вложенности, 14.3), а без этой проверки
+ * оптимистичное применение на клиенте успело бы "съехать", прежде чем батч
+ * целиком отклонят и откатят не будет (board-session.ts не откатывает
+ * оптимистично применённое на ошибке) — см. также кнопки в BoardContextMenu.
+ */
+const canGroupSelection = computed(
+  () =>
+    selectedNodes.value.length >= 2 &&
+    !selectedNodes.value.some((n) => isBoardContainer(n.data.content.type)),
+);
+/** Можно разгруппировать: хотя бы один выделенный элемент сейчас внутри контейнера */
+const canUngroupSelection = computed(() =>
+  selectedNodes.value.some((n) => n.data.parentId !== null),
+);
+
+/**
  * Группировка выделения (14.3) — создаёт невидимую группу (container) и
  * переставляет выделенных элементов `parentId` на неё. Группа позиционируется
- * в центе выделения, а элементы внутри неё становятся относительными к ней.
+ * по bounding box выделения. `x`/`y` элементов в домене остаются абсолютными
+ * (не пересчитываются) — относительной позицию для рендера Vue Flow делает
+ * `vue-flow-adapter.ts` сам, по разнице с координатами родителя.
  *
  * Это атомарный батч: создали группу + перепривязали всех детей — сервер
  * применит всё по порядку (group.create сначала, потом patches с parentId),
  * так что FK-валидация не будет ругаться на несуществующего родителя.
  */
 function groupSelection(): void {
+  if (!canGroupSelection.value || !canCreateItem()) return;
   const selected = selectedNodes.value;
-  if (!selected.length || !canCreateItem()) return;
 
   const left = Math.min(...selected.map((n) => n.computedPosition.x));
   const top = Math.min(...selected.map((n) => n.computedPosition.y));
@@ -630,14 +687,22 @@ function groupSelection(): void {
 
 /** Разгруппировка (11.3) — снимает parentId у выделенных, возвращая детей в корень */
 function ungroupSelection(): void {
+  // Патчим именно отфильтрованный список, не всё выделение (patchSelected читал бы
+  // selectedNodes.value целиком) — иначе уже верхнеуровневые элементы в том же
+  // выделении получали бы избыточный no-op patch({parentId:null})
   const selected = selectedNodes.value.filter((n) => n.data.parentId !== null);
   if (!selected.length) return;
-  patchSelected((node) => ({
-    type: 'item.patch',
-    clientOpId: uuid(),
-    id: node.id,
-    patch: { parentId: null },
-  }));
+  void boardSession.applyOps(
+    selected.map(
+      (node) =>
+        ({
+          type: 'item.patch',
+          clientOpId: uuid(),
+          id: node.id,
+          patch: { parentId: null },
+        }) satisfies BoardOp,
+    ),
+  );
 }
 
 function pickImageFile(): Promise<File | null> {
@@ -722,7 +787,7 @@ async function createImage(center: { x: number; y: number }, file: File): Promis
       clientOpId: uuid(),
       item: {
         id,
-        parentId: null,
+        parentId: containerAt(center)?.id ?? null,
         x: center.x - width / 2,
         y: center.y - height / 2,
         width,
@@ -937,14 +1002,20 @@ async function pasteBoardItems(items: BoardClipboardItem[]): Promise<void> {
 
     const id = uuid();
     newIds.push(id);
+    const x = viewportCenter.x + item.relX - width / 2;
+    const y = viewportCenter.y + item.relY - height / 2;
     ops.push({
       type: 'item.create',
       clientOpId: uuid(),
       item: {
         id,
-        parentId: null,
-        x: viewportCenter.x + item.relX - width / 2,
-        y: viewportCenter.y + item.relY - height / 2,
+        // Вставленный фрейм/группа сам не вкладывается (без вложенности, 14.3) —
+        // остальные типы приклеиваются к фрейму, в который попал их центр, как и при обычном создании
+        parentId: isBoardContainer(content.type)
+          ? null
+          : (containerAt({ x: x + width / 2, y: y + height / 2 })?.id ?? null),
+        x,
+        y,
         width,
         height,
         rotation: item.rotation,
@@ -984,21 +1055,92 @@ function nodeToSnapRect(node: GraphNode<BoardItem>): SnapRect {
   };
 }
 
+function childrenOf(containerId: string): BoardItem[] {
+  return props.items.filter((candidate) => candidate.parentId === containerId);
+}
+
+/**
+ * Патчи-сдвиги для детей контейнера при его перетаскивании (14.3). Домен
+ * хранит `x`/`y` детей АБСОЛЮТНЫМИ (см. vue-flow-adapter.ts) — Vue Flow сам
+ * визуально двигает их вместе с родителем во время живого драга (это его
+ * внутренний рендер поверх `parentNode`), но это НЕ то же самое, что реально
+ * записать их новый `x`/`y` в стор. Без этого при следующем же обновлении
+ * `flowNodes` (из стора — а `event.nodes` для драга РОДИТЕЛЯ в Vue Flow не
+ * включает потомков, только сам перетаскиваемый узел) относительная позиция
+ * ребёнка (child.x - parent.x) пересчиталась бы от НЕизменившегося child.x и
+ * уже сдвинутого parent.x — то есть съехала бы на дельту в другую сторону,
+ * ребёнок дёргался бы туда-сюда при каждом сетевом эхе (найдено вручную:
+ * непредсказуемый "прыгающий" драг фрейма с содержимым). Каждый ребёнок
+ * двигается на ТУ ЖЕ дельту, что и контейнер, от его собственной стартовой
+ * позиции (`dragStartPositions`, засеяна в onNodeDragStart) — не от текущей
+ * позиции в сторе, чтобы дельты не накапливались по кадрам троттлинга.
+ */
+function containerChildOps(container: { id: string; computedPosition: { x: number; y: number } }): {
+  ops: BoardOp[];
+  inverse: BoardOp[];
+} {
+  const containerStart = dragStartPositions.get(container.id);
+  if (!containerStart) return { ops: [], inverse: [] };
+  const dx = container.computedPosition.x - containerStart.x;
+  const dy = container.computedPosition.y - containerStart.y;
+  const ops: BoardOp[] = [];
+  const inverse: BoardOp[] = [];
+  for (const child of childrenOf(container.id)) {
+    const childStart = dragStartPositions.get(child.id) ?? { x: child.x, y: child.y };
+    ops.push({
+      type: 'item.patch',
+      clientOpId: uuid(),
+      id: child.id,
+      patch: { x: childStart.x + dx, y: childStart.y + dy },
+    });
+    inverse.push({
+      type: 'item.patch',
+      clientOpId: uuid(),
+      id: child.id,
+      patch: { x: childStart.x, y: childStart.y },
+    });
+  }
+  return { ops, inverse };
+}
+
 function sendPositionPatch(
   node: GraphNode<BoardItem>,
   opts: { record?: boolean; inverse?: BoardOp[] } = {},
+  /** Задан — узел на dragStop сменил родителя (drag-in/out фрейма, 14.3), см. onNodeDragStop */
+  parentId?: string | null,
 ): void {
-  void boardSession.applyOps(
-    [
-      {
-        type: 'item.patch',
-        clientOpId: uuid(),
-        id: node.id,
-        patch: { x: node.computedPosition.x, y: node.computedPosition.y },
-      },
-    ],
-    opts,
-  );
+  const patch: BoardItemPatchOp['patch'] = {
+    x: node.computedPosition.x,
+    y: node.computedPosition.y,
+  };
+  if (parentId !== undefined) patch.parentId = parentId;
+  const ops: BoardOp[] = [{ type: 'item.patch', clientOpId: uuid(), id: node.id, patch }];
+  // Контейнер тащат сам по себе (event.nodes не включает потомков) — тянем их
+  // новую абсолютную позицию тем же батчем, одним сетевым запросом с ним же
+  if (isBoardContainer(node.data.content.type)) {
+    ops.push(...containerChildOps(node).ops);
+  }
+  void boardSession.applyOps(ops, opts);
+}
+
+/**
+ * Родитель, которого должен получить перетаскиваемый узел на dragStop (14.3).
+ * Контейнеры (frame/group) сами никогда не вкладываются — вложенность
+ * запрещена сервером. Уже вложенный элемент (`parentId !== null`) остаётся
+ * внутри своего родителя: `extent: 'parent'` в vue-flow-adapter физически не
+ * даёт вытащить его драгом за границы — выйти можно только через явное
+ * «Разгруппировать». Меняется родитель только у верхнеуровневых элементов:
+ * если их отпустили внутри границ фрейма/группы — они «приклеиваются» к нему
+ * (Miro-семантика фрейма как мини-холста), как и при создании внутри него.
+ */
+function resolveDragParent(node: GraphNode<BoardItem>): string | null {
+  if (isBoardContainer(node.data.content.type)) return null;
+  if (node.data.parentId !== null) return node.data.parentId;
+  const center = {
+    x: node.computedPosition.x + node.dimensions.width / 2,
+    y: node.computedPosition.y + node.dimensions.height / 2,
+  };
+  return containerAt(center, node.id)?.id ?? null;
 }
 
 /**
@@ -1016,6 +1158,14 @@ function sendPositionPatch(
 function onNodeDragStart({ nodes: dragged }: NodeDragEvent): void {
   for (const node of dragged as GraphNode<BoardItem>[]) {
     dragStartPositions.set(node.id, { x: node.computedPosition.x, y: node.computedPosition.y });
+    // Контейнер (frame/group) тащат сам по себе — event.nodes не включает его
+    // потомков (см. containerChildOps) — засеваем их стартовые позиции здесь же,
+    // иначе дельту сдвига не от чего было бы посчитать на драге/dragStop
+    if (isBoardContainer(node.data.content.type)) {
+      for (const child of childrenOf(node.id)) {
+        dragStartPositions.set(child.id, { x: child.x, y: child.y });
+      }
+    }
   }
 }
 
@@ -1151,29 +1301,45 @@ function onNodeDragStop(event: NodeDragEvent): void {
     const start = dragStartPositions.get(node.id);
     const moved =
       !start || start.x !== node.computedPosition.x || start.y !== node.computedPosition.y;
+    // Отпустили верхнеуровневый элемент внутри границ фрейма/группы — «приклеиваем»
+    // его к ней (Miro-семантика, 14.3), см. resolveDragParent
+    const nextParentId = resolveDragParent(node);
+    const parentChanged = nextParentId !== node.data.parentId;
     // Инверсия — стартовая позиция ВСЕГО жеста (12.10), не позиция перед этим
     // конкретным финальным патчем (та уже почти совпадает с текущей из-за
     // троттлед-тиков выше — откат по ней был бы почти незаметен). Клик без
     // реального сдвига (start === финал) вообще не пишем в историю — иначе
-    // случайный микро-жест засорял бы стек no-op записью.
+    // случайный микро-жест засорял бы стек no-op записью. Если сменился и
+    // родитель — откатываем и его тоже, иначе Ctrl+Z вернул бы позицию, но
+    // оставил элемент приклеенным к фрейму. Дети контейнера (14.3) откатываются
+    // к СВОИМ стартовым позициям тем же undo-шагом — иначе после отмены
+    // перетаскивания фрейма он вернулся бы на место, а его содержимое — нет.
+    const childInverse = isBoardContainer(node.data.content.type)
+      ? containerChildOps(node).inverse
+      : [];
     const inverse: BoardOp[] | undefined = start
       ? [
           {
             type: 'item.patch',
             clientOpId: uuid(),
             id: node.id,
-            patch: { x: start.x, y: start.y },
+            patch: {
+              x: start.x,
+              y: start.y,
+              ...(parentChanged ? { parentId: node.data.parentId } : {}),
+            },
           },
+          ...childInverse,
         ]
       : undefined;
-    sendPositionPatch(node, { record: moved, inverse });
+    sendPositionPatch(
+      node,
+      { record: moved || parentChanged, inverse },
+      parentChanged ? nextParentId : undefined,
+    );
     dragStartPositions.delete(node.id);
+    for (const child of childrenOf(node.id)) dragStartPositions.delete(child.id);
   }
-  // After drag, check if any child node was dragged outside its parent container
-  // (14.3). Vue Flow с extent:'parent' удерживает детей внутри, но если родитель
-  // удалён или ребёнок перемещён в корень — позиции становятся абсолютными.
-  // Здесь мы просто синхронизируем: если parentId стал null в сторе, Vue Flow
-  // сам перестраивает позицию узла в world-координаты.
 }
 
 // --- Плавающий тулбар над выделением (12.6) ---
@@ -1484,28 +1650,52 @@ function setSelectedSticker(pack: string, id: string): void {
   if (ops.length) void boardSession.applyOps(ops);
 }
 
-/** Дублирование (12.9) — копия content/style с офсетом позиции (Miro), встаёт поверх всех */
+/**
+ * Дублирование (12.9) — копия content/style с офсетом позиции (Miro), встаёт
+ * поверх всех. Фрейм/группа (14.3) — мини-холст: дублируя контейнер, тянем за
+ * собой и его детей, даже если явно выделен был только сам контейнер —
+ * иначе копия фрейма оставалась бы пустой, а оригинал молча терял детей
+ * (при этом явно выделенный вместе с контейнером ребёнок не дублируется дважды).
+ * Дубликат ребёнка, чей контейнер НЕ дублируется вместе с ним (дублировали
+ * только сам элемент), остаётся прикреплён к ТОМУ ЖЕ оригинальному контейнеру —
+ * это ожидаемо (Miro): дубликат карточки внутри фрейма остаётся внутри фрейма.
+ * Контейнеры сортируются первыми — сервер применяет батч по порядку и
+ * отклонил бы item.create ребёнка со ссылкой на ещё не созданный дубликат-родитель.
+ */
 function duplicateSelected(): void {
   const selected = selectedNodes.value;
-  if (!selected.length || !canCreateItems(selected.length)) return;
+  if (!selected.length) return;
+  const selectedIds = new Set(selected.map((n) => n.id));
+  const extraChildren = props.items.filter(
+    (candidate) =>
+      candidate.parentId !== null &&
+      selectedIds.has(candidate.parentId) &&
+      !selectedIds.has(candidate.id),
+  );
+  const sourceItems = [...selected.map((n) => n.data), ...extraChildren].sort(
+    (a, b) => Number(isBoardContainer(a.content.type)) - Number(isBoardContainer(b.content.type)),
+  );
+  if (!sourceItems.length || !canCreateItems(sourceItems.length)) return;
   const base = maxZIndex(props.items) + 1;
+  const idMap = new Map(sourceItems.map((source) => [source.id, uuid()]));
   void boardSession.applyOps(
-    selected.map(
-      (node, index) =>
+    sourceItems.map(
+      (source, index) =>
         ({
           type: 'item.create',
           clientOpId: uuid(),
           item: {
-            id: uuid(),
-            parentId: null,
-            x: node.computedPosition.x + BOARD_DUPLICATE_OFFSET,
-            y: node.computedPosition.y + BOARD_DUPLICATE_OFFSET,
-            width: node.dimensions.width,
-            height: node.dimensions.height,
-            rotation: node.data.rotation,
+            id: idMap.get(source.id)!,
+            parentId:
+              source.parentId !== null ? (idMap.get(source.parentId) ?? source.parentId) : null,
+            x: source.x + BOARD_DUPLICATE_OFFSET,
+            y: source.y + BOARD_DUPLICATE_OFFSET,
+            width: source.width,
+            height: source.height,
+            rotation: source.rotation,
             zIndex: base + index,
-            content: node.data.content,
-            style: node.data.style,
+            content: source.content,
+            style: source.style,
             // Реакции — личное действие конкретного участника на конкретную карточку,
             // дубликат начинает с чистого листа, а не наследует чужие реакции
             reactions: [],
@@ -1595,6 +1785,24 @@ function selectAllElements(): void {
 function clearAllSelection(): void {
   for (const n of getNodes.value) n.selected = false;
   for (const e of getEdges.value) e.selected = false;
+}
+
+/**
+ * Клик по узлу-контейнеру (frame/group, 14.3), пока активен инструмент
+ * создания элемента. Vue Flow гасит `pane-click` для клика по ЛЮБОМУ узлу
+ * (иначе нельзя было бы отличить «кликнули по карточке» от «кликнули по
+ * пустому месту») — фрейм визуально выглядит как пустая область мини-холста,
+ * но физически это узел Vue Flow поверх пейна, так что обычный `onPaneClick`
+ * никогда не сработал бы для клика ВНУТРИ уже существующего фрейма. Без этого
+ * обработчика инструмент «Стикер»/«Фигура»/... молча ничего не создавал бы
+ * при клике внутри фрейма — именно та точка, где элемент должен приклеиться
+ * к нему автоматически (см. containerAt).
+ */
+function onNodeClick({ event, node }: NodeMouseEvent): void {
+  if (activeTool.value === 'select') return;
+  if (!isBoardContainer((node as GraphNode<BoardItem>).data.content.type)) return;
+  if (!(event instanceof MouseEvent)) return;
+  onPaneClick(event);
 }
 
 function onNodeContextMenu({ event, node }: NodeMouseEvent): void {
@@ -1710,6 +1918,7 @@ function onConnect(event: Connection): void {
       @node-drag-start="onNodeDragStart"
       @node-drag="onNodeDrag"
       @node-drag-stop="onNodeDragStop"
+      @node-click="onNodeClick"
       @node-context-menu="onNodeContextMenu"
       @edge-double-click="onEdgeDoubleClick"
       @edge-context-menu="onEdgeContextMenu"
@@ -1787,6 +1996,8 @@ function onConnect(event: Connection): void {
         :left="contextMenu.left"
         :top="contextMenu.top"
         :target="contextMenu.target"
+        :can-group="canGroupSelection"
+        :can-ungroup="canUngroupSelection"
         @bring-to-front="bringSelectedToFront"
         @send-to-back="sendSelectedToBack"
         @duplicate="duplicateSelected"

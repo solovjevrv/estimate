@@ -274,6 +274,50 @@ describe('deriveInverseOps — фреймы и группы (14.3)', () => {
     );
   });
 
+  it('удаление контейнера + ребёнка ОДНИМ батчем: item.create контейнера идёт раньше item.create ребёнка в inverse, независимо от порядка ops', () => {
+    // Регрессия: filterExistingTargets на undo вырезает связывающий item.patch
+    // (ребёнок уже не существует в local на момент undo), оставляя два "голых"
+    // item.create — если create ребёнка (с уже зашитым parentId) окажется ПЕРЕД
+    // create контейнера, сервер отклонит весь undo-батч ("Родитель не найден")
+    const frameId = 'frame';
+    const childId = 'child';
+    const frame = item({ id: frameId, content: { type: 'frame', title: '' } });
+    const child = item({ id: childId, parentId: frameId });
+
+    // Порядок ops намеренно "ребёнок раньше контейнера" — именно тот случай,
+    // где родитель ещё не восстановлен к моменту наивной сборки инверсии
+    const opsChildFirst: BoardOp[] = [
+      { type: 'item.delete', clientOpId: 'c1', id: childId },
+      { type: 'item.delete', clientOpId: 'c2', id: frameId },
+    ];
+    const inversesChildFirst = deriveInverseOps(opsChildFirst, state([frame, child]));
+    const filteredChildFirst = filterExistingTargets(inversesChildFirst, state());
+    const createIndexesChildFirst = filteredChildFirst
+      .map((op, index) => (op.type === 'item.create' ? { index, id: op.item.id } : null))
+      .filter((entry): entry is { index: number; id: string } => entry !== null);
+    const frameIndexChildFirst = createIndexesChildFirst.find((e) => e.id === frameId)!.index;
+    const childIndexChildFirst = createIndexesChildFirst.find((e) => e.id === childId)!.index;
+    expect(frameIndexChildFirst).toBeLessThan(childIndexChildFirst);
+
+    // И обратный порядок — контейнер раньше ребёнка в исходных ops — тоже должен остаться корректным
+    const opsContainerFirst: BoardOp[] = [
+      { type: 'item.delete', clientOpId: 'c1', id: frameId },
+      { type: 'item.delete', clientOpId: 'c2', id: childId },
+    ];
+    const inversesContainerFirst = deriveInverseOps(opsContainerFirst, state([frame, child]));
+    const filteredContainerFirst = filterExistingTargets(inversesContainerFirst, state());
+    const createIndexesContainerFirst = filteredContainerFirst
+      .map((op, index) => (op.type === 'item.create' ? { index, id: op.item.id } : null))
+      .filter((entry): entry is { index: number; id: string } => entry !== null);
+    const frameIndexContainerFirst = createIndexesContainerFirst.find(
+      (e) => e.id === frameId,
+    )!.index;
+    const childIndexContainerFirst = createIndexesContainerFirst.find(
+      (e) => e.id === childId,
+    )!.index;
+    expect(frameIndexContainerFirst).toBeLessThan(childIndexContainerFirst);
+  });
+
   it('item.patch parentId → null: inverse восстанавливает старый parentId', () => {
     const frameId = 'frame';
     const childId = 'child';

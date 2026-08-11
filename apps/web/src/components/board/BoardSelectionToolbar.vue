@@ -172,9 +172,16 @@ const isEmoji = computed(() => props.currentForm === 'emoji');
 /** Стикер (13.4) — не имеет заливки/текста/фигуры, только выбор стикера и размер */
 const isSticker = computed(() => props.currentForm === 'sticker');
 
-/** Фрейм/группа (14.3) — контейнеры без текстовых регуляторов: только
- * дублирование/удаление. Выбор формы, цвет,Aa/выравнивание — бессмысленны. */
+/** Фрейм/группа (14.3) — контейнеры без переключателя формы/текстовых регуляторов
+ * (Aa/выравнивание/начертание) — они бессмысленны для контейнера. */
 const isContainer = computed(() => props.currentForm === 'frame' || props.currentForm === 'group');
+/** Фрейм — видимый контейнер, у него ЕСТЬ заливка (в отличие от невидимой группы) —
+ * цвет можно менять и после создания, не только в момент задания дефолта */
+const isFrame = computed(() => props.currentForm === 'frame');
+/** Группа — единственная форма вообще без каких-либо регуляторов в этом тулбаре
+ * (ни формы, ни цвета, ни текста) — используется, чтобы не рисовать "осиротевший"
+ * разделитель перед Дублировать/Удалить, когда перед ним ничего не было */
+const isGroupOnly = computed(() => props.currentForm === 'group');
 
 /** Нет активного выделения текста — кнопки начертания/маркера/ссылки недоступны (12.13) */
 const formattingDisabled = computed(() => !props.editingText || props.activeMarks === null);
@@ -351,11 +358,20 @@ function stepFontSize(delta: number): void {
       </template>
     </UPopover>
 
-    <!-- Color picker — только для стикера/фигуры (у текста нет заливки, у картинки/эмодзи/стикера цвета, у фрейма — цвет рамки, но он задаётся при создании) -->
+    <!-- Color picker — стикер/фигура/фрейм (у текста нет заливки, у картинки/эмодзи/стикера
+         своя палитра нет смысла, у группы вообще нет видимой заливки). Ведущий разделитель —
+         только когда перед этим блоком уже что-то нарисовано (переключатель формы); для фрейма
+         (контейнер, переключателя формы нет) этот свотч сам первый элемент тулбара -->
     <template
-      v-if="!isContainer && props.currentForm !== 'text' && !isImage && !isEmoji && !isSticker"
+      v-if="
+        (!isContainer || isFrame) &&
+        props.currentForm !== 'text' &&
+        !isImage &&
+        !isEmoji &&
+        !isSticker
+      "
     >
-      <div class="board-selection-divider" />
+      <div v-if="!isContainer" class="board-selection-divider" />
 
       <UPopover :content="{ side: 'top', sideOffset: 20 }">
         <button
@@ -669,7 +685,10 @@ function stepFontSize(delta: number): void {
       </UPopover>
     </template>
 
-    <div class="board-selection-divider" />
+    <!-- Группа — единственная форма без единого регулятора выше (14.3): без этого
+         условия перед Дублировать висел бы "осиротевший" разделитель, перед которым
+         пусто -->
+    <div v-if="!isGroupOnly" class="board-selection-divider" />
     <button
       type="button"
       class="board-selection-icon-btn"

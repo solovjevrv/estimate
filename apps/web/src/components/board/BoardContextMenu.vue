@@ -18,10 +18,14 @@ import { useI18n } from 'vue-i18n';
 
 export type BoardContextMenuTarget = 'item' | 'edge';
 
-defineProps<{
+const props = defineProps<{
   left: number;
   top: number;
   target: BoardContextMenuTarget;
+  /** Группировка возможна: 2+ элементов выделено и среди них нет уже готового контейнера (14.3) */
+  canGroup?: boolean;
+  /** Разгруппировка возможна: хотя бы один выделенный элемент сейчас внутри контейнера (14.3) */
+  canUngroup?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -88,11 +92,21 @@ function act(fn: () => void): void {
         {{ t('board.duplicateSelected') }}
       </button>
       <!-- Группировка (14.3) — только для элементов, не для связей -->
-      <button type="button" class="board-context-menu-item" @click="act(() => emit('group'))">
+      <button
+        type="button"
+        class="board-context-menu-item"
+        :disabled="!props.canGroup"
+        @click="act(() => emit('group'))"
+      >
         <UIcon name="i-lucide-frame" class="size-4" />
         {{ t('board.groupSelection') }}
       </button>
-      <button type="button" class="board-context-menu-item" @click="act(() => emit('ungroup'))">
+      <button
+        type="button"
+        class="board-context-menu-item"
+        :disabled="!props.canUngroup"
+        @click="act(() => emit('ungroup'))"
+      >
         <UIcon name="i-lucide-ungroup" class="size-4" />
         {{ t('board.ungroupSelection') }}
       </button>
@@ -147,6 +161,15 @@ function act(fn: () => void): void {
 
 .board-context-menu-item:hover {
   background: var(--ui-bg-elevated);
+}
+
+.board-context-menu-item:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.board-context-menu-item:disabled:hover {
+  background: transparent;
 }
 
 .board-context-menu-item-danger {

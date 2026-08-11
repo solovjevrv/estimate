@@ -222,4 +222,24 @@ describe('boardItemToNode — фреймы и группы (14.3)', () => {
     const nodes = toFlowNodes([orphan, stickyItem]);
     expect(nodes.map((n) => n.id)).toContain('c1');
   });
+
+  it('дочерний узел получает position ОТНОСИТЕЛЬНО родителя, не абсолютную', () => {
+    // Регрессия: Vue Flow трактует Node.position как относительную к parentNode
+    // (getXYZPos: computedPosition = position + parentPos) — передача сюда
+    // абсолютных item.x/y (как у домена) сдвигала бы ребёнка ДВАЖДЫ на позицию
+    // родителя при рендере (визуально "убегал" при группировке/помещении во фрейм)
+    const node = boardItemToNode(childItem, frameItem);
+    expect(node.position).toEqual({ x: childItem.x - frameItem.x, y: childItem.y - frameItem.y });
+  });
+
+  it('toFlowNodes передаёт родителя из общего списка для вычисления относительной позиции', () => {
+    const nodes = toFlowNodes([frameItem, childItem]);
+    const child = nodes.find((n) => n.id === 'c1')!;
+    expect(child.position).toEqual({ x: 20, y: 20 });
+  });
+
+  it('верхнеуровневый элемент (parentId: null) — position остаётся абсолютной', () => {
+    const node = boardItemToNode(stickyItem);
+    expect(node.position).toEqual({ x: stickyItem.x, y: stickyItem.y });
+  });
 });

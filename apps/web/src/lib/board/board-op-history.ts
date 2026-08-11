@@ -185,7 +185,43 @@ export function deriveInverseOps(ops: BoardOp[], local: BoardLocalState): BoardO
     }
   }
 
-  return [...inverses, ...edgeCreateInverses];
+  return reorderContainerCreatesFirst([...inverses, ...edgeCreateInverses]);
+}
+
+/**
+ * Гарантирует, что `item.create` контейнера (frame/group, 14.3) в массиве
+ * всегда стоит РАНЬШЕ `item.create` его ребёнка, независимо от исходного
+ * порядка `ops`/итерации `local.items` (Map не хранит топологический порядок).
+ * Сервер применяет батч строго по порядку и отклонит `item.create` ребёнка,
+ * если родитель с таким `parentId` ещё не создан на этом шаге, — без этой
+ * перестановки undo батча, удалившего контейнер и его ребёнка одновременно,
+ * мог целиком провалиться на сервере, пока клиент уже применил его локально
+ * (расхождение до перезагрузки). Вложенность — один уровень, второй проход
+ * не нужен.
+ */
+function reorderContainerCreatesFirst(ops: BoardOp[]): BoardOp[] {
+  const creates = new Map<string, BoardOp & { type: 'item.create' }>();
+  for (const op of ops) {
+    if (op.type === 'item.create') creates.set(op.item.id, op);
+  }
+  const result: BoardOp[] = [];
+  const emitted = new Set<string>();
+  for (const op of ops) {
+    if (op.type !== 'item.create') {
+      result.push(op);
+      continue;
+    }
+    if (emitted.has(op.item.id)) continue;
+    const parentId = op.item.parentId;
+    const parentCreate = parentId ? creates.get(parentId) : undefined;
+    if (parentCreate && !emitted.has(parentId!)) {
+      result.push(parentCreate);
+      emitted.add(parentId!);
+    }
+    result.push(op);
+    emitted.add(op.item.id);
+  }
+  return result;
 }
 
 /** Свежий `clientOpId` на каждый повторный прогон — переиспользованный id из старой записи истории мог бы столкнуться с уже разрешённым в `ownClientOpIds` */

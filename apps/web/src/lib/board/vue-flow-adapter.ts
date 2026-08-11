@@ -9,11 +9,26 @@ import { MarkerType, type Edge, type EdgeMarkerType, type Node } from '@vue-flow
 
 import { resolveEdgeColor } from './board-item-defaults';
 
-export function boardItemToNode(item: BoardItem): Node<BoardItem> {
+/**
+ * `parent` — родительский `BoardItem` (frame/group), если у `item` задан
+ * `parentId`. Домен хранит `x`/`y` АБСОЛЮТНЫМИ всегда (см. заголовок файла и
+ * `BoardCanvas.vue` — все патчи позиции читают `node.computedPosition`,
+ * которую Vue Flow сам считает абсолютной), а вот `Node.position` в Vue Flow
+ * трактуется как позиция ОТНОСИТЕЛЬНО родителя, как только задан `parentNode`
+ * (`getXYZPos`: `x = computedPosition.x + parentPos.x`). Без вычитания
+ * позиции родителя здесь дочерний узел рендерился бы со сдвигом на координаты
+ * родителя ДОПОЛНИТЕЛЬНО к своим собственным — визуально "убегал" бы в
+ * сторону при любой группировке/помещении во фрейм.
+ */
+export function boardItemToNode(item: BoardItem, parent?: BoardItem): Node<BoardItem> {
+  const position =
+    item.parentId !== null && parent
+      ? { x: item.x - parent.x, y: item.y - parent.y }
+      : { x: item.x, y: item.y };
   const node: Node<BoardItem> = {
     id: item.id,
     type: item.content.type,
-    position: { x: item.x, y: item.y },
+    position,
     width: item.width,
     height: item.height,
     // Явный style.width/height, а не только поля width/height (12.7-баг): при
@@ -58,7 +73,8 @@ export function toFlowNodes(items: readonly BoardItem[]): Node<BoardItem>[] {
     const item = byId.get(id);
     if (!item) return;
     if (item.parentId !== null) visit(item.parentId);
-    result.push(boardItemToNode(item));
+    const parent = item.parentId !== null ? byId.get(item.parentId) : undefined;
+    result.push(boardItemToNode(item, parent));
   }
 
   for (const item of items) visit(item.id);

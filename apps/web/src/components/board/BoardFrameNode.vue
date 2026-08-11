@@ -1,20 +1,21 @@
 <script setup lang="ts">
 /**
  * Контейнер-фрейм/группа (14.3). Один компонент обслуживает оба типа:
- * `content.type === 'frame'` — видимая рамка с заголовком (как в Miro);
- * `content.type === 'group'`   — невидимый контейнер (без заливки/рамки),
+ * `content.type === 'frame'` — видимая рамка с заголовком НАД собой, как в Miro
+ *   (не внутри — заголовок не должен перекрывать содержимое мини-холста);
+ * `content.type === 'group'`   — невидимый контейнер (без заливки/рамки/заголовка),
  *   создаётся действием «Группировать» на выделении.
  *
  * Дочерние элементы движутся вместе с контейнером благодаря
- * `extent: 'parent'` в `vue-flow-adapter.ts` — нам не нужно ничего делать
- * с координатами детей вручную. Мы лишь рендерим хром (для frame) и
- * обеспечиваем возможность ресайза.
+ * `extent: 'parent'`/`parentNode` в `vue-flow-adapter.ts` — нам не нужно
+ * ничего делать с координатами детей вручную. Мы лишь рендерим хром (для
+ * frame) и обеспечиваем возможность ресайза.
  *
  * Ресайз фрейма пишет в `node.style.width/height` (как у стикера, 12.7-баг),
  * поэтому зеркалируем тот же патчинг `style.width/height` из `boardItemToNode`:
  * NodeResizer сам не знает о нашем абстрактном `item.width/height`.
  */
-import type { BoardItem } from '@poker/shared';
+import { BOARD_FRAME_TITLE_MAX_LENGTH, type BoardItem } from '@poker/shared';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -27,13 +28,16 @@ import {
   FRAME_MIN_HEIGHT,
   FRAME_MIN_WIDTH,
 } from '../../lib/board/board-constants';
+import { uuid } from '../../lib/board/uuid';
 import { useBoardSessionStore } from '../../stores/board-session';
+import { useSessionStore } from '../../stores/session';
 import type { NodeProps } from '@vue-flow/core';
 
 const props = defineProps<NodeProps<BoardItem>>();
 
 const { t } = useI18n();
 const boardSession = useBoardSessionStore();
+const session = useSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 
 const content = computed(() => props.data.content);
@@ -41,11 +45,31 @@ const isGroup = computed(() => content.value.type === 'group');
 const frameTitle = computed(() => (content.value.type === 'frame' ? content.value.title : ''));
 
 /**
+ * Мягкая блокировка заголовка (14.2 — по образцу `use-rich-text-editing.ts`,
+ * упрощённая версия под plain-инпут: у заголовка фрейма нет rich-text/runs,
+ * так что полный composable избыточен). Своя же блокировка не попадает в
+ * `lockedBy` — можно снять фокус и зайти снова, не блокируя самого себя.
+ */
+const selfUserId = computed(() => session.user?.id ?? '');
+const lockedBy = computed(() => {
+  const lock = boardSession.editingByItem.get(props.id);
+  return lock && lock.userId !== selfUserId.value ? lock : null;
+});
+
+/**
  * Цвет рамки фрейма — заметно тёмнее заливки (как у стикера, board-colors.ts),
  * чтобы контур был читаем на любой заливке. Для группы — transparent (видима
  * только рамка выделения Vue Flow, как в Figma).
  */
 const strokeColor = computed(() => darkenHex(props.data.style.color, 0.25));
+
+/**
+ * Заливка фона фрейма — лёгкий (14%) тон выбранного `style.color`, не сплошная
+ * заливка: фрейм не должен визуально "съедать" контраст содержимого внутри
+ * него. Меняется через тот же цветовой свотч тулбара выделения (14.3), что и
+ * у стикера/фигуры — `setSelectedColor` в BoardCanvas.vue общий для всех типов.
+ */
+const fillColor = computed(() => `color-mix(in oklch, ${props.data.style.color} 14%, transparent)`);
 
 /** Локальный черновик заголовка — синхронизируем с prop при смене */
 const titleDraft = ref('');
@@ -57,11 +81,20 @@ watch(
   { immediate: true },
 );
 
+function onTitleFocus(): void {
+  if (!canEdit.value) return;
+  void boardSession.sendAwareness('editing', { itemId: props.id, active: true });
+}
+
 function commitTitle(): void {
+  if (canEdit.value) {
+    void boardSession.sendAwareness('editing', { itemId: props.id, active: false });
+  }
+  if (titleDraft.value === frameTitle.value) return;
   void boardSession.applyOps([
     {
       type: 'item.patch',
-      clientOpId: crypto.randomUUID(),
+      clientOpId: uuid(),
       id: props.id,
       patch: { content: { type: 'frame', title: titleDraft.value } },
     },
@@ -72,7 +105,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
   void boardSession.applyOps([
     {
       type: 'item.patch',
-      clientOpId: crypto.randomUUID(),
+      clientOpId: uuid(),
       id: props.id,
       patch: { x, y, width, height },
     },
@@ -102,16 +135,26 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
     <div
       v-if="!isGroup"
       class="board-frame-border absolute inset-0 rounded-xl"
-      :style="{ borderColor: strokeColor }"
+      :style="{ borderColor: strokeColor, backgroundColor: fillColor }"
       @dblclick.stop
-    >
+    />
+    <!-- Заголовок — НАД фреймом, не внутри (как в Miro): фрейм это мини-холст,
+         заголовок не должен перекрывать содержимое -->
+    <div v-if="!isGroup && (canEdit || frameTitle)" class="board-frame-title-bar nodrag">
       <input
         v-if="canEdit"
         v-model="titleDraft"
         class="board-frame-title"
+        :maxlength="BOARD_FRAME_TITLE_MAX_LENGTH"
+        :disabled="!!lockedBy"
         :placeholder="t('board.frameTitlePlaceholder')"
+        @focus="onTitleFocus"
         @blur="commitTitle"
       />
+      <span v-else class="board-frame-title board-frame-title-readonly">{{ frameTitle }}</span>
+      <span v-if="lockedBy" class="board-frame-title-lock">
+        {{ t('board.editingBy', { name: lockedBy.name }) }}
+      </span>
     </div>
   </div>
 </template>
@@ -124,19 +167,49 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 .board-frame-border {
   border-width: 2px;
   border-style: dashed;
+  /* Фактическая заливка — инлайн `backgroundColor` (fillColor computed) от
+     style.color конкретного фрейма; здесь только дефолт-фоллбэк */
   background: color-mix(in oklch, var(--ui-primary) 4%, transparent);
 }
-.board-frame-title {
+/* Заголовок — над рамкой фрейма (отрицательный top), не внутри неё (Miro) */
+.board-frame-title-bar {
   position: absolute;
-  top: 6px;
-  left: 8px;
-  right: 8px;
+  top: -28px;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+.board-frame-title {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--brand-ink);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: transparent;
   border: none;
   outline: none;
-  background: transparent;
   font-weight: 600;
-  color: var(--brand-ink);
   resize: none;
-  overflow: hidden;
+}
+.board-frame-title:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.board-frame-title-readonly {
+  flex: 1;
+  cursor: default;
+}
+.board-frame-title-lock {
+  flex-shrink: 0;
+  padding: 2px 6px;
+  color: var(--brand-ink2);
+  white-space: nowrap;
+  background: var(--brand-surface);
+  border-radius: 10px;
+  box-shadow: var(--brand-shadow-card);
+  font-size: 10px;
+  font-weight: 600;
 }
 </style>
