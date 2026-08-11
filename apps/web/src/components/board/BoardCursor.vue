@@ -16,8 +16,6 @@ import type { BoardAwarenessBroadcast } from '@poker/shared';
 import { useVueFlow } from '@vue-flow/core';
 import { computed } from 'vue';
 
-import { avatarTint } from '../../lib/board/board-colors';
-
 const props = defineProps<{
   /** Состояние awareness этого участника (курсор/перетаскивание/idle) */
   entry: BoardAwarenessBroadcast;
@@ -47,38 +45,14 @@ const style = computed(() => {
     transform: 'translate(-50%, -50%)',
   };
 });
-
-const tint = computed(() => avatarTint(props.entry.avatarUrl));
 </script>
 
 <template>
   <div v-show="visible" :style="style" class="board-cursor" :data-user-id="entry.userId">
-    <!-- SVG-иконка курсора (не крестик) — стилизована под цвет аватарки -->
-    <svg
-      :class="['board-cursor-icon', `board-cursor-icon--${tint}`]"
-      width="20"
-      height="24"
-      viewBox="0 0 20 24"
-      fill="none"
-      xmlns="http://www.w3.org/2000/svg"
-    >
-      <path
-        d="M2 2L2 18L6 18L6 14L14 14L14 18L18 18L18 2L14 2L14 10L6 10L6 2Z"
-        stroke="currentColor"
-        stroke-width="1.5"
-        stroke-linecap="round"
-        stroke-linejoin="round"
-      />
-      <circle cx="11" cy="7" r="1.5" fill="currentColor" />
-    </svg>
-    <div class="board-cursor-label">
-      <span
-        v-if="entry.avatarUrl"
-        class="board-cursor-avatar"
-        :style="{ backgroundImage: `url(${entry.avatarUrl})` }"
-      />
-      <span class="board-cursor-name">{{ entry.name }}</span>
-    </div>
+    <!-- CSS-курсор: маленький неравносторонний треугольник -->
+    <div class="board-cursor-tip" />
+    <!-- Имя пользователя рядом с курсором -->
+    <div class="board-cursor-name">{{ entry.name }}</div>
   </div>
 </template>
 
@@ -87,69 +61,51 @@ const tint = computed(() => avatarTint(props.entry.avatarUrl));
   position: absolute;
   z-index: 10;
   pointer-events: none;
-  /* Плавное движение чужого курсора между throttled-патчами (14.1) */
+  /* Плавное движение чужого курсора между throttled-патчами (14.1),
+     как и для чужих карточек в BoardCanvas.vue */
   transition:
     left 80ms linear,
     top 80ms linear;
 }
 
-.board-cursor-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--brand-ink2);
-  /* Небольшая тень — курсор читается на любом фоне холста */
+/* Маленький неравносторонний треугольник — чужой курсор (14.1) */
+.board-cursor-tip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: translate(-50%, -50%) rotate(25deg);
+  width: 0;
+  height: 0;
+  border-left: 8px solid transparent;
+  border-right: 8px solid transparent;
+  border-bottom: 12px solid var(--brand-ink2);
   filter: drop-shadow(0 1px 2px color-mix(in oklch, var(--brand-shadow) 25%, transparent));
 }
 
-.board-cursor-label {
+/* Цветовые вариации курсора по тинту аватарки (board-colors.ts) */
+.board-cursor-tip--primary {
+  border-bottom-color: var(--ui-primary);
+}
+.board-cursor-tip--muted {
+  border-bottom-color: var(--brand-ink3);
+}
+
+/* Имя участника рядом с курсором — чуть меньше шрифтом */
+.board-cursor-name {
   position: absolute;
-  top: 24px;
+  top: 16px;
   left: 0;
-  display: flex;
-  align-items: center;
-  gap: 5px;
   padding: 2px 6px;
-  border-radius: 10px;
+  border-radius: 6px;
   background: var(--brand-surface);
   box-shadow: var(--brand-shadow-card);
-  white-space: nowrap;
-  font-size: 11px;
+  font-size: 10px;
   font-weight: 600;
   color: var(--brand-ink2);
+  white-space: nowrap;
   pointer-events: none;
-  /* Лейбл плавно следует за курсором */
   transition:
     left 80ms linear,
     top 80ms linear;
-}
-
-.board-cursor-avatar {
-  display: block;
-  width: 20px;
-  height: 20px;
-  flex-shrink: 0;
-  border-radius: 50%;
-  object-fit: cover;
-  border: 1px solid var(--brand-border);
-}
-
-.board-cursor-name {
-  max-width: 140px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  vertical-align: middle;
-}
-
-/* Цветовые вариации курсора по тинту аватарки (board-colors.ts) */
-.board-cursor-icon--ink {
-  color: var(--brand-ink2);
-}
-.board-cursor-icon--primary {
-  color: var(--ui-primary);
-}
-.board-cursor-icon--muted {
-  color: var(--brand-ink3);
 }
 </style>

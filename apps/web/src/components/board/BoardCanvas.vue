@@ -1747,7 +1747,13 @@ function onConnect(event: Connection): void {
                 class="board-presence-img"
               />
               <span v-else class="board-presence-initials">{{ initials(entry.name) }}</span>
-              <span class="board-presence-count">{{ boardSession.presence.length }}</span>
+            </div>
+            <!-- Счётчик участников — отдельный бейдж, как в Miro -->
+            <div
+              class="board-presence-badge"
+              :title="t('board.presenceCount', { count: boardSession.presence.length })"
+            >
+              {{ boardSession.presence.length }}
             </div>
           </div>
         </div>
@@ -1992,21 +1998,19 @@ function onConnect(event: Connection): void {
   color: var(--brand-ink);
 }
 
-/* Счётчик участников — маленький значок справа от стека */
-.board-presence-count {
-  position: absolute;
-  top: -2px;
-  right: -2px;
+/* Счётчик участников — отдельный бейдж справа от стека аватарок */
+.board-presence-badge {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
+  min-width: 20px;
+  height: 20px;
   padding: 0 4px;
+  margin-left: 2px;
   font-size: 11px;
   font-weight: 600;
   color: var(--brand-ink);
-  background: var(--brand-surface);
+  background: var(--ui-bg);
   border: 1px solid var(--brand-border);
   border-radius: 10px;
 }
