@@ -883,6 +883,7 @@ export interface BoardAwarenessPayload {
 export interface BoardAwarenessBroadcast {
   userId: string;
   name: string;
+  avatarUrl: string | null;
   kind: BoardAwarenessKind;
   data: Record<string, unknown>;
 }

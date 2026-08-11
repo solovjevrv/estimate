@@ -425,6 +425,9 @@ export default {
       arrow: 'Arrow',
       dot: 'Dot',
     },
+    you: 'You',
+    presence: 'On the board',
+    cursorPlaceholder: 'Move the mouse to show your cursor',
   },
   boards: {
     title: 'My boards',
