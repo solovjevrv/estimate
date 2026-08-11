@@ -1963,6 +1963,7 @@ function onConnect(event: Connection): void {
   max-width: 260px;
   padding: 6px;
   border-radius: 20px;
+  overflow: hidden;
 }
 
 /* Стек аватарок: каждая наезжает на предыдущую */
@@ -1976,8 +1977,8 @@ function onConnect(event: Connection): void {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 32px;
+  height: 32px;
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--ui-bg);
@@ -1989,7 +1990,7 @@ function onConnect(event: Connection): void {
 /* gap не поддерживает отрицательные значения (невалидное CSS-объявление
    отбрасывается целиком) — наезд аватарок делаем отрицательным margin */
 .board-presence-avatar + .board-presence-avatar {
-  margin-left: -8px;
+  margin-left: -11px;
 }
 
 /* Себя выделяем акцентной обводкой */
@@ -2005,7 +2006,7 @@ function onConnect(event: Connection): void {
 }
 
 .board-presence-initials {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
   color: var(--brand-ink);
 }
