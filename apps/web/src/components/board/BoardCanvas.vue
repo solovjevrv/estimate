@@ -1725,18 +1725,26 @@ function onConnect(event: Connection): void {
            Наведение — tooltip с именем. -->
       <Panel v-if="boardSession.presence.length > 1" position="top-right">
         <div
-          class="board-presence surface-card flex items-center gap-1 py-1.5 pr-2.5 pl-3"
+          class="board-presence surface-card flex items-center gap-2 py-1.5 pr-2.5 pl-3"
           :aria-label="t('board.presence')"
         >
           <UIcon name="i-lucide-users-2" class="text-muted size-4" />
+          <!-- Счётчик участников — бейдж между иконкой и аватарками, как на референсе -->
+          <div
+            class="board-presence-badge"
+            :title="t('board.presenceCount', { count: boardSession.presence.length })"
+          >
+            {{ boardSession.presence.length }}
+          </div>
           <div class="board-presence-stack">
             <div
-              v-for="entry in boardSession.presence"
+              v-for="(entry, index) in boardSession.presence"
               :key="entry.userId"
               :class="[
                 'board-presence-avatar',
                 { 'board-presence-avatar--self': entry.userId === selfUserId },
               ]"
+              :style="{ zIndex: boardSession.presence.length - index }"
               :data-user-id="entry.userId"
               :title="entry.userId === selfUserId ? t('board.you') : entry.name"
             >
@@ -1747,13 +1755,6 @@ function onConnect(event: Connection): void {
                 class="board-presence-img"
               />
               <span v-else class="board-presence-initials">{{ initials(entry.name) }}</span>
-            </div>
-            <!-- Счётчик участников — отдельный бейдж, как в Miro -->
-            <div
-              class="board-presence-badge"
-              :title="t('board.presenceCount', { count: boardSession.presence.length })"
-            >
-              {{ boardSession.presence.length }}
             </div>
           </div>
         </div>
@@ -1949,7 +1950,7 @@ function onConnect(event: Connection): void {
   overflow: hidden;
 }
 
-/* Панель «кто на доске» (14.1) — компактный стек аватарок с наездом */
+/* Панель «кто на доске» (14.1) */
 .board-presence {
   border-radius: 12px;
   padding: 4px 10px;
@@ -1958,12 +1959,11 @@ function onConnect(event: Connection): void {
   overflow: hidden;
 }
 
-/* Стек аватарок: каждая наезжает на предыдущую (-50% ширины) */
+/* Стек аватарок: каждая наезжает на предыдущую (отрицательный gap) */
 .board-presence-stack {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: -10px;
+  gap: -12px;
 }
 
 .board-presence-avatar {
@@ -1971,13 +1971,14 @@ function onConnect(event: Connection): void {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 24px;
+  height: 24px;
   flex-shrink: 0;
   border-radius: 50%;
   background: var(--ui-bg);
   border: 2px solid var(--brand-surface);
   overflow: visible;
+  z-index: 0;
 }
 
 /* Себя выделяем акцентной обводкой */
@@ -1993,12 +1994,12 @@ function onConnect(event: Connection): void {
 }
 
 .board-presence-initials {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   color: var(--brand-ink);
 }
 
-/* Счётчик участников — отдельный бейдж справа от стека аватарок */
+/* Счётчик участников — бейдж рядом с иконкой (как в Miro) */
 .board-presence-badge {
   display: flex;
   align-items: center;
@@ -2006,7 +2007,6 @@ function onConnect(event: Connection): void {
   min-width: 20px;
   height: 20px;
   padding: 0 4px;
-  margin-left: 2px;
   font-size: 11px;
   font-weight: 600;
   color: var(--brand-ink);

@@ -73,12 +73,12 @@ const style = computed(() => {
   position: absolute;
   top: 0;
   left: 0;
-  transform: translate(-50%, -50%) rotate(25deg);
+  transform: translate(-50%, -50%) rotate(205deg);
   width: 0;
   height: 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 12px solid var(--brand-ink2);
+  border-left: 6px solid transparent;
+  border-right: 6px solid transparent;
+  border-bottom: 10px solid var(--brand-ink2);
   filter: drop-shadow(0 1px 2px color-mix(in oklch, var(--brand-shadow) 25%, transparent));
 }
 
@@ -90,13 +90,13 @@ const style = computed(() => {
   border-bottom-color: var(--brand-ink3);
 }
 
-/* Имя участника рядом с курсором — чуть меньше шрифтом */
+/* Имя участника рядом с курсором — чуть меньше шрифтом, близко к треугольнику */
 .board-cursor-name {
   position: absolute;
-  top: 16px;
+  top: 12px;
   left: 0;
-  padding: 2px 6px;
-  border-radius: 6px;
+  padding: 1px 4px;
+  border-radius: 4px;
   background: var(--brand-surface);
   box-shadow: var(--brand-shadow-card);
   font-size: 10px;
