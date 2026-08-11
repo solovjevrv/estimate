@@ -1726,11 +1726,15 @@ function onConnect(event: Connection): void {
 
       <!-- Кто сейчас на доске (14.1) — компактный список аватарок с наездом,
            как в Miro. Показываем, когда >1 участник: аватарка себя выделена.
-           Наведение — tooltip с именем. Иконка+счётчик — отдельная серая
-           пилюля, аватарки дальше идут без общей карточки-подложки — так на
-           референсе, не единая широкая карточка на всю строку. -->
+           Наведение — tooltip с именем. Вся панель — на общей белой
+           карточке-подложке (surface-card), а иконка+счётчик внутри неё —
+           дополнительно на своей серой пилюле (вложенная подложка, как на
+           референсе), аватарки — прямо на белой карточке, без своей. -->
       <Panel v-if="boardSession.presence.length > 1" position="top-right">
-        <div class="board-presence flex items-center" :aria-label="t('board.presence')">
+        <div
+          class="board-presence surface-card flex items-center"
+          :aria-label="t('board.presence')"
+        >
           <div
             class="board-presence-count"
             :title="t('board.presenceCount', { count: boardSession.presence.length })"
@@ -1952,11 +1956,13 @@ function onConnect(event: Connection): void {
   overflow: hidden;
 }
 
-/* Панель «кто на доске» (14.1) — сама по себе без фона/карточки, это просто
-   ряд из двух самостоятельных элементов: пилюля счётчика и стек аватарок */
+/* Панель «кто на доске» (14.1) — общая карточка-подложка, внутри неё —
+   пилюля счётчика и стек аватарок */
 .board-presence {
   gap: 8px;
   max-width: 260px;
+  padding: 6px;
+  border-radius: 20px;
 }
 
 /* Стек аватарок: каждая наезжает на предыдущую */
