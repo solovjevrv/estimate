@@ -1028,6 +1028,10 @@ function applyAxisLock(event: NodeDragEvent): void {
 function onNodeDrag(event: NodeDragEvent): void {
   applyAxisLock(event);
   updateSnapGuides(event);
+  // Во время драга узла реальный mousemove на пейне не долетает до
+  // cursorThrottler (указатель перехвачен драгом Vue Flow) — без этого чужой
+  // курсор замирал бы, пока сам элемент продолжает двигаться под ним.
+  if (event.event instanceof MouseEvent) cursorThrottler(event.event);
   for (const node of event.nodes as GraphNode<BoardItem>[]) {
     let send = dragThrottlers.get(node.id);
     if (!send) {
@@ -1959,11 +1963,10 @@ function onConnect(event: Connection): void {
   overflow: hidden;
 }
 
-/* Стек аватарок: каждая наезжает на предыдущую (отрицательный gap) */
+/* Стек аватарок: каждая наезжает на предыдущую */
 .board-presence-stack {
   display: flex;
   align-items: center;
-  gap: -12px;
 }
 
 .board-presence-avatar {
@@ -1979,6 +1982,12 @@ function onConnect(event: Connection): void {
   border: 2px solid var(--brand-surface);
   overflow: visible;
   z-index: 0;
+}
+
+/* gap не поддерживает отрицательные значения (невалидное CSS-объявление
+   отбрасывается целиком) — наезд аватарок делаем отрицательным margin */
+.board-presence-avatar + .board-presence-avatar {
+  margin-left: -8px;
 }
 
 /* Себя выделяем акцентной обводкой */

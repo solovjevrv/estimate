@@ -258,7 +258,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     joined.value = true;
   }
 
-  async function join(id: string): Promise<void> {
+  async function join(id: string, onReconnectFailure?: () => void): Promise<void> {
     // Смена доски на живом сокете — сбрасываем прошлое состояние, иначе
     // отставшая рассылка старой доски осталась бы на экране
     if (boardId && boardId !== id) {
@@ -281,6 +281,15 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       active.on(BOARD_WS_SERVER_EVENTS.OPS, applyBatch);
       active.on(BOARD_WS_SERVER_EVENTS.PRESENCE, (entries) => {
         presence.value = entries;
+        // Awareness (курсоры, 14.1) не приходит событием "участник ушёл" — без
+        // этой сверки курсор отключившегося застывал бы на экране навсегда
+        // (последняя полученная позиция), так как awarenessByUser пополняется,
+        // но никогда сам по себе не убывает. presence — источник истины о том,
+        // кто сейчас реально на доске.
+        const activeIds = new Set(entries.map((entry) => entry.userId));
+        for (const userId of awarenessByUser.keys()) {
+          if (!activeIds.has(userId)) awarenessByUser.delete(userId);
+        }
       });
       active.on(BOARD_WS_SERVER_EVENTS.AWARENESS, (payload) => {
         awarenessByUser.set(payload.userId, payload);
@@ -288,9 +297,13 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       active.on('connect', () => {
         connected.value = true;
         // Место на доске не переживает обрыв соединения — после переподключения
-        // входим заново. Первый connect не трогаем — вход по нему сделает join() ниже
+        // входим заново. Первый connect не трогаем — вход по нему сделает join() ниже.
+        // Реконнект может и не удаться (доступ отозвали, пока вкладка простаивала,
+        // сервер ещё не поднялся) — без .catch() это был бы необработанный
+        // отказ промиса, а joined остался бы false навсегда без единого сигнала
+        // пользователю (по образцу room.ts, где такой же пробел уже был найден и закрыт, 7.16)
         if (established) {
-          void performJoin(id);
+          void performJoin(id).catch(() => onReconnectFailure?.());
         }
       });
       active.on('disconnect', (reason: string) => {
