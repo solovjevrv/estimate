@@ -409,13 +409,18 @@ function canCreateItem(): boolean {
 }
 
 /**
- * Контейнер (frame/group, 14.3), в чьи границы попадает точка — фрейм задуман
- * как мини-холст (референс Miro): всё, что создаётся или перетаскивается
- * внутрь его границ, сразу становится его содержимым (`parentId`), а не
- * лежит поверх него отдельным несвязанным элементом. Если точка попадает
- * сразу в несколько перекрывающихся контейнеров — берём наименьший по
- * площади (обычно самый "внутренний" визуально). `excludeId` — не
- * рассматривать сам себя (при перетаскивании контейнера он не должен
+ * ФРЕЙМ (не группа!), в чьи границы попадает точка — фрейм задуман как
+ * мини-холст (референс Miro): всё, что создаётся или перетаскивается внутрь
+ * его границ, сразу становится его содержимым (`parentId`), а не лежит
+ * поверх него отдельным несвязанным элементом. Группа сюда сознательно НЕ
+ * попадает — она невидима, у нёё нет заметных пользователю границ, чтобы
+ * целиться, и в отличие от фрейма членство в ней меняется только явным
+ * действием «Группировать»/«Разгруппировать», а не геометрией драга — иначе
+ * элемент мог бы "случайно" прилипнуть к чьей-то невидимой старой группе
+ * просто оказавшись над её bounding box (запутывающий баг, найденный вручную).
+ * Если точка попадает сразу в несколько перекрывающихся фреймов — берём
+ * наименьший по площади (обычно самый "внутренний" визуально). `excludeId` —
+ * не рассматривать сам себя (при перетаскивании фрейма он не должен
  * попытаться стать своим же родителем).
  */
 function containerAt(point: { x: number; y: number }, excludeId?: string): BoardItem | undefined {
@@ -423,7 +428,7 @@ function containerAt(point: { x: number; y: number }, excludeId?: string): Board
   let bestArea = Infinity;
   for (const candidate of props.items) {
     if (candidate.id === excludeId) continue;
-    if (!isBoardContainer(candidate.content.type)) continue;
+    if (candidate.content.type !== 'frame') continue;
     if (
       point.x < candidate.x ||
       point.x > candidate.x + candidate.width ||
@@ -685,24 +690,42 @@ function groupSelection(): void {
   void boardSession.applyOps(ops);
 }
 
-/** Разгруппировка (11.3) — снимает parentId у выделенных, возвращая детей в корень */
+/**
+ * Разгруппировка (14.3). Группа — жёсткий пучок (не мини-холст, как фрейм):
+ * разгруппировка любого её участника распускает ВСЮ группу целиком, а не
+ * только выделенного (иначе часть участников осталась бы привязана к группе,
+ * из которой других уже вынули — рассинхрон, которого в модели "жёсткого
+ * пучка" быть не должно), и опустевшую группу сразу удаляем — иначе на доске
+ * оставалась бы невидимая пустая оболочка, которую нечем выделить кроме как
+ * случайно, и нечем удалить кроме явного клика точно по ней (найдено вручную).
+ * Фрейм — не то же самое: он мини-холст, который пользователь мог осознанно
+ * создать и хочет оставить даже пустым, так что для фрейма снимаем родителя
+ * только у явно выделенного элемента, сам фрейм не трогаем.
+ */
 function ungroupSelection(): void {
-  // Патчим именно отфильтрованный список, не всё выделение (patchSelected читал бы
-  // selectedNodes.value целиком) — иначе уже верхнеуровневые элементы в том же
-  // выделении получали бы избыточный no-op patch({parentId:null})
-  const selected = selectedNodes.value.filter((n) => n.data.parentId !== null);
-  if (!selected.length) return;
-  void boardSession.applyOps(
-    selected.map(
-      (node) =>
-        ({
+  const ops: BoardOp[] = [];
+  const dissolvedGroupIds = new Set<string>();
+  for (const node of selectedNodes.value) {
+    const parentId = node.data.parentId;
+    if (parentId === null) continue;
+    const parent = props.items.find((candidate) => candidate.id === parentId);
+    if (parent?.content.type === 'group') {
+      if (dissolvedGroupIds.has(parentId)) continue;
+      dissolvedGroupIds.add(parentId);
+      for (const member of childrenOf(parentId)) {
+        ops.push({
           type: 'item.patch',
           clientOpId: uuid(),
-          id: node.id,
+          id: member.id,
           patch: { parentId: null },
-        }) satisfies BoardOp,
-    ),
-  );
+        });
+      }
+      ops.push({ type: 'item.delete', clientOpId: uuid(), id: parentId });
+    } else {
+      ops.push({ type: 'item.patch', clientOpId: uuid(), id: node.id, patch: { parentId: null } });
+    }
+  }
+  if (ops.length) void boardSession.applyOps(ops);
 }
 
 function pickImageFile(): Promise<File | null> {
@@ -952,15 +975,23 @@ async function onCopy(event: ClipboardEvent): Promise<void> {
   if (!selected.length) return;
   event.preventDefault();
 
+  // Копируя фрейм/группу целиком или хотя бы одного участника группы (14.3),
+  // тянем за собой и остальное содержимое — иначе вставленная копия оставалась
+  // бы пустой оболочкой без детей, либо единственным вырванным из группы
+  // элементом (найдено вручную)
+  const sourceItems = expandContainerFamily(selected);
+
   const payload = await serializeSelection(
-    selected.map((node) => ({
-      content: node.data.content,
-      style: node.data.style,
-      rotation: node.data.rotation,
-      x: node.computedPosition.x,
-      y: node.computedPosition.y,
-      width: node.dimensions.width,
-      height: node.dimensions.height,
+    sourceItems.map((item) => ({
+      id: item.id,
+      parentId: item.parentId,
+      content: item.content,
+      style: item.style,
+      rotation: item.rotation,
+      x: item.x,
+      y: item.y,
+      width: item.width,
+      height: item.height,
     })),
   );
   try {
@@ -980,7 +1011,11 @@ async function pasteBoardItems(items: BoardClipboardItem[]): Promise<void> {
   const viewportCenter = project({ x: rect.width / 2, y: rect.height / 2 });
   const baseZIndex = maxZIndex(props.items) + 1;
   const ops: BoardOp[] = [];
-  const newIds: string[] = [];
+  // Индексировано по ПОЗИЦИИ В ИСХОДНОМ items (не по порядку успешных вставок) —
+  // parentIndex в payload ссылается на исходные позиции; пропущенный элемент
+  // (например, картинку не удалось перезалить) оставляет в массиве дыру,
+  // но контейнером (целью parentIndex) картинка быть не может, так что это безопасно
+  const newIds: (string | undefined)[] = new Array(items.length);
 
   for (const [index, item] of items.entries()) {
     let content: BoardItemContent;
@@ -1001,19 +1036,23 @@ async function pasteBoardItems(items: BoardClipboardItem[]): Promise<void> {
     }
 
     const id = uuid();
-    newIds.push(id);
+    newIds[index] = id;
     const x = viewportCenter.x + item.relX - width / 2;
     const y = viewportCenter.y + item.relY - height / 2;
+    // Родитель — контейнер (frame/group), тоже скопированный в этом же payload
+    // (14.3, восстанавливаем структуру), иначе — фрейм, в который попал центр
+    // при вставке (как и при обычном создании); контейнер сам не вкладывается
+    const parentId = isBoardContainer(content.type)
+      ? null
+      : item.parentIndex !== null
+        ? (newIds[item.parentIndex] ?? null)
+        : (containerAt({ x: x + width / 2, y: y + height / 2 })?.id ?? null);
     ops.push({
       type: 'item.create',
       clientOpId: uuid(),
       item: {
         id,
-        // Вставленный фрейм/группа сам не вкладывается (без вложенности, 14.3) —
-        // остальные типы приклеиваются к фрейму, в который попал их центр, как и при обычном создании
-        parentId: isBoardContainer(content.type)
-          ? null
-          : (containerAt({ x: x + width / 2, y: y + height / 2 })?.id ?? null),
+        parentId,
         x,
         y,
         width,
@@ -1060,6 +1099,43 @@ function childrenOf(containerId: string): BoardItem[] {
 }
 
 /**
+ * Полный набор элементов для копирования/дублирования выделения (14.3):
+ * выделение плюс всё, что должно "приехать вместе" с ним, даже если не было
+ * явно выделено само:
+ * - выделен контейнер (frame/group) → тянем его детей (иначе копия/дубликат
+ *   контейнера была бы пустой оболочкой);
+ * - выделен участник ГРУППЫ (не фрейма) → тянем саму группу-контейнер и ВСЕХ
+ *   остальных участников — группа жёсткий пучок, копируется только целиком,
+ *   даже если явно выделен был всего один её участник (как при разгруппировке,
+ *   см. ungroupSelection). Фрейм — не то же самое: выделенный ОДИНОЧНЫЙ его
+ *   ребёнок копируется сам по себе, без остальных детей фрейма и самого фрейма.
+ */
+function expandContainerFamily(selected: readonly GraphNode<BoardItem>[]): BoardItem[] {
+  const selectedIds = new Set(selected.map((n) => n.id));
+  const extra = new Map<string, BoardItem>();
+  for (const node of selected) {
+    if (isBoardContainer(node.data.content.type)) {
+      for (const child of childrenOf(node.id)) {
+        if (!selectedIds.has(child.id)) extra.set(child.id, child);
+      }
+      continue;
+    }
+    if (node.data.parentId !== null) {
+      const parent = props.items.find((candidate) => candidate.id === node.data.parentId);
+      if (parent?.content.type === 'group') {
+        if (!selectedIds.has(parent.id)) extra.set(parent.id, parent);
+        for (const mate of childrenOf(parent.id)) {
+          if (!selectedIds.has(mate.id)) extra.set(mate.id, mate);
+        }
+      }
+    }
+  }
+  return [...selected.map((n) => n.data), ...extra.values()].sort(
+    (a, b) => Number(isBoardContainer(a.content.type)) - Number(isBoardContainer(b.content.type)),
+  );
+}
+
+/**
  * Патчи-сдвиги для детей контейнера при его перетаскивании (14.3). Домен
  * хранит `x`/`y` детей АБСОЛЮТНЫМИ (см. vue-flow-adapter.ts) — Vue Flow сам
  * визуально двигает их вместе с родителем во время живого драга (это его
@@ -1075,32 +1151,73 @@ function childrenOf(containerId: string): BoardItem[] {
  * позиции (`dragStartPositions`, засеяна в onNodeDragStart) — не от текущей
  * позиции в сторе, чтобы дельты не накапливались по кадрам троттлинга.
  */
-function containerChildOps(container: { id: string; computedPosition: { x: number; y: number } }): {
-  ops: BoardOp[];
-  inverse: BoardOp[];
-} {
-  const containerStart = dragStartPositions.get(container.id);
-  if (!containerStart) return { ops: [], inverse: [] };
-  const dx = container.computedPosition.x - containerStart.x;
-  const dy = container.computedPosition.y - containerStart.y;
+/** Сдвиг {id → {x,y}} на дельту от собственного старта, каждого по СВОЕЙ стартовой позиции */
+function shiftOps(
+  mates: readonly BoardItem[],
+  dx: number,
+  dy: number,
+): { ops: BoardOp[]; inverse: BoardOp[] } {
   const ops: BoardOp[] = [];
   const inverse: BoardOp[] = [];
-  for (const child of childrenOf(container.id)) {
-    const childStart = dragStartPositions.get(child.id) ?? { x: child.x, y: child.y };
+  for (const mate of mates) {
+    const start = dragStartPositions.get(mate.id) ?? { x: mate.x, y: mate.y };
     ops.push({
       type: 'item.patch',
       clientOpId: uuid(),
-      id: child.id,
-      patch: { x: childStart.x + dx, y: childStart.y + dy },
+      id: mate.id,
+      patch: { x: start.x + dx, y: start.y + dy },
     });
     inverse.push({
       type: 'item.patch',
       clientOpId: uuid(),
-      id: child.id,
-      patch: { x: childStart.x, y: childStart.y },
+      id: mate.id,
+      patch: { x: start.x, y: start.y },
     });
   }
   return { ops, inverse };
+}
+
+/**
+ * Патчи-спутники драга ОДНОГО узла (14.3) — то, что должно сдвинуться на ту
+ * же дельту, что и сам перетаскиваемый узел, но не входит в `event.nodes`
+ * (Vue Flow не включает туда ни детей контейнера, ни соседей по группе).
+ * Патч самого `node` строит отдельно `sendPositionPatch`.
+ *
+ * Два принципиально разных случая:
+ * - `node` — КОНТЕЙНЕР (frame/group): тащим за собой всех его детей — дельта
+ *   считается от старта самого контейнера. Домен хранит `x`/`y` детей
+ *   АБСОЛЮТНЫМИ (см. vue-flow-adapter.ts) — без явной записи их нового
+ *   абсолютного `x`/`y` в стор при следующем обновлении `flowNodes`
+ *   относительная позиция ребёнка (child.x - parent.x) пересчиталась бы от
+ *   НЕизменившегося child.x и уже сдвинутого parent.x, т.е. съехала бы в
+ *   другую сторону — ребёнок дёргался бы туда-сюда при каждом сетевом эхе
+ *   (найдено вручную: непредсказуемый "прыгающий" драг фрейма с содержимым).
+ * - `node` — участник ГРУППЫ (не фрейма): группа — жёсткий пучок, а не
+ *   контейнер-холст, как фрейм. Драг ЛЮБОГО её участника двигает саму
+ *   группу-контейнер и ВСЕХ остальных участников тоже (не только контейнер
+ *   двигает участников, но и наоборот) — иначе перетаскивание за один из
+ *   членов группы отрывало бы его от остальных (найдено вручную).
+ */
+function dragCascadeOps(node: {
+  id: string;
+  data: BoardItem;
+  computedPosition: { x: number; y: number };
+}): { ops: BoardOp[]; inverse: BoardOp[] } {
+  const start = dragStartPositions.get(node.id);
+  if (!start) return { ops: [], inverse: [] };
+  const dx = node.computedPosition.x - start.x;
+  const dy = node.computedPosition.y - start.y;
+  if (isBoardContainer(node.data.content.type)) {
+    return shiftOps(childrenOf(node.id), dx, dy);
+  }
+  if (node.data.parentId !== null) {
+    const parent = props.items.find((candidate) => candidate.id === node.data.parentId);
+    if (parent?.content.type === 'group') {
+      const mates = [parent, ...childrenOf(parent.id).filter((mate) => mate.id !== node.id)];
+      return shiftOps(mates, dx, dy);
+    }
+  }
+  return { ops: [], inverse: [] };
 }
 
 function sendPositionPatch(
@@ -1114,28 +1231,38 @@ function sendPositionPatch(
     y: node.computedPosition.y,
   };
   if (parentId !== undefined) patch.parentId = parentId;
-  const ops: BoardOp[] = [{ type: 'item.patch', clientOpId: uuid(), id: node.id, patch }];
-  // Контейнер тащат сам по себе (event.nodes не включает потомков) — тянем их
-  // новую абсолютную позицию тем же батчем, одним сетевым запросом с ним же
-  if (isBoardContainer(node.data.content.type)) {
-    ops.push(...containerChildOps(node).ops);
-  }
+  const ops: BoardOp[] = [
+    { type: 'item.patch', clientOpId: uuid(), id: node.id, patch },
+    ...dragCascadeOps(node).ops,
+  ];
   void boardSession.applyOps(ops, opts);
 }
 
 /**
  * Родитель, которого должен получить перетаскиваемый узел на dragStop (14.3).
  * Контейнеры (frame/group) сами никогда не вкладываются — вложенность
- * запрещена сервером. Уже вложенный элемент (`parentId !== null`) остаётся
- * внутри своего родителя: `extent: 'parent'` в vue-flow-adapter физически не
- * даёт вытащить его драгом за границы — выйти можно только через явное
- * «Разгруппировать». Меняется родитель только у верхнеуровневых элементов:
- * если их отпустили внутри границ фрейма/группы — они «приклеиваются» к нему
- * (Miro-семантика фрейма как мини-холста), как и при создании внутри него.
+ * запрещена сервером.
+ *
+ * Участник ГРУППЫ — членство жёсткое, меняется только явным «Разгруппировать»,
+ * не геометрией драга (группа невидима, у нее нет заметных пользователю
+ * границ, чтобы целиться, и авто-переприклеивание по bounding box было бы
+ * непредсказуемым — найдено вручную).
+ *
+ * Верхнеуровневый элемент или участник ФРЕЙМА — родитель пересчитывается от
+ * ТЕКУЩЕЙ позиции всегда, а не сохраняется навсегда после первого попадания:
+ * это единственный способ узнать, что элемент вытащили ЗА пределы фрейма
+ * (иначе элемент, однажды помещённый во фрейм, продолжал бы считаться его
+ * ребёнком и ездить вместе с ним, даже оказавшись визуально далеко снаружи —
+ * баг, найденный вручную). Если новая точка — внутри ДРУГОГО фрейма, элемент
+ * перепривязывается сразу к нему, без промежуточного "открепления".
  */
 function resolveDragParent(node: GraphNode<BoardItem>): string | null {
   if (isBoardContainer(node.data.content.type)) return null;
-  if (node.data.parentId !== null) return node.data.parentId;
+  const parent =
+    node.data.parentId !== null
+      ? props.items.find((candidate) => candidate.id === node.data.parentId)
+      : undefined;
+  if (parent?.content.type === 'group') return node.data.parentId;
   const center = {
     x: node.computedPosition.x + node.dimensions.width / 2,
     y: node.computedPosition.y + node.dimensions.height / 2,
@@ -1155,16 +1282,26 @@ function resolveDragParent(node: GraphNode<BoardItem>): string | null {
  * упрощение, для мелкого дрожания курсора у диагонали не критично.
  */
 
+/** Все узлы, чью стартовую позицию нужно засеять вместе с самим `node` (14.3, см. dragCascadeOps) */
+function dragFamilyOf(node: BoardItem): BoardItem[] {
+  if (isBoardContainer(node.content.type)) return childrenOf(node.id);
+  if (node.parentId !== null) {
+    const parent = props.items.find((candidate) => candidate.id === node.parentId);
+    if (parent?.content.type === 'group') {
+      return [parent, ...childrenOf(parent.id).filter((mate) => mate.id !== node.id)];
+    }
+  }
+  return [];
+}
+
 function onNodeDragStart({ nodes: dragged }: NodeDragEvent): void {
   for (const node of dragged as GraphNode<BoardItem>[]) {
     dragStartPositions.set(node.id, { x: node.computedPosition.x, y: node.computedPosition.y });
-    // Контейнер (frame/group) тащат сам по себе — event.nodes не включает его
-    // потомков (см. containerChildOps) — засеваем их стартовые позиции здесь же,
-    // иначе дельту сдвига не от чего было бы посчитать на драге/dragStop
-    if (isBoardContainer(node.data.content.type)) {
-      for (const child of childrenOf(node.id)) {
-        dragStartPositions.set(child.id, { x: child.x, y: child.y });
-      }
+    // Спутники драга (дети контейнера ИЛИ соседи по группе, 14.3) не входят в
+    // event.nodes — засеваем их стартовые позиции здесь же, иначе дельту
+    // сдвига не от чего было бы посчитать на драге/dragStop (см. dragCascadeOps)
+    for (const mate of dragFamilyOf(node.data)) {
+      dragStartPositions.set(mate.id, { x: mate.x, y: mate.y });
     }
   }
 }
@@ -1311,12 +1448,11 @@ function onNodeDragStop(event: NodeDragEvent): void {
     // реального сдвига (start === финал) вообще не пишем в историю — иначе
     // случайный микро-жест засорял бы стек no-op записью. Если сменился и
     // родитель — откатываем и его тоже, иначе Ctrl+Z вернул бы позицию, но
-    // оставил элемент приклеенным к фрейму. Дети контейнера (14.3) откатываются
-    // к СВОИМ стартовым позициям тем же undo-шагом — иначе после отмены
-    // перетаскивания фрейма он вернулся бы на место, а его содержимое — нет.
-    const childInverse = isBoardContainer(node.data.content.type)
-      ? containerChildOps(node).inverse
-      : [];
+    // оставил элемент приклеенным к фрейму. Спутники драга (14.3 — дети
+    // контейнера или соседи по группе) откатываются к СВОИМ стартовым позициям
+    // тем же undo-шагом — иначе после отмены перетаскивания фрейма/группы он
+    // вернулся бы на место, а его содержимое/остальные участники — нет.
+    const mateInverse = dragCascadeOps(node).inverse;
     const inverse: BoardOp[] | undefined = start
       ? [
           {
@@ -1329,7 +1465,7 @@ function onNodeDragStop(event: NodeDragEvent): void {
               ...(parentChanged ? { parentId: node.data.parentId } : {}),
             },
           },
-          ...childInverse,
+          ...mateInverse,
         ]
       : undefined;
     sendPositionPatch(
@@ -1338,7 +1474,7 @@ function onNodeDragStop(event: NodeDragEvent): void {
       parentChanged ? nextParentId : undefined,
     );
     dragStartPositions.delete(node.id);
-    for (const child of childrenOf(node.id)) dragStartPositions.delete(child.id);
+    for (const mate of dragFamilyOf(node.data)) dragStartPositions.delete(mate.id);
   }
 }
 
@@ -1665,16 +1801,7 @@ function setSelectedSticker(pack: string, id: string): void {
 function duplicateSelected(): void {
   const selected = selectedNodes.value;
   if (!selected.length) return;
-  const selectedIds = new Set(selected.map((n) => n.id));
-  const extraChildren = props.items.filter(
-    (candidate) =>
-      candidate.parentId !== null &&
-      selectedIds.has(candidate.parentId) &&
-      !selectedIds.has(candidate.id),
-  );
-  const sourceItems = [...selected.map((n) => n.data), ...extraChildren].sort(
-    (a, b) => Number(isBoardContainer(a.content.type)) - Number(isBoardContainer(b.content.type)),
-  );
+  const sourceItems = expandContainerFamily(selected);
   if (!sourceItems.length || !canCreateItems(sourceItems.length)) return;
   const base = maxZIndex(props.items) + 1;
   const idMap = new Map(sourceItems.map((source) => [source.id, uuid()]));
@@ -1814,6 +1941,26 @@ function onNodeContextMenu({ event, node }: NodeMouseEvent): void {
   contextMenu.value = { target: 'item', ...contextMenuPositionFromEvent(event) };
 }
 
+/**
+ * Правый клик по мульти-выделению (2+ узла) — Vue Flow поверх bounding box
+ * выделения рисует служебную обёртку `.vue-flow__nodesselection-rect` (нужна
+ * для группового драга/ресайза), которая физически перекрывает сами карточки.
+ * Правый клик по НЕЙ не считается ни кликом по узлу, ни кликом по пейну —
+ * `node-context-menu` не срабатывает вовсе, и без отдельного события браузерное
+ * меню "просвечивало" вместо нашего (найдено вручную). У Vue Flow есть
+ * отдельное событие именно под этот случай.
+ */
+function onSelectionContextMenu({
+  event,
+}: {
+  event: MouseEvent;
+  nodes: GraphNode<BoardItem>[];
+}): void {
+  if (!props.canEdit) return;
+  event.preventDefault();
+  contextMenu.value = { target: 'item', ...contextMenuPositionFromEvent(event) };
+}
+
 function onEdgeContextMenu({ event, edge }: EdgeMouseEvent): void {
   if (!props.canEdit) return;
   (event as MouseEvent).preventDefault();
@@ -1920,6 +2067,7 @@ function onConnect(event: Connection): void {
       @node-drag-stop="onNodeDragStop"
       @node-click="onNodeClick"
       @node-context-menu="onNodeContextMenu"
+      @selection-context-menu="onSelectionContextMenu"
       @edge-double-click="onEdgeDoubleClick"
       @edge-context-menu="onEdgeContextMenu"
     >

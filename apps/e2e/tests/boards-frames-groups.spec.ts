@@ -5,9 +5,16 @@ import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
 /**
  * Фреймы и группы (14.3) — видимые контейнеры (frame) и невидимые (group).
  * Фрейм создаётся инструментом «Фрейм» в левом тулбаре (клик по пустому холсту),
- * группа — через контекстное меню «Сгруппировать» на выделении. Дети
- * движутся вместе с контейнером (extent: 'parent'). Удаление контейнера осирает
- * детей (parentId → null), не удаляя их.
+ * группа — через контекстное меню «Сгруппировать» на выделении. Удаление
+ * контейнера осирает детей (parentId → null), не удаляя их.
+ *
+ * Фрейм и группа ведут себя РАЗНО при драге (важное отличие, добавлено после
+ * ручной проверки пользователем): фрейм — мини-холст, дети двигаются вместе с
+ * НИМ, но не клэмпятся физически внутри — драг ребёнка за пределы фрейма
+ * отвязывает его (resolveDragParent пересчитывается всегда, не единожды).
+ * Группа — жёсткий пучок: драг ЛЮБОГО участника двигает всех остальных и сам
+ * контейнер-группу, членство меняется только явным «Разгруппировать», которое
+ * распускает группу целиком и удаляет опустевшую оболочку.
  */
 test.describe('Доски: фреймы и группы', () => {
   test('создание фрейма через тулбар, персистентность после reload', async ({
@@ -246,5 +253,254 @@ test.describe('Доски: фреймы и группы', () => {
     await page.reload();
     await expect(page.locator('.vue-flow__node-frame')).toHaveCount(0);
     await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(1);
+  });
+
+  test('группа — жёсткий пучок: перетаскивание одного участника двигает и остальных', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+    const owner = await createUser('board-group-rigid');
+    const context = await newContext(browser);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}GroupRigid ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(page.locator('.vue-flow__pane')).toBeVisible();
+
+    await page.locator('.board-toolbar button[aria-label="Стикер"]').click();
+    await page.locator('.vue-flow__pane').click({ position: { x: 100, y: 300 } });
+    await page.locator('.board-toolbar button[aria-label="Стикер"]').click();
+    await page.locator('.vue-flow__pane').click({ position: { x: 400, y: 300 } });
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(2);
+
+    await page.locator('.vue-flow__pane').click({ position: { x: 700, y: 550 } });
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.locator('.vue-flow__node-sticky').first().click({ button: 'right' });
+    await page.getByRole('button', { name: 'Сгруппировать', exact: true }).click();
+    await expect(page.locator('.vue-flow__node-group')).toHaveCount(1);
+
+    const sticky1 = page.locator('.vue-flow__node-sticky').first();
+    const sticky2 = page.locator('.vue-flow__node-sticky').last();
+    const box1Before = await sticky1.boundingBox();
+    const box2Before = await sticky2.boundingBox();
+
+    // Снимаем выделение и тащим ТОЛЬКО один узел — иначе сработал бы родной
+    // мульти-драг Vue Flow (оба узла и так уже выделены), а не наш кастомный
+    // каскад по факту членства в группе (dragCascadeOps), который и проверяем
+    await page.locator('.vue-flow__pane').click({ position: { x: 700, y: 550 } });
+    await page.mouse.move(
+      box1Before!.x + box1Before!.width / 2,
+      box1Before!.y + box1Before!.height / 2,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      box1Before!.x + box1Before!.width / 2 + 90,
+      box1Before!.y + box1Before!.height / 2 + 50,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+
+    await expect
+      .poll(async () => (await sticky1.boundingBox())!.x)
+      .toBeGreaterThan(box1Before!.x + 70);
+    // Главная проверка — сосед по группе тоже поехал, хотя его не тащили
+    await expect
+      .poll(async () => (await sticky2.boundingBox())!.x)
+      .toBeGreaterThan(box2Before!.x + 70);
+  });
+
+  test('разгруппировка распускает группу целиком и удаляет опустевшую оболочку', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+    const owner = await createUser('board-ungroup-cleanup');
+    const context = await newContext(browser);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}UngroupCleanup ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(page.locator('.vue-flow__pane')).toBeVisible();
+
+    await page.locator('.board-toolbar button[aria-label="Стикер"]').click();
+    await page.locator('.vue-flow__pane').click({ position: { x: 100, y: 300 } });
+    await page.locator('.board-toolbar button[aria-label="Стикер"]').click();
+    await page.locator('.vue-flow__pane').click({ position: { x: 400, y: 300 } });
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(2);
+
+    await page.locator('.vue-flow__pane').click({ position: { x: 700, y: 550 } });
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.locator('.vue-flow__node-sticky').first().click({ button: 'right' });
+    await page.getByRole('button', { name: 'Сгруппировать', exact: true }).click();
+    await expect(page.locator('.vue-flow__node-group')).toHaveCount(1);
+
+    // Разгруппировываем через контекстное меню по ОДНОМУ участнику — группа
+    // жёсткая, распускается целиком (не только выделенный участник)
+    await page.locator('.vue-flow__node-sticky').first().click({ button: 'right' });
+    await page.getByRole('button', { name: 'Разгруппировать', exact: true }).click();
+
+    await expect(page.locator('.vue-flow__node-group')).toHaveCount(0);
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(2);
+
+    // Переживает перезагрузку — оболочка не "воскресает"
+    await page.reload();
+    await expect(page.locator('.vue-flow__node-group')).toHaveCount(0);
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(2);
+  });
+
+  test('правый клик по мульти-выделению открывает меню доски, не браузера', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+    const owner = await createUser('board-multi-context-menu');
+    const context = await newContext(browser);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}MultiCtxMenu ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(page.locator('.vue-flow__pane')).toBeVisible();
+
+    await page.locator('.board-toolbar button[aria-label="Стикер"]').click();
+    await page.locator('.vue-flow__pane').click({ position: { x: 100, y: 300 } });
+    await page.locator('.board-toolbar button[aria-label="Стикер"]').click();
+    await page.locator('.vue-flow__pane').click({ position: { x: 400, y: 300 } });
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(2);
+
+    // Мульти-выделение (2+ узла) — Vue Flow рисует поверх него служебную
+    // обёртку .vue-flow__nodesselection-rect для группового драга/ресайза,
+    // которая перехватывает клики, включая правый — без отдельного
+    // обработчика (selectionContextMenu) вместо меню доски "просвечивало" бы
+    // браузерное (найдено вручную)
+    await page.locator('.vue-flow__pane').click({ position: { x: 700, y: 550 } });
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.locator('.vue-flow__node-sticky').first().click({ button: 'right' });
+
+    await expect(page.locator('.board-context-menu')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Сгруппировать', exact: true })).toBeVisible();
+  });
+
+  test('копирование через системный буфер (Ctrl/Cmd+C/V): фрейм тянет за собой содержимое', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+    const owner = await createUser('board-copy-frame');
+    const context = await newContext(browser);
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    async function copyAndWaitForClipboard(previousText: string): Promise<void> {
+      await page.keyboard.press('ControlOrMeta+c');
+      await expect(async () => {
+        const text = await page.evaluate(() => navigator.clipboard.readText());
+        expect(text).not.toBe(previousText);
+      }).toPass({ timeout: 5000 });
+    }
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}CopyFrame ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(page.locator('.vue-flow__pane')).toBeVisible();
+    await page.locator('.vue-flow__pane').click();
+
+    // Фрейм + стикер внутри него (приклеивается сразу, 14.3)
+    await page.locator('.board-toolbar button[aria-label="Фрейм"]').click();
+    await page.locator('.vue-flow__pane').click({ position: { x: 300, y: 200 } });
+    await expect(page.locator('.vue-flow__node-frame')).toHaveCount(1);
+    await page.locator('.board-toolbar button[aria-label="Стикер"]').click();
+    await page.locator('.vue-flow__pane').click({ position: { x: 310, y: 210 } });
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+
+    // Копируем ТОЛЬКО фрейм (клик по его рамке, не по стикеру внутри) — вставка
+    // должна восстановить и стикер тоже, хотя явно выделен был лишь контейнер
+    await page.locator('.vue-flow__node-frame').click();
+    await copyAndWaitForClipboard('');
+    await page.keyboard.press('ControlOrMeta+v');
+
+    await expect(page.locator('.vue-flow__node-frame')).toHaveCount(2);
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(2);
+  });
+
+  test('копирование через системный буфер (Ctrl/Cmd+C/V): группа тянет за собой содержимое, а не только пустую оболочку', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+    const owner = await createUser('board-copy-group');
+    const context = await newContext(browser);
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    async function copyAndWaitForClipboard(previousText: string): Promise<void> {
+      await page.keyboard.press('ControlOrMeta+c');
+      await expect(async () => {
+        const text = await page.evaluate(() => navigator.clipboard.readText());
+        expect(text).not.toBe(previousText);
+      }).toPass({ timeout: 5000 });
+    }
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}CopyGroup ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(page.locator('.vue-flow__pane')).toBeVisible();
+    await page.locator('.vue-flow__pane').click();
+
+    await page.locator('.board-toolbar button[aria-label="Стикер"]').click();
+    await page.locator('.vue-flow__pane').click({ position: { x: 100, y: 300 } });
+    await page.locator('.board-toolbar button[aria-label="Стикер"]').click();
+    await page.locator('.vue-flow__pane').click({ position: { x: 400, y: 300 } });
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(2);
+
+    await page.locator('.vue-flow__pane').click({ position: { x: 700, y: 550 } });
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.locator('.vue-flow__node-sticky').first().click({ button: 'right' });
+    await page.getByRole('button', { name: 'Сгруппировать', exact: true }).click();
+    await expect(page.locator('.vue-flow__node-group')).toHaveCount(1);
+
+    // Копируем ОДНОГО участника (не всю группу целиком выделяем) — вставка
+    // должна восстановить группу целиком, а не только этот один стикер и не
+    // пустую оболочку без содержимого
+    await page.locator('.vue-flow__node-sticky').first().click();
+    await copyAndWaitForClipboard('');
+    await page.keyboard.press('ControlOrMeta+v');
+
+    await expect(page.locator('.vue-flow__node-group')).toHaveCount(2);
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(4);
   });
 });

@@ -4,7 +4,6 @@
  * (см. риски в PROGRESS.md), меняется только этот файл.
  */
 import type { BoardColorHex, BoardEdge, BoardEdgeMarker, BoardItem } from '@poker/shared';
-import { isBoardContainer } from '@poker/shared';
 import { MarkerType, type Edge, type EdgeMarkerType, type Node } from '@vue-flow/core';
 
 import { resolveEdgeColor } from './board-item-defaults';
@@ -46,14 +45,16 @@ export function boardItemToNode(item: BoardItem, parent?: BoardItem): Node<Board
     selectable: true,
     data: item,
   };
-  // Фрейм/группа (14.3) — контейнеры: Vue Flow родительский узел нужно явно
-  // задать через `parentNode`, а `extent: 'parent'` заставит дочерние
-  // перетаскиваться вместе с ним (кастомное поведение — см. BoardCanvas.vue,
-  // onNodeDragStop). Без extent='parent' дети "выходят" за границы родителя.
+  // Дочерний элемент фрейма/группы (14.3) — Vue Flow родительский узел
+  // задаём через `parentNode` (нужен для правильного пересчёта абсолютной
+  // позиции). НЕ задаём `extent: 'parent'` — сознательно НЕ клэмпим ребёнка
+  // внутри границ родителя: пользователь должен иметь возможность вытащить
+  // элемент драгом ЗА пределы фрейма (Miro-семантика), а не быть навечно
+  // заперт в нём физически. Приклеивание/открепление — по факту итоговой
+  // позиции на dragStop (см. resolveDragParent/dragCascadeOps в BoardCanvas.vue),
+  // не по физическому ограничению драга.
   if (item.parentId !== null) {
     node.parentNode = item.parentId;
-  } else if (isBoardContainer(item.content.type)) {
-    node.extent = 'parent';
   }
   return node;
 }

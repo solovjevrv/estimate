@@ -15,11 +15,16 @@ import {
 
 const STYLE: BoardItemStyle = { color: '#FCEB96' };
 
+let sourceItemCounter = 0;
+
 function sourceItem(
   content: BoardItemContent,
   overrides: Partial<BoardClipboardSourceItem> = {},
 ): BoardClipboardSourceItem {
+  sourceItemCounter += 1;
   return {
+    id: `item-${sourceItemCounter}`,
+    parentId: null,
     content,
     style: STYLE,
     rotation: 0,
@@ -122,6 +127,55 @@ describe('serializeSelection / parseClipboardPayload — round-trip', () => {
     const json = await serializeSelection([]);
     const payload = parseClipboardPayload(json);
     expect(payload?.items).toEqual([]);
+  });
+
+  it('parentIndex (14.3): ребёнок ссылается на индекс своего контейнера в ТОМ ЖЕ payload', async () => {
+    const frame = sourceItem({ type: 'frame', title: 'Ф' });
+    const child = sourceItem({ type: 'sticky', text: 'внутри' }, { parentId: frame.id });
+
+    const json = await serializeSelection([frame, child]);
+    const payload = parseClipboardPayload(json);
+
+    expect(payload?.items).toHaveLength(2);
+    expect(payload?.items[0]).toMatchObject({ parentIndex: null });
+    expect(payload?.items[1]).toMatchObject({ parentIndex: 0 });
+  });
+
+  it('parentIndex верхнеуровневого элемента — null, даже если parentId задан, но контейнер не попал в выделение', async () => {
+    const child = sourceItem(
+      { type: 'sticky', text: 'без родителя в выделении' },
+      { parentId: 'some-frame-not-in-selection' },
+    );
+
+    const json = await serializeSelection([child]);
+    const payload = parseClipboardPayload(json);
+
+    expect(payload?.items[0]).toMatchObject({ parentIndex: null });
+  });
+
+  it('parentIndex остаётся корректным после отсева несериализуемого элемента ПЕРЕД контейнером', async () => {
+    // Регрессия: индекс родителя считается по ИСХОДНОМУ массиву, а не по
+    // отфильтрованному — без ремаппинга после фильтрации parentIndex ребёнка
+    // указывал бы на позицию, съехавшую из-за выпавшей картинки перед контейнером
+    const fetchMock = vi.fn().mockRejectedValue(new Error('network error'));
+    const brokenImage = sourceItem({
+      type: 'image',
+      url: '/api/boards/1/assets/broken.webp',
+      width: 100,
+      height: 100,
+    });
+    const frame = sourceItem({ type: 'frame', title: 'Ф' });
+    const child = sourceItem({ type: 'sticky', text: 'внутри' }, { parentId: frame.id });
+
+    const json = await serializeSelection(
+      [brokenImage, frame, child],
+      fetchMock as unknown as typeof fetch,
+    );
+    const payload = parseClipboardPayload(json);
+
+    expect(payload?.items).toHaveLength(2);
+    expect(payload?.items[0]).toMatchObject({ content: { type: 'frame', title: 'Ф' } });
+    expect(payload?.items[1]).toMatchObject({ content: { type: 'sticky' }, parentIndex: 0 });
   });
 });
 

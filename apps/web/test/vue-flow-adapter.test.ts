@@ -192,22 +192,26 @@ describe('boardEdgeToFlowEdge', () => {
 });
 
 describe('boardItemToNode — фреймы и группы (14.3)', () => {
-  it('контейнер (frame) без parentId получает extent: "parent"', () => {
+  it('контейнер (frame) без parentId не получает ни parentNode, ни extent', () => {
+    // extent: 'parent' сознательно НЕ используется (даже на детях) — ребёнка
+    // не клэмпим внутри фрейма физически, чтобы его можно было драгом вытащить
+    // наружу (Miro-семантика); приклеивание/открепление решает resolveDragParent
+    // на dragStop, а не физическое ограничение Vue Flow во время самого драга
     const node = boardItemToNode(frameItem);
-    expect(node.extent).toBe('parent');
+    expect(node.extent).toBeUndefined();
     expect(node.parentNode).toBeUndefined();
   });
 
-  it('дочерний элемент получает parentNode = parentId', () => {
+  it('дочерний элемент получает parentNode = parentId, но без extent (не клэмпится физически)', () => {
     const node = boardItemToNode(childItem);
     expect(node.parentNode).toBe('f1');
     expect(node.extent).toBeUndefined();
   });
 
-  it('контейнер (group) без parentId тоже extent: "parent"', () => {
+  it('контейнер (group) без parentId тоже без extent', () => {
     const group: BoardItem = { ...frameItem, id: 'g1', content: { type: 'group' } };
     const node = boardItemToNode(group);
-    expect(node.extent).toBe('parent');
+    expect(node.extent).toBeUndefined();
     expect(node.parentNode).toBeUndefined();
   });
 
