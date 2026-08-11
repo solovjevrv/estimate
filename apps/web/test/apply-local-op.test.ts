@@ -123,3 +123,122 @@ describe('applyLocalBoardOp', () => {
     expect(state.edges.has('e1')).toBe(false);
   });
 });
+
+describe('applyLocalBoardOp — фреймы и группы (14.3)', () => {
+  it('item.create контейнера с parentId устанавливает parentNode локально', () => {
+    const state = emptyState();
+    const frame: BoardItem = {
+      ...item,
+      id: 'frame',
+      content: { type: 'frame', title: 'Группа' },
+      parentId: null,
+    };
+    state.items.set('frame', frame);
+    const child: BoardItem = { ...item, id: 'child', parentId: 'frame' };
+
+    applyLocalBoardOp(state, { type: 'item.create', clientOpId: 'c1', item: child });
+
+    expect(state.items.get('child')!.parentId).toBe('frame');
+  });
+
+  it('item.patch parentId на существующий контейнер — ок', () => {
+    const state = emptyState();
+    const frame: BoardItem = {
+      ...item,
+      id: 'frame',
+      content: { type: 'frame', title: 'Группа' },
+      parentId: null,
+    };
+    state.items.set('frame', frame);
+    const child: BoardItem = { ...item, id: 'child', parentId: null };
+    state.items.set('child', child);
+
+    applyLocalBoardOp(state, {
+      type: 'item.patch',
+      clientOpId: 'c2',
+      item: { ...child, parentId: 'frame' },
+    });
+
+    expect(state.items.get('child')!.parentId).toBe('frame');
+  });
+
+  it('item.delete контейнера осирает детей (parentId → null)', () => {
+    const state = emptyState();
+    const frame: BoardItem = {
+      ...item,
+      id: 'frame',
+      content: { type: 'frame', title: 'Группа' },
+      parentId: null,
+    };
+    const child: BoardItem = { ...item, id: 'child', parentId: 'frame' };
+    state.items.set('frame', frame);
+    state.items.set('child', child);
+
+    applyLocalBoardOp(state, { type: 'item.delete', clientOpId: 'c3', id: 'frame' });
+
+    expect(state.items.has('frame')).toBe(false);
+    expect(state.items.get('child')!.parentId).toBeNull();
+  });
+
+  it('item.delete контейнера НЕ удаляет детей', () => {
+    const state = emptyState();
+    const frame: BoardItem = {
+      ...item,
+      id: 'frame',
+      content: { type: 'group' },
+      parentId: null,
+    };
+    const child: BoardItem = { ...item, id: 'child', parentId: 'frame' };
+    state.items.set('frame', frame);
+    state.items.set('child', child);
+
+    applyLocalBoardOp(state, { type: 'item.delete', clientOpId: 'c3', id: 'frame' });
+
+    expect(state.items.has('child')).toBe(true);
+    expect(state.items.get('child')!.parentId).toBeNull();
+  });
+
+  it('item.patch, демотирующий контейнер до стикера, осирает детей', () => {
+    const state = emptyState();
+    const frame: BoardItem = {
+      ...item,
+      id: 'frame',
+      content: { type: 'frame', title: 'Группа' },
+      parentId: null,
+    };
+    const child: BoardItem = { ...item, id: 'child', parentId: 'frame' };
+    state.items.set('frame', frame);
+    state.items.set('child', child);
+
+    applyLocalBoardOp(state, {
+      type: 'item.patch',
+      clientOpId: 'c4',
+      item: { ...frame, content: { type: 'sticky', text: '' } },
+    });
+
+    expect(state.items.get('frame')!.content.type).toBe('sticky');
+    expect(state.items.get('child')!.parentId).toBeNull();
+  });
+
+  it('item.patch, меняющий frame → group, НЕ осирает детей (group тоже контейнер)', () => {
+    const state = emptyState();
+    const frame: BoardItem = {
+      ...item,
+      id: 'frame',
+      content: { type: 'frame', title: 'Группа' },
+      parentId: null,
+    };
+    const child: BoardItem = { ...item, id: 'child', parentId: 'frame' };
+    state.items.set('frame', frame);
+    state.items.set('child', child);
+
+    applyLocalBoardOp(state, {
+      type: 'item.patch',
+      clientOpId: 'c5',
+      item: { ...frame, content: { type: 'group' } },
+    });
+
+    expect(state.items.get('frame')!.content.type).toBe('group');
+    expect(state.items.get('child')!.parentId).toBe('frame');
+  });
+});

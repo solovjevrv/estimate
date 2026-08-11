@@ -8,11 +8,26 @@ import { MarkerType, type Edge, type EdgeMarkerType, type Node } from '@vue-flow
 
 import { resolveEdgeColor } from './board-item-defaults';
 
-export function boardItemToNode(item: BoardItem): Node<BoardItem> {
-  return {
+/**
+ * `parent` — родительский `BoardItem` (frame/group), если у `item` задан
+ * `parentId`. Домен хранит `x`/`y` АБСОЛЮТНЫМИ всегда (см. заголовок файла и
+ * `BoardCanvas.vue` — все патчи позиции читают `node.computedPosition`,
+ * которую Vue Flow сам считает абсолютной), а вот `Node.position` в Vue Flow
+ * трактуется как позиция ОТНОСИТЕЛЬНО родителя, как только задан `parentNode`
+ * (`getXYZPos`: `x = computedPosition.x + parentPos.x`). Без вычитания
+ * позиции родителя здесь дочерний узел рендерился бы со сдвигом на координаты
+ * родителя ДОПОЛНИТЕЛЬНО к своим собственным — визуально "убегал" бы в
+ * сторону при любой группировке/помещении во фрейм.
+ */
+export function boardItemToNode(item: BoardItem, parent?: BoardItem): Node<BoardItem> {
+  const position =
+    item.parentId !== null && parent
+      ? { x: item.x - parent.x, y: item.y - parent.y }
+      : { x: item.x, y: item.y };
+  const node: Node<BoardItem> = {
     id: item.id,
     type: item.content.type,
-    position: { x: item.x, y: item.y },
+    position,
     width: item.width,
     height: item.height,
     // Явный style.width/height, а не только поля width/height (12.7-баг): при
@@ -30,10 +45,41 @@ export function boardItemToNode(item: BoardItem): Node<BoardItem> {
     selectable: true,
     data: item,
   };
+  // Дочерний элемент фрейма/группы (14.3) — Vue Flow родительский узел
+  // задаём через `parentNode` (нужен для правильного пересчёта абсолютной
+  // позиции). НЕ задаём `extent: 'parent'` — сознательно НЕ клэмпим ребёнка
+  // внутри границ родителя: пользователь должен иметь возможность вытащить
+  // элемент драгом ЗА пределы фрейма (Miro-семантика), а не быть навечно
+  // заперт в нём физически. Приклеивание/открепление — по факту итоговой
+  // позиции на dragStop (см. resolveDragParent/dragCascadeOps в BoardCanvas.vue),
+  // не по физическому ограничению драга.
+  if (item.parentId !== null) {
+    node.parentNode = item.parentId;
+  }
+  return node;
 }
 
 export function toFlowNodes(items: readonly BoardItem[]): Node<BoardItem>[] {
-  return items.map(boardItemToNode);
+  // Vue Flow должна увидеть родительский узел (frame/group, 14.3) ДО потомков,
+  // чтобы `parentNode`/`extent: 'parent'` корректно сработали при `setNodes`.
+  // Топологическая сортировка по parentId: сначала узлы без родителя, потом
+  // дочерние — глубина ограничена одним уровнем (вложенность запрещена сервером).
+  const byId = new Map(items.map((item) => [item.id, item]));
+  const result: Node<BoardItem>[] = [];
+  const visited = new Set<string>();
+
+  function visit(id: string): void {
+    if (visited.has(id)) return;
+    visited.add(id);
+    const item = byId.get(id);
+    if (!item) return;
+    if (item.parentId !== null) visit(item.parentId);
+    const parent = item.parentId !== null ? byId.get(item.parentId) : undefined;
+    result.push(boardItemToNode(item, parent));
+  }
+
+  for (const item of items) visit(item.id);
+  return result;
 }
 
 /**

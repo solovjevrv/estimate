@@ -214,7 +214,10 @@ export const boardItems = pgTable(
     boardId: uuid('board_id')
       .notNull()
       .references(() => boards.id, { onDelete: 'cascade' }),
-    /** Родитель во фрейме/группе (14.3) — пока всегда null, столбец заведён заранее */
+    /** Родитель во фрейме/группе (14.3) — self-referencing FK. Валидация на уровне
+     *  приложения (board-ops.ts): только frame/group могут быть родителями, вложенность
+     *  запрещена. DB-level FK опущен (TS25707 циркулярная типизация); ON DELETE SET NULL
+     *  эмулируется в item.delete через осираение детей (parentId → null) */
     parentId: uuid('parent_id'),
     x: doublePrecision('x').notNull(),
     y: doublePrecision('y').notNull(),

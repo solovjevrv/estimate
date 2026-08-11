@@ -34,6 +34,15 @@ export interface BoardClipboardItem {
   /** Позиция относительно центра bounding box всего скопированного выделения */
   relX: number;
   relY: number;
+  /**
+   * Индекс родителя-контейнера (frame/group, 14.3) В ЭТОМ ЖЕ `payload.items` —
+   * `null`, если элемент верхнеуровневый или его контейнер не попал в
+   * копируемый набор целиком. Индекс, а не исходный id: id при вставке
+   * перегенерируется (новая доска/повторная вставка не должны сталкиваться
+   * с оригиналом), а позиция внутри ЭТОГО payload — единственное стабильное
+   * между copy и paste указание "чей я ребёнок".
+   */
+  parentIndex: number | null;
 }
 
 export interface BoardClipboardPayload {
@@ -43,6 +52,10 @@ export interface BoardClipboardPayload {
 }
 
 export interface BoardClipboardSourceItem {
+  id: string;
+  /** Родитель-контейнер (frame/group, 14.3) — `null`, если верхнеуровневый.
+   * Используется только для построения `parentIndex`, сам по себе в payload не идёт */
+  parentId: string | null;
   content: BoardItemContent;
   style: BoardItemStyle;
   rotation: number;
@@ -111,6 +124,7 @@ export async function serializeSelection(
   fetchImpl: typeof fetch = fetch,
 ): Promise<string> {
   const center = selectionCenter(items);
+  const indexById = new Map(items.map((item, index) => [item.id, index]));
   const resolved = await Promise.all(
     items.map(async (item): Promise<BoardClipboardItem | null> => {
       const content = await serializeContent(item.content, fetchImpl);
@@ -123,13 +137,29 @@ export async function serializeSelection(
         height: item.height,
         relX: item.x - center.x,
         relY: item.y - center.y,
+        parentIndex: item.parentId !== null ? (indexById.get(item.parentId) ?? null) : null,
       };
     }),
   );
+  // Индексы в payload.items должны остаться стабильными ПОСЛЕ отсева
+  // несериализуемых элементов (например, картинку не удалось скачать) —
+  // иначе parentIndex детей указывал бы на неверную позицию
+  const oldToNewIndex = new Map<number, number>();
+  const filtered: BoardClipboardItem[] = [];
+  resolved.forEach((item, oldIndex) => {
+    if (!item) return;
+    oldToNewIndex.set(oldIndex, filtered.length);
+    filtered.push(item);
+  });
+  for (const item of filtered) {
+    if (item.parentIndex !== null) {
+      item.parentIndex = oldToNewIndex.get(item.parentIndex) ?? null;
+    }
+  }
   const payload: BoardClipboardPayload = {
     source: BOARD_CLIPBOARD_SOURCE,
     version: BOARD_CLIPBOARD_VERSION,
-    items: resolved.filter((item): item is BoardClipboardItem => item !== null),
+    items: filtered,
   };
   return JSON.stringify(payload);
 }

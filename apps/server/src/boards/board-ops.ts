@@ -12,6 +12,7 @@ import {
   BOARD_EDGE_LINE_KINDS,
   BOARD_EDGE_MARKER_KINDS,
   BOARD_FONT_FAMILIES,
+  BOARD_FRAME_TITLE_MAX_LENGTH,
   BOARD_HIGHLIGHT_COLORS,
   BOARD_ITEM_FONT_SIZE_MAX,
   BOARD_ITEM_FONT_SIZE_MIN,
@@ -26,6 +27,7 @@ import {
   isBoardImageUrl,
   REACTION_EMOJIS,
   toggleItemReaction,
+  isBoardContainer,
   type BoardEdge,
   type BoardItem,
   type BoardItemContent,
@@ -274,6 +276,7 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
     emoji?: unknown;
     pack?: unknown;
     id?: unknown;
+    title?: unknown;
   };
 
   // Для emoji — только сам символ из фиксированного набора, text/runs не требуются
@@ -296,6 +299,19 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
       throw new ValidationError('Недопустимый идентификатор стикера');
     }
     return { type: 'sticker', pack: c.pack, id: c.id };
+  }
+
+  // Фрейм (14.3) — видимый контейнер с заголовком; title ≤ BOARD_FRAME_TITLE_MAX_LENGTH
+  if (c.type === 'frame') {
+    if (typeof c.title !== 'string' || c.title.length > BOARD_FRAME_TITLE_MAX_LENGTH) {
+      throw new ValidationError('Слишком длинный заголовок фрейма');
+    }
+    return { type: 'frame', title: c.title };
+  }
+
+  // Группа (14.3) — невидимый контейнер, payload-полей нет
+  if (c.type === 'group') {
+    return { type: 'group' };
   }
 
   // Для image — url, width, height обязательны, text/runs не требуются
@@ -352,19 +368,45 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
   throw new ValidationError('Неизвестный тип элемента');
 }
 
-/** Геометрия общая для стикера и фигуры — валидируется одинаково независимо от типа содержимого */
-function validateGeometry(item: {
-  x: unknown;
-  y: unknown;
-  width: unknown;
-  height: unknown;
-  rotation: unknown;
-  zIndex: unknown;
-  parentId: unknown;
-}): Pick<BoardItem, 'x' | 'y' | 'width' | 'height' | 'rotation' | 'zIndex' | 'parentId'> {
-  if (item.parentId !== null) {
-    // Фреймы/группы — 14.3, столбец заведён заранее, но применять его пока нельзя
-    throw new ValidationError('Группировка элементов пока не поддерживается');
+/** Геометрия общая для всех элементов — валидируется одинаково независимо от типа содержимого */
+function validateGeometry(
+  item: {
+    x: unknown;
+    y: unknown;
+    width: unknown;
+    height: unknown;
+    rotation: unknown;
+    zIndex: unknown;
+    parentId: unknown;
+    content?: { type?: unknown };
+  },
+  itemId: string,
+  state: BoardOpState,
+): Pick<BoardItem, 'x' | 'y' | 'width' | 'height' | 'rotation' | 'zIndex' | 'parentId'> {
+  // Родитель (14.3): null, либо id существующего контейнера (frame/group).
+  // Вложенность запрещена: контейнер сам не может иметь родителя — из этого
+  // неизбежно отсутствие циклов (родитель всегда верхнеуровневый). Инварианты:
+  //  - контейнер (frame/group) всегда верхнеуровневый — у него parentId обязан быть null;
+  //  - обычный элемент может иметь родителем только существующий контейнер,
+  //    который сам никому не подчинён, и только не самого себя.
+  const isContainer = isBoardContainer(item.content?.type as string);
+  if (isContainer && item.parentId != null) {
+    throw new ValidationError('Фрейм и группа не могут быть вложены в другой контейнер');
+  }
+  let parentId: string | null = null;
+  if (!isContainer && item.parentId != null) {
+    requireUuid(item.parentId, 'родителя');
+    const parent = state.items.get(item.parentId as string);
+    if (!parent || parent.id === itemId) {
+      throw new ValidationError('Родитель не найден');
+    }
+    if (!isBoardContainer(parent.content.type)) {
+      throw new ValidationError('Родителем может быть только фрейм или группа');
+    }
+    if (parent.parentId !== null) {
+      throw new ValidationError('Вложенность фреймов и групп не поддерживается');
+    }
+    parentId = parent.id;
   }
   return {
     x: requireFinite(item.x, 'x', -BOARD_ITEM_MAX_COORDINATE, BOARD_ITEM_MAX_COORDINATE),
@@ -373,7 +415,7 @@ function validateGeometry(item: {
     height: requireFinite(item.height, 'height', 1, BOARD_ITEM_MAX_SIZE),
     rotation: requireFinite(item.rotation, 'rotation', -360, 360),
     zIndex: requireFinite(item.zIndex, 'zIndex', -1_000_000, 1_000_000),
-    parentId: null,
+    parentId,
   };
 }
 
@@ -399,7 +441,7 @@ export function applyBoardOp(
       if (state.items.size >= BOARD_MAX_ITEMS) {
         throw new ValidationError(`Превышен лимит элементов на доске (${BOARD_MAX_ITEMS})`);
       }
-      const geometry = validateGeometry(op.item);
+      const geometry = validateGeometry(op.item, id, state);
       const item: BoardItem = {
         id,
         boardId,
@@ -419,7 +461,7 @@ export function applyBoardOp(
         throw new ValidationError('Элемент не найден');
       }
       const merged = { ...existing, ...op.patch };
-      const geometry = validateGeometry(merged);
+      const geometry = validateGeometry(merged, existing.id, state);
       const item: BoardItem = {
         ...existing,
         ...geometry,
@@ -434,6 +476,14 @@ export function applyBoardOp(
         updatedAt: new Date().toISOString(),
       };
       state.items.set(op.id, item);
+      // Если патч демотировал контейнер (frame/group) до обычного элемента —
+      // дети осираются (parentId → null), иначе остаются с висячим parentId
+      // на не-контейнере, нарушая инвариант «только контейнер может быть родителем»
+      if (isBoardContainer(existing.content.type) && !isBoardContainer(item.content.type)) {
+        for (const child of state.items.values()) {
+          if (child.parentId === op.id) child.parentId = null;
+        }
+      }
       break;
     }
     case 'item.delete': {
@@ -447,6 +497,13 @@ export function applyBoardOp(
         if (edge.sourceItemId === op.id || edge.targetItemId === op.id) {
           state.edges.delete(edgeId);
         }
+      }
+      // Удаление контейнера (frame/group, 14.3) НЕ каскадит детей — они
+      // осираются (parentId → null), остаются на доске. DB‑FK `ON DELETE
+      // SET NULL` сделает то же самое с БД прозрачно; здесь зеркалим в памяти,
+      // чтобы следующая операция в батче видела актуальное состояние.
+      for (const child of state.items.values()) {
+        if (child.parentId === op.id) child.parentId = null;
       }
       break;
     }

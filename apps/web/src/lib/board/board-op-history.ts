@@ -124,6 +124,22 @@ export function deriveInverseOps(ops: BoardOp[], local: BoardLocalState): BoardO
             scheduleEdgeCreate(edge);
           }
         }
+        // Удаление контейнера (frame/group, 14.3) осирают детей (parentId → null,
+        // board-ops.ts + apply-local-op.ts): в inverse восстанавливаем их связь
+        // `parentId → <id удаляемого контейнера>`. Т.к. `item.create` этого
+        // контейнера уже запланирован выше, а сервер применяет батч по порядку,
+        // дети ссыются на уже созданный к этому моменту родитель — порядок
+        // сохраняется автоматически.
+        for (const child of local.items.values()) {
+          if (child.parentId === op.id) {
+            inverses.push({
+              type: 'item.patch',
+              clientOpId: uuid(),
+              id: child.id,
+              patch: { parentId: op.id },
+            });
+          }
+        }
         break;
       }
 
@@ -169,7 +185,43 @@ export function deriveInverseOps(ops: BoardOp[], local: BoardLocalState): BoardO
     }
   }
 
-  return [...inverses, ...edgeCreateInverses];
+  return reorderContainerCreatesFirst([...inverses, ...edgeCreateInverses]);
+}
+
+/**
+ * Гарантирует, что `item.create` контейнера (frame/group, 14.3) в массиве
+ * всегда стоит РАНЬШЕ `item.create` его ребёнка, независимо от исходного
+ * порядка `ops`/итерации `local.items` (Map не хранит топологический порядок).
+ * Сервер применяет батч строго по порядку и отклонит `item.create` ребёнка,
+ * если родитель с таким `parentId` ещё не создан на этом шаге, — без этой
+ * перестановки undo батча, удалившего контейнер и его ребёнка одновременно,
+ * мог целиком провалиться на сервере, пока клиент уже применил его локально
+ * (расхождение до перезагрузки). Вложенность — один уровень, второй проход
+ * не нужен.
+ */
+function reorderContainerCreatesFirst(ops: BoardOp[]): BoardOp[] {
+  const creates = new Map<string, BoardOp & { type: 'item.create' }>();
+  for (const op of ops) {
+    if (op.type === 'item.create') creates.set(op.item.id, op);
+  }
+  const result: BoardOp[] = [];
+  const emitted = new Set<string>();
+  for (const op of ops) {
+    if (op.type !== 'item.create') {
+      result.push(op);
+      continue;
+    }
+    if (emitted.has(op.item.id)) continue;
+    const parentId = op.item.parentId;
+    const parentCreate = parentId ? creates.get(parentId) : undefined;
+    if (parentCreate && !emitted.has(parentId!)) {
+      result.push(parentCreate);
+      emitted.add(parentId!);
+    }
+    result.push(op);
+    emitted.add(op.item.id);
+  }
+  return result;
 }
 
 /** Свежий `clientOpId` на каждый повторный прогон — переиспользованный id из старой записи истории мог бы столкнуться с уже разрешённым в `ownClientOpIds` */

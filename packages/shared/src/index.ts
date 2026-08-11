@@ -382,10 +382,11 @@ export const GUEST_NAME_MAX_LENGTH = 60;
  * Доски (Epic 12+) — простой холст для брейншторма/планирования/ретро, по
  * образцу Miro. Командные (`teamId` заполнен) и личные (`teamId: null`),
  * аналогично комнатам (7.25). Набор типов элементов растёт по мере эпиков
- * (12.6 стикеры, 12.7 фигуры, 13.х текст/картинки/эмодзи/стикеры) — новый тип не
+ * (12.6 стикеры, 12.7 фигуры, 13.х текст/картинки/эмодзи/стикеры, 14.3 фреймы/группы) — новый тип не
  * требует миграции схемы благодаря дискриминированному union по `type`.
  */
-export type BoardItemType = 'sticky' | 'shape' | 'text' | 'image' | 'emoji' | 'sticker';
+export type BoardItemType =
+  'sticky' | 'shape' | 'text' | 'image' | 'emoji' | 'sticker' | 'frame' | 'group';
 export const BOARD_ITEM_TYPES: readonly BoardItemType[] = [
   'sticky',
   'shape',
@@ -393,6 +394,8 @@ export const BOARD_ITEM_TYPES: readonly BoardItemType[] = [
   'image',
   'emoji',
   'sticker',
+  'frame',
+  'group',
 ];
 
 export type BoardShapeKind = 'rectangle' | 'rounded' | 'ellipse' | 'diamond';
@@ -439,6 +442,8 @@ export const BOARD_TITLE_MAX_LENGTH = 120;
 export const BOARD_ITEM_TEXT_MAX_LENGTH = 2000;
 /** Подпись связи (12.8) — короткая аннотация на стрелке, не текст целого стикера */
 export const BOARD_EDGE_LABEL_MAX_LENGTH = 200;
+/** Заголовок фрейма/группы (14.3) — короткая метка контейнера */
+export const BOARD_FRAME_TITLE_MAX_LENGTH = 200;
 /** Потолок элементов на доску — защита от неограниченно растущего снимка (12.1) */
 export const BOARD_MAX_ITEMS = 2000;
 /** Верхняя граница модуля координаты (x/y) элемента доски — защита от переполнения при рендере */
@@ -560,6 +565,27 @@ export interface BoardStickerContent {
   id: string;
 }
 
+/**
+ * Фрейм (14.3) — видимый контейнер с заголовком, в который вкладываются другие
+ * элементы (их `parentId` указывает на фрейм). Фрейм сам не вкладывается ни в
+ * один другой элемент (т.е. `parentId` у фрейма всегда null) — вложенность
+ * исключена сознательно: проще модель, проще координаты и undo.
+ */
+export interface BoardFrameContent {
+  type: 'frame';
+  title: string;
+}
+
+/**
+ * Группа (14.3) — невидимый контейнер (без заливки/рамки), тот же механизм
+ * вложенности, что фрейм, но без хрома: создаётся действием «Группировать» на
+ * выделении. Сервер не различает frame/group при выборе родителя — оба могут
+ * быть `parentId` у других элементов.
+ */
+export interface BoardGroupContent {
+  type: 'group';
+}
+
 /** Дискриминированный union по `type` — новый тип элемента не требует миграции схемы */
 export type BoardItemContent =
   | BoardStickyContent
@@ -567,7 +593,19 @@ export type BoardItemContent =
   | BoardTextContent
   | BoardImageContent
   | BoardEmojiContent
-  | BoardStickerContent;
+  | BoardStickerContent
+  | BoardFrameContent
+  | BoardGroupContent;
+
+/**
+ * Фрейм и группа (14.3) — единственные типы, которые могут быть родителями
+ * других элементов. Вынесена в `@poker/shared`, чтобы и сервер, и клиент
+ * использовали одну и ту же проверку — сравните с `isBoardContainer` в
+ * `board-ops.ts` (раньше локальная функция, сейас общая).
+ */
+export function isBoardContainer(contentType: string): boolean {
+  return contentType === 'frame' || contentType === 'group';
+}
 
 /**
  * Начертание текста стикера/фигуры (12.9) — не произвольный CSS font-family,
@@ -639,7 +677,7 @@ export function toggleItemReaction(
 export interface BoardItem {
   id: string;
   boardId: string;
-  /** Родитель во фрейме/группе (14.3) — пока всегда null */
+  /** Родитель во фрейме/группе (14.3) — id контейнера (frame/group), иначе null */
   parentId: string | null;
   x: number;
   y: number;
