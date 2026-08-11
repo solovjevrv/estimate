@@ -74,7 +74,7 @@ import {
   useTemplateRef,
   watch,
   type Ref,
- } from 'vue';
+} from 'vue';
 import { useToast } from '@nuxt/ui/composables';
 import { useI18n } from 'vue-i18n';
 

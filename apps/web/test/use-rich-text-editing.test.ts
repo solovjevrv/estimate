@@ -24,19 +24,19 @@ const { toastAdd, socket } = vi.hoisted(() => {
       this.emitLocal('connect', undefined);
     }
 
-  disconnect(): void {
-    this.connected = false;
-    this.emitLocal('disconnect', 'io client disconnect');
-  }
+    disconnect(): void {
+      this.connected = false;
+      this.emitLocal('disconnect', 'io client disconnect');
+    }
 
-  /** Очистка состояния между тестами (аналог board-session.test.ts) */
-  reset(): void {
-    this.sent.length = 0;
-    this.listeners.clear();
-    this.next = null;
-    this.nextError = null;
-    this.connected = false;
-  }
+    /** Очистка состояния между тестами (аналог board-session.test.ts) */
+    reset(): void {
+      this.sent.length = 0;
+      this.listeners.clear();
+      this.next = null;
+      this.nextError = null;
+      this.connected = false;
+    }
 
     on(event: string, handler: (payload: never) => void): void {
       const list = this.listeners.get(event) ?? [];
@@ -150,9 +150,7 @@ describe('useRichTextEditing — мягкая блокировка (14.2)', () =
     await wrapper.vm.startEditing();
 
     expect(wrapper.vm.editing).toBe(false);
-    expect(toastAdd).toHaveBeenCalledWith(
-      expect.objectContaining({ color: 'warning' }),
-    );
+    expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({ color: 'warning' }));
     expect(toastAdd).toHaveBeenCalledWith(
       expect.objectContaining({ title: 'Мария сейчас редактирует этот элемент' }),
     );
@@ -203,9 +201,7 @@ describe('useRichTextEditing — мягкая блокировка (14.2)', () =
     await wrapper.vm.startEditing();
     await nextTick();
 
-    const awarenessBefore = socket.sent.filter(
-      (s) => s.event === BOARD_WS_EVENTS.AWARENESS,
-    ).length;
+    const awarenessBefore = socket.sent.filter((s) => s.event === BOARD_WS_EVENTS.AWARENESS).length;
 
     // Снимаем выделение — watch(isSelected) вызывает commitEditing()
     wrapper.vm.isSelected = false;
