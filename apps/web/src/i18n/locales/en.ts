@@ -429,6 +429,8 @@ export default {
     presence: 'On the board',
     presenceCount: '{count} on the board',
     cursorPlaceholder: 'Move the mouse to show your cursor',
+    editingBy: '{name} is typing…',
+    editingLocked: '{name} is currently editing this element',
   },
   boards: {
     title: 'My boards',

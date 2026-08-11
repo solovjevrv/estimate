@@ -149,6 +149,16 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const revision = ref(0);
   const presence = ref<BoardPresenceEntry[]>([]);
   const awarenessByUser = reactive(new Map<string, BoardAwarenessBroadcast>());
+  /**
+   * Мягкая блокировка текстового редактирования (14.2) — отдельная карта от
+   * `awarenessByUser`: если смешать с курсором тем же LWW-приёмом, любой следующий
+   * throttled mousemove по пейну (он ловит движение мыши по всему канвасу, даже
+   * когда фокус в contenteditable конкретного элемента) затрёт запись об editing
+   * обратно на cursor — и индикатор блокировки у остальных погаснет посреди
+   * реального редактирования. По одной записи на элемент: последний отправивший
+   * `active:true` и держит блокировку, снятие (`active:false`) убирает свою.
+   */
+  const editingByItem = reactive(new Map<string, { userId: string; name: string }>());
   const connected = ref(false);
   const joined = ref(false);
 
@@ -290,8 +300,30 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
         for (const userId of awarenessByUser.keys()) {
           if (!activeIds.has(userId)) awarenessByUser.delete(userId);
         }
+        // Та же самая «призрачная блокировка» (14.2): если участник отключился,
+        // его editing-запись тоже навсегда не исчезнет без этой сверки — и
+        // элемент останется недоступным для редактирования вечно.
+        for (const [itemId, lock] of editingByItem) {
+          if (!activeIds.has(lock.userId)) editingByItem.delete(itemId);
+        }
       });
       active.on(BOARD_WS_SERVER_EVENTS.AWARENESS, (payload) => {
+        // Мягкая блокировка редактирования (14.2) — отдельная ветка, НЕ
+        // трогает awarenessByUser: курсорные патчи (mousemove) не должны
+        // затирать editing-запь, иначе индикатор блокировки погаснет посреди
+        // реального редактирования
+        if (payload.kind === 'editing') {
+          const { itemId, active: isActive } = payload.data as {
+            itemId: string;
+            active: boolean;
+          };
+          if (isActive) {
+            editingByItem.set(itemId, { userId: payload.userId, name: payload.name });
+          } else if (editingByItem.get(itemId)?.userId === payload.userId) {
+            editingByItem.delete(itemId);
+          }
+          return;
+        }
         awarenessByUser.set(payload.userId, payload);
       });
       active.on('connect', () => {
@@ -340,6 +372,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     revision.value = 0;
     presence.value = [];
     awarenessByUser.clear();
+    editingByItem.clear();
     lastOwnOpByTarget.clear();
     ownClientOpIds.clear();
     clearHistory();
@@ -430,6 +463,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     revision,
     presence,
     awareness,
+    editingByItem,
     connected,
     joined,
     join,
