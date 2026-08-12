@@ -99,13 +99,14 @@ function snapshotResult(
   revision: number,
   items: BoardItem[] = [],
   edges: BoardEdge[] = [],
+  participantId = 'actor1',
 ): JoinBoardResult {
   return {
     revision,
     snapshot: { board: { shareRole: null } as Board, items, edges, access: 'manage' },
     catchup: null,
     access: 'manage',
-    participantId: 'actor1',
+    participantId,
     guestToken: null,
   };
 }
@@ -267,7 +268,7 @@ describe('стор сессии доски', () => {
         avatarUrl: null,
       });
       const store = useBoardSessionStore();
-      socket.next = snapshotResult(1, [item({ reactions: [] })]);
+      socket.next = snapshotResult(1, [item({ reactions: [] })], [], 'me');
       await store.join('board1');
       socket.next = { revision: 2 };
 
@@ -291,9 +292,12 @@ describe('стор сессии доски', () => {
         avatarUrl: null,
       });
       const store = useBoardSessionStore();
-      socket.next = snapshotResult(1, [
-        item({ reactions: [{ userId: 'me', name: 'Я', emoji: '👍' }] }),
-      ]);
+      socket.next = snapshotResult(
+        1,
+        [item({ reactions: [{ userId: 'me', name: 'Я', emoji: '👍' }] })],
+        [],
+        'me',
+      );
       await store.join('board1');
       socket.next = { revision: 2 };
 
@@ -315,7 +319,7 @@ describe('стор сессии доски', () => {
         avatarUrl: null,
       });
       const store = useBoardSessionStore();
-      socket.next = snapshotResult(1, [item({ reactions: [] })]);
+      socket.next = snapshotResult(1, [item({ reactions: [] })], [], 'me');
       await store.join('board1');
       socket.next = { revision: 2 };
 

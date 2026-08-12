@@ -231,6 +231,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
 
   let socket: PokerSocket | null = null;
   let boardId: string | null = null;
+  /** Имя гостя этого сеанса — self.name в applyOps ниже, пока для него нет session.user */
+  let ownGuestName: string | null = null;
   /** Прошёл ли первый успешный вход — по нему отличаем реконнект от начального подключения */
   let established = false;
   /**
@@ -282,6 +284,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     const active = socket;
     if (!active) return;
     const token = joinToken;
+    if (guestName !== undefined) ownGuestName = guestName;
 
     const result: JoinBoardResult = await emitWithAck(active, BOARD_WS_EVENTS.JOIN, {
       boardId: id,
@@ -322,6 +325,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       participantId.value = null;
       access.value = 'view';
       established = false;
+      ownGuestName = null;
       lastOwnOpByTarget.clear();
       ownClientOpIds.clear();
       clearHistory();
@@ -381,7 +385,9 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
         // отказ промиса, а joined остался бы false навсегда без единого сигнала
         // пользователю (по образцу room.ts, где такой же пробел уже был найден и закрыт, 7.16)
         if (established) {
-          void performJoin(id).catch(() => onReconnectFailure?.());
+          // Гостю сервер требует имя на каждый join, включая реконнект — то же
+          // имя, что и при первом входе (сохранено в ownGuestName выше)
+          void performJoin(id, ownGuestName ?? undefined).catch(() => onReconnectFailure?.());
         }
       });
       active.on('disconnect', (reason: string) => {
@@ -414,6 +420,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     socket = null;
     boardId = null;
     established = false;
+    ownGuestName = null;
     joined.value = false;
     connected.value = false;
     participantId.value = null;
@@ -454,7 +461,12 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     const active = requireSocket();
     const record = opts.record ?? true;
     const inverseOps = record ? (opts.inverse ?? deriveInverseOps(ops, local)) : null;
-    const self = { id: session.user?.id ?? '', name: session.user?.name ?? '' };
+    // session.user пуст у гостя (14.4) — тогда участника и имя берём из своего
+    // же входа: participantId вернул сервер при join, имя — то, что ввели в форме
+    const self = {
+      id: participantId.value ?? '',
+      name: session.user?.name ?? ownGuestName ?? '',
+    };
     for (const op of ops) {
       ownClientOpIds.add(op.clientOpId);
       lastOwnOpByTarget.set(opTargetKey(op), op.clientOpId);

@@ -1,10 +1,15 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { BOARD_TITLE_MAX_LENGTH, hasBoardAccess, type Board } from '@poker/shared';
+import {
+  BOARD_TITLE_MAX_LENGTH,
+  GUEST_NAME_MAX_LENGTH,
+  hasBoardAccess,
+  type Board,
+} from '@poker/shared';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useRoute, useRouter } from 'vue-router';
+import { useRouter } from 'vue-router';
 
 import BoardCanvas from '../components/board/BoardCanvas.vue';
 import BoardShareModal from '../components/board/BoardShareModal.vue';
@@ -13,6 +18,7 @@ import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useBoardsStore } from '../stores/boards';
 import { useBoardSessionStore } from '../stores/board-session';
+import { useSessionStore } from '../stores/session';
 import { useTeamsStore } from '../stores/teams';
 
 const props = defineProps<{ id: string }>();
@@ -20,9 +26,9 @@ const props = defineProps<{ id: string }>();
 const { t } = useI18n();
 const toast = useToast();
 const router = useRouter();
-const route = useRoute();
 const boards = useBoardsStore();
 const teams = useTeamsStore();
+const session = useSessionStore();
 const boardSession = useBoardSessionStore();
 
 const loading = ref(true);
@@ -42,12 +48,48 @@ const canEdit = computed(() => {
   return hasBoardAccess(boardSession.access, 'edit');
 });
 
-watch(() => props.id, load, { immediate: true });
+/** Гость называет имя один раз за вкладку — переживает перезагрузку, не переживает закрытие (по образцу RoomPage.vue) */
+function readStoredGuestName(): string {
+  try {
+    return sessionStorage.getItem('poker:board-guest-name') ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function storeGuestName(name: string): void {
+  try {
+    sessionStorage.setItem('poker:board-guest-name', name);
+  } catch {
+    // Приватный режим браузера может запрещать хранилище — в рамках вкладки не критично
+  }
+}
+
+const needsGuestName = ref(false);
+const guestJoining = ref(false);
+const guestJoinFailed = ref(false);
+const guestState = reactive({ name: readStoredGuestName() });
+
+function validateGuestName(s: { name: string }): FormError[] {
+  const errors: FormError[] = [];
+  const name = s.name.trim();
+  if (!name) {
+    errors.push({ name: 'name', message: t('board.guestNameRequired') });
+  } else if (name.length > GUEST_NAME_MAX_LENGTH) {
+    errors.push({
+      name: 'name',
+      message: t('board.guestNameTooLong', { max: GUEST_NAME_MAX_LENGTH }),
+    });
+  }
+  return errors;
+}
 
 async function load(): Promise<void> {
   loading.value = true;
   notFound.value = false;
   loadFailed.value = false;
+  needsGuestName.value = false;
+  guestJoinFailed.value = false;
   try {
     const snapshot = await boards.get(props.id);
     board.value = snapshot.board;
@@ -55,18 +97,18 @@ async function load(): Promise<void> {
     // canManage/canEdit отработали до первого WS `join`, а `canManage` можно
     // было поставить в prop BoardShareModal
     boardSession.access = snapshot.access;
-    if (snapshot.board.teamId) {
+    // Гость не может звать /api/teams/:id (роут только для вошедших) — иначе
+    // командная доска, открытая гостю по ссылке, всегда падала бы в loadFailed
+    if (snapshot.board.teamId && session.isAuthenticated) {
       await teams.loadTeam(snapshot.board.teamId);
     }
-    // При провале реконнекта (доступ отозвали, пока вкладка простаивала, и т.п.)
-    // синк молча не оживёт сам — предупреждаем и предлагаем перезайти на доску
-    void boardSession.join(
-      props.id,
-      route.query.guest_name ? String(route.query.guest_name) : undefined,
-      () => {
-        toast.add({ title: t('board.loadError'), color: 'error' });
-      },
-    );
+
+    if (session.isAuthenticated) {
+      await joinBoard();
+    } else {
+      // Реалтайм-вход гостю требует имени — показываем форму вместо немедленного join
+      needsGuestName.value = true;
+    }
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
       notFound.value = true;
@@ -77,6 +119,38 @@ async function load(): Promise<void> {
     loading.value = false;
   }
 }
+
+/**
+ * WS-вход отдельно от REST-снимка выше. При провале реконнекта (доступ
+ * отозвали, пока вкладка простаивала, и т.п.) синк молча не оживёт сам —
+ * предупреждаем и предлагаем перезайти на доску. Провал самого первого входа
+ * ловит вызывающий код: для гостя это открытая форма имени, для вошедшего —
+ * тост ниже.
+ */
+async function joinBoard(guestName?: string): Promise<void> {
+  await boardSession.join(props.id, guestName, () => {
+    toast.add({ title: t('board.loadError'), color: 'error' });
+  });
+}
+
+async function onGuestNameSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void> {
+  const name = event.data.name.trim();
+  storeGuestName(name);
+  guestJoining.value = true;
+  guestJoinFailed.value = false;
+  try {
+    await joinBoard(name);
+    needsGuestName.value = false;
+  } catch {
+    guestJoinFailed.value = true;
+  } finally {
+    guestJoining.value = false;
+  }
+}
+
+// immediate: true запускает load() синхронно прямо здесь — она читает состояние
+// формы гостя выше (needsGuestName и т.п.), поэтому watch объявлен уже после него
+watch(() => props.id, load, { immediate: true });
 
 // REST-снимок уже загружен через `boards.get` выше — WS-вход (12.4) даёт только
 // реалтайм-синхронизацию поверх него, поэтому его результат ожидать не нужно
@@ -183,9 +257,47 @@ async function confirmDelete(): Promise<void> {
       </div>
     </div>
 
+    <!-- Гость на доске по ссылке (14.4): реалтайм-вход и presence нужны имени,
+    поэтому просим представиться прежде, чем показать холст -->
+    <div
+      v-if="board && needsGuestName"
+      class="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-4"
+    >
+      <h1 class="font-heading mb-4 text-2xl font-extrabold">{{ board.title }}</h1>
+      <div class="surface-card surface-card-lg px-4 py-5 sm:px-[30px] sm:py-[26px]">
+        <h2 class="mb-[18px] text-[17px] font-bold">{{ t('board.guestNameTitle') }}</h2>
+        <UForm
+          :state="guestState"
+          :validate="validateGuestName"
+          class="space-y-4"
+          @submit="onGuestNameSubmit"
+        >
+          <UFormField :label="t('board.guestName')" name="name">
+            <UInput
+              v-model="guestState.name"
+              :placeholder="t('board.guestNamePlaceholder')"
+              :maxlength="GUEST_NAME_MAX_LENGTH"
+              autofocus
+              class="w-full"
+              :ui="MODAL_INPUT_UI"
+            />
+          </UFormField>
+          <UAlert
+            v-if="guestJoinFailed"
+            color="error"
+            variant="subtle"
+            :description="t('board.guestJoinError')"
+          />
+          <UButton type="submit" block :ui="MODAL_BUTTON_UI" :loading="guestJoining">
+            {{ t('board.guestJoin') }}
+          </UButton>
+        </UForm>
+      </div>
+    </div>
+
     <!-- Холст владеет всем остатком экрана (без общего max-width-контейнера страницы, 12.5) —
     название доски и её меню теперь плашкой поверх холста, а не отдельным рядом над ним -->
-    <div v-if="board" class="min-h-0 flex-1">
+    <div v-if="board && !needsGuestName" class="min-h-0 flex-1">
       <BoardCanvas
         :board="board"
         :team-name="board.teamId ? (teams.current?.team.name ?? null) : null"
