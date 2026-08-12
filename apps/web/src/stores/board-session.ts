@@ -11,6 +11,8 @@
  */
 import type {
   ApplyBoardOpsResult,
+  Board,
+  BoardAccessLevel,
   BoardAwarenessBroadcast,
   BoardAwarenessKind,
   BoardCommittedOp,
@@ -19,12 +21,14 @@ import type {
   BoardOp,
   BoardOpsBatch,
   BoardPresenceEntry,
+  BoardShareRole,
   JoinBoardResult,
 } from '@poker/shared';
 import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, toggleItemReaction } from '@poker/shared';
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 
+import { api } from '../lib/api';
 import { applyLocalBoardOp, type BoardLocalState } from '../lib/board/apply-local-op';
 import {
   BOARD_HISTORY_LIMIT,
@@ -33,8 +37,34 @@ import {
   regenerateClientOpIds,
   type BoardHistoryEntry,
 } from '../lib/board/board-op-history';
-import { createSocket, emitWithAck, type PokerSocket } from '../lib/socket';
+import { createSocket, emitWithAck, WsError, type PokerSocket } from '../lib/socket';
 import { useSessionStore } from './session';
+
+/**
+ * Токен гостя доски переживает перезагрузку страницы (14.4): без него гость
+ * вернётся на доску новым человеком и потеряет свою presence-идентичность.
+ */
+function guestTokenKey(boardId: string): string {
+  return `poker:board-guest:${boardId}`;
+}
+
+function readGuestToken(boardId: string): string | undefined {
+  try {
+    return localStorage.getItem(guestTokenKey(boardId)) ?? undefined;
+  } catch {
+    // Приватный режим браузера может запрещять хранилище — тогда просто входим заново
+    return undefined;
+  }
+}
+
+function writeGuestToken(boardId: string, token: string | null): void {
+  try {
+    if (token === null) return;
+    localStorage.setItem(guestTokenKey(boardId), token);
+  } catch {
+    // Не смогли сохранить — переподключение потребует ввести имя ещё раз
+  }
+}
 
 /** Ключ цели операции — общий для `BoardOp` (клиент → сервер) и `BoardCommittedOp` (рассылка) */
 function opTargetKey(op: BoardOp): string {
@@ -149,6 +179,17 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const revision = ref(0);
   const presence = ref<BoardPresenceEntry[]>([]);
   const awarenessByUser = reactive(new Map<string, BoardAwarenessBroadcast>());
+  /** Идентификатор участника на доске — для presence/cursors; null до первого входа */
+  const participantId = ref<string | null>(null);
+  /** Итоговый уровень доступа текущего участника к доске (14.4) */
+  const access = ref<BoardAccessLevel>('view');
+  /**
+   * Сервер отклонил применённый оптимистично батч (14.4) — например, доступ по
+   * ссылке урезали до `view`, пока участник уже редактировал. Новый объект на
+   * каждый отказ (не код строкой), чтобы повторный отказ с тем же кодом подряд
+   * тоже считался изменением и не терялся в `watch` без `immediate` на странице.
+   */
+  const applyError = ref<{ code: string } | null>(null);
   /**
    * Мягкая блокировка текстового редактирования (14.2) — отдельная карта от
    * `awarenessByUser`: если смешать с курсором тем же LWW-приёмом, любой следующий
@@ -197,6 +238,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
 
   let socket: PokerSocket | null = null;
   let boardId: string | null = null;
+  /** Имя гостя этого сеанса — self.name в applyOps ниже, пока для него нет session.user */
+  let ownGuestName: string | null = null;
   /** Прошёл ли первый успешный вход — по нему отличаем реконнект от начального подключения */
   let established = false;
   /**
@@ -244,13 +287,16 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     ownClientOpIds.clear();
   }
 
-  async function performJoin(id: string): Promise<void> {
+  async function performJoin(id: string, guestName?: string): Promise<void> {
     const active = socket;
     if (!active) return;
     const token = joinToken;
+    if (guestName !== undefined) ownGuestName = guestName;
 
     const result: JoinBoardResult = await emitWithAck(active, BOARD_WS_EVENTS.JOIN, {
       boardId: id,
+      guestName,
+      guestToken: readGuestToken(id),
       // При первом входе на доску (ещё не видели ни одной ревизии) полный
       // снимок дешевле, чем прогонять пустой догон — присылаем только на реконнекте
       sinceRevision: established ? revision.value : undefined,
@@ -258,6 +304,10 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
 
     // Пока ждали ответ, вызвали leave() или новый join() — это уже не наш вход
     if (token !== joinToken) return;
+
+    writeGuestToken(id, result.guestToken);
+    participantId.value = result.participantId;
+    access.value = result.access;
 
     if (result.snapshot) {
       applySnapshot(result.snapshot, result.revision);
@@ -268,14 +318,22 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     joined.value = true;
   }
 
-  async function join(id: string, onReconnectFailure?: () => void): Promise<void> {
+  async function join(
+    id: string,
+    guestName?: string,
+    onReconnectFailure?: () => void,
+  ): Promise<void> {
     // Смена доски на живом сокете — сбрасываем прошлое состояние, иначе
     // отставшая рассылка старой доски осталась бы на экране
     if (boardId && boardId !== id) {
       local.items.clear();
       local.edges.clear();
       revision.value = 0;
+      participantId.value = null;
+      access.value = 'view';
+      applyError.value = null;
       established = false;
+      ownGuestName = null;
       lastOwnOpByTarget.clear();
       ownClientOpIds.clear();
       clearHistory();
@@ -335,7 +393,9 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
         // отказ промиса, а joined остался бы false навсегда без единого сигнала
         // пользователю (по образцу room.ts, где такой же пробел уже был найден и закрыт, 7.16)
         if (established) {
-          void performJoin(id).catch(() => onReconnectFailure?.());
+          // Гостю сервер требует имя на каждый join, включая реконнект — то же
+          // имя, что и при первом входе (сохранено в ownGuestName выше)
+          void performJoin(id, ownGuestName ?? undefined).catch(() => onReconnectFailure?.());
         }
       });
       active.on('disconnect', (reason: string) => {
@@ -355,18 +415,25 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       active.connect();
     }
 
-    await performJoin(id);
+    await performJoin(id, guestName);
     established = true;
   }
 
   function leave(): void {
+    if (boardId) {
+      writeGuestToken(boardId, null);
+    }
     joinToken++;
     socket?.disconnect();
     socket = null;
     boardId = null;
     established = false;
+    ownGuestName = null;
     joined.value = false;
     connected.value = false;
+    participantId.value = null;
+    access.value = 'view';
+    applyError.value = null;
     local.items.clear();
     local.edges.clear();
     revision.value = 0;
@@ -386,8 +453,15 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   /**
    * Применяется сразу локально (оптимистично, до ответа сервера) и на других
    * участниках — рассылкой `board:ops`, которую отбрасывает `applyBatch` выше,
-   * если это устаревшее эхо. Ошибка отправки (сеть/валидация) оптимистичное
-   * применение не откатывает — на масштабе 12.6 это осознанный компромисс.
+   * если это устаревшее эхо.
+   *
+   * Инверсия считается ВСЕГДА, не только когда пишем в историю (`record`) —
+   * она же служит откатом, если сервер отклонит батч (доступ по ссылке урезали
+   * до `view`, пока гость уже редактировал, доску заархивировали, гонка с
+   * удалением цели другим участником и т.п., 14.4). Без отката локальный
+   * холст расходился бы с правдой сервера молча и навсегда, до перезагрузки
+   * страницы — участник продолжал бы «редактировать» то, что на самом деле
+   * никуда не сохраняется и никому больше не видно.
    *
    * `record` (12.10, по умолчанию `true`) — писать ли эту операцию в историю
    * undo/redo; `false` для промежуточных троттлед-тиков одного жеста (драг),
@@ -402,23 +476,46 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   ): Promise<number> {
     const active = requireSocket();
     const record = opts.record ?? true;
-    const inverseOps = record ? (opts.inverse ?? deriveInverseOps(ops, local)) : null;
-    const self = { id: session.user?.id ?? '', name: session.user?.name ?? '' };
+    const inverseOps = opts.inverse ?? deriveInverseOps(ops, local);
+    // session.user пуст у гостя (14.4) — тогда участника и имя берём из своего
+    // же входа: participantId вернул сервер при join, имя — то, что ввели в форме
+    const self = {
+      id: participantId.value ?? '',
+      name: session.user?.name ?? ownGuestName ?? '',
+    };
     for (const op of ops) {
       ownClientOpIds.add(op.clientOpId);
       lastOwnOpByTarget.set(opTargetKey(op), op.clientOpId);
       const predicted = predictCommittedOp(op, local, self);
       if (predicted) applyLocalBoardOp(local, predicted);
     }
-    if (inverseOps && inverseOps.length) {
+    if (record && inverseOps.length) {
       pushHistory({ forward: ops, backward: inverseOps });
     }
-    const result = await emitWithAck<typeof BOARD_WS_EVENTS.APPLY, ApplyBoardOpsResult>(
-      active,
-      BOARD_WS_EVENTS.APPLY,
-      { ops },
-    );
-    return result.revision;
+
+    try {
+      const result = await emitWithAck<typeof BOARD_WS_EVENTS.APPLY, ApplyBoardOpsResult>(
+        active,
+        BOARD_WS_EVENTS.APPLY,
+        { ops },
+      );
+      return result.revision;
+    } catch (err) {
+      // Откатываем локально — тем же приёмом инверсии, что undo, но без
+      // отправки на сервер (батч и так только что оттуда отклонён)
+      for (const op of inverseOps) {
+        const predicted = predictCommittedOp(op, local, self);
+        if (predicted) applyLocalBoardOp(local, predicted);
+      }
+      for (const op of ops) {
+        ownClientOpIds.delete(op.clientOpId);
+        if (lastOwnOpByTarget.get(opTargetKey(op)) === op.clientOpId) {
+          lastOwnOpByTarget.delete(opTargetKey(op));
+        }
+      }
+      applyError.value = { code: err instanceof WsError ? err.code : 'internal' };
+      throw err;
+    }
   }
 
   /**
@@ -457,6 +554,11 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     socket?.emit(BOARD_WS_EVENTS.AWARENESS, { kind, data });
   }
 
+  async function setShare(role: BoardShareRole | null): Promise<Board> {
+    const { board } = await api.patch<{ board: Board }>(`/api/boards/${boardId}/share`, { role });
+    return board;
+  }
+
   return {
     items,
     edges,
@@ -466,6 +568,9 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     editingByItem,
     connected,
     joined,
+    participantId,
+    access,
+    applyError,
     join,
     leave,
     applyOps,
@@ -474,5 +579,6 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     canRedo,
     undo,
     redo,
+    setShare,
   };
 });

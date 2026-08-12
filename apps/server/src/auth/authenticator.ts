@@ -16,4 +16,13 @@ export class Authenticator {
     }
     req.user = { sub: userId, typ: 'access' };
   };
+
+  /**
+   * Как handle, но не требует куку — для роутов, куда может зайти и гость
+   * (доски по ссылке, 14.4). req.actorId остаётся undefined, если куки нет.
+   */
+  readonly identify = async (req: FastifyRequest): Promise<void> => {
+    const token = req.cookies[ACCESS_COOKIE];
+    req.actorId = token ? this.tokens.verify(token, 'access') : null;
+  };
 }

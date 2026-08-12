@@ -170,13 +170,14 @@ const emit = defineEmits<{
   archive: [];
   unarchive: [];
   delete: [];
+  share: [];
 }>();
 
 const { t } = useI18n();
 const toast = useToast();
 const boardSession = useBoardSessionStore();
 
-const flowNodes = computed(() => toFlowNodes(props.items));
+const flowNodes = computed(() => toFlowNodes(props.items, props.canEdit));
 const flowEdges = computed(() => toFlowEdges(props.edges));
 
 // markRaw — иначе Vue оборачивает объект с компонентами в reactive() и предупреждает
@@ -223,6 +224,13 @@ const menuItems = computed<DropdownMenuItem[][]>(() =>
       ]
     : [
         [{ label: t('board.rename'), icon: 'i-lucide-pencil', onSelect: () => emit('rename') }],
+        [
+          {
+            label: t('board.share'),
+            icon: 'i-lucide-share-2',
+            onSelect: () => emit('share'),
+          },
+        ],
         [
           {
             label: t('board.archive'),
@@ -2217,7 +2225,7 @@ function onConnect(event: Connection): void {
           <div class="board-presence-stack">
             <div
               v-for="(entry, index) in boardSession.presence"
-              :key="entry.userId"
+              :key="entry.userId ?? entry.name"
               :class="[
                 'board-presence-avatar',
                 { 'board-presence-avatar--self': entry.userId === selfUserId },

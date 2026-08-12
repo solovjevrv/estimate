@@ -5,7 +5,7 @@ import type {
   BoardPresenceEntry,
   JoinBoardResult,
 } from '@poker/shared';
-import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@poker/shared';
+import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, type Board } from '@poker/shared';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -99,11 +99,15 @@ function snapshotResult(
   revision: number,
   items: BoardItem[] = [],
   edges: BoardEdge[] = [],
+  participantId = 'actor1',
 ): JoinBoardResult {
   return {
     revision,
-    snapshot: { board: {} as never, items, edges },
+    snapshot: { board: { shareRole: null } as Board, items, edges, access: 'manage' },
     catchup: null,
+    access: 'manage',
+    participantId,
+    guestToken: null,
   };
 }
 
@@ -136,7 +140,14 @@ describe('стор сессии доски', () => {
       revision: 5,
       ops: [{ type: 'item.create', clientOpId: 'c1', item: item() }],
     };
-    socket.next = { revision: 5, snapshot: null, catchup: [batch] } satisfies JoinBoardResult;
+    socket.next = {
+      revision: 5,
+      snapshot: null,
+      catchup: [batch],
+      access: 'manage',
+      participantId: 'actor1',
+      guestToken: null,
+    } satisfies JoinBoardResult;
 
     await store.join('board1');
 
@@ -164,6 +175,38 @@ describe('стор сессии доски', () => {
     await expect(
       store.applyOps([{ type: 'item.delete', clientOpId: 'c1', id: 'i1' }]),
     ).rejects.toThrow('Доска не подключена');
+  });
+
+  describe('откат при отказе сервера (14.4)', () => {
+    it('сервер отклонил патч (например, доступ по ссылке урезали до view) — локальная правка откатывается', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1, [item({ x: 0, y: 0 })]);
+      await store.join('board1');
+      socket.nextError = { error: 'not_found', message: 'Доска не найдена' };
+
+      await expect(
+        store.applyOps([{ type: 'item.patch', clientOpId: 'c1', id: 'i1', patch: { x: 100 } }]),
+      ).rejects.toThrow();
+
+      // Оптимистично применённый сдвиг x отменён — холст не должен молча
+      // разъезжаться с сервером до перезагрузки страницы
+      expect(store.items[0]?.x).toBe(0);
+      expect(store.applyError).toEqual({ code: 'not_found' });
+    });
+
+    it('сервер отклонил создание элемента — оно откатывается целиком (элемент исчезает)', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+      socket.nextError = { error: 'forbidden', message: 'Нет прав редактировать эту доску' };
+
+      await expect(
+        store.applyOps([{ type: 'item.create', clientOpId: 'c1', item: item() }]),
+      ).rejects.toThrow();
+
+      expect(store.items).toHaveLength(0);
+      expect(store.applyError).toEqual({ code: 'forbidden' });
+    });
   });
 
   describe('оптимистичное применение и эхо (12.6)', () => {
@@ -257,7 +300,7 @@ describe('стор сессии доски', () => {
         avatarUrl: null,
       });
       const store = useBoardSessionStore();
-      socket.next = snapshotResult(1, [item({ reactions: [] })]);
+      socket.next = snapshotResult(1, [item({ reactions: [] })], [], 'me');
       await store.join('board1');
       socket.next = { revision: 2 };
 
@@ -281,9 +324,12 @@ describe('стор сессии доски', () => {
         avatarUrl: null,
       });
       const store = useBoardSessionStore();
-      socket.next = snapshotResult(1, [
-        item({ reactions: [{ userId: 'me', name: 'Я', emoji: '👍' }] }),
-      ]);
+      socket.next = snapshotResult(
+        1,
+        [item({ reactions: [{ userId: 'me', name: 'Я', emoji: '👍' }] })],
+        [],
+        'me',
+      );
       await store.join('board1');
       socket.next = { revision: 2 };
 
@@ -305,7 +351,7 @@ describe('стор сессии доски', () => {
         avatarUrl: null,
       });
       const store = useBoardSessionStore();
-      socket.next = snapshotResult(1, [item({ reactions: [] })]);
+      socket.next = snapshotResult(1, [item({ reactions: [] })], [], 'me');
       await store.join('board1');
       socket.next = { revision: 2 };
 
@@ -494,7 +540,9 @@ describe('стор сессии доски', () => {
     socket.next = snapshotResult(1);
     await store.join('board1');
 
-    const entries: BoardPresenceEntry[] = [{ userId: 'u1', name: 'Иван', avatarUrl: null }];
+    const entries: BoardPresenceEntry[] = [
+      { userId: 'u1', name: 'Иван', avatarUrl: null, isGuest: false },
+    ];
     socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, entries);
 
     expect(store.presence).toEqual(entries);
@@ -510,6 +558,7 @@ describe('стор сессии доски', () => {
       userId: 'u1',
       name: 'Иван',
       avatarUrl: null,
+      isGuest: false,
       kind: 'cursor',
       data: { x: 100, y: 200 },
     });
@@ -517,6 +566,7 @@ describe('стор сессии доски', () => {
       userId: 'u2',
       name: 'Мария',
       avatarUrl: 'https://example.com/avatar.png',
+      isGuest: false,
       kind: 'cursor',
       data: { x: 50, y: 75 },
     });

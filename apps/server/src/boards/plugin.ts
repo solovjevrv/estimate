@@ -1,7 +1,8 @@
-import { BOARD_TITLE_MAX_LENGTH } from '@poker/shared';
+import { BOARD_SHARE_ROLES, BOARD_TITLE_MAX_LENGTH } from '@poker/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
+import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
 
 import { BoardImagesService } from './board-images.service';
@@ -9,6 +10,7 @@ import type {
   ArchivedQuery,
   BoardIdParams,
   CreateBoardBody,
+  ShareBody,
   TeamIdParams,
   TitleBody,
 } from './boards.controller';
@@ -18,6 +20,7 @@ import { BoardsService } from './boards.service';
 export interface BoardsPluginOptions {
   /** Не задан — удаление доски не будет чистить файлы её картинок с диска (13.2) */
   assetsDir?: string;
+  auth: AuthConfig;
 }
 
 const uuid = { type: 'string', format: 'uuid' } as const;
@@ -43,6 +46,14 @@ const createBoardBody = {
   },
 } as const;
 
+const shareBody = {
+  type: 'object',
+  required: ['role'],
+  properties: {
+    role: { type: ['string', 'null'], enum: [...BOARD_SHARE_ROLES, null] },
+  },
+} as const;
+
 // coerceTypes выключен глобально, поэтому булево из строки запроса не собрать
 // схемой — принимаем строку 'true'/'false' и разбираем её в контроллере
 const archivedQuery = {
@@ -61,6 +72,7 @@ const boardResponse = {
     revision: { type: 'integer' },
     createdAt: { type: 'string' },
     updatedAt: { type: 'string' },
+    shareRole: { type: ['string', 'null'], enum: [...BOARD_SHARE_ROLES, null] },
   },
 } as const;
 
@@ -118,6 +130,7 @@ const boardSnapshotResponse = {
     board: boardResponse,
     items: { type: 'array', items: boardItemResponse },
     edges: { type: 'array', items: boardEdgeResponse },
+    access: { type: 'string' },
   },
 } as const;
 
@@ -128,7 +141,9 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
   }
 
   const images = opts.assetsDir ? await BoardImagesService.forDirectory(opts.assetsDir) : undefined;
-  const controller = new BoardsController(BoardsService.forDatabase(app.db, images));
+  const controller = new BoardsController(
+    BoardsService.forDatabase(app.db, opts.auth.guestSecret, images),
+  );
 
   app.post<{ Body: CreateBoardBody }>(
     '/api/boards',
@@ -205,18 +220,17 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
   app.get<{ Params: BoardIdParams }>(
     '/api/boards/:id',
     {
-      preHandler: authenticate,
+      preHandler: app.identify,
       schema: {
         tags: [DOCS_TAGS.boards],
         summary: 'Снимок доски',
         description:
           'Доска целиком: метаданные, элементы и связи. Личная — только владельцу, ' +
-          'командная — любому участнику команды, включая гостя.',
-        security: [{ session: [] }],
+          'командная — любому участнику команды, включая гостя. Гость по ' +
+          'включённой ссылке (14.4) видит снимок без входа.',
         params: boardIdParams,
         response: {
           200: { description: 'Доска', ...boardSnapshotResponse },
-          401: { description: 'Требуется вход', ...errorResponse },
           404: { description: 'Доска не найдена или у вас нет доступа', ...errorResponse },
         },
       },
@@ -249,6 +263,34 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
       },
     },
     controller.rename,
+  );
+
+  app.patch<{ Params: BoardIdParams; Body: ShareBody }>(
+    '/api/boards/:id/share',
+    {
+      preHandler: authenticate,
+      schema: {
+        tags: [DOCS_TAGS.boards],
+        summary: 'Настроить ссылку доступа к доске',
+        description:
+          'Доступно автору доски или администратору команды. ' +
+          'role: "view" | "edit" | null (null — выключить шаринг).',
+        security: [{ session: [] }],
+        params: boardIdParams,
+        body: shareBody,
+        response: {
+          200: {
+            description: 'Доска обновлена',
+            type: 'object',
+            properties: { board: boardResponse },
+          },
+          401: { description: 'Требуется вход', ...errorResponse },
+          403: { description: 'Недостаточно прав', ...errorResponse },
+          404: { description: 'Доска не найдена', ...errorResponse },
+        },
+      },
+    },
+    controller.setShare,
   );
 
   app.post<{ Params: BoardIdParams }>(

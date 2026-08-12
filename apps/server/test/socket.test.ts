@@ -25,7 +25,7 @@ async function startApp(auth?: AuthConfig): Promise<{ app: FastifyInstance; port
   const db = { execute: vi.fn() } as unknown as Db;
   const app = buildApp({ db, auth });
   const roomsService = RoomsService.forDatabase(db, authConfig.guestSecret);
-  const boardsService = BoardsService.forDatabase(db);
+  const boardsService = BoardsService.forDatabase(db, authConfig.guestSecret);
   new SocketGateway(roomsService, boardsService, { corsOrigin: '*' }).attach(app);
   await app.listen({ port: 0, host: '127.0.0.1' });
   return { app, port: (app.server.address() as AddressInfo).port };

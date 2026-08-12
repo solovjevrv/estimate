@@ -183,7 +183,7 @@ describeDb('WS-канал досок', () => {
     teamsRepository = new TeamsRepository(db);
     app = buildApp({ db, auth: authConfig });
     const roomsService = RoomsService.forDatabase(db, authConfig.guestSecret);
-    const boardsService = BoardsService.forDatabase(db);
+    const boardsService = BoardsService.forDatabase(db, authConfig.guestSecret);
     new SocketGateway(roomsService, boardsService, { corsOrigin: '*' }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
     port = (app.server.address() as AddressInfo).port;
@@ -259,7 +259,7 @@ describeDb('WS-канал досок', () => {
       if (!ack.ok) expect(ack.error).toBe('not_found');
     });
 
-    it('анонимное подключение без куки получает unauthorized', async () => {
+    it('анонимное подключение без куки получает not_found (анти-перебор id)', async () => {
       const owner = await newUser('board-owner-3');
       const boardId = await newBoard(owner);
       const client = connect();
@@ -267,7 +267,7 @@ describeDb('WS-канал досок', () => {
       const ack = await emit<JoinBoardResult>(client, BOARD_WS_EVENTS.JOIN, { boardId });
 
       expect(ack.ok).toBe(false);
-      if (!ack.ok) expect(ack.error).toBe('unauthorized');
+      if (!ack.ok) expect(ack.error).toBe('not_found');
     });
   });
 

@@ -1,4 +1,5 @@
 export { applyBoardOp, type BoardOpState } from './board-ops';
+export { BoardGuestSessions } from './board-guest-sessions';
 export { BoardsGateway } from './boards.gateway';
 export { boardsPlugin } from './plugin';
 export { boardImagesPlugin } from './board-images.plugin';
@@ -7,7 +8,8 @@ export { BoardsRepository } from './boards.repository';
 export {
   BoardsService,
   type ApplyOpsResult,
-  type BoardJoinProfile,
+  type BoardJoinRequest,
+  type BoardJoinResult,
   type CreateBoardInput,
 } from './boards.service';
 export { BoardImagesService } from './board-images.service';

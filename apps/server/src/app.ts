@@ -85,13 +85,13 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
       void app.register(avatarPlugin, { avatarsDir: deps.avatarsDir });
     }
     if (deps.boardAssetsDir) {
-      void app.register(boardImagesPlugin, { assetsDir: deps.boardAssetsDir });
+      void app.register(boardImagesPlugin, { assetsDir: deps.boardAssetsDir, auth: deps.auth });
     }
     // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией
     void app.register(teamsPlugin);
     void app.register(roomsPlugin, { auth: deps.auth, rateLimit: deps.roomsRateLimit });
     // Доскам нужны и аутентификация, и проверка членства в команде — регистрируем после teamsPlugin
-    void app.register(boardsPlugin, { assetsDir: deps.boardAssetsDir });
+    void app.register(boardsPlugin, { assetsDir: deps.boardAssetsDir, auth: deps.auth });
   }
 
   if (deps.closeDb) {

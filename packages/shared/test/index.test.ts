@@ -7,9 +7,11 @@ import {
   TEAM_ROLES,
   TSHIRT_DECK,
   WS_EVENTS,
+  hasBoardAccess,
   hasTeamRole,
   toggleItemReaction,
   tshirtLabel,
+  type BoardAccessLevel,
   type ItemReaction,
 } from '../src/index';
 
@@ -45,6 +47,34 @@ describe('ролевая модель команды', () => {
   it('роль всегда достаточна сама для себя', () => {
     for (const role of TEAM_ROLES) {
       expect(hasTeamRole(role, role)).toBe(true);
+    }
+  });
+});
+
+describe('hasBoardAccess', () => {
+  const levels: BoardAccessLevel[] = ['manage', 'edit', 'view'];
+
+  it('manage проходит все уровни', () => {
+    expect(hasBoardAccess('manage', 'manage')).toBe(true);
+    expect(hasBoardAccess('manage', 'edit')).toBe(true);
+    expect(hasBoardAccess('manage', 'view')).toBe(true);
+  });
+
+  it('edit проходит edit и view, но не manage', () => {
+    expect(hasBoardAccess('edit', 'edit')).toBe(true);
+    expect(hasBoardAccess('edit', 'view')).toBe(true);
+    expect(hasBoardAccess('edit', 'manage')).toBe(false);
+  });
+
+  it('view проходит только view', () => {
+    expect(hasBoardAccess('view', 'view')).toBe(true);
+    expect(hasBoardAccess('view', 'edit')).toBe(false);
+    expect(hasBoardAccess('view', 'manage')).toBe(false);
+  });
+
+  it('каждая роль достаточна сама для себя', () => {
+    for (const level of levels) {
+      expect(hasBoardAccess(level, level)).toBe(true);
     }
   });
 });

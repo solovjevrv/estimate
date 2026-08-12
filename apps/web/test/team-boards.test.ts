@@ -23,6 +23,7 @@ function board(over: Partial<BoardSummary>): BoardSummary {
     createdAt: '2026-08-04T00:00:00.000Z',
     updatedAt: '2026-08-04T00:00:00.000Z',
     itemCount: 0,
+    shareRole: null,
     ...over,
   };
 }

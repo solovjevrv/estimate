@@ -19,7 +19,19 @@ import { resolveEdgeColor } from './board-item-defaults';
  * родителя ДОПОЛНИТЕЛЬНО к своим собственным — визуально "убегал" бы в
  * сторону при любой группировке/помещении во фрейм.
  */
-export function boardItemToNode(item: BoardItem, parent?: BoardItem): Node<BoardItem> {
+/**
+ * `canEdit` (14.4, по умолчанию `true` — не ломает старые вызовы в тестах)
+ * задаёт `draggable` явно на каждом узле: `<VueFlow :nodes-draggable>`
+ * — это только ДЕФОЛТ, узловое поле `draggable`, если задано, всегда его
+ * перебивает. Раньше здесь стояло жёсткое `true` — зритель по ссылке
+ * (`view`) мог визуально таскать элементы, хотя сервер такую правку и так
+ * отклонял (расхождение локального холста с правдой сервера до отката).
+ */
+export function boardItemToNode(
+  item: BoardItem,
+  parent?: BoardItem,
+  canEdit = true,
+): Node<BoardItem> {
   const position =
     item.parentId !== null && parent
       ? { x: item.x - parent.x, y: item.y - parent.y }
@@ -41,7 +53,7 @@ export function boardItemToNode(item: BoardItem, parent?: BoardItem): Node<Board
     // рендер — тогда данные приложения всегда источник истины для размера.
     style: { width: `${item.width}px`, height: `${item.height}px` },
     zIndex: item.zIndex,
-    draggable: true,
+    draggable: canEdit,
     selectable: true,
     data: item,
   };
@@ -59,7 +71,7 @@ export function boardItemToNode(item: BoardItem, parent?: BoardItem): Node<Board
   return node;
 }
 
-export function toFlowNodes(items: readonly BoardItem[]): Node<BoardItem>[] {
+export function toFlowNodes(items: readonly BoardItem[], canEdit = true): Node<BoardItem>[] {
   // Vue Flow должна увидеть родительский узел (frame/group, 14.3) ДО потомков,
   // чтобы `parentNode`/`extent: 'parent'` корректно сработали при `setNodes`.
   // Топологическая сортировка по parentId: сначала узлы без родителя, потом
@@ -75,7 +87,7 @@ export function toFlowNodes(items: readonly BoardItem[]): Node<BoardItem>[] {
     if (!item) return;
     if (item.parentId !== null) visit(item.parentId);
     const parent = item.parentId !== null ? byId.get(item.parentId) : undefined;
-    result.push(boardItemToNode(item, parent));
+    result.push(boardItemToNode(item, parent, canEdit));
   }
 
   for (const item of items) visit(item.id);

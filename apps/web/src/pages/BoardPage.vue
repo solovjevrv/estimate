@@ -1,12 +1,18 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { BOARD_TITLE_MAX_LENGTH, hasTeamRole, type Board } from '@poker/shared';
+import {
+  BOARD_TITLE_MAX_LENGTH,
+  GUEST_NAME_MAX_LENGTH,
+  hasBoardAccess,
+  type Board,
+} from '@poker/shared';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import BoardCanvas from '../components/board/BoardCanvas.vue';
+import BoardShareModal from '../components/board/BoardShareModal.vue';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
@@ -36,45 +42,114 @@ const board = ref<Board | null>(null);
  * доску правит либо автор, либо администратор команды — роль подтягиваем
  * отдельно, страница команды её уже не отдаёт вместе со списком досок.
  */
-const canManage = computed(() => {
-  const b = board.value;
-  if (!b) return false;
-  if (!b.teamId) return true;
-  if (b.ownerId === session.user?.id) return true;
-  return !!teams.current && hasTeamRole(teams.current.role, 'admin');
+const canManage = computed(() => hasBoardAccess(boardSession.access, 'manage'));
+const canEdit = computed(() => {
+  if (board.value?.status === 'archived') return false;
+  return hasBoardAccess(boardSession.access, 'edit');
 });
 
 /**
- * Право редактировать содержимое (уровень доступа `edit` из 12.4) — заметно
- * шире `canManage`: любой участник/админ команды (не гость), не только автор
- * доски или администратор. Личная доска — всегда сам владелец. Архивная
- * доска доступна только на чтение — сервер и так отклонит `board:apply`,
- * но UI не должен предлагать действие, которое заведомо отклонят.
+ * Сервер отклонил уже применённый оптимистично батч (14.4) — стор откатил
+ * локальную правку сам, здесь только сообщаем причину. `not_found`/`forbidden`
+ * во время `board:apply` означают именно потерю доступа (доска не найдена
+ * заново — тот же анти-перебор код, что и у чужого/гостя без ссылки, либо
+ * роль в команде понизили) — например, владелец сузил ссылку до «только
+ * просмотр», пока участник уже редактировал. Подтягиваем свежий access,
+ * иначе UI продолжал бы предлагать редактирование, которое сервер и дальше
+ * будет отклонять.
+ *
+ * Троттлинг на 2с: жест (например, драг) шлёт патчи пачкой — без него урезание
+ * доступа посреди активного перетаскивания дало бы тост на каждый отклонённый
+ * тик жеста, а не один понятный тост на весь инцидент.
  */
-const canEdit = computed(() => {
-  const b = board.value;
-  if (!b || b.status === 'archived') return false;
-  if (!b.teamId) return true;
-  return !!teams.current && hasTeamRole(teams.current.role, 'member');
-});
+const APPLY_ERROR_NOTICE_COOLDOWN_MS = 2000;
+let lastApplyErrorNoticeAt = 0;
 
-watch(() => props.id, load, { immediate: true });
+watch(
+  () => boardSession.applyError,
+  (err) => {
+    if (!err) return;
+    const now = Date.now();
+    if (now - lastApplyErrorNoticeAt < APPLY_ERROR_NOTICE_COOLDOWN_MS) return;
+    lastApplyErrorNoticeAt = now;
+
+    if (err.code === 'forbidden' || err.code === 'not_found') {
+      toast.add({ title: t('board.applyAccessChanged'), color: 'error' });
+      void boards
+        .get(props.id)
+        .then((snapshot) => {
+          boardSession.access = snapshot.access;
+        })
+        .catch(() => {
+          // Не критично — следующий join/реконнект и так подтянет актуальный access
+        });
+    } else {
+      toast.add({ title: t('board.applyErrorGeneric'), color: 'error' });
+    }
+  },
+);
+
+/** Гость называет имя один раз за вкладку — переживает перезагрузку, не переживает закрытие (по образцу RoomPage.vue) */
+function readStoredGuestName(): string {
+  try {
+    return sessionStorage.getItem('poker:board-guest-name') ?? '';
+  } catch {
+    return '';
+  }
+}
+
+function storeGuestName(name: string): void {
+  try {
+    sessionStorage.setItem('poker:board-guest-name', name);
+  } catch {
+    // Приватный режим браузера может запрещать хранилище — в рамках вкладки не критично
+  }
+}
+
+const needsGuestName = ref(false);
+const guestJoining = ref(false);
+const guestJoinFailed = ref(false);
+const guestState = reactive({ name: readStoredGuestName() });
+
+function validateGuestName(s: { name: string }): FormError[] {
+  const errors: FormError[] = [];
+  const name = s.name.trim();
+  if (!name) {
+    errors.push({ name: 'name', message: t('board.guestNameRequired') });
+  } else if (name.length > GUEST_NAME_MAX_LENGTH) {
+    errors.push({
+      name: 'name',
+      message: t('board.guestNameTooLong', { max: GUEST_NAME_MAX_LENGTH }),
+    });
+  }
+  return errors;
+}
 
 async function load(): Promise<void> {
   loading.value = true;
   notFound.value = false;
   loadFailed.value = false;
+  needsGuestName.value = false;
+  guestJoinFailed.value = false;
   try {
     const snapshot = await boards.get(props.id);
     board.value = snapshot.board;
-    if (snapshot.board.teamId) {
+    // REST-снимок уже знает наш access — синхронизируем в store, чтобы
+    // canManage/canEdit отработали до первого WS `join`, а `canManage` можно
+    // было поставить в prop BoardShareModal
+    boardSession.access = snapshot.access;
+    // Гость не может звать /api/teams/:id (роут только для вошедших) — иначе
+    // командная доска, открытая гостю по ссылке, всегда падала бы в loadFailed
+    if (snapshot.board.teamId && session.isAuthenticated) {
       await teams.loadTeam(snapshot.board.teamId);
     }
-    // При провале реконнекта (доступ отозвали, пока вкладка простаивала, и т.п.)
-    // синк молча не оживёт сам — предупреждаем и предлагаем перезайти на доску
-    void boardSession.join(props.id, () => {
-      toast.add({ title: t('board.loadError'), color: 'error' });
-    });
+
+    if (session.isAuthenticated) {
+      await joinBoard();
+    } else {
+      // Реалтайм-вход гостю требует имени — показываем форму вместо немедленного join
+      needsGuestName.value = true;
+    }
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
       notFound.value = true;
@@ -86,6 +161,38 @@ async function load(): Promise<void> {
   }
 }
 
+/**
+ * WS-вход отдельно от REST-снимка выше. При провале реконнекта (доступ
+ * отозвали, пока вкладка простаивала, и т.п.) синк молча не оживёт сам —
+ * предупреждаем и предлагаем перезайти на доску. Провал самого первого входа
+ * ловит вызывающий код: для гостя это открытая форма имени, для вошедшего —
+ * тост ниже.
+ */
+async function joinBoard(guestName?: string): Promise<void> {
+  await boardSession.join(props.id, guestName, () => {
+    toast.add({ title: t('board.loadError'), color: 'error' });
+  });
+}
+
+async function onGuestNameSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void> {
+  const name = event.data.name.trim();
+  storeGuestName(name);
+  guestJoining.value = true;
+  guestJoinFailed.value = false;
+  try {
+    await joinBoard(name);
+    needsGuestName.value = false;
+  } catch {
+    guestJoinFailed.value = true;
+  } finally {
+    guestJoining.value = false;
+  }
+}
+
+// immediate: true запускает load() синхронно прямо здесь — она читает состояние
+// формы гостя выше (needsGuestName и т.п.), поэтому watch объявлен уже после него
+watch(() => props.id, load, { immediate: true });
+
 // REST-снимок уже загружен через `boards.get` выше — WS-вход (12.4) даёт только
 // реалтайм-синхронизацию поверх него, поэтому его результат ожидать не нужно
 onBeforeUnmount(() => {
@@ -94,6 +201,7 @@ onBeforeUnmount(() => {
 
 // --- Переименование ---
 const renameOpen = ref(false);
+const shareOpen = ref(false);
 const renaming = ref(false);
 const renameState = reactive({ title: '' });
 
@@ -190,9 +298,47 @@ async function confirmDelete(): Promise<void> {
       </div>
     </div>
 
+    <!-- Гость на доске по ссылке (14.4): реалтайм-вход и presence нужны имени,
+    поэтому просим представиться прежде, чем показать холст -->
+    <div
+      v-if="board && needsGuestName"
+      class="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-4"
+    >
+      <h1 class="font-heading mb-4 text-2xl font-extrabold">{{ board.title }}</h1>
+      <div class="surface-card surface-card-lg px-4 py-5 sm:px-[30px] sm:py-[26px]">
+        <h2 class="mb-[18px] text-[17px] font-bold">{{ t('board.guestNameTitle') }}</h2>
+        <UForm
+          :state="guestState"
+          :validate="validateGuestName"
+          class="space-y-4"
+          @submit="onGuestNameSubmit"
+        >
+          <UFormField :label="t('board.guestName')" name="name">
+            <UInput
+              v-model="guestState.name"
+              :placeholder="t('board.guestNamePlaceholder')"
+              :maxlength="GUEST_NAME_MAX_LENGTH"
+              autofocus
+              class="w-full"
+              :ui="MODAL_INPUT_UI"
+            />
+          </UFormField>
+          <UAlert
+            v-if="guestJoinFailed"
+            color="error"
+            variant="subtle"
+            :description="t('board.guestJoinError')"
+          />
+          <UButton type="submit" block :ui="MODAL_BUTTON_UI" :loading="guestJoining">
+            {{ t('board.guestJoin') }}
+          </UButton>
+        </UForm>
+      </div>
+    </div>
+
     <!-- Холст владеет всем остатком экрана (без общего max-width-контейнера страницы, 12.5) —
     название доски и её меню теперь плашкой поверх холста, а не отдельным рядом над ним -->
-    <div v-if="board" class="min-h-0 flex-1">
+    <div v-if="board && !needsGuestName" class="min-h-0 flex-1">
       <BoardCanvas
         :board="board"
         :team-name="board.teamId ? (teams.current?.team.name ?? null) : null"
@@ -203,6 +349,7 @@ async function confirmDelete(): Promise<void> {
         @rename="renameOpen = true"
         @archive="archiveOpen = true"
         @unarchive="unarchive"
+        @share="shareOpen = true"
         @delete="deleteOpen = true"
       />
     </div>
@@ -256,4 +403,6 @@ async function confirmDelete(): Promise<void> {
     :loading="deleting"
     @confirm="confirmDelete"
   />
+
+  <BoardShareModal v-if="board" v-model="shareOpen" :board="board" />
 </template>

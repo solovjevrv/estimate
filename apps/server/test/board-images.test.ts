@@ -208,7 +208,7 @@ describeDb('картинки досок', () => {
       expect(res.statusCode).toBe(404);
     });
 
-    it('без входа — 401', async () => {
+    it('без входа на закрытую доску — 404 (анти-перебор)', async () => {
       const owner = await newUser('upload-noauth-owner');
       const boardId = await newBoard(owner);
 
@@ -218,7 +218,7 @@ describeDb('картинки досок', () => {
         payload: imageForm(await testImage(), 'd.jpg', 'image/jpeg'),
       });
 
-      expect(res.statusCode).toBe(401);
+      expect(res.statusCode).toBe(404);
     });
 
     it('отклоняет неподдерживаемый mime-тип до обработки sharp', async () => {
@@ -315,10 +315,10 @@ describeDb('картинки досок', () => {
     // дёргаем BoardsService напрямую, чтобы не поднимать сокеты только ради этого
     async function boardsService(): Promise<BoardsService> {
       const images = await BoardImagesService.forDirectory(assetsDir);
-      return BoardsService.forDatabase(db, images);
+      return BoardsService.forDatabase(db, authConfig.guestSecret, images);
     }
 
-    function imageItem(id: string, url: string): Parameters<BoardsService['applyOps']>[3][number] {
+    function imageItem(id: string, url: string): Parameters<BoardsService['applyOps']>[2][number] {
       return {
         type: 'item.create',
         clientOpId: randomUUID(),
@@ -351,8 +351,8 @@ describeDb('картинки досок', () => {
 
       const service = await boardsService();
       const itemId = randomUUID();
-      await service.applyOps(owner.id, owner.name, boardId, [imageItem(itemId, url!)]);
-      await service.applyOps(owner.id, owner.name, boardId, [
+      await service.applyOps({ participantId: owner.id, userId: owner.id, name: owner.name }, boardId, [imageItem(itemId, url!)]);
+      await service.applyOps({ participantId: owner.id, userId: owner.id, name: owner.name }, boardId, [
         { type: 'item.delete', clientOpId: randomUUID(), id: itemId },
       ]);
 
@@ -371,8 +371,8 @@ describeDb('картинки досок', () => {
 
       const service = await boardsService();
       const itemId = randomUUID();
-      await service.applyOps(owner.id, owner.name, boardId, [imageItem(itemId, url!)]);
-      await service.applyOps(owner.id, owner.name, boardId, [
+      await service.applyOps({ participantId: owner.id, userId: owner.id, name: owner.name }, boardId, [imageItem(itemId, url!)]);
+      await service.applyOps({ participantId: owner.id, userId: owner.id, name: owner.name }, boardId, [
         {
           type: 'item.patch',
           clientOpId: randomUUID(),
@@ -395,7 +395,7 @@ describeDb('картинки досок', () => {
       const filename = url!.split('/').pop()!;
 
       const service = await boardsService();
-      await service.applyOps(owner.id, owner.name, boardId, [imageItem(randomUUID(), url!)]);
+      await service.applyOps({ participantId: owner.id, userId: owner.id, name: owner.name }, boardId, [imageItem(randomUUID(), url!)]);
       await app.inject({
         method: 'POST',
         url: `/api/boards/${boardId}/archive`,

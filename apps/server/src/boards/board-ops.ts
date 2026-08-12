@@ -429,8 +429,7 @@ export function applyBoardOp(
   state: BoardOpState,
   op: BoardOp,
   boardId: string,
-  actorId: string,
-  actorName: string,
+  actor: { participantId: string; userId: string | null; name: string },
 ): void {
   switch (op.type) {
     case 'item.create': {
@@ -449,7 +448,7 @@ export function applyBoardOp(
         content: validateContent(op.item.content, boardId),
         style: validateStyle(op.item.style),
         reactions: [],
-        createdBy: actorId,
+        createdBy: actor.userId, // FK на users — гостю писать нельзя, поэтому null
         updatedAt: new Date().toISOString(),
       };
       state.items.set(id, item);
@@ -520,7 +519,12 @@ export function applyBoardOp(
       }
       state.items.set(op.id, {
         ...existing,
-        reactions: toggleItemReaction(existing.reactions, actorId, actorName, op.emoji),
+        reactions: toggleItemReaction(
+          existing.reactions,
+          actor.participantId,
+          actor.name,
+          op.emoji,
+        ),
         updatedAt: new Date().toISOString(),
       });
       break;
