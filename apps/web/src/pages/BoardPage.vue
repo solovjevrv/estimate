@@ -251,10 +251,5 @@ async function confirmDelete(): Promise<void> {
     @confirm="confirmDelete"
   />
 
-  <BoardShareModal
-    v-if="board"
-    v-model="shareOpen"
-    :board="board"
-    :can-manage="canManage"
-  />
+  <BoardShareModal v-if="board" v-model="shareOpen" :board="board" />
 </template>

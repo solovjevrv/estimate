@@ -1,53 +1,39 @@
 <template>
-  <UModal
-    v-model:open="modelValue"
-    :title="t('board.shareTitle')"
-  >
+  <UModal v-model:open="modelValue" :title="t('board.shareTitle')" :ui="MODAL_UI">
     <template #body>
       <div class="space-y-4">
-        <p v-if="canManage" class="text-sm text-muted">
-          {{ t('board.shareDescription') }}
-        </p>
-
-        <div v-if="canManage" class="space-y-2">
-          <div class="flex gap-2">
-            <UButton
-              size="sm"
-              :color="shareRole === null ? 'primary' : 'neutral'"
-              :variant="shareRole === null ? 'solid' : 'ghost'"
-              @click="apply(null)"
-            >
-              {{ t('board.shareDisabled') }}
-            </UButton>
-            <UButton
-              size="sm"
-              :color="shareRole === 'view' ? 'primary' : 'neutral'"
-              :variant="shareRole === 'view' ? 'solid' : 'ghost'"
-              @click="apply('view')"
-            >
-              {{ t('board.shareRoleView') }}
-            </UButton>
-            <UButton
-              size="sm"
-              :color="shareRole === 'edit' ? 'primary' : 'neutral'"
-              :variant="shareRole === 'edit' ? 'solid' : 'ghost'"
-              @click="apply('edit')"
-            >
-              {{ t('board.shareRoleEdit') }}
-            </UButton>
+        <div class="flex items-center justify-between gap-4">
+          <div class="min-w-0">
+            <p class="text-[14.5px] font-bold">{{ t('board.shareToggleLabel') }}</p>
+            <p class="text-muted mt-0.5 text-[13px]">{{ t('board.shareDescription') }}</p>
           </div>
+          <USwitch :model-value="enabled" @update:model-value="onToggle" />
+        </div>
 
-          <div v-if="shareRole" class="flex items-center gap-2">
-            <UInput v-model="link" readonly variant="narrowed" size="sm" />
+        <template v-if="enabled">
+          <USelect
+            :model-value="shareRole ?? undefined"
+            :items="roleItems"
+            value-key="value"
+            :aria-label="t('board.shareRoleLabel')"
+            :ui="{
+              base: 'rounded-[9px] border border-[var(--brand-border)] bg-[var(--brand-surface)] py-2 ps-3.5 pe-[34px] ring-0',
+            }"
+            @update:model-value="onRoleChange($event as BoardShareRole)"
+          />
+
+          <div class="flex items-center gap-2">
+            <UInput :model-value="link" readonly class="min-w-0 flex-1" :ui="MODAL_INPUT_UI" />
             <UButton
               icon="i-lucide-copy"
-              :aria-label="t('board.shareCopied')"
+              :aria-label="t('board.shareCopy')"
               color="neutral"
-              variant="ghost"
+              variant="outline"
+              :ui="MODAL_BUTTON_UI"
               @click="copy"
             />
           </div>
-        </div>
+        </template>
       </div>
     </template>
 
@@ -55,10 +41,11 @@
       <div class="flex justify-end">
         <UButton
           color="neutral"
-          variant="ghost"
+          variant="outline"
+          :ui="MODAL_BUTTON_UI"
           @click="modelValue = false"
         >
-          {{ t('common.close') }}
+          {{ t('board.shareClose') }}
         </UButton>
       </div>
     </template>
@@ -66,16 +53,21 @@
 </template>
 
 <script setup lang="ts">
+import { useToast } from '@nuxt/ui/composables';
 import type { Board, BoardShareRole } from '@poker/shared';
 import { computed, ref } from 'vue';
-import { useToast } from '@nuxt/ui/composables';
 import { useI18n } from 'vue-i18n';
 
+import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../../lib/modal-ui';
 import { useBoardSessionStore } from '../../stores/board-session';
 
+/**
+ * canManage не проверяем здесь: модалка открывается только из пункта меню
+ * «Поделиться», а сам этот пункт виден только под `v-if="canManage"` в
+ * BoardCanvas.vue — если модалка открыта, доступ уже подтверждён.
+ */
 const props = defineProps<{
   board: Board;
-  canManage: boolean;
 }>();
 const modelValue = defineModel<boolean>();
 const { t } = useI18n();
@@ -83,22 +75,34 @@ const toast = useToast();
 const bs = useBoardSessionStore();
 
 const shareRole = ref<BoardShareRole | null>(props.board.shareRole);
+const enabled = computed(() => shareRole.value !== null);
 
-const link = computed(() => {
-  const url = `${window.location.origin}/boards/${props.board.id}`;
-  return shareRole.value ? `${url}?role=${shareRole.value}` : url;
-});
+const roleItems = computed(() => [
+  { label: t('board.shareRoleView'), value: 'view' as const },
+  { label: t('board.shareRoleEdit'), value: 'edit' as const },
+]);
+
+const link = computed(() => `${window.location.origin}/boards/${props.board.id}`);
 
 async function apply(role: BoardShareRole | null): Promise<void> {
+  const previous = shareRole.value;
+  shareRole.value = role;
   try {
     const board = await bs.setShare(role);
     shareRole.value = board.shareRole;
-    if (role !== null) {
-      copy();
-    }
   } catch {
+    shareRole.value = previous;
     toast.add({ title: t('board.shareError'), color: 'error' });
   }
+}
+
+/** Включение — сразу с уровнем «только просмотр», как более безопасный дефолт */
+function onToggle(next: boolean): void {
+  void apply(next ? 'view' : null);
+}
+
+function onRoleChange(role: BoardShareRole): void {
+  void apply(role);
 }
 
 function copy(): void {
