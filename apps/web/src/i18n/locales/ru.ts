@@ -392,6 +392,8 @@ export default {
     guestNameTooLong: 'Слишком длинное имя (максимум {max})',
     guestJoin: 'Открыть доску',
     guestJoinError: 'Не удалось открыть доску. Попробуйте ещё раз.',
+    applyAccessChanged: 'Доступ к доске изменился — правка не сохранена',
+    applyErrorGeneric: 'Не удалось сохранить правку, попробуйте ещё раз',
     forms: {
       sticky: 'Стикер',
       rectangle: 'Прямоугольник',

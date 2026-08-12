@@ -141,13 +141,13 @@ describe('стор сессии доски', () => {
       ops: [{ type: 'item.create', clientOpId: 'c1', item: item() }],
     };
     socket.next = {
-  revision: 5,
-  snapshot: null,
-  catchup: [batch],
-  access: 'manage',
-  participantId: 'actor1',
-  guestToken: null,
-} satisfies JoinBoardResult;
+      revision: 5,
+      snapshot: null,
+      catchup: [batch],
+      access: 'manage',
+      participantId: 'actor1',
+      guestToken: null,
+    } satisfies JoinBoardResult;
 
     await store.join('board1');
 
@@ -175,6 +175,38 @@ describe('стор сессии доски', () => {
     await expect(
       store.applyOps([{ type: 'item.delete', clientOpId: 'c1', id: 'i1' }]),
     ).rejects.toThrow('Доска не подключена');
+  });
+
+  describe('откат при отказе сервера (14.4)', () => {
+    it('сервер отклонил патч (например, доступ по ссылке урезали до view) — локальная правка откатывается', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1, [item({ x: 0, y: 0 })]);
+      await store.join('board1');
+      socket.nextError = { error: 'not_found', message: 'Доска не найдена' };
+
+      await expect(
+        store.applyOps([{ type: 'item.patch', clientOpId: 'c1', id: 'i1', patch: { x: 100 } }]),
+      ).rejects.toThrow();
+
+      // Оптимистично применённый сдвиг x отменён — холст не должен молча
+      // разъезжаться с сервером до перезагрузки страницы
+      expect(store.items[0]?.x).toBe(0);
+      expect(store.applyError).toEqual({ code: 'not_found' });
+    });
+
+    it('сервер отклонил создание элемента — оно откатывается целиком (элемент исчезает)', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+      socket.nextError = { error: 'forbidden', message: 'Нет прав редактировать эту доску' };
+
+      await expect(
+        store.applyOps([{ type: 'item.create', clientOpId: 'c1', item: item() }]),
+      ).rejects.toThrow();
+
+      expect(store.items).toHaveLength(0);
+      expect(store.applyError).toEqual({ code: 'forbidden' });
+    });
   });
 
   describe('оптимистичное применение и эхо (12.6)', () => {

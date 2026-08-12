@@ -103,10 +103,23 @@ describe('boardItemToNode', () => {
     expect(boardItemToNode(shapeItem).type).toBe('shape');
   });
 
-  it('элементы перетаскиваются и выделяются (12.6)', () => {
+  it('элементы перетаскиваются и выделяются (12.6), пока не сказано иначе', () => {
     const node = boardItemToNode(stickyItem);
     expect(node.draggable).toBe(true);
     expect(node.selectable).toBe(true);
+  });
+
+  it('canEdit=false — элемент выделяется, но не перетаскивается (14.4)', () => {
+    // Узловое поле draggable перебивает глобальный :nodes-draggable у <VueFlow>
+    // (baseline-регрессия: зритель по ссылке мог визуально таскать карточки)
+    const node = boardItemToNode(stickyItem, undefined, false);
+    expect(node.draggable).toBe(false);
+    expect(node.selectable).toBe(true);
+  });
+
+  it('toFlowNodes прокидывает canEdit=false на каждый узел списка (14.4)', () => {
+    const nodes = toFlowNodes([stickyItem, shapeItem], false);
+    expect(nodes.every((n) => n.draggable === false)).toBe(true);
   });
 
   it('задаёт style.width/height явно, не только поля width/height (12.7)', () => {

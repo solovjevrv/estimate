@@ -37,7 +37,7 @@ import {
   regenerateClientOpIds,
   type BoardHistoryEntry,
 } from '../lib/board/board-op-history';
-import { createSocket, emitWithAck, type PokerSocket } from '../lib/socket';
+import { createSocket, emitWithAck, WsError, type PokerSocket } from '../lib/socket';
 import { useSessionStore } from './session';
 
 /**
@@ -184,6 +184,13 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   /** Итоговый уровень доступа текущего участника к доске (14.4) */
   const access = ref<BoardAccessLevel>('view');
   /**
+   * Сервер отклонил применённый оптимистично батч (14.4) — например, доступ по
+   * ссылке урезали до `view`, пока участник уже редактировал. Новый объект на
+   * каждый отказ (не код строкой), чтобы повторный отказ с тем же кодом подряд
+   * тоже считался изменением и не терялся в `watch` без `immediate` на странице.
+   */
+  const applyError = ref<{ code: string } | null>(null);
+  /**
    * Мягкая блокировка текстового редактирования (14.2) — отдельная карта от
    * `awarenessByUser`: если смешать с курсором тем же LWW-приёмом, любой следующий
    * throttled mousemove по пейну (он ловит движение мыши по всему канвасу, даже
@@ -324,6 +331,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       revision.value = 0;
       participantId.value = null;
       access.value = 'view';
+      applyError.value = null;
       established = false;
       ownGuestName = null;
       lastOwnOpByTarget.clear();
@@ -425,6 +433,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     connected.value = false;
     participantId.value = null;
     access.value = 'view';
+    applyError.value = null;
     local.items.clear();
     local.edges.clear();
     revision.value = 0;
@@ -444,8 +453,15 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   /**
    * Применяется сразу локально (оптимистично, до ответа сервера) и на других
    * участниках — рассылкой `board:ops`, которую отбрасывает `applyBatch` выше,
-   * если это устаревшее эхо. Ошибка отправки (сеть/валидация) оптимистичное
-   * применение не откатывает — на масштабе 12.6 это осознанный компромисс.
+   * если это устаревшее эхо.
+   *
+   * Инверсия считается ВСЕГДА, не только когда пишем в историю (`record`) —
+   * она же служит откатом, если сервер отклонит батч (доступ по ссылке урезали
+   * до `view`, пока гость уже редактировал, доску заархивировали, гонка с
+   * удалением цели другим участником и т.п., 14.4). Без отката локальный
+   * холст расходился бы с правдой сервера молча и навсегда, до перезагрузки
+   * страницы — участник продолжал бы «редактировать» то, что на самом деле
+   * никуда не сохраняется и никому больше не видно.
    *
    * `record` (12.10, по умолчанию `true`) — писать ли эту операцию в историю
    * undo/redo; `false` для промежуточных троттлед-тиков одного жеста (драг),
@@ -460,7 +476,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   ): Promise<number> {
     const active = requireSocket();
     const record = opts.record ?? true;
-    const inverseOps = record ? (opts.inverse ?? deriveInverseOps(ops, local)) : null;
+    const inverseOps = opts.inverse ?? deriveInverseOps(ops, local);
     // session.user пуст у гостя (14.4) — тогда участника и имя берём из своего
     // же входа: participantId вернул сервер при join, имя — то, что ввели в форме
     const self = {
@@ -473,15 +489,33 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       const predicted = predictCommittedOp(op, local, self);
       if (predicted) applyLocalBoardOp(local, predicted);
     }
-    if (inverseOps && inverseOps.length) {
+    if (record && inverseOps.length) {
       pushHistory({ forward: ops, backward: inverseOps });
     }
-    const result = await emitWithAck<typeof BOARD_WS_EVENTS.APPLY, ApplyBoardOpsResult>(
-      active,
-      BOARD_WS_EVENTS.APPLY,
-      { ops },
-    );
-    return result.revision;
+
+    try {
+      const result = await emitWithAck<typeof BOARD_WS_EVENTS.APPLY, ApplyBoardOpsResult>(
+        active,
+        BOARD_WS_EVENTS.APPLY,
+        { ops },
+      );
+      return result.revision;
+    } catch (err) {
+      // Откатываем локально — тем же приёмом инверсии, что undo, но без
+      // отправки на сервер (батч и так только что оттуда отклонён)
+      for (const op of inverseOps) {
+        const predicted = predictCommittedOp(op, local, self);
+        if (predicted) applyLocalBoardOp(local, predicted);
+      }
+      for (const op of ops) {
+        ownClientOpIds.delete(op.clientOpId);
+        if (lastOwnOpByTarget.get(opTargetKey(op)) === op.clientOpId) {
+          lastOwnOpByTarget.delete(opTargetKey(op));
+        }
+      }
+      applyError.value = { code: err instanceof WsError ? err.code : 'internal' };
+      throw err;
+    }
   }
 
   /**
@@ -536,6 +570,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     joined,
     participantId,
     access,
+    applyError,
     join,
     leave,
     applyOps,

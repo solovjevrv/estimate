@@ -177,7 +177,7 @@ const { t } = useI18n();
 const toast = useToast();
 const boardSession = useBoardSessionStore();
 
-const flowNodes = computed(() => toFlowNodes(props.items));
+const flowNodes = computed(() => toFlowNodes(props.items, props.canEdit));
 const flowEdges = computed(() => toFlowEdges(props.edges));
 
 // markRaw — иначе Vue оборачивает объект с компонентами в reactive() и предупреждает

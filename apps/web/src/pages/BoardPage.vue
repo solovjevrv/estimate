@@ -48,6 +48,47 @@ const canEdit = computed(() => {
   return hasBoardAccess(boardSession.access, 'edit');
 });
 
+/**
+ * Сервер отклонил уже применённый оптимистично батч (14.4) — стор откатил
+ * локальную правку сам, здесь только сообщаем причину. `not_found`/`forbidden`
+ * во время `board:apply` означают именно потерю доступа (доска не найдена
+ * заново — тот же анти-перебор код, что и у чужого/гостя без ссылки, либо
+ * роль в команде понизили) — например, владелец сузил ссылку до «только
+ * просмотр», пока участник уже редактировал. Подтягиваем свежий access,
+ * иначе UI продолжал бы предлагать редактирование, которое сервер и дальше
+ * будет отклонять.
+ *
+ * Троттлинг на 2с: жест (например, драг) шлёт патчи пачкой — без него урезание
+ * доступа посреди активного перетаскивания дало бы тост на каждый отклонённый
+ * тик жеста, а не один понятный тост на весь инцидент.
+ */
+const APPLY_ERROR_NOTICE_COOLDOWN_MS = 2000;
+let lastApplyErrorNoticeAt = 0;
+
+watch(
+  () => boardSession.applyError,
+  (err) => {
+    if (!err) return;
+    const now = Date.now();
+    if (now - lastApplyErrorNoticeAt < APPLY_ERROR_NOTICE_COOLDOWN_MS) return;
+    lastApplyErrorNoticeAt = now;
+
+    if (err.code === 'forbidden' || err.code === 'not_found') {
+      toast.add({ title: t('board.applyAccessChanged'), color: 'error' });
+      void boards
+        .get(props.id)
+        .then((snapshot) => {
+          boardSession.access = snapshot.access;
+        })
+        .catch(() => {
+          // Не критично — следующий join/реконнект и так подтянет актуальный access
+        });
+    } else {
+      toast.add({ title: t('board.applyErrorGeneric'), color: 'error' });
+    }
+  },
+);
+
 /** Гость называет имя один раз за вкладку — переживает перезагрузку, не переживает закрытие (по образцу RoomPage.vue) */
 function readStoredGuestName(): string {
   try {

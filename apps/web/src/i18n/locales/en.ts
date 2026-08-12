@@ -392,6 +392,8 @@ export default {
     guestNameTooLong: 'Name is too long (max {max})',
     guestJoin: 'Open the board',
     guestJoinError: 'Could not open the board. Please try again.',
+    applyAccessChanged: 'Board access has changed — your change was not saved',
+    applyErrorGeneric: 'Could not save the change, please try again',
     forms: {
       sticky: 'Sticky note',
       rectangle: 'Rectangle',
