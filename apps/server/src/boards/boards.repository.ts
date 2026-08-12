@@ -1,4 +1,5 @@
 import type { Board, BoardEdge, BoardItem } from '@poker/shared';
+import { type BoardShareRole } from '@poker/shared';
 import { and, eq, sql } from 'drizzle-orm';
 
 import { schema } from '../db';
@@ -111,6 +112,15 @@ export class BoardsRepository {
     return row ? this.toBoard(row) : null;
   }
 
+  async updateShareRole(boardId: string, shareRole: BoardShareRole | null): Promise<Board | null> {
+    const [row] = await this.db
+      .update(schema.boards)
+      .set({ shareRole, updatedAt: new Date() })
+      .where(eq(schema.boards.id, boardId))
+      .returning();
+    return row ? this.toBoard(row) : null;
+  }
+
   /** Архивация — доска пропадает из основных списков, но не удаляется */
   async archiveBoard(boardId: string): Promise<Board | null> {
     const [row] = await this.db
@@ -160,7 +170,7 @@ export class BoardsRepository {
    */
   async insertItem(
     boardId: string,
-    createdBy: string,
+    createdBy: string | null,
     item: Omit<BoardItem, 'boardId' | 'createdBy' | 'updatedAt'>,
   ): Promise<BoardItem> {
     const { id, parentId, x, y, width, height, rotation, zIndex, content, style, reactions } = item;
@@ -288,6 +298,7 @@ export class BoardsRepository {
       revision: row.revision,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
+      shareRole: row.shareRole,
     };
   }
 

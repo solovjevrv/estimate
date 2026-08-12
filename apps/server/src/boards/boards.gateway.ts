@@ -14,7 +14,7 @@ import {
 import type { FastifyBaseLogger } from 'fastify';
 import type { Socket } from 'socket.io';
 
-import { AppError, ForbiddenError, UnauthorizedError, ValidationError } from '../errors';
+import { AppError, ForbiddenError, ValidationError } from '../errors';
 import type { PokerServer } from '../socket';
 
 import { BoardPresence, type BoardParticipantIdentity } from './presence';
@@ -59,8 +59,7 @@ export class BoardsGateway {
             throw new ValidationError('Пустой список операций');
           }
           const { revision, ops: committed } = await this.service.applyOps(
-            identity.userId,
-            identity.name,
+            identity,
             boardId,
             ops,
           );
@@ -88,6 +87,7 @@ export class BoardsGateway {
           userId: identity.userId,
           name: identity.name,
           avatarUrl: identity.avatarUrl,
+          isGuest: identity.isGuest,
           kind: payload.kind,
           data: payload.data,
         });
@@ -114,12 +114,13 @@ export class BoardsGateway {
     if (!payload?.boardId) {
       throw new ValidationError('Не указана доска');
     }
-    const userId = socket.data.userId;
-    if (!userId) {
-      throw new UnauthorizedError();
-    }
 
-    const { name, avatarUrl } = await this.service.prepareBoardJoin(userId, payload.boardId);
+    const { access, identity, guestToken } = await this.service.prepareBoardJoin({
+      boardId: payload.boardId,
+      userId: socket.data.userId,
+      guestName: payload.guestName,
+      guestToken: payload.guestToken,
+    });
 
     // Из прошлой доски выходим полностью, иначе сокет продолжит получать её рассылки
     const previousBoard = this.presence.boardOf(socket.id);
@@ -128,7 +129,7 @@ export class BoardsGateway {
     }
 
     await socket.join(payload.boardId);
-    this.presence.join(payload.boardId, socket.id, { userId, name, avatarUrl });
+    this.presence.join(payload.boardId, socket.id, identity);
 
     if (previousBoard && previousBoard !== payload.boardId) {
       if (this.presence.list(previousBoard).length === 0) {
@@ -142,11 +143,25 @@ export class BoardsGateway {
     const buffered =
       sinceRevision != null ? this.catchupSince(payload.boardId, sinceRevision) : null;
     if (buffered) {
-      return { revision: buffered.revision, snapshot: null, catchup: buffered.ops };
+      return {
+        revision: buffered.revision,
+        snapshot: null,
+        catchup: buffered.ops,
+        access,
+        participantId: identity.participantId,
+        guestToken,
+      };
     }
 
-    const snapshot = await this.service.getSnapshot(userId, payload.boardId);
-    return { revision: snapshot.board.revision, snapshot, catchup: null };
+    const snapshot = await this.service.getSnapshot(socket.data.userId, payload.boardId);
+    return {
+      revision: snapshot.board.revision,
+      snapshot,
+      catchup: null,
+      access,
+      participantId: identity.participantId,
+      guestToken,
+    };
   }
 
   /** Действовать может только тот, кто уже вошёл на доску */
@@ -196,7 +211,7 @@ export class BoardsGateway {
   private broadcastPresence(io: PokerServer, boardId: string): void {
     const entries: BoardPresenceEntry[] = this.presence
       .list(boardId)
-      .map(({ userId, name, avatarUrl }) => ({ userId, name, avatarUrl }));
+      .map(({ userId, name, avatarUrl, isGuest }) => ({ userId, name, avatarUrl, isGuest }));
     io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.PRESENCE, entries);
   }
 

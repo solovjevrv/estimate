@@ -2,10 +2,14 @@ import {
   BOARD_OPS_BATCH_MAX,
   BOARD_TITLE_MAX_LENGTH,
   BOARD_TITLE_MIN_LENGTH,
+  GUEST_NAME_MAX_LENGTH,
+  hasBoardAccess,
   hasTeamRole,
   type Board,
+  type BoardAccessLevel,
   type BoardCommittedOp,
   type BoardOp,
+  type BoardShareRole,
   type BoardSnapshot,
   type BoardSummary,
 } from '@poker/shared';
@@ -16,9 +20,14 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '.
 import { TeamsRepository } from '../teams';
 import type { DbExecutor as TeamsDbExecutor } from '../teams/teams.repository';
 
+import { BoardGuestSessions } from './board-guest-sessions';
 import type { BoardImagesService } from './board-images.service';
 import { applyBoardOp, type BoardOpState } from './board-ops';
 import { BoardsRepository, type DbExecutor as BoardsDbExecutor } from './boards.repository';
+import type { BoardParticipantIdentity } from './presence';
+
+/** UUID-проверка для boardId, пришедшего из WS-или REST-payload без схемы */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export interface CreateBoardInput {
   title: string;
@@ -26,10 +35,18 @@ export interface CreateBoardInput {
   teamId?: string | null;
 }
 
-export interface BoardJoinProfile {
+export interface BoardJoinRequest {
+  boardId: string;
+  userId: string | null;
+  guestName?: string;
+  guestToken?: string;
+}
+
+export interface BoardJoinResult {
   board: Board;
-  name: string;
-  avatarUrl: string | null;
+  access: BoardAccessLevel;
+  identity: BoardParticipantIdentity;
+  guestToken: string | null;
 }
 
 export interface ApplyOpsResult {
@@ -38,19 +55,10 @@ export interface ApplyOpsResult {
 }
 
 /**
- * Уровень доступа к доске. `view` — открыть/посмотреть, `edit` — править
- * содержимое (элементы/связи, 12.4+), `manage` — переименование/архивация/
- * удаление самой доски (по образцу скрам-мастера у комнат). У личной доски
- * все три уровня — владелец. У командной: `view` — любой участник, включая
- * гостя; `edit` — участник или администратор (не гость); `manage` — автор
- * доски или администратор команды.
- */
-type BoardAccessLevel = 'view' | 'edit' | 'manage';
-
-/**
  * Правила работы с досками. Права проверяются здесь, а не в роутах/шлюзе, по
  * тому же принципу, что и у команд/комнат: личная доска доступна только
- * владельцу, командная — по роли в команде.
+ * владельцу, командная — по роли в команде. Шаринг по ссылке (14.4) добавляет
+ * второй источник доступа поверх членства в команде.
  */
 export class BoardsService {
   constructor(
@@ -58,6 +66,7 @@ export class BoardsService {
     private readonly repository: BoardsRepository,
     private readonly teams: TeamsRepository,
     private readonly users: UsersRepository,
+    private readonly guests: BoardGuestSessions,
     /**
      * Репозитории для действий под транзакцией (`getSnapshot`/`applyOps`) —
      * фабрики, а не прямой `new BoardsRepository(tx)`, чтобы в юнит-тестах
@@ -74,12 +83,17 @@ export class BoardsService {
     private readonly images?: BoardImagesService,
   ) {}
 
-  static forDatabase(db: Db, images?: BoardImagesService): BoardsService {
+  static forDatabase(
+    db: Db,
+    guestSecret: string,
+    images?: BoardImagesService,
+  ): BoardsService {
     return new BoardsService(
       db,
       new BoardsRepository(db),
       new TeamsRepository(db),
       new UsersRepository(db),
+      new BoardGuestSessions(guestSecret),
       (executor) => new BoardsRepository(executor),
       (executor) => new TeamsRepository(executor),
       images,
@@ -133,47 +147,96 @@ export class BoardsService {
    * применённая по WS операция, и клиент получил бы рваную картину (например,
    * связь на элемент, которого уже нет в присланном списке элементов).
    */
-  async getSnapshot(actorId: string, boardId: string): Promise<BoardSnapshot> {
+  async getSnapshot(actorId: string | null, boardId: string): Promise<BoardSnapshot> {
     await this.assertViewAccess(actorId, boardId);
+    const board = await this.requireBoard(boardId);
+    const access =
+      (await this.resolveMembershipLevel(board, actorId, this.teams)) ?? board.shareRole;
     return this.db.transaction(
       async (tx) => {
         const repo = this.createBoardsRepository(tx);
-        const board = await repo.findBoard(boardId);
-        if (!board) {
+        const freshBoard = await repo.findBoard(boardId);
+        if (!freshBoard) {
           throw new NotFoundError('Доска не найдена');
         }
         const [items, edges] = await Promise.all([
           repo.listItems(boardId),
           repo.listEdges(boardId),
         ]);
-        return { board, items, edges };
+        return { board: freshBoard, items, edges, access: access! };
       },
       { isolationLevel: 'repeatable read', accessMode: 'read only' },
     );
   }
 
   /** Доступ на чтение — используется REST-снимком и входом на доску по WS (12.4) */
-  async assertViewAccess(actorId: string, boardId: string): Promise<Board> {
+  async assertViewAccess(actorId: string | null, boardId: string): Promise<Board> {
     const board = await this.requireBoard(boardId);
     await this.assertAccess(board, actorId, 'view');
     return board;
   }
 
   /** Доступ на редактирование — используется загрузкой файлов на доску (13.2) */
-  async assertEditAccess(actorId: string, boardId: string): Promise<Board> {
+  async assertEditAccess(actorId: string | null, boardId: string): Promise<Board> {
     const board = await this.requireBoard(boardId);
     await this.assertAccess(board, actorId, 'edit');
     return board;
   }
 
-  /** Готовит вход на доску по WS: проверяет доступ и подтягивает профиль для presence (12.4) */
-  async prepareBoardJoin(actorId: string, boardId: string): Promise<BoardJoinProfile> {
-    const board = await this.assertViewAccess(actorId, boardId);
-    const user = await this.users.findById(actorId);
-    if (!user) {
-      throw new ForbiddenError('Аккаунт не найден, войдите заново');
+  /**
+   * Готовит вход на доску по WS (12.4): проверяет доступ, а для гостя —
+   * выписывает/проверяет гостевой токен. Возвращает полную личность
+   * участника, включая уровень доступа `access`.
+   */
+  async prepareBoardJoin(request: BoardJoinRequest): Promise<BoardJoinResult> {
+    const board = await this.requireBoard(this.requireUuid(request.boardId, 'доски'));
+
+    if (request.userId) {
+      const membershipLevel = await this.resolveMembershipLevel(board, request.userId, this.teams);
+      const effectiveAccess =
+        membershipLevel && (!board.shareRole || hasBoardAccess(membershipLevel, board.shareRole))
+          ? membershipLevel
+          : (board.shareRole ?? membershipLevel);
+      if (!effectiveAccess) throw new NotFoundError('Доска не найдена');
+      const user = await this.users.findById(request.userId);
+      if (!user) throw new ForbiddenError('Аккаунт не найден, войдите заново');
+      return {
+        board,
+        access: effectiveAccess,
+        guestToken: null,
+        identity: {
+          participantId: user.id,
+          userId: user.id,
+          name: user.name,
+          avatarUrl: user.avatarUrl,
+          isGuest: false,
+          access: effectiveAccess,
+        },
+      };
     }
-    return { board, name: user.name, avatarUrl: user.avatarUrl };
+
+    if (!board.shareRole) {
+      throw new NotFoundError('Доска не найдена');
+    }
+    const name = this.normalizeGuestName(request.guestName ?? '');
+    const returning = this.guests.verify(board.id, request.guestToken);
+    const session = returning
+      ? { guestId: returning, token: this.guests.issue(board.id, returning) }
+      : this.guests.create(board.id);
+
+    return {
+      board,
+      access: board.shareRole,
+      guestToken: session.token,
+      identity: {
+        participantId: session.guestId,
+        userId: null,
+        name,
+        avatarUrl: null,
+        isGuest: true,
+        access: board.shareRole,
+      },
+    };
   }
 
   /**
@@ -185,8 +248,7 @@ export class BoardsService {
    * пытающуюся писать эту же строку, пока текущая не завершится.
    */
   async applyOps(
-    actorId: string,
-    actorName: string,
+    actor: { participantId: string; userId: string | null; name: string },
     boardId: string,
     ops: BoardOp[],
   ): Promise<ApplyOpsResult> {
@@ -207,7 +269,7 @@ export class BoardsService {
       if (!board) {
         throw new NotFoundError('Доска не найдена');
       }
-      await this.assertAccess(board, actorId, 'edit', this.createTeamsRepository(tx));
+      await this.assertAccess(board, actor.userId, 'edit', this.createTeamsRepository(tx));
       if (board.status !== 'active') {
         throw new ConflictError('Доска в архиве');
       }
@@ -223,7 +285,7 @@ export class BoardsService {
       // невалидная операция бросает исключение и откатывает всю транзакцию —
       // батч применяется всё или ничего.
       for (const op of ops) {
-        applyBoardOp(state, op, boardId, actorId, actorName);
+        applyBoardOp(state, op, boardId, actor);
       }
 
       // Картинки, ставшие недостижимыми этим батчем (элемент удалён или его
@@ -255,7 +317,7 @@ export class BoardsService {
           case 'item.create': {
             const draft = state.items.get(op.item.id);
             if (draft) {
-              const item = await repo.insertItem(boardId, actorId, draft);
+              const item = await repo.insertItem(boardId, actor.userId, draft);
               committed.push({ type: 'item.create', clientOpId: op.clientOpId, item });
             }
             break;
@@ -419,37 +481,62 @@ export class BoardsService {
   /** Чужим и несуществующим доскам отвечаем одинаково — иначе id можно перебирать */
   private async assertAccess(
     board: Board,
-    actorId: string,
+    actorId: string | null,
     required: BoardAccessLevel,
     teams: TeamsRepository = this.teams,
   ): Promise<void> {
-    if (!board.teamId) {
-      if (board.ownerId !== actorId) {
-        throw new NotFoundError('Доска не найдена');
-      }
-      return;
-    }
+    const membershipLevel = await this.resolveMembershipLevel(board, actorId, teams);
+    if (membershipLevel && hasBoardAccess(membershipLevel, required)) return;
+    if (board.shareRole && hasBoardAccess(board.shareRole, required)) return;
 
-    const membership = await teams.findMembership(board.teamId, actorId);
-    if (!membership) {
+    if (membershipLevel === null) {
+      // Чужому/анониму не подтверждаем даже факт существования доски (анти-перебор)
       throw new NotFoundError('Доска не найдена');
     }
-    if (required === 'view') {
-      return;
+    throw new ForbiddenError(
+      'Переименовать, архивировать или удалить доску может её автор или администратор команды',
+    );
+  }
+
+  /**
+   * Уровень доступа по членству в команде или владению личной доской.
+   * Возвращает null, если actorId === null (гость) или членства нет.
+   */
+  private async resolveMembershipLevel(
+    board: Board,
+    actorId: string | null,
+    teams: TeamsRepository,
+  ): Promise<BoardAccessLevel | null> {
+    if (!actorId) return null;
+    if (!board.teamId) {
+      return board.ownerId === actorId ? 'manage' : null;
     }
-    if (required === 'edit') {
-      if (!hasTeamRole(membership.role, 'member')) {
-        throw new ForbiddenError(
-          'Править содержимое доски может участник или администратор команды',
-        );
+    const membership = await teams.findMembership(board.teamId, actorId);
+    if (!membership) return null;
+    if (hasTeamRole(membership.role, 'admin') || board.ownerId === actorId) return 'manage';
+    if (hasTeamRole(membership.role, 'member')) return 'edit';
+    return 'view';
+  }
+
+  /** Ссылка на шаринг доступен только автору доски или администратору команды */
+  async setShareRole(
+    actorId: string,
+    boardId: string,
+    role: BoardShareRole | null,
+  ): Promise<Board> {
+    return this.db.transaction(async (tx) => {
+      const repo = this.createBoardsRepository(tx);
+      const board = await repo.lockBoard(boardId);
+      if (!board) {
+        throw new NotFoundError('Доска не найдена');
       }
-      return;
-    }
-    if (!hasTeamRole(membership.role, 'admin') && board.ownerId !== actorId) {
-      throw new ForbiddenError(
-        'Переименовать, архивировать или удалить доску может её автор или администратор команды',
-      );
-    }
+      await this.assertAccess(board, actorId, 'manage', this.createTeamsRepository(tx));
+      const updated = await repo.updateShareRole(boardId, role);
+      if (!updated) {
+        throw new NotFoundError('Доска не найдена');
+      }
+      return updated;
+    });
   }
 
   private normalizeTitle(raw: string): string {
@@ -460,5 +547,21 @@ export class BoardsService {
       );
     }
     return title;
+  }
+
+  private normalizeGuestName(raw: string): string {
+    const value = raw.trim();
+    if (value.length === 0 || value.length > GUEST_NAME_MAX_LENGTH) {
+      throw new ValidationError(`Имя: от 1 до ${GUEST_NAME_MAX_LENGTH} символов`);
+    }
+    return value;
+  }
+
+  /** Идентификаторы приходят по сокету без схем — проверяем формат до похода в базу */
+  private requireUuid(value: string, what: string): string {
+    if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+      throw new ValidationError(`Некорректный идентификатор ${what}`);
+    }
+    return value;
   }
 }

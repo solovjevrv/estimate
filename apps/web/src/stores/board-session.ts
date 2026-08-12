@@ -11,6 +11,8 @@
  */
 import type {
   ApplyBoardOpsResult,
+  Board,
+  BoardAccessLevel,
   BoardAwarenessBroadcast,
   BoardAwarenessKind,
   BoardCommittedOp,
@@ -19,12 +21,14 @@ import type {
   BoardOp,
   BoardOpsBatch,
   BoardPresenceEntry,
+  BoardShareRole,
   JoinBoardResult,
 } from '@poker/shared';
 import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, toggleItemReaction } from '@poker/shared';
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 
+import { api } from '../lib/api';
 import { applyLocalBoardOp, type BoardLocalState } from '../lib/board/apply-local-op';
 import {
   BOARD_HISTORY_LIMIT,
@@ -35,6 +39,32 @@ import {
 } from '../lib/board/board-op-history';
 import { createSocket, emitWithAck, type PokerSocket } from '../lib/socket';
 import { useSessionStore } from './session';
+
+/**
+ * Токен гостя доски переживает перезагрузку страницы (14.4): без него гость
+ * вернётся на доску новым человеком и потеряет свою presence-идентичность.
+ */
+function guestTokenKey(boardId: string): string {
+  return `poker:board-guest:${boardId}`;
+}
+
+function readGuestToken(boardId: string): string | undefined {
+  try {
+    return localStorage.getItem(guestTokenKey(boardId)) ?? undefined;
+  } catch {
+    // Приватный режим браузера может запрещять хранилище — тогда просто входим заново
+    return undefined;
+  }
+}
+
+function writeGuestToken(boardId: string, token: string | null): void {
+  try {
+    if (token === null) return;
+    localStorage.setItem(guestTokenKey(boardId), token);
+  } catch {
+    // Не смогли сохранить — переподключение потребует ввести имя ещё раз
+  }
+}
 
 /** Ключ цели операции — общий для `BoardOp` (клиент → сервер) и `BoardCommittedOp` (рассылка) */
 function opTargetKey(op: BoardOp): string {
@@ -149,6 +179,10 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const revision = ref(0);
   const presence = ref<BoardPresenceEntry[]>([]);
   const awarenessByUser = reactive(new Map<string, BoardAwarenessBroadcast>());
+  /** Идентификатор участника на доске — для presence/cursors; null до первого входа */
+  const participantId = ref<string | null>(null);
+  /** Итоговый уровень доступа текущего участника к доске (14.4) */
+  const access = ref<BoardAccessLevel>('view');
   /**
    * Мягкая блокировка текстового редактирования (14.2) — отдельная карта от
    * `awarenessByUser`: если смешать с курсором тем же LWW-приёмом, любой следующий
@@ -244,13 +278,15 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     ownClientOpIds.clear();
   }
 
-  async function performJoin(id: string): Promise<void> {
+  async function performJoin(id: string, guestName?: string): Promise<void> {
     const active = socket;
     if (!active) return;
     const token = joinToken;
 
     const result: JoinBoardResult = await emitWithAck(active, BOARD_WS_EVENTS.JOIN, {
       boardId: id,
+      guestName,
+      guestToken: readGuestToken(id),
       // При первом входе на доску (ещё не видели ни одной ревизии) полный
       // снимок дешевле, чем прогонять пустой догон — присылаем только на реконнекте
       sinceRevision: established ? revision.value : undefined,
@@ -258,6 +294,10 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
 
     // Пока ждали ответ, вызвали leave() или новый join() — это уже не наш вход
     if (token !== joinToken) return;
+
+    writeGuestToken(id, result.guestToken);
+    participantId.value = result.participantId;
+    access.value = result.access;
 
     if (result.snapshot) {
       applySnapshot(result.snapshot, result.revision);
@@ -268,13 +308,19 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     joined.value = true;
   }
 
-  async function join(id: string, onReconnectFailure?: () => void): Promise<void> {
+  async function join(
+    id: string,
+    guestName?: string,
+    onReconnectFailure?: () => void,
+  ): Promise<void> {
     // Смена доски на живом сокете — сбрасываем прошлое состояние, иначе
     // отставшая рассылка старой доски осталась бы на экране
     if (boardId && boardId !== id) {
       local.items.clear();
       local.edges.clear();
       revision.value = 0;
+      participantId.value = null;
+      access.value = 'view';
       established = false;
       lastOwnOpByTarget.clear();
       ownClientOpIds.clear();
@@ -355,11 +401,14 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       active.connect();
     }
 
-    await performJoin(id);
+    await performJoin(id, guestName);
     established = true;
   }
 
   function leave(): void {
+    if (boardId) {
+      writeGuestToken(boardId, null);
+    }
     joinToken++;
     socket?.disconnect();
     socket = null;
@@ -367,6 +416,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     established = false;
     joined.value = false;
     connected.value = false;
+    participantId.value = null;
+    access.value = 'view';
     local.items.clear();
     local.edges.clear();
     revision.value = 0;
@@ -457,6 +508,11 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     socket?.emit(BOARD_WS_EVENTS.AWARENESS, { kind, data });
   }
 
+  async function setShare(role: BoardShareRole | null): Promise<Board> {
+    const { board } = await api.patch<{ board: Board }>(`/api/boards/${boardId}/share`, { role });
+    return board;
+  }
+
   return {
     items,
     edges,
@@ -466,6 +522,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     editingByItem,
     connected,
     joined,
+    participantId,
+    access,
     join,
     leave,
     applyOps,
@@ -474,5 +532,6 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     canRedo,
     undo,
     redo,
+    setShare,
   };
 });

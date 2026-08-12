@@ -110,13 +110,13 @@ export const routes: RouteRecordRaw[] = [
     meta: { titleKey: 'room.pageTitle' },
   },
   {
-    // Вход по прямой ссылке доступен только своему владельцу/участнику команды —
-    // в отличие от комнаты, доска не рассчитана на анонимного гостя
+    // Вход по прямой ссылке доступен и гостю, если владелец включил шаринг (14.4) —
+    // в отличие от раньше доска не требует обязательной авторизации
     path: '/boards/:id',
     name: 'board',
     component: () => import('../pages/BoardPage.vue'),
     props: true,
-    meta: { requiresAuth: true, titleKey: 'board.pageTitle', fullBleedCanvas: true },
+    meta: { titleKey: 'board.pageTitle', fullBleedCanvas: true },
   },
   {
     path: '/:pathMatch(.*)*',

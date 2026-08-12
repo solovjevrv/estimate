@@ -734,6 +734,20 @@ export interface BoardEdge {
   style: BoardEdgeStyle;
 }
 
+/** Уровень доступа к ссылке — то, что может выдать владелец. 'manage' по ссылке не бывает. */
+export type BoardShareRole = 'view' | 'edit';
+export const BOARD_SHARE_ROLES: readonly BoardShareRole[] = ['view', 'edit'];
+
+/** Итоговый уровень доступа конкретного вызывающего к конкретной доске */
+export type BoardAccessLevel = 'view' | 'edit' | 'manage';
+
+const BOARD_ACCESS_WEIGHT: Record<BoardAccessLevel, number> = { manage: 0, edit: 1, view: 2 };
+
+/** По образцу hasTeamRole — level даёт доступ не ниже required */
+export function hasBoardAccess(level: BoardAccessLevel, required: BoardAccessLevel): boolean {
+  return BOARD_ACCESS_WEIGHT[level] <= BOARD_ACCESS_WEIGHT[required];
+}
+
 export type BoardStatus = 'active' | 'archived';
 
 export interface Board {
@@ -747,6 +761,8 @@ export interface Board {
   revision: number;
   createdAt: string;
   updatedAt: string;
+  /** Ссылка на просмотр/правку — null, если шаринг выключен (по умолчанию) */
+  shareRole: BoardShareRole | null;
 }
 
 /** Доска в списке — без содержимого, для «Мои доски»/страницы команды */
@@ -759,6 +775,8 @@ export interface BoardSnapshot {
   board: Board;
   items: BoardItem[];
   edges: BoardEdge[];
+  /** Доступ ЭТОГО вызывающего к доске — источник для canManage/canEdit на клиенте */
+  access: BoardAccessLevel;
 }
 
 /**
@@ -868,8 +886,11 @@ export const BOARD_RING_BUFFER_SIZE = 200;
 
 export interface JoinBoardPayload {
   boardId: string;
-  /** Ревизия, которую клиент уже применил — если укладывается в буфер, придёт только «хвост» */
   sinceRevision?: number;
+  /** Имя гостя на один сеанс; авторизованным не нужно */
+  guestName?: string;
+  /** Токен гостя из прошлого захода — переподключение в ту же доску без потери участника */
+  guestToken?: string;
 }
 
 /**
@@ -900,6 +921,11 @@ export interface JoinBoardResult {
   snapshot: BoardSnapshot | null;
   /** Догон операциями — заполнено вместо `snapshot`, если буфер покрывает разрыв */
   catchup: BoardOpsBatch[] | null;
+  /** Доступ ЭТОГО вызывающего к доске — источник для canManage/canEdit на клиенте */
+  access: BoardAccessLevel;
+  participantId: string;
+  /** Возвращается гостю: сохранить и прислать при переподключении */
+  guestToken: string | null;
 }
 
 export interface ApplyBoardOpsPayload {
@@ -922,13 +948,18 @@ export interface BoardAwarenessBroadcast {
   userId: string;
   name: string;
   avatarUrl: string | null;
+  isGuest: boolean;
   kind: BoardAwarenessKind;
   data: Record<string, unknown>;
 }
 
-/** Кто сейчас смотрит доску — доски не поддерживают гостей, участник всегда авторизован */
+/**
+ * Кто сейчас смотрит доску. userId — участник вебсокета: реальный id пользователя
+ * или сессионный id гостя (14.4), не обязательно строка из таблицы users.
+ */
 export interface BoardPresenceEntry {
-  userId: string;
+  userId: string | null;
   name: string;
   avatarUrl: string | null;
+  isGuest: boolean;
 }

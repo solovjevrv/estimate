@@ -34,6 +34,7 @@ const activeBoard: Board = {
   revision: 0,
   createdAt: '2026-08-06T00:00:00.000Z',
   updatedAt: '2026-08-06T00:00:00.000Z',
+  shareRole: null,
 };
 
 type Handlers = Record<string, () => Response>;

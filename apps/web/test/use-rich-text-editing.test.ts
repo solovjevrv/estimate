@@ -1,4 +1,4 @@
-import type { BoardItem, BoardStickyContent, JoinBoardResult } from '@poker/shared';
+import type { Board, BoardItem, BoardStickyContent, JoinBoardResult } from '@poker/shared';
 import { BOARD_WS_EVENTS } from '@poker/shared';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
@@ -78,8 +78,11 @@ vi.mock('../src/lib/socket', async () => {
 function snapshotResult(revision: number, items: BoardItem[] = []): JoinBoardResult {
   return {
     revision,
-    snapshot: { board: {} as never, items, edges: [] },
+    snapshot: { board: { shareRole: null } as Board, items, edges: [], access: 'manage' },
     catchup: null,
+    access: 'manage',
+    participantId: 'actor1',
+    guestToken: null,
   };
 }
 

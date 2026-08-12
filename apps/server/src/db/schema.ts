@@ -22,6 +22,7 @@ export const roomStatusEnum = pgEnum('room_status', ['active', 'closed']);
 export const deckTypeEnum = pgEnum('deck_type', ['fibonacci', 'scale_0_5', 'tshirt']);
 export const roundStatusEnum = pgEnum('round_status', ['voting', 'revealed']);
 export const boardStatusEnum = pgEnum('board_status', ['active', 'archived']);
+export const boardShareRoleEnum = pgEnum('board_share_role', ['view', 'edit']);
 
 /**
  * Авторизованные пользователи (OAuth Google/Яндекс).
@@ -193,6 +194,8 @@ export const boards = pgTable(
     status: boardStatusEnum('status').notNull().default('active'),
     /** Номер изменения доски: растёт с каждой операцией (12.4), по нему клиент отбрасывает отставшие рассылки */
     revision: integer('revision').notNull().default(0),
+    /** Ссылка на просмотр/правку (14.4) — null, шаринг выключен по умолчанию */
+    shareRole: boardShareRoleEnum('share_role'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

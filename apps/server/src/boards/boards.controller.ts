@@ -1,5 +1,7 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
+import type { BoardShareRole } from '@poker/shared';
+
 import type { BoardsService } from './boards.service';
 
 export interface BoardIdParams {
@@ -17,6 +19,10 @@ export interface CreateBoardBody {
 
 export interface TitleBody {
   title: string;
+}
+
+export interface ShareBody {
+  role: BoardShareRole | null;
 }
 
 export interface ArchivedQuery {
@@ -51,13 +57,21 @@ export class BoardsController {
     ),
   });
 
-  readonly get = async (req: FastifyRequest<{ Params: BoardIdParams }>): Promise<unknown> =>
-    this.service.getSnapshot(req.user.sub, req.params.id);
+  readonly get = async (
+    req: FastifyRequest<{ Params: BoardIdParams }>,
+  ): Promise<unknown> =>
+    this.service.getSnapshot(req.actorId ?? null, req.params.id);
 
   readonly rename = async (
     req: FastifyRequest<{ Params: BoardIdParams; Body: TitleBody }>,
   ): Promise<unknown> => ({
     board: await this.service.rename(req.user.sub, req.params.id, req.body.title),
+  });
+
+  readonly setShare = async (
+    req: FastifyRequest<{ Params: BoardIdParams; Body: ShareBody }>,
+  ): Promise<unknown> => ({
+    board: await this.service.setShareRole(req.user.sub, req.params.id, req.body.role),
   });
 
   readonly archive = async (req: FastifyRequest<{ Params: BoardIdParams }>): Promise<unknown> => ({

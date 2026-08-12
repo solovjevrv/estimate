@@ -160,7 +160,7 @@ describeDb('комнаты', () => {
       roomsRateLimit: { max: 10_000, timeWindow: '1 minute' },
     });
     const roomsService = RoomsService.forDatabase(db, authConfig.guestSecret);
-    const boardsService = BoardsService.forDatabase(db);
+    const boardsService = BoardsService.forDatabase(db, authConfig.guestSecret);
     new SocketGateway(roomsService, boardsService, { corsOrigin: '*' }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
     port = (app.server.address() as AddressInfo).port;

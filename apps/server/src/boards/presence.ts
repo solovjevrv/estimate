@@ -1,8 +1,20 @@
-/** Кто сейчас смотрит доску. Доски не поддерживают гостей — участник всегда авторизован (12.4) */
+import type { BoardAccessLevel } from '@poker/shared';
+
+/**
+ * Кто сейчас смотрит доску. userId — участник вебсокета: реальный id
+ * пользователя или сессионный id гостя (14.4), не обязательно строка из
+ * таблицы users.
+ */
 export interface BoardParticipantIdentity {
-  userId: string;
+  /** id пользователя либо сессионный id гостя — публичный, виден всем на доске */
+  participantId: string;
+  /** id реального аккаунта — null у гостя. Только это можно писать в created_by (FK) */
+  userId: string | null;
   name: string;
   avatarUrl: string | null;
+  isGuest: boolean;
+  /** Итоговый уровень доступа этого участника к доске */
+  access: BoardAccessLevel;
 }
 
 /**
@@ -50,7 +62,9 @@ export class BoardPresence {
     return this.participantsByBoard.get(boardId)?.get(socketId) ?? null;
   }
 
-  /** Зрители доски без дублей: один человек мог открыть доску в двух вкладках */
+  /** Зрители доски без дублей: один человек мог открыть доску в двух вкладках.
+   * Дедупликация по participantId (а не userId, как раньше), чтобы гостевые
+   * сессии с userId === null не схлопывались в одну запись. */
   list(boardId: string): BoardParticipantIdentity[] {
     const board = this.participantsByBoard.get(boardId);
     if (!board) {
@@ -58,7 +72,7 @@ export class BoardPresence {
     }
     const unique = new Map<string, BoardParticipantIdentity>();
     for (const identity of board.values()) {
-      unique.set(identity.userId, identity);
+      unique.set(identity.participantId, identity);
     }
     return [...unique.values()];
   }

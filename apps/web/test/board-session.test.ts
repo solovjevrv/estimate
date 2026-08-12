@@ -5,7 +5,7 @@ import type {
   BoardPresenceEntry,
   JoinBoardResult,
 } from '@poker/shared';
-import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@poker/shared';
+import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, type Board } from '@poker/shared';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -102,8 +102,11 @@ function snapshotResult(
 ): JoinBoardResult {
   return {
     revision,
-    snapshot: { board: {} as never, items, edges },
+    snapshot: { board: { shareRole: null } as Board, items, edges, access: 'manage' },
     catchup: null,
+    access: 'manage',
+    participantId: 'actor1',
+    guestToken: null,
   };
 }
 
@@ -136,7 +139,14 @@ describe('стор сессии доски', () => {
       revision: 5,
       ops: [{ type: 'item.create', clientOpId: 'c1', item: item() }],
     };
-    socket.next = { revision: 5, snapshot: null, catchup: [batch] } satisfies JoinBoardResult;
+    socket.next = {
+  revision: 5,
+  snapshot: null,
+  catchup: [batch],
+  access: 'manage',
+  participantId: 'actor1',
+  guestToken: null,
+} satisfies JoinBoardResult;
 
     await store.join('board1');
 
@@ -494,7 +504,9 @@ describe('стор сессии доски', () => {
     socket.next = snapshotResult(1);
     await store.join('board1');
 
-    const entries: BoardPresenceEntry[] = [{ userId: 'u1', name: 'Иван', avatarUrl: null }];
+    const entries: BoardPresenceEntry[] = [
+      { userId: 'u1', name: 'Иван', avatarUrl: null, isGuest: false },
+    ];
     socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, entries);
 
     expect(store.presence).toEqual(entries);
@@ -510,6 +522,7 @@ describe('стор сессии доски', () => {
       userId: 'u1',
       name: 'Иван',
       avatarUrl: null,
+      isGuest: false,
       kind: 'cursor',
       data: { x: 100, y: 200 },
     });
@@ -517,6 +530,7 @@ describe('стор сессии доски', () => {
       userId: 'u2',
       name: 'Мария',
       avatarUrl: 'https://example.com/avatar.png',
+      isGuest: false,
       kind: 'cursor',
       data: { x: 50, y: 75 },
     });

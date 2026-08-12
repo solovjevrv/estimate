@@ -3,7 +3,7 @@ import fastifyJwt from '@fastify/jwt';
 import fastifyOauth2, { type OAuth2Namespace } from '@fastify/oauth2';
 import fastifyRateLimit from '@fastify/rate-limit';
 import { AUTH_PROVIDERS, type AuthProvider } from '@poker/shared';
-import type { FastifyInstance, FastifyRequest } from 'fastify';
+import type { FastifyInstance, FastifyRequest } from 'fastify'; // eslint-disable-line @typescript-eslint/no-unused-vars
 import fp from 'fastify-plugin';
 
 import type { AuthConfig } from '../config';
@@ -24,10 +24,24 @@ declare module 'fastify' {
      * и без настроек входа (например, в тестах).
      */
     authenticate?: (req: FastifyRequest) => Promise<void>;
+    /**
+     * Как authenticate, но не требует куку — для роутов, куда может зайти
+     * и гость (доски по ссылке, 14.4). Устанавливает req.actorId = null для анонима.
+     */
+    identify?: (req: FastifyRequest) => Promise<void>;
     /** Нужен Socket.io, который читает сессию из сырого заголовка Cookie */
     tokens?: TokenService;
     googleOauth2?: OAuth2Namespace;
     yandexOauth2?: OAuth2Namespace;
+  }
+
+  interface FastifyRequest {
+    /**
+     * actorId для роутов с опциональным входом (доски по ссылке, 14.4) —
+     * null, если гость. Не путать с req.user (только для полностью
+     * авторизованных роутов, где стоит preHandler authenticate).
+     */
+    actorId?: string | null;
   }
 }
 
@@ -91,6 +105,7 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
   const controller = new AuthController(service, tokens, config, enabledProviders);
 
   app.decorate('authenticate', authenticator.handle);
+  app.decorate('identify', authenticator.identify);
   app.decorate('tokens', tokens);
 
   app.get(

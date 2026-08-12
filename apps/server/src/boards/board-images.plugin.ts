@@ -6,6 +6,7 @@ import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_IMAGE_MAX_BYTES } from '@poker/sh
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
+import type { AuthConfig } from '../config';
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
 
@@ -14,6 +15,7 @@ import { BoardsService } from './boards.service';
 
 export interface BoardImagesPluginOptions {
   assetsDir: string;
+  auth: AuthConfig;
 }
 
 const ALLOWED_MIME = new Set<string>(BOARD_IMAGE_ALLOWED_MIME_TYPES);
@@ -22,8 +24,8 @@ async function boardImagesPluginImpl(
   app: FastifyInstance,
   opts: BoardImagesPluginOptions,
 ): Promise<void> {
-  const authenticate = app.authenticate;
-  if (!authenticate) {
+  const identify = app.identify;
+  if (!identify) {
     throw new Error('Роуты картинок досок требуют плагина аутентификации');
   }
 
@@ -43,7 +45,7 @@ async function boardImagesPluginImpl(
     instance.post<{ Params: { id: string } }>(
       '/api/boards/:id/assets',
       {
-        preHandler: authenticate,
+        preHandler: app.identify,
         schema: {
           tags: [DOCS_TAGS.boards],
           summary: 'Загрузить картинку на доску',
@@ -67,7 +69,6 @@ async function boardImagesPluginImpl(
               },
             },
             400: { description: 'Файл не изображение или не передан', ...errorResponse },
-            401: { description: 'Требуется вход', ...errorResponse },
             403: { description: 'Нет прав редактировать эту доску', ...errorResponse },
             404: { description: 'Доска не найдена', ...errorResponse },
             413: { description: 'Файл больше 8 МБ', ...errorResponse },
@@ -76,11 +77,11 @@ async function boardImagesPluginImpl(
       },
       async (req, reply) => {
         const boardId = req.params.id;
-        const boardsService = BoardsService.forDatabase(app.db);
+        const boardsService = BoardsService.forDatabase(app.db, opts.auth.guestSecret);
 
         // Проверяем edit-доступ к доске
         try {
-          await boardsService.assertEditAccess(req.user.sub, boardId);
+          await boardsService.assertEditAccess(req.actorId ?? null, boardId);
         } catch (err) {
           if (err instanceof NotFoundError) {
             throw new NotFoundError('Доска не найдена');
@@ -109,12 +110,12 @@ async function boardImagesPluginImpl(
     instance.get<{ Params: { id: string; filename: string } }>(
       '/api/boards/:id/assets/:filename',
       {
-        preHandler: authenticate,
+        preHandler: app.identify,
         schema: {
           tags: [DOCS_TAGS.boards],
           summary: 'Файл картинки доски',
           description:
-            'Требует view-доступ к доске (членство в команде или владение личной доской).',
+            'Требует view-доступ к доске (членство в команде, владение личной доской, или включённая ссылка).',
           security: [{ session: [] }],
           params: {
             type: 'object',
@@ -125,7 +126,6 @@ async function boardImagesPluginImpl(
             },
           },
           response: {
-            401: { description: 'Требуется вход', ...errorResponse },
             403: { description: 'Нет доступа к доске', ...errorResponse },
             404: { description: 'Картинка не найдена', ...errorResponse },
           },
@@ -134,11 +134,11 @@ async function boardImagesPluginImpl(
       async (req, reply) => {
         const boardId = req.params.id;
         const filename = req.params.filename;
-        const boardsService = BoardsService.forDatabase(app.db);
+        const boardsService = BoardsService.forDatabase(app.db, opts.auth.guestSecret);
 
         // Проверяем view-доступ к доске (как у GET /api/boards/:id)
         try {
-          await boardsService.assertViewAccess(req.user.sub, boardId);
+          await boardsService.assertViewAccess(req.actorId ?? null, boardId);
         } catch (err) {
           if (err instanceof NotFoundError) {
             throw new NotFoundError('Доска не найдена');

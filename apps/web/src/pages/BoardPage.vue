@@ -1,18 +1,18 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { BOARD_TITLE_MAX_LENGTH, hasTeamRole, type Board } from '@poker/shared';
+import { BOARD_TITLE_MAX_LENGTH, hasBoardAccess, type Board } from '@poker/shared';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import BoardCanvas from '../components/board/BoardCanvas.vue';
+import BoardShareModal from '../components/board/BoardShareModal.vue';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useBoardsStore } from '../stores/boards';
 import { useBoardSessionStore } from '../stores/board-session';
-import { useSessionStore } from '../stores/session';
 import { useTeamsStore } from '../stores/teams';
 
 const props = defineProps<{ id: string }>();
@@ -20,9 +20,9 @@ const props = defineProps<{ id: string }>();
 const { t } = useI18n();
 const toast = useToast();
 const router = useRouter();
+const route = useRoute();
 const boards = useBoardsStore();
 const teams = useTeamsStore();
-const session = useSessionStore();
 const boardSession = useBoardSessionStore();
 
 const loading = ref(true);
@@ -36,26 +36,10 @@ const board = ref<Board | null>(null);
  * доску правит либо автор, либо администратор команды — роль подтягиваем
  * отдельно, страница команды её уже не отдаёт вместе со списком досок.
  */
-const canManage = computed(() => {
-  const b = board.value;
-  if (!b) return false;
-  if (!b.teamId) return true;
-  if (b.ownerId === session.user?.id) return true;
-  return !!teams.current && hasTeamRole(teams.current.role, 'admin');
-});
-
-/**
- * Право редактировать содержимое (уровень доступа `edit` из 12.4) — заметно
- * шире `canManage`: любой участник/админ команды (не гость), не только автор
- * доски или администратор. Личная доска — всегда сам владелец. Архивная
- * доска доступна только на чтение — сервер и так отклонит `board:apply`,
- * но UI не должен предлагать действие, которое заведомо отклонят.
- */
+const canManage = computed(() => hasBoardAccess(boardSession.access, 'manage'));
 const canEdit = computed(() => {
-  const b = board.value;
-  if (!b || b.status === 'archived') return false;
-  if (!b.teamId) return true;
-  return !!teams.current && hasTeamRole(teams.current.role, 'member');
+  if (board.value?.status === 'archived') return false;
+  return hasBoardAccess(boardSession.access, 'edit');
 });
 
 watch(() => props.id, load, { immediate: true });
@@ -67,14 +51,22 @@ async function load(): Promise<void> {
   try {
     const snapshot = await boards.get(props.id);
     board.value = snapshot.board;
+    // REST-снимок уже знает наш access — синхронизируем в store, чтобы
+    // canManage/canEdit отработали до первого WS `join`, а `canManage` можно
+    // было поставить в prop BoardShareModal
+    boardSession.access = snapshot.access;
     if (snapshot.board.teamId) {
       await teams.loadTeam(snapshot.board.teamId);
     }
     // При провале реконнекта (доступ отозвали, пока вкладка простаивала, и т.п.)
     // синк молча не оживёт сам — предупреждаем и предлагаем перезайти на доску
-    void boardSession.join(props.id, () => {
-      toast.add({ title: t('board.loadError'), color: 'error' });
-    });
+    void boardSession.join(
+      props.id,
+      route.query.guest_name ? String(route.query.guest_name) : undefined,
+      () => {
+        toast.add({ title: t('board.loadError'), color: 'error' });
+      },
+    );
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
       notFound.value = true;
@@ -94,6 +86,7 @@ onBeforeUnmount(() => {
 
 // --- Переименование ---
 const renameOpen = ref(false);
+const shareOpen = ref(false);
 const renaming = ref(false);
 const renameState = reactive({ title: '' });
 
@@ -203,6 +196,7 @@ async function confirmDelete(): Promise<void> {
         @rename="renameOpen = true"
         @archive="archiveOpen = true"
         @unarchive="unarchive"
+        @share="shareOpen = true"
         @delete="deleteOpen = true"
       />
     </div>
@@ -255,5 +249,12 @@ async function confirmDelete(): Promise<void> {
     :confirm-label="t('board.deleteConfirm')"
     :loading="deleting"
     @confirm="confirmDelete"
+  />
+
+  <BoardShareModal
+    v-if="board"
+    v-model="shareOpen"
+    :board="board"
+    :can-manage="canManage"
   />
 </template>
