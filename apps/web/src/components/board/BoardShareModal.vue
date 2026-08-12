@@ -16,9 +16,8 @@
             :items="roleItems"
             value-key="value"
             :aria-label="t('board.shareRoleLabel')"
-            :ui="{
-              base: 'rounded-[9px] border border-[var(--brand-border)] bg-[var(--brand-surface)] py-2 ps-3.5 pe-[34px] ring-0',
-            }"
+            class="w-full"
+            :ui="{ base: SHARE_SELECT_UI_BASE }"
             @update:model-value="onRoleChange($event as BoardShareRole)"
           />
 
@@ -60,6 +59,13 @@ import { useI18n } from 'vue-i18n';
 
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../../lib/modal-ui';
 import { useBoardSessionStore } from '../../stores/board-session';
+
+/**
+ * Те же токены, что у MODAL_INPUT_UI (радиус/бордер/паддинг/шрифт) — иначе
+ * select визуально отличался от соседнего поля со ссылкой (другая высота,
+ * скругление). Правый паддинг чуть больше — там рисуется шеврон.
+ */
+const SHARE_SELECT_UI_BASE = MODAL_INPUT_UI.base.replace('px-4', 'ps-4 pe-9');
 
 /**
  * canManage не проверяем здесь: модалка открывается только из пункта меню
