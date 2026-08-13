@@ -174,12 +174,6 @@ const emit = defineEmits<{
   share: [];
 }>();
 
-/** UCard стилизация для плашки follow-mode — в узком стиле .surface-card */
-const followChipCardUi = {
-  root: 'rounded-[1.5rem] shadow-[var(--brand-shadow-card)] bg-[var(--brand-surface)] ring-0',
-  body: 'p-2',
-};
-
 const { t } = useI18n();
 const toast = useToast();
 const boardSession = useBoardSessionStore();
@@ -2084,14 +2078,14 @@ useBoardHotkeys({
     clearAllSelection();
     contextMenu.value = null;
   },
-   resetZoom: () => {
-     boardSession.stopFollowing();
-     void zoomTo(1);
-   },
-   fitView: () => {
-     boardSession.stopFollowing();
-     void fitView();
-   },
+  resetZoom: () => {
+    boardSession.stopFollowing();
+    void zoomTo(1);
+  },
+  fitView: () => {
+    boardSession.stopFollowing();
+    void fitView();
+  },
   undo: () => void boardSession.undo(),
   redo: () => void boardSession.redo(),
 });
@@ -2301,65 +2295,74 @@ function onConnect(event: Connection): void {
            карточке-подложке (surface-card), а иконка+счётчик внутри неё —
            дополнительно на своей серой пилюле (вложенная подложка, как на
            референсе), аватарки — прямо на белой карточке, без своей. -->
-       <Panel v-if="boardSession.presence.length > 1" position="top-right">
-         <div
-           class="board-presence surface-card flex items-center"
-           :aria-label="t('board.presence')"
-         >
-           <div
-             class="board-presence-count"
-             :title="t('board.presenceCount', { count: boardSession.presence.length })"
-           >
-             <UIcon name="i-lucide-users-2" class="size-4" />
-             <span>{{ boardSession.presence.length }}</span>
-           </div>
-           <div class="board-presence-stack">
-             <div
-               v-for="(entry, index) in boardSession.presence"
-               :key="entry.participantId"
-               role="button"
-               :tabindex="entry.participantId === boardSession.participantId ? -1 : 0"
-               :aria-pressed="entry.participantId === boardSession.followedParticipantId"
-               :class="[
-                 'board-presence-avatar',
-                 {
-                   'board-presence-avatar--self': entry.participantId === boardSession.participantId,
-                   'board-presence-avatar--following': entry.participantId === boardSession.followedParticipantId,
-                 },
-               ]"
-               :style="{ zIndex: boardSession.presence.length - index }"
-               :data-participant-id="entry.participantId"
-               :title="entry.participantId === boardSession.participantId ? t('board.you') : entry.name"
-               :aria-label="entry.participantId === boardSession.participantId ? undefined : t('board.followAvatarLabel', { name: entry.name })"
-               @click="onPresenceAvatarClick(entry)"
-               @keydown.enter="onPresenceAvatarClick(entry)"
-               @keydown.space.prevent="onPresenceAvatarClick(entry)"
-             >
-               <img
-                 v-if="entry.avatarUrl"
-                 :src="entry.avatarUrl"
-                 :alt="entry.name"
-                 class="board-presence-img"
-               />
-               <span v-else class="board-presence-initials">{{ initials(entry.name) }}</span>
-             </div>
-           </div>
-         </div>
-       </Panel>
+      <Panel v-if="boardSession.presence.length > 1" position="top-right">
+        <div
+          class="board-presence surface-card flex items-center"
+          :aria-label="t('board.presence')"
+        >
+          <div
+            class="board-presence-count"
+            :title="t('board.presenceCount', { count: boardSession.presence.length })"
+          >
+            <UIcon name="i-lucide-users-2" class="size-4" />
+            <span>{{ boardSession.presence.length }}</span>
+          </div>
+          <div class="board-presence-stack">
+            <div
+              v-for="(entry, index) in boardSession.presence"
+              :key="entry.participantId"
+              role="button"
+              :tabindex="entry.participantId === boardSession.participantId ? -1 : 0"
+              :aria-pressed="entry.participantId === boardSession.followedParticipantId"
+              :class="[
+                'board-presence-avatar',
+                {
+                  'board-presence-avatar--self': entry.participantId === boardSession.participantId,
+                  'board-presence-avatar--following':
+                    entry.participantId === boardSession.followedParticipantId,
+                },
+              ]"
+              :style="{ zIndex: boardSession.presence.length - index }"
+              :data-participant-id="entry.participantId"
+              :title="
+                entry.participantId === boardSession.participantId ? t('board.you') : entry.name
+              "
+              :aria-label="
+                entry.participantId === boardSession.participantId
+                  ? undefined
+                  : t('board.followAvatarLabel', { name: entry.name })
+              "
+              @click="onPresenceAvatarClick(entry)"
+              @keydown.enter="onPresenceAvatarClick(entry)"
+              @keydown.space.prevent="onPresenceAvatarClick(entry)"
+            >
+              <img
+                v-if="entry.avatarUrl"
+                :src="entry.avatarUrl"
+                :alt="entry.name"
+                class="board-presence-img"
+              />
+              <span v-else class="board-presence-initials">{{ initials(entry.name) }}</span>
+            </div>
+          </div>
+        </div>
+      </Panel>
 
-        <Panel v-if="followedName" position="top-center">
-          <UCard :ui="followChipCardUi" class="flex items-center gap-2">
-            <span class="text-[13px]">{{ t('board.following', { name: followedName }) }}</span>
-            <UButton
-              icon="i-lucide-x"
-              size="xs"
-              color="neutral"
-              variant="ghost"
-              :aria-label="t('board.stopFollowing')"
-              @click="boardSession.stopFollowing()"
-            />
-          </UCard>
-        </Panel>
+      <Panel v-if="followedName" position="top-center">
+        <div class="board-following surface-card flex items-center">
+          <span class="board-following-label">{{
+            t('board.following', { name: followedName })
+          }}</span>
+          <button
+            type="button"
+            class="board-following-stop"
+            :aria-label="t('board.stopFollowing')"
+            @click="boardSession.stopFollowing()"
+          >
+            <UIcon name="i-lucide-x" class="size-3.5" />
+          </button>
+        </div>
+      </Panel>
 
       <!-- Кластер управления снизу-слева — компоненты @vue-flow/controls (не свои кнопки),
         только переоформлены под токены приложения и в ряд, как в референсе (12.5). Иконки
@@ -2412,10 +2415,10 @@ function onConnect(event: Connection): void {
          как в Miro: курсор рисуется на том же месте у всех зрителей. `key` по
          participantId, чтобы Vue не перерожал компонент при обновлении позиции -->
     <BoardCursor
-       v-for="entry in boardSession.awareness"
-       :key="entry.participantId"
-       :entry="entry"
-       :self-participant-id="boardSession.participantId"
+      v-for="entry in boardSession.awareness"
+      :key="entry.participantId"
+      :entry="entry"
+      :self-participant-id="boardSession.participantId"
     />
   </div>
 </template>
@@ -2634,5 +2637,37 @@ function onConnect(event: Connection): void {
   font-size: 12px;
   font-weight: 600;
   color: var(--brand-ink);
+}
+
+/* Плашка «Вы следите за …» (14.5) — та же пилюля-подложка, что и у presence,
+   без лишней внутренней карточки: текст + компактная кнопка закрытия */
+.board-following {
+  gap: 8px;
+  height: 32px;
+  padding: 0 8px 0 14px;
+  border-radius: 16px;
+}
+
+.board-following-label {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--brand-ink);
+  white-space: nowrap;
+}
+
+.board-following-stop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  color: var(--brand-ink2);
+  transition: background-color 0.15s ease;
+}
+
+.board-following-stop:hover {
+  background: var(--ui-bg);
 }
 </style>
