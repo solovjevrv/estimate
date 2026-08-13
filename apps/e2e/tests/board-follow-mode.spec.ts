@@ -67,10 +67,14 @@ test.describe('follow-mode камеры (14.5)', () => {
     // --- A панорамирует холст — камера улетает в broadcast (throttled 150мс) ---
     const paneA = pageA.locator('.vue-flow__pane');
     await paneA.waitFor();
-    await paneA.mouse.move(400, 300);
-    await paneA.mouse.down();
-    await paneA.mouse.move(600, 400, { steps: 5 });
-    await paneA.mouse.up();
+    const paneABox = await paneA.boundingBox();
+    expect(paneABox).not.toBeNull();
+    const panStartX = paneABox!.x + paneABox!.width / 2;
+    const panStartY = paneABox!.y + paneABox!.height / 2;
+    await pageA.mouse.move(panStartX, panStartY);
+    await pageA.mouse.down();
+    await pageA.mouse.move(panStartX + 200, panStartY + 100, { steps: 5 });
+    await pageA.mouse.up();
 
     // Ждём, пока камера A долетит до B (throttled 150мс + небольшая мargen)
     await pageB.waitForTimeout(300);
@@ -147,10 +151,12 @@ test('ручной пан/зум участника B во время слеже
 
   // B вручную панорамирует — @move-start разрывает follow-mode
   const paneB = pageB.locator('.vue-flow__pane');
-  await paneB.mouse.move(300, 200);
-  await paneB.mouse.down();
-  await paneB.mouse.move(400, 300, { steps: 3 });
-  await paneB.mouse.up();
+  const paneBBox = await paneB.boundingBox();
+  expect(paneBBox).not.toBeNull();
+  await pageB.mouse.move(paneBBox!.x + paneBBox!.width / 2, paneBBox!.y + paneBBox!.height / 2);
+  await pageB.mouse.down();
+  await pageB.mouse.move(paneBBox!.x + paneBBox!.width / 2 + 100, paneBBox!.y + paneBBox!.height / 2 + 50, { steps: 3 });
+  await pageB.mouse.up();
 
   // follow-mode разорван: обводка --following исчезла, чип исчез
   await expect(pageB.locator('.board-presence-avatar--following')).toHaveCount(0);

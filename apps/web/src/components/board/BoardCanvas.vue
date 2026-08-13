@@ -174,6 +174,12 @@ const emit = defineEmits<{
   share: [];
 }>();
 
+/** UCard стилизация для плашки follow-mode — в узком стиле .surface-card */
+const followChipCardUi = {
+  root: 'rounded-[1.5rem] shadow-[var(--brand-shadow-card)] bg-[var(--brand-surface)] ring-0',
+  body: 'p-2',
+};
+
 const { t } = useI18n();
 const toast = useToast();
 const boardSession = useBoardSessionStore();
@@ -2341,19 +2347,19 @@ function onConnect(event: Connection): void {
          </div>
        </Panel>
 
-       <Panel v-if="followedName" position="top-center">
-         <div class="board-presence surface-card flex items-center gap-2">
-           <span class="text-[13px]">{{ t('board.following', { name: followedName }) }}</span>
-           <UButton
-             icon="i-lucide-x"
-             size="xs"
-             color="neutral"
-             variant="ghost"
-             :aria-label="t('board.stopFollowing')"
-             @click="boardSession.stopFollowing()"
-           />
-         </div>
-       </Panel>
+        <Panel v-if="followedName" position="top-center">
+          <UCard :ui="followChipCardUi" class="flex items-center gap-2">
+            <span class="text-[13px]">{{ t('board.following', { name: followedName }) }}</span>
+            <UButton
+              icon="i-lucide-x"
+              size="xs"
+              color="neutral"
+              variant="ghost"
+              :aria-label="t('board.stopFollowing')"
+              @click="boardSession.stopFollowing()"
+            />
+          </UCard>
+        </Panel>
 
       <!-- Кластер управления снизу-слева — компоненты @vue-flow/controls (не свои кнопки),
         только переоформлены под токены приложения и в ряд, как в референсе (12.5). Иконки
