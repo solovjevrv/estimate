@@ -68,7 +68,7 @@ export function readableTextColor(bg: BoardColorHex): string {
   const luminance = relativeLuminance(bg);
   const contrastWithDark = (luminance + 0.05) / 0.05;
   const contrastWithLight = 1.05 / (luminance + 0.05);
-  return contrastWithLight >= contrastWithDark ? TEXT_COLOR_LIGHT : TEXT_COLOR_DARK;
+  return contrastWithLight > contrastWithDark ? TEXT_COLOR_LIGHT : TEXT_COLOR_DARK;
 }
 
 /**
