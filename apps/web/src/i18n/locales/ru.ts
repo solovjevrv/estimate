@@ -455,6 +455,9 @@ export default {
     cursorPlaceholder: 'Двигайте мышью, чтобы увидеть свой курсор',
     editingBy: '{name} печатает…',
     editingLocked: '{name} сейчас редактирует этот элемент',
+    followAvatarLabel: 'Следить за {name}',
+    followingPrefix: 'Вы следите за',
+    stopFollowing: 'Перестать следить',
   },
   boards: {
     title: 'Мои доски',

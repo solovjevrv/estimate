@@ -30,14 +30,12 @@ import {
 } from '../../lib/board/board-constants';
 import { uuid } from '../../lib/board/uuid';
 import { useBoardSessionStore } from '../../stores/board-session';
-import { useSessionStore } from '../../stores/session';
 import type { NodeProps } from '@vue-flow/core';
 
 const props = defineProps<NodeProps<BoardItem>>();
 
 const { t } = useI18n();
 const boardSession = useBoardSessionStore();
-const session = useSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 
 const content = computed(() => props.data.content);
@@ -47,13 +45,14 @@ const frameTitle = computed(() => (content.value.type === 'frame' ? content.valu
 /**
  * Мягкая блокировка заголовка (14.2 — по образцу `use-rich-text-editing.ts`,
  * упрощённая версия под plain-инпут: у заголовка фрейма нет rich-text/runs,
- * так что полный composable избыточен). Своя же блокировка не попадает в
- * `lockedBy` — можно снять фокус и зайти снова, не блокируя самого себя.
+ * так что полный composable избыточен). Своя же блокировка (`participantId`
+ * совпадает с текущим участником) в `lockedBy` не попадает — чтобы
+ * можно было снять фокус и зайти снова, не блокируя самого себя.
  */
-const selfUserId = computed(() => session.user?.id ?? '');
+const selfParticipantId = computed(() => boardSession.participantId);
 const lockedBy = computed(() => {
   const lock = boardSession.editingByItem.get(props.id);
-  return lock && lock.userId !== selfUserId.value ? lock : null;
+  return lock && lock.participantId !== selfParticipantId.value ? lock : null;
 });
 
 /**

@@ -84,6 +84,7 @@ export class BoardsGateway {
         // socket.to() (в отличие от io.to()) не шлёт самому отправителю — курсор
         // не нужно эхом возвращать себе же
         socket.volatile.to(boardId).emit(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+          participantId: identity.participantId,
           userId: identity.userId,
           name: identity.name,
           avatarUrl: identity.avatarUrl,
@@ -211,7 +212,13 @@ export class BoardsGateway {
   private broadcastPresence(io: PokerServer, boardId: string): void {
     const entries: BoardPresenceEntry[] = this.presence
       .list(boardId)
-      .map(({ userId, name, avatarUrl, isGuest }) => ({ userId, name, avatarUrl, isGuest }));
+      .map(({ participantId, userId, name, avatarUrl, isGuest }) => ({
+        participantId,
+        userId,
+        name,
+        avatarUrl,
+        isGuest,
+      }));
     io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.PRESENCE, entries);
   }
 

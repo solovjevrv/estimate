@@ -132,7 +132,7 @@ describe('useRichTextEditing — мягкая блокировка (14.2)', () =
 
   /** Вход на доску + (опциональная) установка блокировки на item-1 */
   async function joinWithLock(
-    lock: { userId: string; name: string } | null,
+    lock: { participantId: string; name: string } | null,
   ): Promise<ReturnType<typeof useBoardSessionStore>> {
     const boardSession = useBoardSessionStore();
     socket.next = snapshotResult(1);
@@ -144,11 +144,11 @@ describe('useRichTextEditing — мягкая блокировка (14.2)', () =
   }
 
   it('startEditing() блокируется если lockedBy — editing остаётся false, показывается тост', async () => {
-    await joinWithLock({ userId: 'u2', name: 'Мария' });
+    await joinWithLock({ participantId: 'u2', name: 'Мария' });
     const wrapper = mountEditor();
 
     // lockedBy вычислен реактивно из editingByItem
-    expect(wrapper.vm.lockedBy).toMatchObject({ userId: 'u2', name: 'Мария' });
+    expect(wrapper.vm.lockedBy).toMatchObject({ participantId: 'u2', name: 'Мария' });
 
     await wrapper.vm.startEditing();
 
@@ -219,6 +219,24 @@ describe('useRichTextEditing — мягкая блокировка (14.2)', () =
         payload: { kind: 'editing', data: { itemId: 'item-1', active: false } },
       }),
     );
+
+    wrapper.unmount();
+  });
+
+  it('startEditing() срывает follow-mode — вмешательство в работу другого участника', async () => {
+    const boardSession = await joinWithLock(null);
+    // Симулируем активный follow-mode за другим участником
+    boardSession.followedParticipantId = 'other-participant';
+
+    const wrapper = mountEditor();
+    expect(wrapper.vm.editing).toBe(false);
+
+    await wrapper.vm.startEditing();
+    await nextTick();
+
+    // follow-mode снят — editing прошёл
+    expect(boardSession.followedParticipantId).toBe(null);
+    expect(wrapper.vm.editing).toBe(true);
 
     wrapper.unmount();
   });

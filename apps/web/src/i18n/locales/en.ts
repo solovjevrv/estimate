@@ -455,6 +455,9 @@ export default {
     cursorPlaceholder: 'Move the mouse to show your cursor',
     editingBy: '{name} is typing…',
     editingLocked: '{name} is currently editing this element',
+    followAvatarLabel: 'Follow {name}',
+    followingPrefix: 'Following',
+    stopFollowing: 'Stop following',
   },
   boards: {
     title: 'My boards',

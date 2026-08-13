@@ -19,15 +19,15 @@ import { computed } from 'vue';
 const props = defineProps<{
   /** Состояние awareness этого участника (курсор/перетаскивание/idle) */
   entry: BoardAwarenessBroadcast;
-  /** user_id текущего пользователя — чтобы не рисовать курсор себе */
-  selfUserId: string;
+  /** participantId текущего участника — чтобы не рисовать курсор себе */
+  selfParticipantId: string | null;
 }>();
 
 const { viewport } = useVueFlow();
 
 /** Скрываем собственный курсор и курсоры в idle-режиме */
 const visible = computed(
-  () => props.entry.userId !== props.selfUserId && props.entry.kind !== 'idle',
+  () => props.entry.participantId !== props.selfParticipantId && props.entry.kind !== 'idle',
 );
 
 /**
@@ -48,7 +48,7 @@ const style = computed(() => {
 </script>
 
 <template>
-  <div v-show="visible" :style="style" class="board-cursor" :data-user-id="entry.userId">
+    <div v-show="visible" :style="style" class="board-cursor" :data-participant-id="entry.participantId">
     <!-- CSS-курсор: маленький неравносторонний треугольник -->
     <div class="board-cursor-tip" />
     <!-- Имя пользователя рядом с курсором -->

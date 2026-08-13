@@ -94,7 +94,6 @@ import {
   type BoardTextEditorHandle,
 } from './board-rich-text';
 import { useBoardSessionStore } from '../../stores/board-session';
-import { useSessionStore } from '../../stores/session';
 
 export type FormatMarkKey = 'bold' | 'italic' | 'underline' | 'strike';
 
@@ -114,18 +113,17 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
   const boardSession = useBoardSessionStore();
   const { t } = useI18n();
   const toast = useToast();
-  const session = useSessionStore();
-  const selfUserId = computed(() => session.user?.id ?? '');
 
   /**
    * Мягкая блокировка (14.2): если элемент сейчас редактирует ДРУГОЙ участник —
    * возвращаем его запись, чтобы UI показывал бейдж и блокировал вход в редактирование.
-   * Своя же блокировка (`userId === selfUserId`) в `lockedBy` не попадает — чтобы
-   * можно было снять выделение и заново войти в редактирование своего же элемента.
+   * Своя же блокировка (`participantId` совпадает с текущим участником) в `lockedBy`
+   * не попадает — чтобы можно было снять выделение и заново войти в редактирование
+   * своего же элемента.
    */
   const lockedBy = computed(() => {
     const lock = boardSession.editingByItem.get(itemId);
-    return lock && lock.userId !== selfUserId.value ? lock : null;
+    return lock && lock.participantId !== boardSession.participantId ? lock : null;
   });
   const pendingEditId = inject(BOARD_PENDING_EDIT_ID_KEY, ref(null));
   const activeTextEditor = inject(BOARD_ACTIVE_TEXT_EDITOR_KEY, shallowRef(null));
@@ -218,6 +216,10 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
 
   async function startEditing(): Promise<void> {
     if (editing.value || !canEdit.value) return;
+    // Вмешательство в работу другого участника — снимаем follow-mode (14.5)
+    if (boardSession.followedParticipantId) {
+      boardSession.stopFollowing();
+    }
     if (lockedBy.value) {
       toast.add({
         title: t('board.editingLocked', { name: lockedBy.value.name }),
