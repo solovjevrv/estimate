@@ -610,7 +610,7 @@ function createText(center: { x: number; y: number }): void {
         rotation: 0,
         zIndex: nextZIndexAbove(props.items),
         content: { type: 'text', text: '' },
-        style: { color: STICKY_DEFAULT_COLOR, textColor: readableTextColor(STICKY_DEFAULT_COLOR) },
+        style: { color: STICKY_DEFAULT_COLOR },
         reactions: [],
       },
     },
