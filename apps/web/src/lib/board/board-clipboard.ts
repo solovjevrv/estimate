@@ -9,7 +9,7 @@
  * вставка тогда работает и на другой доске без обращения к исходному URL.
  * Остальные типы контента копируются как есть.
  */
-import type { BoardImageContent, BoardItemContent, BoardItemStyle } from '@poker/shared';
+import type { BoardEdgeStyle, BoardImageContent, BoardItemContent, BoardItemStyle } from '@poker/shared';
 
 export const BOARD_CLIPBOARD_SOURCE = 'poker-board';
 export const BOARD_CLIPBOARD_VERSION = 1;
@@ -45,10 +45,30 @@ export interface BoardClipboardItem {
   parentIndex: number | null;
 }
 
+export interface BoardClipboardEdge {
+  /** Индекс в payload.items — та же идея, что parentIndex у BoardClipboardItem */
+  sourceIndex: number;
+  targetIndex: number;
+  sourceHandle: string | null;
+  targetHandle: string | null;
+  label: string | null;
+  style: BoardEdgeStyle;
+}
+
+export interface BoardClipboardSourceEdge {
+  sourceItemId: string;
+  targetItemId: string;
+  sourceHandle: string | null;
+  targetHandle: string | null;
+  label: string | null;
+  style: BoardEdgeStyle;
+}
+
 export interface BoardClipboardPayload {
   source: typeof BOARD_CLIPBOARD_SOURCE;
   version: typeof BOARD_CLIPBOARD_VERSION;
   items: BoardClipboardItem[];
+  edges: BoardClipboardEdge[];
 }
 
 export interface BoardClipboardSourceItem {
@@ -121,6 +141,7 @@ async function serializeContent(
 /** Сериализует выделение в JSON-строку для системного буфера (Ctrl/Cmd+C) */
 export async function serializeSelection(
   items: readonly BoardClipboardSourceItem[],
+  edges: readonly BoardClipboardSourceEdge[] = [],
   fetchImpl: typeof fetch = fetch,
 ): Promise<string> {
   const center = selectionCenter(items);
@@ -156,10 +177,33 @@ export async function serializeSelection(
       item.parentIndex = oldToNewIndex.get(item.parentIndex) ?? null;
     }
   }
+
+  // Рёбра, чей источник/цель не попали в payload.items (не сериализовались,
+  // например картинку не удалось скачать) — отбрасываем: висячая в никуда
+  // стрелка была бы бессмысленна
+  const filteredEdges: BoardClipboardEdge[] = [];
+  for (const edge of edges) {
+    const sourceOld = indexById.get(edge.sourceItemId);
+    const targetOld = indexById.get(edge.targetItemId);
+    if (sourceOld === undefined || targetOld === undefined) continue;
+    const sourceIndex = oldToNewIndex.get(sourceOld);
+    const targetIndex = oldToNewIndex.get(targetOld);
+    if (sourceIndex === undefined || targetIndex === undefined) continue;
+    filteredEdges.push({
+      sourceIndex,
+      targetIndex,
+      sourceHandle: edge.sourceHandle,
+      targetHandle: edge.targetHandle,
+      label: edge.label,
+      style: edge.style,
+    });
+  }
+
   const payload: BoardClipboardPayload = {
     source: BOARD_CLIPBOARD_SOURCE,
     version: BOARD_CLIPBOARD_VERSION,
     items: filtered,
+    edges: filteredEdges,
   };
   return JSON.stringify(payload);
 }
@@ -218,7 +262,8 @@ export function parseClipboardPayload(text: string): BoardClipboardPayload | nul
   if (
     record.source !== BOARD_CLIPBOARD_SOURCE ||
     record.version !== BOARD_CLIPBOARD_VERSION ||
-    !Array.isArray(record.items)
+    !Array.isArray(record.items) ||
+    !Array.isArray(record.edges)
   ) {
     return null;
   }

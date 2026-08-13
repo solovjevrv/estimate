@@ -177,4 +177,88 @@ test.describe('Доски: копирование/вставка', () => {
     expect(served.status()).toBe(200);
     expect(served.headers()['content-type']).toBe('image/webp');
   });
+
+  test('копирование/дублирование двух связанных стрелкой стикеров переносит и стрелку', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+    const owner = await createUser('board-copy-edges');
+    const context = await newContext(browser);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    // Создаём доску
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(
+      `${E2E_ROOM_PREFIX}CopyEdges ${randomUUID().slice(0, 8)}`,
+    );
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(page.locator('.vue-flow__pane')).toBeVisible();
+    await page.locator('.vue-flow__pane').click(); // фокус на холст перед хоткеем
+    await page.keyboard.press('ControlOrMeta+0');
+    await page.waitForTimeout(300);
+
+    // --- Два стикера в разных углах ---
+    await page.locator('.vue-flow__pane').dblclick({ position: { x: 300, y: 300 } });
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(1);
+    const firstId = await page.locator('.vue-flow__node-sticky').getAttribute('data-id');
+    await page.keyboard.press('Escape');
+
+    await page.locator('.vue-flow__pane').dblclick({ position: { x: 950, y: 300 } });
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(2);
+    const secondId = await page
+      .locator(`.vue-flow__node-sticky:not([data-id="${firstId}"])`)
+      .getAttribute('data-id');
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('Escape'); // снять выделение со второго стикера
+
+    await page.keyboard.press('ControlOrMeta+0');
+    await page.waitForTimeout(200);
+
+    // --- Соединяем стрелкой (drag от хендла первого к хендлу второго) ---
+    const sourceHandle = page.locator(
+      `.vue-flow__handle[data-nodeid="${firstId}"][data-handleid="right"]`,
+    );
+    const targetHandle = page.locator(
+      `.vue-flow__handle[data-nodeid="${secondId}"][data-handleid="left"]`,
+    );
+    const sourceBox = await sourceHandle.boundingBox();
+    const targetBox = await targetHandle.boundingBox();
+    expect(sourceBox).not.toBeNull();
+    expect(targetBox).not.toBeNull();
+    await page.mouse.move(sourceBox!.x + sourceBox!.width / 2, sourceBox!.y + sourceBox!.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      targetBox!.x + targetBox!.width / 2,
+      targetBox!.y + targetBox!.height / 2,
+      { steps: 10 },
+    );
+    await page.mouse.up();
+
+    await expect(page.locator('.vue-flow__edge')).toHaveCount(1);
+
+    // --- Выделяем оба стикера (shift-click) ---
+    await page.locator(`.vue-flow__node[data-id="${firstId}"]`).click();
+    await page
+      .locator(`.vue-flow__node[data-id="${secondId}"]`)
+      .click({ modifiers: ['Shift'] });
+    await expect(page.locator('.vue-flow__node.selected')).toHaveCount(2);
+
+    // --- Дублируем (Ctrl/Cmd+D) — должно перенести и рёбро ---
+    await page.keyboard.press('ControlOrMeta+d');
+
+    // 2 оригинала + 2 копии
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(4);
+    // оригинальное ребро + новое между копиями
+    await expect(page.locator('.vue-flow__edge')).toHaveCount(2);
+
+    // Среди выделенных узлов ровно 2 (копии не выделяются дублированием, но
+    // исходные остаются выбранными — проверяем, что не выделено всё подряд)
+    await expect(page.locator('.vue-flow__node.selected')).toHaveCount(2);
+  });
 });

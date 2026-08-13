@@ -93,7 +93,7 @@ describe('serializeSelection / parseClipboardPayload — round-trip', () => {
       { width: 150, height: 100 },
     );
 
-    const json = await serializeSelection([image], fetchMock as unknown as typeof fetch);
+    const json = await serializeSelection([image], [], fetchMock as unknown as typeof fetch);
     const payload = parseClipboardPayload(json);
 
     expect(fetchMock).toHaveBeenCalledWith('/api/boards/1/assets/a.webp');
@@ -116,7 +116,7 @@ describe('serializeSelection / parseClipboardPayload — round-trip', () => {
     });
     const sticky = sourceItem({ type: 'sticky', text: 'ok' });
 
-    const json = await serializeSelection([image, sticky], fetchMock as unknown as typeof fetch);
+    const json = await serializeSelection([image, sticky], [], fetchMock as unknown as typeof fetch);
     const payload = parseClipboardPayload(json);
 
     expect(payload?.items).toHaveLength(1);
@@ -169,6 +169,7 @@ describe('serializeSelection / parseClipboardPayload — round-trip', () => {
 
     const json = await serializeSelection(
       [brokenImage, frame, child],
+      [],
       fetchMock as unknown as typeof fetch,
     );
     const payload = parseClipboardPayload(json);
@@ -176,6 +177,42 @@ describe('serializeSelection / parseClipboardPayload — round-trip', () => {
     expect(payload?.items).toHaveLength(2);
     expect(payload?.items[0]).toMatchObject({ content: { type: 'frame', title: 'Ф' } });
     expect(payload?.items[1]).toMatchObject({ content: { type: 'sticky' }, parentIndex: 0 });
+  });
+
+  it('включает рёбра, у которых оба конца входят в выделение, с ремапом на индексы items', async () => {
+    const a = sourceItem({ type: 'sticky', text: 'A' });
+    const b = sourceItem({ type: 'sticky', text: 'B' }, { x: 200 });
+    const json = await serializeSelection([a, b], [
+      { sourceItemId: a.id, targetItemId: b.id, sourceHandle: 'right', targetHandle: 'left', label: null, style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' } },
+    ]);
+    const payload = parseClipboardPayload(json);
+    expect(payload?.edges).toEqual([
+      { sourceIndex: 0, targetIndex: 1, sourceHandle: 'right', targetHandle: 'left', label: null, style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' } },
+    ]);
+  });
+
+  it('отбрасывает ребро, если один из концов не входит в выделение', async () => {
+    const a = sourceItem({ type: 'sticky', text: 'A' });
+    const b = sourceItem({ type: 'sticky', text: 'B' });
+    const json = await serializeSelection([a], [
+      { sourceItemId: a.id, targetItemId: b.id, sourceHandle: null, targetHandle: null, label: null, style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' } },
+    ]);
+    const payload = parseClipboardPayload(json);
+    expect(payload?.edges).toEqual([]);
+  });
+
+  it('отбрасывает ребро, если его конец — картинка, которая не сериализовалась (fetch упал)', async () => {
+    const failingFetch = vi.fn().mockRejectedValue(new Error('network'));
+    const image = sourceItem({ type: 'image', url: '/x.webp', width: 100, height: 100 });
+    const sticky = sourceItem({ type: 'sticky', text: 'A' });
+    const json = await serializeSelection(
+      [image, sticky],
+      [{ sourceItemId: image.id, targetItemId: sticky.id, sourceHandle: null, targetHandle: null, label: null, style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' } }],
+      failingFetch as unknown as typeof fetch,
+    );
+    const payload = parseClipboardPayload(json);
+    expect(payload?.items).toHaveLength(1); // картинка отсеялась
+    expect(payload?.edges).toEqual([]);
   });
 });
 
