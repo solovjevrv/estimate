@@ -2350,9 +2350,10 @@ function onConnect(event: Connection): void {
 
       <Panel v-if="followedName" position="top-center">
         <div class="board-following surface-card flex items-center">
-          <span class="board-following-label">{{
-            t('board.following', { name: followedName })
-          }}</span>
+          <span class="board-following-label">
+            {{ t('board.followingPrefix') }}
+            <span class="board-following-name">{{ followedName }}</span>
+          </span>
           <button
             type="button"
             class="board-following-stop"
@@ -2653,6 +2654,10 @@ function onConnect(event: Connection): void {
   font-weight: 600;
   color: var(--brand-ink);
   white-space: nowrap;
+}
+
+.board-following-name {
+  color: var(--brand-primary-text);
 }
 
 .board-following-stop {

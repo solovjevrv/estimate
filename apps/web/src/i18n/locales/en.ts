@@ -456,7 +456,7 @@ export default {
     editingBy: '{name} is typing…',
     editingLocked: '{name} is currently editing this element',
     followAvatarLabel: 'Follow {name}',
-    following: 'Following {name}',
+    followingPrefix: 'Following',
     stopFollowing: 'Stop following',
   },
   boards: {
