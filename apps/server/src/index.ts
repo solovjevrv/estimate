@@ -1,5 +1,6 @@
 import { buildApp } from './app';
-import { BoardImagesService, BoardsService } from './boards';
+import { BoardImagesService, BoardTemplatesRepository, BoardsService } from './boards';
+import { BOARD_TEMPLATE_SEEDS } from './boards/board-templates-seed-data';
 import { loadConfig } from './config';
 import { createDb } from './db';
 import { attachSentryErrorHandler, initSentry } from './monitoring';
@@ -32,6 +33,9 @@ async function main(): Promise<void> {
   const boardImagesService = await BoardImagesService.forDirectory(config.boardAssetsDir);
   const boardsService = BoardsService.forDatabase(db, config.auth.guestSecret, boardImagesService);
   new SocketGateway(roomsService, boardsService, { corsOrigin: config.webOrigin }).attach(app);
+
+  // Сидируем встроенные шаблоны досок (15.1) — идемпотентно
+  await new BoardTemplatesRepository(db).seedBuiltins(BOARD_TEMPLATE_SEEDS);
 
   // Одна неудачная операция не должна уносить процесс вместе со всеми комнатами
   process.on('unhandledRejection', (reason) => {

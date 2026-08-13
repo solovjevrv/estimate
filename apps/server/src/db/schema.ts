@@ -1,4 +1,4 @@
-import type { BoardEdgeStyle, BoardItemContent, BoardItemStyle, ItemReaction } from '@poker/shared';
+import type { BoardEdgeStyle, BoardItemContent, BoardItemStyle, BoardTemplateItem, ItemReaction } from '@poker/shared';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -23,6 +23,7 @@ export const deckTypeEnum = pgEnum('deck_type', ['fibonacci', 'scale_0_5', 'tshi
 export const roundStatusEnum = pgEnum('round_status', ['voting', 'revealed']);
 export const boardStatusEnum = pgEnum('board_status', ['active', 'archived']);
 export const boardShareRoleEnum = pgEnum('board_share_role', ['view', 'edit']);
+export const boardTemplateScopeEnum = pgEnum('board_template_scope', ['builtin', 'personal', 'team']);
 
 /**
  * Авторизованные пользователи (OAuth Google/Яндекс).
@@ -262,5 +263,33 @@ export const boardEdges = pgTable(
     label: text('label'),
     style: jsonb('style').notNull().$type<BoardEdgeStyle>(),
   },
-  (t) => [index('board_edges_board_id_idx').on(t.boardId)],
+   (t) => [index('board_edges_board_id_idx').on(t.boardId)],
+);
+
+/**
+ * Шаблоны досок (15.1). builtin — 4 встроенных, сидируются кодом при старте
+ * сервера (см. `seedBuiltins` в `board-templates.repository.ts`), не миграцией.
+ * personal/team зарезервированы под будущее «сохранить доску как шаблон» —
+ * ownerId/teamId для builtin всегда null, заполняются только этими сценариями.
+ */
+export const boardTemplates = pgTable(
+  'board_templates',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    scope: boardTemplateScopeEnum('scope').notNull(),
+    ownerId: uuid('owner_id').references(() => users.id, { onDelete: 'set null' }),
+    teamId: uuid('team_id').references(() => teams.id, { onDelete: 'cascade' }),
+    /** Литеральное имя — единственный источник для personal/team; для builtin — фолбэк на случай отсутствия nameKey */
+    name: text('name').notNull(),
+    /** i18n-ключ для галереи — задан только у 4 сидированных builtin-строк */
+    nameKey: text('name_key'),
+    description: text('description'),
+    descriptionKey: text('description_key'),
+    items: jsonb('items').notNull().$type<BoardTemplateItem[]>(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('board_templates_owner_id_idx').on(t.ownerId),
+    index('board_templates_team_id_idx').on(t.teamId),
+  ],
 );

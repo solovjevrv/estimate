@@ -974,3 +974,5 @@ export interface BoardPresenceEntry {
   avatarUrl: string | null;
   isGuest: boolean;
 }
+
+export * from './board-templates';

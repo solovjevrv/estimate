@@ -13,3 +13,6 @@ export {
   type CreateBoardInput,
 } from './boards.service';
 export { BoardImagesService } from './board-images.service';
+export { BoardTemplatesController } from './board-templates.controller';
+export { BoardTemplatesRepository } from './board-templates.repository';
+export { BoardTemplatesService } from './board-templates.service';

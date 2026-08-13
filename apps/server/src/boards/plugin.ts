@@ -6,6 +6,9 @@ import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
 
 import { BoardImagesService } from './board-images.service';
+import { BoardTemplatesController } from './board-templates.controller';
+import { BoardTemplatesRepository } from './board-templates.repository';
+import { BoardTemplatesService } from './board-templates.service';
 import type {
   ArchivedQuery,
   BoardIdParams,
@@ -134,6 +137,22 @@ const boardSnapshotResponse = {
   },
 } as const;
 
+const boardTemplateResponse = {
+  type: 'object',
+  properties: {
+    id: { type: 'string' },
+    scope: { type: 'string' },
+    ownerId: { type: ['string', 'null'] },
+    teamId: { type: ['string', 'null'] },
+    name: { type: 'string' },
+    nameKey: { type: ['string', 'null'] },
+    description: { type: ['string', 'null'] },
+    descriptionKey: { type: ['string', 'null'] },
+    items: { type: 'array', items: { type: 'object', additionalProperties: true } },
+    createdAt: { type: 'string' },
+  },
+} as const;
+
 async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions): Promise<void> {
   const authenticate = app.authenticate;
   if (!authenticate) {
@@ -143,6 +162,34 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
   const images = opts.assetsDir ? await BoardImagesService.forDirectory(opts.assetsDir) : undefined;
   const controller = new BoardsController(
     BoardsService.forDatabase(app.db, opts.auth.guestSecret, images),
+  );
+
+  const templatesRepository = new BoardTemplatesRepository(app.db);
+  const templatesController = new BoardTemplatesController(
+    new BoardTemplatesService(templatesRepository),
+  );
+
+  app.get(
+    '/api/board-templates',
+    {
+      preHandler: authenticate,
+      schema: {
+        tags: [DOCS_TAGS.boards],
+        summary: 'Список шаблонов досок',
+        description:
+          'Встроенные шаблоны (личные/командные — задел на будущее, сейчас не заполняются).',
+        security: [{ session: [] }],
+        response: {
+          200: {
+            description: 'Список шаблонов',
+            type: 'object',
+            properties: { templates: { type: 'array', items: boardTemplateResponse } },
+          },
+          401: { description: 'Требуется вход', ...errorResponse },
+        },
+      },
+    },
+    templatesController.list,
   );
 
   app.post<{ Body: CreateBoardBody }>(

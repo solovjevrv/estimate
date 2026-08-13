@@ -9,15 +9,17 @@ import {
 } from '@poker/shared';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 
 import BoardCanvas from '../components/board/BoardCanvas.vue';
 import BoardShareModal from '../components/board/BoardShareModal.vue';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import { ApiError } from '../lib/api';
+import { buildTemplateOps } from '../lib/board/board-templates';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useBoardsStore } from '../stores/boards';
 import { useBoardSessionStore } from '../stores/board-session';
+import { useBoardTemplatesStore } from '../stores/board-templates';
 import { useSessionStore } from '../stores/session';
 import { useTeamsStore } from '../stores/teams';
 
@@ -26,10 +28,12 @@ const props = defineProps<{ id: string }>();
 const { t } = useI18n();
 const toast = useToast();
 const router = useRouter();
+const route = useRoute();
 const boards = useBoardsStore();
 const teams = useTeamsStore();
 const session = useSessionStore();
 const boardSession = useBoardSessionStore();
+const boardTemplates = useBoardTemplatesStore();
 
 const loading = ref(true);
 const notFound = ref(false);
@@ -146,6 +150,7 @@ async function load(): Promise<void> {
 
     if (session.isAuthenticated) {
       await joinBoard();
+      void applyPendingTemplate();
     } else {
       // Реалтайм-вход гостю требует имени — показываем форму вместо немедленного join
       needsGuestName.value = true;
@@ -172,6 +177,20 @@ async function joinBoard(guestName?: string): Promise<void> {
   await boardSession.join(props.id, guestName, () => {
     toast.add({ title: t('board.loadError'), color: 'error' });
   });
+}
+
+async function applyPendingTemplate(): Promise<void> {
+  const templateId = route.query.applyTemplate;
+  if (typeof templateId !== 'string' || boardSession.items.length > 0 || !canEdit.value) return;
+  try {
+    await boardTemplates.load();
+    const template = boardTemplates.find(templateId);
+    if (template) await boardSession.applyOps(buildTemplateOps(template));
+  } catch {
+    // Не критично — доска останется пустой, шаблон можно выбрать вручную через BoardTemplatePicker
+  } finally {
+    await router.replace({ query: { ...route.query, applyTemplate: undefined } });
+  }
 }
 
 async function onGuestNameSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void> {

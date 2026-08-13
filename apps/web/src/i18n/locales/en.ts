@@ -459,6 +459,16 @@ export default {
     followingPrefix: 'Following',
     stopFollowing: 'Stop following',
   },
+  templates: {
+    pickerTitle: 'Choose a template or start with a blank board',
+    pickerLabel: 'Template (optional)',
+    pickerBlankOption: 'Blank board',
+    applyError: 'Could not apply the template, please try again',
+    retroStartStopContinue: { name: 'Retro: Start / Stop / Continue', description: 'What to start, stop and keep doing' },
+    retroMadSadGlad: { name: 'Retro: Mad / Sad / Glad', description: 'What made the team mad, sad and glad this sprint' },
+    leanCanvas: { name: 'Lean Canvas', description: 'A one-page business model' },
+    storyMapping: { name: 'User Story Mapping', description: 'User journey and releases, step by step' },
+  },
   boards: {
     title: 'My boards',
     loadError: 'Could not load the boards. Try refreshing the page.',

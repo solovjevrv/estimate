@@ -10,12 +10,13 @@ import ConfirmModal from '../components/ConfirmModal.vue';
 import { usePagedList } from '../composables/use-paged-list';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useBoardsStore } from '../stores/boards';
+import { useBoardTemplatesStore } from '../stores/board-templates';
 
 const { t, locale } = useI18n();
 const router = useRouter();
 const toast = useToast();
 const boards = useBoardsStore();
-
+const boardTemplates = useBoardTemplatesStore();
 const loading = ref(true);
 const loadFailed = ref(false);
 const list = ref<BoardSummary[]>([]);
@@ -48,10 +49,15 @@ async function load(): Promise<void> {
 // --- Создание доски ---
 const createOpen = ref(false);
 const creating = ref(false);
-const createState = reactive({ title: '' });
+const createState = reactive({ title: '', templateId: null as string | null });
 
 watch(createOpen, (isOpen) => {
-  if (!isOpen) createState.title = '';
+  if (!isOpen) {
+    createState.title = '';
+    createState.templateId = null;
+  } else {
+    void boardTemplates.load();
+  }
 });
 
 function validateBoardTitle(s: { title: string }): FormError[] {
@@ -73,7 +79,13 @@ async function onCreateBoard(event: FormSubmitEvent<{ title: string }>): Promise
   try {
     const board = await boards.create(event.data.title.trim());
     createOpen.value = false;
-    await router.push({ name: 'board', params: { id: board.id } });
+    await router.push({
+      name: 'board',
+      params: { id: board.id },
+      query: createState.templateId
+        ? { applyTemplate: createState.templateId }
+        : undefined,
+    });
   } catch {
     toast.add({ title: t('board.createError'), color: 'error' });
   } finally {
@@ -304,6 +316,22 @@ async function confirmDelete(): Promise<void> {
               :placeholder="t('board.createNamePlaceholder')"
               :maxlength="BOARD_TITLE_MAX_LENGTH"
               autofocus
+              class="w-full"
+              :ui="MODAL_INPUT_UI"
+            />
+           </UFormField>
+
+          <UFormField :label="t('board.templates.pickerLabel')" name="templateId">
+            <USelect
+              v-model="createState.templateId"
+              :items="[
+                { value: null, label: t('board.templates.pickerBlankOption') },
+                ...boardTemplates.templates.map((tpl) => ({
+                  value: tpl.id,
+                  label: tpl.nameKey ? t(tpl.nameKey) : tpl.name,
+                })),
+              ]"
+              value-key="value"
               class="w-full"
               :ui="MODAL_INPUT_UI"
             />

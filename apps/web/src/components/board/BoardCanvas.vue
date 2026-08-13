@@ -41,8 +41,9 @@ import {
   type BoardItemContent,
   type BoardItemPatchOp,
   type BoardOp,
-  type BoardPresenceEntry,
-  type BoardTextAlign,
+   type BoardPresenceEntry,
+   type BoardTemplate,
+   type BoardTextAlign,
   type ReactionEmoji,
 } from '@poker/shared';
 import type { DropdownMenuItem } from '@nuxt/ui';
@@ -131,6 +132,7 @@ import {
   type SnapRect,
 } from '../../lib/board/board-snap';
 import { useBoardSessionStore } from '../../stores/board-session';
+import { useSessionStore } from '../../stores/session';
 import { api } from '../../lib/api';
 import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
 import BoardContextMenu, { type BoardContextMenuTarget } from './BoardContextMenu.vue';
@@ -149,6 +151,8 @@ import BoardEmojiNode from './BoardEmojiNode.vue';
 import BoardStickerNode from './BoardStickerNode.vue';
 import BoardToolbar, { type BoardTool } from './BoardToolbar.vue';
 import BoardFrameNode from './BoardFrameNode.vue';
+import BoardTemplatePicker from './BoardTemplatePicker.vue';
+import { buildTemplateOps } from '../../lib/board/board-templates';
 
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/controls/dist/style.css';
@@ -177,6 +181,23 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const toast = useToast();
 const boardSession = useBoardSessionStore();
+const session = useSessionStore();
+
+const templatePickerDismissed = ref(false);
+
+async function onPickTemplate(template: BoardTemplate): Promise<void> {
+  templatePickerDismissed.value = true;
+  try {
+    await boardSession.applyOps(buildTemplateOps(template));
+  } catch {
+    templatePickerDismissed.value = false;
+    toast.add({ title: t('board.templates.applyError'), color: 'error' });
+  }
+}
+
+function onDismissTemplatePicker(): void {
+  templatePickerDismissed.value = true;
+}
 
 const flowNodes = computed(() => toFlowNodes(props.items, props.canEdit));
 const flowEdges = computed(() => toFlowEdges(props.edges));
@@ -2432,6 +2453,13 @@ function onConnect(event: Connection): void {
       :self-participant-id="boardSession.participantId"
     />
   </div>
+
+  <BoardTemplatePicker
+    v-if="props.items.length === 0 && props.canEdit && session.isAuthenticated && !templatePickerDismissed"
+    :is-authenticated="session.isAuthenticated"
+    @pick="onPickTemplate"
+    @dismiss="onDismissTemplatePicker"
+  />
 </template>
 <style scoped>
 .board-canvas-root:fullscreen {
