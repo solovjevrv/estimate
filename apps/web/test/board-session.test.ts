@@ -1,4 +1,5 @@
 import type {
+  BoardAwarenessBroadcast,
   BoardEdge,
   BoardItem,
   BoardOpsBatch,
@@ -541,20 +542,21 @@ describe('стор сессии доски', () => {
     await store.join('board1');
 
     const entries: BoardPresenceEntry[] = [
-      { userId: 'u1', name: 'Иван', avatarUrl: null, isGuest: false },
+      { participantId: 'p1', userId: 'u1', name: 'Иван', avatarUrl: null, isGuest: false },
     ];
     socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, entries);
 
     expect(store.presence).toEqual(entries);
   });
 
-  it('принимает и хранит эфемерные курсоры участников по userId', async () => {
+  it('принимает и хранит эфемерные курсоры участников по participantId', async () => {
     const store = useBoardSessionStore();
     socket.next = snapshotResult(1);
     await store.join('board1');
 
     // Два разных участника пришли с курсором
     socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+      participantId: 'p1',
       userId: 'u1',
       name: 'Иван',
       avatarUrl: null,
@@ -563,6 +565,7 @@ describe('стор сессии доски', () => {
       data: { x: 100, y: 200 },
     });
     socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+      participantId: 'p2',
       userId: 'u2',
       name: 'Мария',
       avatarUrl: 'https://example.com/avatar.png',
@@ -572,27 +575,31 @@ describe('стор сессии доски', () => {
     });
 
     expect(store.awareness).toHaveLength(2);
-    const byId = new Map(store.awareness.map((a) => [a.userId, a]));
-    expect(byId.get('u1')?.data).toEqual({ x: 100, y: 200 });
-    expect(byId.get('u2')?.avatarUrl).toBe('https://example.com/avatar.png');
+    const byId = new Map(store.awareness.map((a) => [a.participantId, a]));
+    expect(byId.get('p1')?.data).toEqual({ x: 100, y: 200 });
+    expect(byId.get('p2')?.avatarUrl).toBe('https://example.com/avatar.png');
   });
 
-  it('перезаписывает состояние курсора того же участника (LWW по userId)', async () => {
+  it('перезаписывает состояние курсора того же участника (LWW по participantId)', async () => {
     const store = useBoardSessionStore();
     socket.next = snapshotResult(1);
     await store.join('board1');
 
     socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+      participantId: 'p1',
       userId: 'u1',
       name: 'Иван',
       avatarUrl: null,
+      isGuest: false,
       kind: 'cursor',
       data: { x: 10, y: 20 },
     });
     socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+      participantId: 'p1',
       userId: 'u1',
       name: 'Иван',
       avatarUrl: null,
+      isGuest: false,
       kind: 'cursor',
       data: { x: 30, y: 40 },
     });
@@ -625,57 +632,65 @@ describe('стор сессии доски', () => {
   });
 
   describe('мягкая блокировка редактирования (14.2)', () => {
-    it('kind=editing active=true кладёт запись в editingByItem, не трогая awarenessByUser', async () => {
+    it('kind=editing active=true кладёт запись в editingByItem, не трогая awarenessByParticipant', async () => {
       const store = useBoardSessionStore();
       socket.next = snapshotResult(1);
       await store.join('board1');
 
       socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        participantId: 'p1',
         userId: 'u1',
         name: 'Иван',
         avatarUrl: null,
+        isGuest: false,
         kind: 'editing',
         data: { itemId: 'item-1', active: true },
       });
 
       expect(store.editingByItem.get('item-1')).toMatchObject({
-        userId: 'u1',
+        participantId: 'p1',
         name: 'Иван',
       });
       // editing-запись не должна попасть в курсорную карту awareness
       expect(store.awareness).toHaveLength(0);
     });
 
-    it('active=false от того же userId убирает блокировку; от другого userId — не убирает', async () => {
+    it('active=false от того же participantId убирает блокировку; от другого — не убирает', async () => {
       const store = useBoardSessionStore();
       socket.next = snapshotResult(1);
       await store.join('board1');
 
-      // U1 начал редактировать элемент
+      // P1 начал редактировать элемент
       socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        participantId: 'p1',
         userId: 'u1',
         name: 'Иван',
         avatarUrl: null,
+        isGuest: false,
         kind: 'editing',
         data: { itemId: 'item-1', active: true },
       });
       expect(store.editingByItem.get('item-1')).toBeDefined();
 
-      // U2 пытается снять чужую блокировку — запись должна остаться
+      // P2 пытается снять чужую блокировку — запись должна остаться
       socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        participantId: 'p2',
         userId: 'u2',
         name: 'Мария',
         avatarUrl: null,
+        isGuest: false,
         kind: 'editing',
         data: { itemId: 'item-1', active: false },
       });
-      expect(store.editingByItem.get('item-1')).toMatchObject({ userId: 'u1' });
+      expect(store.editingByItem.get('item-1')).toMatchObject({ participantId: 'p1' });
 
-      // U1 снимает свою блокировку — запись исчезает
+      // P1 снимает свою блокировку — запись исчезает
       socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        participantId: 'p1',
         userId: 'u1',
         name: 'Иван',
         avatarUrl: null,
+        isGuest: false,
         kind: 'editing',
         data: { itemId: 'item-1', active: false },
       });
@@ -687,23 +702,27 @@ describe('стор сессии доски', () => {
       socket.next = snapshotResult(1);
       await store.join('board1');
 
-      // U1 начал редактировать, U2 — курсор
+      // P1 начал редактировать, P2 — курсор
       socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        participantId: 'p1',
         userId: 'u1',
         name: 'Иван',
         avatarUrl: null,
+        isGuest: false,
         kind: 'editing',
         data: { itemId: 'item-1', active: true },
       });
       socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        participantId: 'p2',
         userId: 'u2',
         name: 'Мария',
         avatarUrl: null,
+        isGuest: false,
         kind: 'cursor',
         data: { x: 10, y: 20 },
       });
 
-      // U1 и U2 оба вышли с доски — presence стал пустым списком
+      // P1 и P2 оба вышли с доски — presence стал пустым списком
       socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, []);
 
       expect(store.editingByItem.get('item-1')).toBeUndefined();
@@ -716,9 +735,11 @@ describe('стор сессии доски', () => {
       await store.join('board1');
 
       socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        participantId: 'p1',
         userId: 'u1',
         name: 'Иван',
         avatarUrl: null,
+        isGuest: false,
         kind: 'editing',
         data: { itemId: 'item-1', active: true },
       });
@@ -808,5 +829,138 @@ describe('стор сессии доски', () => {
     await store.join('board2');
 
     expect(store.items.map((i) => i.id)).toEqual(['i2']);
+  });
+
+  describe('Follow-mode камеры участника (14.5)', () => {
+    /** Вспомогательник: broadcast awareness от другого участника */
+    function broadcast(
+      participantId: string,
+      kind: BoardAwarenessBroadcast['kind'],
+      data: Record<string, unknown>,
+      userId: string | null = null,
+      name = 'Участник',
+    ): void {
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        participantId,
+        userId,
+        name,
+        avatarUrl: null,
+        isGuest: userId === null,
+        kind,
+        data,
+      });
+    }
+
+    it('камера участника хранится отдельно от курсора — throttled cursor не затирает camera-запись того же participantId', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      // Сначала пришла камера P1
+      broadcast('p1', 'camera', { x: 100, y: 200, zoom: 1.5 });
+      // Потом throttled cursor того же P1
+      broadcast('p1', 'cursor', { x: 50, y: 50 });
+
+      // Камера живёт в своей карте, курсор — в awareness
+      expect(store.cameraByParticipant.get('p1')).toEqual({ x: 100, y: 200, zoom: 1.5 });
+      expect(store.awareness).toHaveLength(1);
+      expect(store.awareness[0]?.data).toEqual({ x: 50, y: 50 });
+    });
+
+    it('followParticipant/stopFollowing переключают followedParticipantId и cameraOfFollowed', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      broadcast('p1', 'camera', { x: 300, y: 400, zoom: 0.8 });
+
+      expect(store.followedParticipantId).toBe(null);
+      expect(store.cameraOfFollowed).toBe(null);
+
+      store.followParticipant('p1');
+      expect(store.followedParticipantId).toBe('p1');
+      expect(store.cameraOfFollowed).toEqual({ x: 300, y: 400, zoom: 0.8 });
+
+      store.stopFollowing();
+      expect(store.followedParticipantId).toBe(null);
+      expect(store.cameraOfFollowed).toBe(null);
+    });
+
+    it('cameraOfFollowed игнорирует camera-апдейты от НЕ отслеживаемого участника', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      broadcast('p1', 'camera', { x: 10, y: 20, zoom: 1 });
+      broadcast('p2', 'camera', { x: 200, y: 300, zoom: 2 });
+
+      store.followParticipant('p1');
+      // Следуем за P1 — его камера попала в cameraOfFollowed
+      expect(store.cameraOfFollowed).toEqual({ x: 10, y: 20, zoom: 1 });
+
+      // P2 тоже транслирует камеру — не должна заменить P1 в cameraOfFollowed
+      expect(store.cameraByParticipant.get('p2')).toEqual({ x: 200, y: 300, zoom: 2 });
+      expect(store.cameraOfFollowed).toEqual({ x: 10, y: 20, zoom: 1 });
+    });
+
+    it('уход отслеживаемого участника (presence без него) автоматически сбрасывает followedParticipantId', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      broadcast('p1', 'camera', { x: 100, y: 200, zoom: 1 });
+      store.followParticipant('p1');
+
+      // P1 ушёл — presence без него
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, []);
+      expect(store.followedParticipantId).toBe(null);
+      expect(store.cameraOfFollowed).toBe(null);
+    });
+
+    it('смена доски / leave() сбрасывают followedParticipantId и очищают cameraByParticipant', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      broadcast('p1', 'camera', { x: 100, y: 200, zoom: 1 });
+      store.followParticipant('p1');
+      expect(store.cameraByParticipant.size).toBe(1);
+      expect(store.followedParticipantId).toBe('p1');
+
+      // Смена доски на живом сокете
+      socket.next = snapshotResult(1);
+      await store.join('board2');
+      expect(store.followedParticipantId).toBe(null);
+      expect(store.cameraByParticipant.size).toBe(0);
+
+      // И после leave() — тоже
+      store.leave();
+      expect(store.followedParticipantId).toBe(null);
+      expect(store.cameraByParticipant.size).toBe(0);
+    });
+
+    it('регрессия 14.4: два участника с userId===null (гости) не схлопывают awareness/presence друг друга — различаются по participantId', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      // Два гостя с userId === null, но разными participantId
+      broadcast('guest-a', 'cursor', { x: 10, y: 20 }, null, 'Гость А');
+      broadcast('guest-b', 'cursor', { x: 30, y: 40 }, null, 'Гость Б');
+
+      // Оба курсора должны быть на экране — не схлопнулись в одну запись
+      expect(store.awareness).toHaveLength(2);
+
+      // PRESENCE тоже различает их по participantId, а не userId
+      const entries: BoardPresenceEntry[] = [
+        { participantId: 'guest-a', userId: null, name: 'Гость А', avatarUrl: null, isGuest: true },
+        { participantId: 'guest-b', userId: null, name: 'Гость Б', avatarUrl: null, isGuest: true },
+      ];
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, entries);
+      expect(store.presence).toHaveLength(2);
+      const byPid = new Map(store.presence.map((p) => [p.participantId, p]));
+      expect(byPid.get('guest-a')?.name).toBe('Гость А');
+      expect(byPid.get('guest-b')?.name).toBe('Гость Б');
+    });
   });
 });

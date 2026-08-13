@@ -15,6 +15,7 @@ import type {
   BoardAccessLevel,
   BoardAwarenessBroadcast,
   BoardAwarenessKind,
+  BoardCameraAwarenessData,
   BoardCommittedOp,
   BoardEdge,
   BoardItem,
@@ -178,7 +179,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const local: BoardLocalState = reactive({ items: new Map(), edges: new Map() });
   const revision = ref(0);
   const presence = ref<BoardPresenceEntry[]>([]);
-  const awarenessByUser = reactive(new Map<string, BoardAwarenessBroadcast>());
+  const awarenessByParticipant = reactive(new Map<string, BoardAwarenessBroadcast>());
   /** Идентификатор участника на доске — для presence/cursors; null до первого входа */
   const participantId = ref<string | null>(null);
   /** Итоговый уровень доступа текущего участника к доске (14.4) */
@@ -192,14 +193,32 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const applyError = ref<{ code: string } | null>(null);
   /**
    * Мягкая блокировка текстового редактирования (14.2) — отдельная карта от
-   * `awarenessByUser`: если смешать с курсором тем же LWW-приёмом, любой следующий
+   * `awarenessByParticipant`: если смешать с курсором тем же LWW-приёмом, любой следующий
    * throttled mousemove по пейну (он ловит движение мыши по всему канвасу, даже
    * когда фокус в contenteditable конкретного элемента) затрёт запись об editing
    * обратно на cursor — и индикатор блокировки у остальных погаснет посреди
    * реального редактирования. По одной записи на элемент: последний отправивший
    * `active:true` и держит блокировку, снятие (`active:false`) убирает свою.
    */
-  const editingByItem = reactive(new Map<string, { userId: string; name: string }>());
+  const editingByItem = reactive(new Map<string, { participantId: string; name: string }>());
+  /**
+   * Последняя транслированная позиция камеры каждого участника (14.5) — отдельно
+   * от `awarenessByParticipant`: иначе throttled cursor (каждые 80мс) затирал бы
+   * запись камеры того же participantId до того, как её успеет прочитать наблюдатель
+   */
+  const cameraByParticipant = reactive(new Map<string, BoardCameraAwarenessData>());
+  const followedParticipantId = ref<string | null>(null);
+  const cameraOfFollowed = computed(() =>
+    followedParticipantId.value
+      ? (cameraByParticipant.get(followedParticipantId.value) ?? null)
+      : null,
+  );
+  function followParticipant(id: string): void {
+    followedParticipantId.value = id;
+  }
+  function stopFollowing(): void {
+    followedParticipantId.value = null;
+  }
   const connected = ref(false);
   const joined = ref(false);
 
@@ -251,7 +270,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
 
   const items = computed(() => [...local.items.values()]);
   const edges = computed(() => [...local.edges.values()]);
-  const awareness = computed(() => [...awarenessByUser.values()]);
+  const awareness = computed(() => [...awarenessByParticipant.values()]);
 
   function applyBatch(batch: BoardOpsBatch): void {
     // Батч мог обогнать ответ на join (или прийти повторно) — отбрасываем отставшее
@@ -337,6 +356,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       lastOwnOpByTarget.clear();
       ownClientOpIds.clear();
       clearHistory();
+      cameraByParticipant.clear();
+      followedParticipantId.value = null;
     }
     boardId = id;
     joined.value = false;
@@ -351,23 +372,40 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
         presence.value = entries;
         // Awareness (курсоры, 14.1) не приходит событием "участник ушёл" — без
         // этой сверки курсор отключившегося застывал бы на экране навсегда
-        // (последняя полученная позиция), так как awarenessByUser пополняется,
+        // (последняя полученная позиция), так как awarenessByParticipant пополняется,
         // но никогда сам по себе не убывает. presence — источник истины о том,
         // кто сейчас реально на доске.
-        const activeIds = new Set(entries.map((entry) => entry.userId));
-        for (const userId of awarenessByUser.keys()) {
-          if (!activeIds.has(userId)) awarenessByUser.delete(userId);
+        const activeIds = new Set(entries.map((entry) => entry.participantId));
+        for (const participantId of awarenessByParticipant.keys()) {
+          if (!activeIds.has(participantId)) awarenessByParticipant.delete(participantId);
         }
         // Та же самая «призрачная блокировка» (14.2): если участник отключился,
-        // его editing-запись тоже навсегда не исчезнет без этой сверки — и
+        // его editing-запь тоже навсегда не исчезнет без этой сверки — и
         // элемент останется недоступным для редактирования вечно.
         for (const [itemId, lock] of editingByItem) {
-          if (!activeIds.has(lock.userId)) editingByItem.delete(itemId);
+          if (!activeIds.has(lock.participantId)) editingByItem.delete(itemId);
+        }
+        // Камера того же участника (14.5) тоже не приходит в "ушёл" — чистим вместе
+        for (const [id] of cameraByParticipant) {
+          if (!activeIds.has(id)) cameraByParticipant.delete(id);
+        }
+        if (followedParticipantId.value && !activeIds.has(followedParticipantId.value)) {
+          followedParticipantId.value = null; // объект слежения ушёл с доски — авто-отписка
         }
       });
       active.on(BOARD_WS_SERVER_EVENTS.AWARENESS, (payload) => {
+        // Камера (14.5) — отдельная карта, а не в awarenessByParticipant: иначе
+        // throttled cursor (каждые 80мс) затирал бы запись камеры того же
+        // participantId до того, как её успеет прочитать наблюдатель follow-mode
+        if (payload.kind === 'camera') {
+          cameraByParticipant.set(
+            payload.participantId,
+            payload.data as unknown as BoardCameraAwarenessData,
+          );
+          return;
+        }
         // Мягкая блокировка редактирования (14.2) — отдельная ветка, НЕ
-        // трогает awarenessByUser: курсорные патчи (mousemove) не должны
+        // трогает awarenessByParticipant: курсорные патчи (mousemove) не должны
         // затирать editing-запь, иначе индикатор блокировки погаснет посреди
         // реального редактирования
         if (payload.kind === 'editing') {
@@ -376,13 +414,16 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
             active: boolean;
           };
           if (isActive) {
-            editingByItem.set(itemId, { userId: payload.userId, name: payload.name });
-          } else if (editingByItem.get(itemId)?.userId === payload.userId) {
+            editingByItem.set(itemId, {
+              participantId: payload.participantId,
+              name: payload.name,
+            });
+          } else if (editingByItem.get(itemId)?.participantId === payload.participantId) {
             editingByItem.delete(itemId);
           }
           return;
         }
-        awarenessByUser.set(payload.userId, payload);
+        awarenessByParticipant.set(payload.participantId, payload);
       });
       active.on('connect', () => {
         connected.value = true;
@@ -438,8 +479,10 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     local.edges.clear();
     revision.value = 0;
     presence.value = [];
-    awarenessByUser.clear();
+    awarenessByParticipant.clear();
     editingByItem.clear();
+    cameraByParticipant.clear();
+    followedParticipantId.value = null;
     lastOwnOpByTarget.clear();
     ownClientOpIds.clear();
     clearHistory();
@@ -566,6 +609,11 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     presence,
     awareness,
     editingByItem,
+    cameraByParticipant,
+    followedParticipantId,
+    cameraOfFollowed,
+    followParticipant,
+    stopFollowing,
     connected,
     joined,
     participantId,

@@ -41,6 +41,7 @@ import {
   type BoardItemContent,
   type BoardItemPatchOp,
   type BoardOp,
+  type BoardPresenceEntry,
   type BoardTextAlign,
   type ReactionEmoji,
 } from '@poker/shared';
@@ -116,6 +117,7 @@ import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
 import { throttle } from '../../lib/throttle';
 import { uuid } from '../../lib/board/uuid';
 import {
+  BOARD_CAMERA_THROTTLE_MS,
   BOARD_DRAG_THROTTLE_MS,
   BOARD_CURSOR_THROTTLE_MS,
   BOARD_DUPLICATE_OFFSET,
@@ -129,7 +131,6 @@ import {
   type SnapRect,
 } from '../../lib/board/board-snap';
 import { useBoardSessionStore } from '../../stores/board-session';
-import { useSessionStore } from '../../stores/session';
 import { api } from '../../lib/api';
 import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
 import BoardContextMenu, { type BoardContextMenuTarget } from './BoardContextMenu.vue';
@@ -261,6 +262,7 @@ const {
   setEdges,
   addSelectedNodes,
   removeSelectedNodes,
+  setViewport,
   zoomTo,
   fitView,
 } = useVueFlow();
@@ -316,7 +318,8 @@ const isFullscreen = ref(false);
  * и зрители), а посылать свой может только редактор — зрительный курсор не
  * интересен, его движение ничего не меняет.
  */
-const selfUserId = useSessionStore().user?.id ?? '';
+// self id теперь — boardSession.participantId (14.5): ключ участника на доске,
+// а не userId — гость (userId null) тоже видит себя выделенным в стеке presence
 
 /** Инициалы из имени для fallback-аватарки (14.1) */
 function initials(name: string): string {
@@ -326,6 +329,22 @@ function initials(name: string): string {
   return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
 }
 
+/** Клик по аватарке в стеке presence (14.5) — переключить follow-mode */
+function onPresenceAvatarClick(entry: BoardPresenceEntry): void {
+  if (entry.participantId === boardSession.participantId) return;
+  if (boardSession.followedParticipantId === entry.participantId) {
+    boardSession.stopFollowing();
+  } else {
+    boardSession.followParticipant(entry.participantId);
+  }
+}
+
+const followedName = computed(() => {
+  const id = boardSession.followedParticipantId;
+  if (!id) return null;
+  return boardSession.presence.find((p) => p.participantId === id)?.name ?? null;
+});
+
 function onPaneMouseMove(event: MouseEvent): void {
   if (!props.canEdit) return;
   const point = flowPositionFromEvent(event);
@@ -334,6 +353,44 @@ function onPaneMouseMove(event: MouseEvent): void {
 
 /** Throttle-обёртка над sendAwareness, как для драга (BOARD_CURSOR_THROTTLE_MS) */
 const cursorThrottler = throttle(onPaneMouseMove, BOARD_CURSOR_THROTTLE_MS);
+
+/**
+ * Собственная камера (14.5) — throttled-рассылка позиции viewport на каждый
+ * изменяющийся пан/зум. Грубее курсора, чтобы не слепо перегружать сеть панорамированием.
+ */
+const cameraThrottler = throttle(
+  () =>
+    boardSession.sendAwareness('camera', {
+      x: viewport.value.x,
+      y: viewport.value.y,
+      zoom: viewport.value.zoom,
+    }),
+  BOARD_CAMERA_THROTTLE_MS,
+);
+watch(
+  viewport,
+  () => {
+    // Пока сам кого-то смотрю — не транслирую свою камеру: иначе камера, которую
+    // мне же сейчас программно проставляет follow-режим, эхом улетала бы моим
+    // наблюдателям как «моя настоящая позиция» — путаница и потенциальный
+    // цикл, если двое подписаны друг на друга
+    if (boardSession.followedParticipantId) return;
+    cameraThrottler();
+  },
+  { deep: true },
+);
+
+watch(
+  () => boardSession.cameraOfFollowed,
+  (cam) => {
+    if (!cam) return;
+    void setViewport({ x: cam.x, y: cam.y, zoom: cam.zoom }, { duration: 200 });
+  },
+);
+
+function onManualCameraInteraction(): void {
+  if (boardSession.followedParticipantId) boardSession.stopFollowing();
+}
 
 function onFullscreenChange(): void {
   isFullscreen.value = document.fullscreenElement === rootEl.value;
@@ -2000,8 +2057,14 @@ useBoardHotkeys({
     clearAllSelection();
     contextMenu.value = null;
   },
-  resetZoom: () => void zoomTo(1),
-  fitView: () => void fitView(),
+   resetZoom: () => {
+     boardSession.stopFollowing();
+     void zoomTo(1);
+   },
+   fitView: () => {
+     boardSession.stopFollowing();
+     void fitView();
+   },
   undo: () => void boardSession.undo(),
   redo: () => void boardSession.redo(),
 });
@@ -2069,6 +2132,7 @@ function onConnect(event: Connection): void {
       @connect="onConnect"
       @pane-click="onPaneClick"
       @pane-context-menu="onPaneContextMenu"
+      @move-start="onManualCameraInteraction"
       @mousemove="cursorThrottler"
       @node-drag-start="onNodeDragStart"
       @node-drag="onNodeDrag"
@@ -2210,41 +2274,65 @@ function onConnect(event: Connection): void {
            карточке-подложке (surface-card), а иконка+счётчик внутри неё —
            дополнительно на своей серой пилюле (вложенная подложка, как на
            референсе), аватарки — прямо на белой карточке, без своей. -->
-      <Panel v-if="boardSession.presence.length > 1" position="top-right">
-        <div
-          class="board-presence surface-card flex items-center"
-          :aria-label="t('board.presence')"
-        >
-          <div
-            class="board-presence-count"
-            :title="t('board.presenceCount', { count: boardSession.presence.length })"
-          >
-            <UIcon name="i-lucide-users-2" class="size-4" />
-            <span>{{ boardSession.presence.length }}</span>
-          </div>
-          <div class="board-presence-stack">
-            <div
-              v-for="(entry, index) in boardSession.presence"
-              :key="entry.userId ?? entry.name"
-              :class="[
-                'board-presence-avatar',
-                { 'board-presence-avatar--self': entry.userId === selfUserId },
-              ]"
-              :style="{ zIndex: boardSession.presence.length - index }"
-              :data-user-id="entry.userId"
-              :title="entry.userId === selfUserId ? t('board.you') : entry.name"
-            >
-              <img
-                v-if="entry.avatarUrl"
-                :src="entry.avatarUrl"
-                :alt="entry.name"
-                class="board-presence-img"
-              />
-              <span v-else class="board-presence-initials">{{ initials(entry.name) }}</span>
-            </div>
-          </div>
-        </div>
-      </Panel>
+       <Panel v-if="boardSession.presence.length > 1" position="top-right">
+         <div
+           class="board-presence surface-card flex items-center"
+           :aria-label="t('board.presence')"
+         >
+           <div
+             class="board-presence-count"
+             :title="t('board.presenceCount', { count: boardSession.presence.length })"
+           >
+             <UIcon name="i-lucide-users-2" class="size-4" />
+             <span>{{ boardSession.presence.length }}</span>
+           </div>
+           <div class="board-presence-stack">
+             <div
+               v-for="(entry, index) in boardSession.presence"
+               :key="entry.participantId"
+               role="button"
+               :tabindex="entry.participantId === boardSession.participantId ? -1 : 0"
+               :aria-pressed="entry.participantId === boardSession.followedParticipantId"
+               :class="[
+                 'board-presence-avatar',
+                 {
+                   'board-presence-avatar--self': entry.participantId === boardSession.participantId,
+                   'board-presence-avatar--following': entry.participantId === boardSession.followedParticipantId,
+                 },
+               ]"
+               :style="{ zIndex: boardSession.presence.length - index }"
+               :data-participant-id="entry.participantId"
+               :title="entry.participantId === boardSession.participantId ? t('board.you') : entry.name"
+               :aria-label="entry.participantId === boardSession.participantId ? undefined : t('board.followAvatarLabel', { name: entry.name })"
+               @click="onPresenceAvatarClick(entry)"
+               @keydown.enter="onPresenceAvatarClick(entry)"
+               @keydown.space.prevent="onPresenceAvatarClick(entry)"
+             >
+               <img
+                 v-if="entry.avatarUrl"
+                 :src="entry.avatarUrl"
+                 :alt="entry.name"
+                 class="board-presence-img"
+               />
+               <span v-else class="board-presence-initials">{{ initials(entry.name) }}</span>
+             </div>
+           </div>
+         </div>
+       </Panel>
+
+       <Panel v-if="followedName" position="top-center">
+         <div class="board-presence surface-card flex items-center gap-2">
+           <span class="text-[13px]">{{ t('board.following', { name: followedName }) }}</span>
+           <UButton
+             icon="i-lucide-x"
+             size="xs"
+             color="neutral"
+             variant="ghost"
+             :aria-label="t('board.stopFollowing')"
+             @click="boardSession.stopFollowing()"
+           />
+         </div>
+       </Panel>
 
       <!-- Кластер управления снизу-слева — компоненты @vue-flow/controls (не свои кнопки),
         только переоформлены под токены приложения и в ряд, как в референсе (12.5). Иконки
@@ -2295,12 +2383,12 @@ function onConnect(event: Connection): void {
 
     <!-- Чужие курсоры участников (14.1) — позиционируются в world-координатах,
          как в Miro: курсор рисуется на том же месте у всех зрителей. `key` по
-         userId, чтобы Vue не перерожал компонент при обновлении позиции -->
+         participantId, чтобы Vue не перерожал компонент при обновлении позиции -->
     <BoardCursor
-      v-for="entry in boardSession.awareness"
-      :key="entry.userId"
-      :entry="entry"
-      :self-user-id="selfUserId"
+       v-for="entry in boardSession.awareness"
+       :key="entry.participantId"
+       :entry="entry"
+       :self-participant-id="boardSession.participantId"
     />
   </div>
 </template>
@@ -2476,6 +2564,16 @@ function onConnect(event: Connection): void {
 /* Себя выделяем акцентной обводкой */
 .board-presence-avatar--self {
   border-color: var(--ui-primary);
+}
+
+/* Чужую аватарку, за которую слежим — та же акцентная обводка */
+.board-presence-avatar--following {
+  border-color: var(--ui-primary);
+}
+
+/* Аватарка себя не кликабельна — курсор pointer только для чужих */
+.board-presence-avatar:not(.board-presence-avatar--self) {
+  cursor: pointer;
 }
 
 .board-presence-img {

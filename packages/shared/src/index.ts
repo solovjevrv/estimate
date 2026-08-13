@@ -936,7 +936,14 @@ export interface ApplyBoardOpsResult {
   revision: number;
 }
 
-export type BoardAwarenessKind = 'cursor' | 'drag' | 'idle' | 'editing';
+export type BoardAwarenessKind = 'cursor' | 'drag' | 'idle' | 'editing' | 'camera';
+
+/** Данные kind:'camera' в BoardAwarenessPayload.data / BoardAwarenessBroadcast.data */
+export interface BoardCameraAwarenessData {
+  x: number;
+  y: number;
+  zoom: number;
+}
 
 /** Сервер не заглядывает внутрь `data` — только ретранслирует остальным участникам доски */
 export interface BoardAwarenessPayload {
@@ -945,7 +952,8 @@ export interface BoardAwarenessPayload {
 }
 
 export interface BoardAwarenessBroadcast {
-  userId: string;
+  participantId: string;
+  userId: string | null;
   name: string;
   avatarUrl: string | null;
   isGuest: boolean;
@@ -956,8 +964,11 @@ export interface BoardAwarenessBroadcast {
 /**
  * Кто сейчас смотрит доску. userId — участник вебсокета: реальный id пользователя
  * или сессионный id гостя (14.4), не обязательно строка из таблицы users.
+ * participantId — стабильный ключ участника (14.5): id пользователя либо сессионный
+ * id гостя, по нему выводятся курсоры/presence и сквозит через awareness/presence.
  */
 export interface BoardPresenceEntry {
+  participantId: string;
   userId: string | null;
   name: string;
   avatarUrl: string | null;
