@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Locator } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
 
@@ -37,7 +37,7 @@ test.describe('Доски: стикер-паки', () => {
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(page.locator('.vue-flow__pane')).toBeVisible();
 
-    function stickerInPack(root: Locator, packLabel: string): Locator {
+    function stickerInPack(root: Page | Locator, packLabel: string): Locator {
       return root
         .locator('.board-sticker-picker-section', { hasText: packLabel })
         .locator('.board-sticker-picker-item')
