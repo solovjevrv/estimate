@@ -216,6 +216,10 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
 
   async function startEditing(): Promise<void> {
     if (editing.value || !canEdit.value) return;
+    // Вмешательство в работу другого участника — снимаем follow-mode (14.5)
+    if (boardSession.followedParticipantId) {
+      boardSession.stopFollowing();
+    }
     if (lockedBy.value) {
       toast.add({
         title: t('board.editingLocked', { name: lockedBy.value.name }),

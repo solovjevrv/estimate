@@ -222,4 +222,22 @@ describe('useRichTextEditing — мягкая блокировка (14.2)', () =
 
     wrapper.unmount();
   });
+
+  it('startEditing() срывает follow-mode — вмешательство в работу другого участника', async () => {
+    const boardSession = await joinWithLock(null);
+    // Симулируем активный follow-mode за другим участником
+    boardSession.followedParticipantId = 'other-participant';
+
+    const wrapper = mountEditor();
+    expect(wrapper.vm.editing).toBe(false);
+
+    await wrapper.vm.startEditing();
+    await nextTick();
+
+    // follow-mode снят — editing прошёл
+    expect(boardSession.followedParticipantId).toBe(null);
+    expect(wrapper.vm.editing).toBe(true);
+
+    wrapper.unmount();
+  });
 });

@@ -474,6 +474,19 @@ function canCreateItem(): boolean {
 }
 
 /**
+ * Вмешательство в работу: если пользователь сейчас следует за чужой камерой,
+ * любое действие по редактированию доски (создание, перемещение, ввод текста)
+ * должно снять режим слежения — иначе объект будет «улетать» за чужой viewport.
+ * Действие возможно только при canEdit — у read-only гостя слежение не
+ * нарушается (он не может вмешаться).
+ */
+function breakFollowOnEdit(): void {
+  if (props.canEdit && boardSession.followedParticipantId) {
+    boardSession.stopFollowing();
+  }
+}
+
+/**
  * ФРЕЙМ (не группа!), в чьи границы попадает точка — фрейм задуман как
  * мини-холст (референс Miro): всё, что создаётся или перетаскивается внутрь
  * его границ, сразу становится его содержимым (`parentId`), а не лежит
@@ -593,6 +606,7 @@ function createText(center: { x: number; y: number }): void {
  * что paste картинки (`onPaste` ниже), без лишнего клика по пустому месту.
  */
 function createEmojiAtCenter(emoji: ReactionEmoji): void {
+  breakFollowOnEdit();
   if (!props.canEdit || !canCreateItem()) return;
   const rect = rootEl.value?.getBoundingClientRect();
   if (!rect) return;
@@ -625,6 +639,7 @@ function createEmojiAtCenter(emoji: ReactionEmoji): void {
  * в центр текущего вьюпорта, без промежуточного клика по холсту.
  */
 function createStickerAtCenter(pack: string, id: string): void {
+  breakFollowOnEdit();
   if (!props.canEdit || !canCreateItem()) return;
   const rect = rootEl.value?.getBoundingClientRect();
   if (!rect) return;
@@ -922,6 +937,7 @@ async function replaceSelectedImage(): Promise<void> {
  * работают всегда независимо от инструмента.
  */
 function onPaneClick(event: MouseEvent): void {
+  breakFollowOnEdit();
   if (activeTool.value === 'sticky') {
     createSticky(flowPositionFromEvent(event));
   } else if (activeTool.value === 'shape') {
@@ -955,12 +971,14 @@ function onPaneClick(event: MouseEvent): void {
  */
 function onPaneDoubleClick(event: MouseEvent): void {
   if (!(event.target as HTMLElement).classList.contains('vue-flow__pane')) return;
+  breakFollowOnEdit();
   createSticky(flowPositionFromEvent(event));
 }
 
 /** Drag & Drop файла на канвас — создаёт элемент-картинку в месте курсора */
 function onPaneDrop(event: DragEvent): void {
   if (!props.canEdit) return;
+  breakFollowOnEdit();
   event.preventDefault();
   const file = event.dataTransfer?.files[0];
   if (file) {
@@ -1068,6 +1086,7 @@ async function onCopy(event: ClipboardEvent): Promise<void> {
 
 /** Вставка элементов доски из буфера (наш формат, 13.5) — работает и между досками */
 async function pasteBoardItems(items: BoardClipboardItem[]): Promise<void> {
+  breakFollowOnEdit();
   if (!props.canEdit || !items.length) return;
   if (!canCreateItems(items.length)) return;
 
@@ -1360,6 +1379,7 @@ function dragFamilyOf(node: BoardItem): BoardItem[] {
 }
 
 function onNodeDragStart({ nodes: dragged }: NodeDragEvent): void {
+  breakFollowOnEdit();
   for (const node of dragged as GraphNode<BoardItem>[]) {
     dragStartPositions.set(node.id, { x: node.computedPosition.x, y: node.computedPosition.y });
     // Спутники драга (дети контейнера ИЛИ соседи по группе, 14.3) не входят в
@@ -1866,6 +1886,7 @@ function setSelectedSticker(pack: string, id: string): void {
 function duplicateSelected(): void {
   const selected = selectedNodes.value;
   if (!selected.length) return;
+  breakFollowOnEdit();
   const sourceItems = expandContainerFamily(selected);
   if (!sourceItems.length || !canCreateItems(sourceItems.length)) return;
   const base = maxZIndex(props.items) + 1;
