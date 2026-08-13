@@ -25,7 +25,8 @@ test.describe('Доски: шаблоны', () => {
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
 
     // Выбираем шаблон Lean Canvas в выпадающем списке
-    await page.getByRole('combobox').selectOption({ label: 'Lean Canvas' });
+    await page.getByRole('combobox').click();
+    await page.getByRole('option', { name: 'Lean Canvas' }).click();
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(page.locator('.vue-flow__pane')).toBeVisible();
@@ -53,20 +54,20 @@ test.describe('Доски: шаблоны', () => {
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(page.locator('.vue-flow__pane')).toBeVisible();
 
-    // Галерея шаблонов появляется на пустой доске
-    await expect(page.locator('.surface-card').filter({ hasText: 'Выберите шаблон' })).toBeVisible();
+    // Триггер галереи шаблонов виден на пустой доске (нижняя панель холста)
+    await page.getByRole('button', { name: 'Начать с шаблона' }).click();
 
-    // Выбираем шаблон Start/Stop/Continue
+    // Выбираем шаблон Start/Stop/Continue в открывшейся галерее
     await page.getByRole('button', { name: /Ретро.*Start.*Stop.*Continue/i }).click();
 
     // 3 фрейма и 3 стикера
     await expect(page.locator('.vue-flow__node-frame')).toHaveCount(3);
     await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(3);
-    // Галерея исчезла
-    await expect(page.locator('.surface-card').filter({ hasText: 'Выберите шаблон' })).toBeHidden();
+    // Триггер исчез — доска больше не пустая
+    await expect(page.getByRole('button', { name: 'Начать с шаблона' })).toBeHidden();
   });
 
-  test('доска с контентом → галерея не показывается', async ({
+  test('доска с контентом → триггер шаблонов не показывается', async ({
     browser,
     createUser,
     loginAs,
@@ -90,7 +91,7 @@ test.describe('Доски: шаблоны', () => {
     await page.locator('.vue-flow__pane').click({ position: { x: 200, y: 200 } });
     await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(1);
 
-    await expect(page.locator('.surface-card').filter({ hasText: 'Выберите шаблон' })).toBeHidden();
+    await expect(page.getByRole('button', { name: 'Начать с шаблона' })).toBeHidden();
 
     // Применяем шаблон через ?applyTemplate — после reload доска снова пустая, но
     // applyTemplate не добавит элементы, т.к. доска уже не пустая
@@ -100,7 +101,7 @@ test.describe('Доски: шаблоны', () => {
     await expect(page.locator('.vue-flow__node-frame')).toHaveCount(0);
   });
 
-  test('анонимный гость на пустой доске по ссылке → галерея не показывается', async ({
+  test('анонимный гость на пустой доске по ссылке → триггер шаблонов не показывается', async ({
     browser,
     createUser,
     loginAs,
@@ -120,18 +121,27 @@ test.describe('Доски: шаблоны', () => {
     await expect(page.locator('.vue-flow__pane')).toBeVisible();
     const boardUrl = page.url();
 
-    // Владелец включает share по ссылке на view
-    await page.getByRole('button', { name: 'Поделиться ссылкой' }).click();
-    await page.getByRole('radio', { name: 'Только просмотр' }).click();
-    await page.getByRole('button', { name: /включить/i }).click();
+    // Владелец включает share по ссылке — кнопка спрятана в меню «Ещё действия»;
+    // тумблер сразу включает роль view (безопасный дефолт, BoardShareModal.vue onToggle)
+    await page.getByRole('button', { name: 'Ещё действия' }).click();
+    await page.getByRole('menuitem', { name: 'Поделиться ссылкой' }).click();
+    const shareResponse = page.waitForResponse(
+      (res) => res.url().includes('/share') && res.request().method() === 'PATCH',
+    );
+    await page.getByRole('switch').click();
+    await shareResponse;
+    await page.getByRole('button', { name: 'Готово' }).click();
 
     // Гость открывает в новой вкладке
     const guestContext = await newContext(browser);
     const guestPage = await guestContext.newPage();
     await guestPage.goto(boardUrl);
+    // Гость без сессии сперва представляется именем (14.4), потом заходит на доску
+    await guestPage.getByPlaceholder('Например, Мария').fill('E2E Guest');
+    await guestPage.getByRole('button', { name: 'Открыть доску' }).click();
     await expect(guestPage.locator('.vue-flow__pane')).toBeVisible();
 
-    // Галерея не показывается: у гостя нет доступа к /api/board-templates (401)
-    await expect(guestPage.locator('.surface-card').filter({ hasText: 'Выберите шаблон' })).toBeHidden();
+    // Триггер не показывается: у гостя нет доступа к /api/board-templates (401)
+    await expect(guestPage.getByRole('button', { name: 'Начать с шаблона' })).toBeHidden();
   });
 });

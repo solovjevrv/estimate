@@ -351,10 +351,16 @@ describeDb('картинки досок', () => {
 
       const service = await boardsService();
       const itemId = randomUUID();
-      await service.applyOps({ participantId: owner.id, userId: owner.id, name: owner.name }, boardId, [imageItem(itemId, url!)]);
-      await service.applyOps({ participantId: owner.id, userId: owner.id, name: owner.name }, boardId, [
-        { type: 'item.delete', clientOpId: randomUUID(), id: itemId },
-      ]);
+      await service.applyOps(
+        { participantId: owner.id, userId: owner.id, name: owner.name },
+        boardId,
+        [imageItem(itemId, url!)],
+      );
+      await service.applyOps(
+        { participantId: owner.id, userId: owner.id, name: owner.name },
+        boardId,
+        [{ type: 'item.delete', clientOpId: randomUUID(), id: itemId }],
+      );
 
       expect(existsSync(join(assetsDir, filename))).toBe(false);
     });
@@ -371,15 +377,23 @@ describeDb('картинки досок', () => {
 
       const service = await boardsService();
       const itemId = randomUUID();
-      await service.applyOps({ participantId: owner.id, userId: owner.id, name: owner.name }, boardId, [imageItem(itemId, url!)]);
-      await service.applyOps({ participantId: owner.id, userId: owner.id, name: owner.name }, boardId, [
-        {
-          type: 'item.patch',
-          clientOpId: randomUUID(),
-          id: itemId,
-          patch: { content: { type: 'sticky', text: 'Уже не картинка' } },
-        },
-      ]);
+      await service.applyOps(
+        { participantId: owner.id, userId: owner.id, name: owner.name },
+        boardId,
+        [imageItem(itemId, url!)],
+      );
+      await service.applyOps(
+        { participantId: owner.id, userId: owner.id, name: owner.name },
+        boardId,
+        [
+          {
+            type: 'item.patch',
+            clientOpId: randomUUID(),
+            id: itemId,
+            patch: { content: { type: 'sticky', text: 'Уже не картинка' } },
+          },
+        ],
+      );
 
       expect(existsSync(join(assetsDir, filename))).toBe(false);
     });
@@ -395,7 +409,11 @@ describeDb('картинки досок', () => {
       const filename = url!.split('/').pop()!;
 
       const service = await boardsService();
-      await service.applyOps({ participantId: owner.id, userId: owner.id, name: owner.name }, boardId, [imageItem(randomUUID(), url!)]);
+      await service.applyOps(
+        { participantId: owner.id, userId: owner.id, name: owner.name },
+        boardId,
+        [imageItem(randomUUID(), url!)],
+      );
       await app.inject({
         method: 'POST',
         url: `/api/boards/${boardId}/archive`,

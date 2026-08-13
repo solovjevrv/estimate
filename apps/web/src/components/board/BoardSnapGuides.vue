@@ -66,10 +66,7 @@ const items = computed(() =>
 </script>
 
 <template>
-  <div
-    v-if="items.length"
-    class="board-snap-guides"
-  >
+  <div v-if="items.length" class="board-snap-guides">
     <div
       v-for="item in items"
       :key="item.key"
@@ -81,41 +78,41 @@ const items = computed(() =>
 </template>
 
 <style scoped>
-  .board-snap-guides {
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 10;
-  }
+.board-snap-guides {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
 
-  .board-snap-guide {
-    position: absolute;
-    opacity: 0.4;
-    pointer-events: none;
-    box-sizing: border-box;
-  }
+.board-snap-guide {
+  position: absolute;
+  opacity: 0.4;
+  pointer-events: none;
+  box-sizing: border-box;
+}
 
-  .board-snap-guide--vertical {
-    width: 1px;
-    left: 0;
-    background: repeating-linear-gradient(
-      to bottom,
-      var(--brand-ink2) 0,
-      var(--brand-ink2) 3px,
-      transparent 3px,
-      transparent 7px
-    );
-  }
+.board-snap-guide--vertical {
+  width: 1px;
+  left: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--brand-ink2) 0,
+    var(--brand-ink2) 3px,
+    transparent 3px,
+    transparent 7px
+  );
+}
 
-  .board-snap-guide--horizontal {
-    height: 1px;
-    top: 0;
-    background: repeating-linear-gradient(
-      to right,
-      var(--brand-ink2) 0,
-      var(--brand-ink2) 3px,
-      transparent 3px,
-      transparent 7px
-    );
-  }
+.board-snap-guide--horizontal {
+  height: 1px;
+  top: 0;
+  background: repeating-linear-gradient(
+    to right,
+    var(--brand-ink2) 0,
+    var(--brand-ink2) 3px,
+    transparent 3px,
+    transparent 7px
+  );
+}
 </style>

@@ -458,16 +458,26 @@ export default {
     followAvatarLabel: 'Следить за {name}',
     followingPrefix: 'Вы следите за',
     stopFollowing: 'Перестать следить',
-  },
-  templates: {
-    pickerTitle: 'Выберите шаблон или начните с пустой доски',
-    pickerLabel: 'Шаблон (необязательно)',
-    pickerBlankOption: 'Пустая доска',
-    applyError: 'Не удалось применить шаблон, попробуйте ещё раз',
-    retroStartStopContinue: { name: 'Ретро: Start / Stop / Continue', description: 'Что начать, прекратить и продолжать делать' },
-    retroMadSadGlad: { name: 'Ретро: Mad / Sad / Glad', description: 'Что злило, расстраивало и радовало в спринте' },
-    leanCanvas: { name: 'Lean Canvas', description: 'Бизнес-модель на одной странице' },
-    storyMapping: { name: 'User Story Mapping', description: 'Путь пользователя и релизы по шагам' },
+    templates: {
+      pickerTrigger: 'Начать с шаблона',
+      pickerTitle: 'Выберите шаблон',
+      pickerLabel: 'Шаблон (необязательно)',
+      pickerBlankOption: 'Пустая доска',
+      applyError: 'Не удалось применить шаблон, попробуйте ещё раз',
+      retroStartStopContinue: {
+        name: 'Ретро: Start / Stop / Continue',
+        description: 'Что начать, прекратить и продолжать делать',
+      },
+      retroMadSadGlad: {
+        name: 'Ретро: Mad / Sad / Glad',
+        description: 'Что злило, расстраивало и радовало в спринте',
+      },
+      leanCanvas: { name: 'Lean Canvas', description: 'Бизнес-модель на одной странице' },
+      storyMapping: {
+        name: 'User Story Mapping',
+        description: 'Путь пользователя и релизы по шагам',
+      },
+    },
   },
   boards: {
     title: 'Мои доски',

@@ -3,8 +3,7 @@ import type { BoardColorHex } from './index';
 export type BoardTemplateScope = 'builtin' | 'personal' | 'team';
 
 export type BoardTemplateItemContent =
-  | { type: 'frame'; title: string }
-  | { type: 'sticky'; text: string };
+  { type: 'frame'; title: string } | { type: 'sticky'; text: string };
 
 export interface BoardTemplateItem {
   /** Локальный ключ шаблона, не id доски — связывает parentKey → key при построении ops */

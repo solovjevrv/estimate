@@ -15,7 +15,17 @@ const mockTemplates: BoardTemplate[] = [
     description: 'Что начать, прекратить и продолжать делать',
     descriptionKey: 'board.templates.retroStartStopContinue.description',
     items: [
-      { key: 'start-frame', parentKey: null, content: { type: 'frame', title: 'Start' }, x: 0, y: 0, width: 380, height: 480, color: '#B6E565', zIndex: 0 },
+      {
+        key: 'start-frame',
+        parentKey: null,
+        content: { type: 'frame', title: 'Start' },
+        x: 0,
+        y: 0,
+        width: 380,
+        height: 480,
+        color: '#B6E565',
+        zIndex: 0,
+      },
     ],
     createdAt: '2026-08-13T00:00:00.000Z',
   },

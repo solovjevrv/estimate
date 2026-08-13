@@ -82,9 +82,7 @@ async function onCreateBoard(event: FormSubmitEvent<{ title: string }>): Promise
     await router.push({
       name: 'board',
       params: { id: board.id },
-      query: createState.templateId
-        ? { applyTemplate: createState.templateId }
-        : undefined,
+      query: createState.templateId ? { applyTemplate: createState.templateId } : undefined,
     });
   } catch {
     toast.add({ title: t('board.createError'), color: 'error' });
@@ -319,7 +317,7 @@ async function confirmDelete(): Promise<void> {
               class="w-full"
               :ui="MODAL_INPUT_UI"
             />
-           </UFormField>
+          </UFormField>
 
           <UFormField :label="t('board.templates.pickerLabel')" name="templateId">
             <USelect

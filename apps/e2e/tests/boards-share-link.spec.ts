@@ -6,17 +6,17 @@ import { expect, test } from '../src/fixtures';
  * E2E на доски по ссылке (14.4). Проверяем сценарии share-by-link + guest access.
  */
 test.describe('доски по ссылке (14.4)', () => {
-test('владелец включает ссылку, анонимный гость заходит по ней в режиме просмотра', async ({
-  browser,
-  createUser,
-  loginAs,
-  newContext,
-}) => {
-  const owner = await createUser('share-owner');
-  const contextA = await newContext(browser);
-  const page = await contextA.newPage();
-  await loginAs(contextA, owner);
-  await page.goto('/boards');
+  test('владелец включает ссылку, анонимный гость заходит по ней в режиме просмотра', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    const owner = await createUser('share-owner');
+    const contextA = await newContext(browser);
+    const page = await contextA.newPage();
+    await loginAs(contextA, owner);
+    await page.goto('/boards');
 
     // Создаём личную доску
     await page.getByRole('button', { name: 'Создать доску' }).click();
@@ -73,7 +73,10 @@ test('владелец включает ссылку, анонимный гос�
     // Владелец включает share на правку
     await page.locator('button').filter({ hasText: 'Поделиться ссылкой' }).click();
     await page.getByRole('radio', { name: 'Просмотр и правка' }).click();
-    await page.locator('button').filter({ hasText: /включить/i }).click();
+    await page
+      .locator('button')
+      .filter({ hasText: /включить/i })
+      .click();
 
     const guestContext = await newContext(browser);
     const guestPage = await guestContext.newPage();
@@ -112,7 +115,10 @@ test('владелец включает ссылку, анонимный гос�
 
     await page.locator('button').filter({ hasText: 'Поделиться ссылкой' }).click();
     await page.getByRole('radio', { name: 'Только просмотр' }).click();
-    await page.locator('button').filter({ hasText: /включить/i }).click();
+    await page
+      .locator('button')
+      .filter({ hasText: /включить/i })
+      .click();
 
     // Отключаем — выбираем "Отключить доступ по ссылке" или режим null
     await page.locator('button').filter({ hasText: 'Отключить доступ по ссылке' }).click();

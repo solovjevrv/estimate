@@ -41,9 +41,9 @@ import {
   type BoardItemContent,
   type BoardItemPatchOp,
   type BoardOp,
-   type BoardPresenceEntry,
-   type BoardTemplate,
-   type BoardTextAlign,
+  type BoardPresenceEntry,
+  type BoardTemplate,
+  type BoardTextAlign,
   type ReactionEmoji,
 } from '@poker/shared';
 import type { DropdownMenuItem } from '@nuxt/ui';
@@ -183,20 +183,12 @@ const toast = useToast();
 const boardSession = useBoardSessionStore();
 const session = useSessionStore();
 
-const templatePickerDismissed = ref(false);
-
 async function onPickTemplate(template: BoardTemplate): Promise<void> {
-  templatePickerDismissed.value = true;
   try {
     await boardSession.applyOps(buildTemplateOps(template));
   } catch {
-    templatePickerDismissed.value = false;
     toast.add({ title: t('board.templates.applyError'), color: 'error' });
   }
-}
-
-function onDismissTemplatePicker(): void {
-  templatePickerDismissed.value = true;
 }
 
 const flowNodes = computed(() => toFlowNodes(props.items, props.canEdit));
@@ -2441,6 +2433,19 @@ function onConnect(event: Connection): void {
           <UIcon :name="isFullscreen ? 'i-lucide-shrink' : 'i-lucide-expand'" />
         </ControlButton>
       </Controls>
+
+      <!-- Компактный триггер галереи шаблонов (15.1) — только на пустой доске.
+           Обязательно ВНУТРИ VueFlow: сам компонент рендерит <Panel>, а тот
+           резолвит контекст через useVueFlow() (provide/inject по дереву
+           компонентов Vue, не по DOM) — снаружи <VueFlow> инъекция не сработает.
+           position="bottom-center" — единственный по умолчанию свободный угол
+           (bottom-left занят Controls, bottom-right — MiniMap, top-left — шапка
+           доски, left — BoardToolbar). -->
+      <BoardTemplatePicker
+        v-if="props.items.length === 0 && props.canEdit && session.isAuthenticated"
+        :is-authenticated="session.isAuthenticated"
+        @pick="onPickTemplate"
+      />
     </VueFlow>
 
     <!-- Чужие курсоры участников (14.1) — позиционируются в world-координатах,
@@ -2453,13 +2458,6 @@ function onConnect(event: Connection): void {
       :self-participant-id="boardSession.participantId"
     />
   </div>
-
-  <BoardTemplatePicker
-    v-if="props.items.length === 0 && props.canEdit && session.isAuthenticated && !templatePickerDismissed"
-    :is-authenticated="session.isAuthenticated"
-    @pick="onPickTemplate"
-    @dismiss="onDismissTemplatePicker"
-  />
 </template>
 <style scoped>
 .board-canvas-root:fullscreen {

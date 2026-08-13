@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import type { BoardTemplate } from '@poker/shared';
-import { onMounted } from 'vue';
+import { Panel } from '@vue-flow/core';
+import { ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import { MODAL_UI } from '../../lib/modal-ui';
 import { useBoardTemplatesStore } from '../../stores/board-templates';
 
-const props = defineProps<{
+defineProps<{
   /** Только для вошедших пользователей — гость даже с edit-доступом по ссылке получит 401 на /api/board-templates */
   isAuthenticated: boolean;
 }>();
@@ -13,18 +15,21 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** Выбран шаблон — применить его к доске */
   pick: [template: BoardTemplate];
-  /** «Пустая доска» — просто скрыть галерею */
-  dismiss: [];
 }>();
 
 const { t } = useI18n();
 const templatesStore = useBoardTemplatesStore();
+const open = ref(false);
 
-onMounted(() => {
-  if (props.isAuthenticated) {
-    void templatesStore.load();
-  }
-});
+function openGallery(): void {
+  void templatesStore.load();
+  open.value = true;
+}
+
+function pick(template: BoardTemplate): void {
+  open.value = false;
+  emit('pick', template);
+}
 
 function templateLabel(template: BoardTemplate): string {
   return template.nameKey ? t(template.nameKey) : template.name;
@@ -36,29 +41,26 @@ function templateDescription(template: BoardTemplate): string | null {
 </script>
 
 <template>
-  <div
-    v-if="isAuthenticated && templatesStore.loaded"
-    class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/30"
-  >
-    <div class="surface-card surface-card-lg mx-4 w-full max-w-3xl p-6">
-      <h2 class="font-heading mb-4 text-2xl font-extrabold">{{ t('board.templates.pickerTitle') }}</h2>
+  <Panel v-if="isAuthenticated" position="bottom-center">
+    <button
+      type="button"
+      class="surface-card flex items-center gap-2 px-4 py-2.5 text-sm font-semibold"
+      @click="openGallery"
+    >
+      <UIcon name="i-lucide-layout-template" class="size-4 text-[var(--brand-ink)]" />
+      {{ t('board.templates.pickerTrigger') }}
+    </button>
+  </Panel>
 
-      <div class="mb-6 grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <button
-          type="button"
-          class="surface-card hover:bg-elevated/50 flex flex-col items-center gap-3 p-4 text-center"
-          @click="emit('dismiss')"
-        >
-          <UIcon name="i-lucide-x" class="text-muted size-8" />
-          <span class="font-medium">{{ t('board.templates.pickerBlankOption') }}</span>
-        </button>
-
+  <UModal v-model:open="open" :title="t('board.templates.pickerTitle')" :ui="MODAL_UI">
+    <template #body>
+      <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <button
           v-for="template in templatesStore.templates"
           :key="template.id"
           type="button"
           class="surface-card hover:bg-elevated/50 flex flex-col items-center gap-3 p-4 text-center"
-          @click="emit('pick', template)"
+          @click="pick(template)"
         >
           <UIcon name="i-lucide-layout-template" class="size-8 text-[var(--brand-ink)]" />
           <div class="flex flex-col">
@@ -69,12 +71,6 @@ function templateDescription(template: BoardTemplate): string | null {
           </div>
         </button>
       </div>
-
-      <div class="flex justify-center">
-        <UButton color="neutral" variant="outline" @click="emit('dismiss')">
-          {{ t('teams.cancel') }}
-        </UButton>
-      </div>
-    </div>
-  </div>
+    </template>
+  </UModal>
 </template>

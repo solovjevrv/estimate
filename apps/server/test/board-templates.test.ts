@@ -34,9 +34,7 @@ describeDb('репозиторий шаблонов досок', () => {
   });
 
   afterAll(async () => {
-    await db
-      .delete(schema.boardTemplates)
-      .where(eq(schema.boardTemplates.scope, 'builtin'));
+    await db.delete(schema.boardTemplates).where(eq(schema.boardTemplates.scope, 'builtin'));
     await pool?.end();
   });
 

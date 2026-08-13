@@ -80,12 +80,8 @@
           "name": "board_edges_board_id_boards_id_fk",
           "tableFrom": "board_edges",
           "tableTo": "boards",
-          "columnsFrom": [
-            "board_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["board_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -93,12 +89,8 @@
           "name": "board_edges_source_item_id_board_items_id_fk",
           "tableFrom": "board_edges",
           "tableTo": "board_items",
-          "columnsFrom": [
-            "source_item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["source_item_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -106,12 +98,8 @@
           "name": "board_edges_target_item_id_board_items_id_fk",
           "tableFrom": "board_edges",
           "tableTo": "board_items",
-          "columnsFrom": [
-            "target_item_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["target_item_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -238,12 +226,8 @@
           "name": "board_items_board_id_boards_id_fk",
           "tableFrom": "board_items",
           "tableTo": "boards",
-          "columnsFrom": [
-            "board_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["board_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -251,12 +235,8 @@
           "name": "board_items_created_by_users_id_fk",
           "tableFrom": "board_items",
           "tableTo": "users",
-          "columnsFrom": [
-            "created_by"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["created_by"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -372,12 +352,8 @@
           "name": "board_templates_owner_id_users_id_fk",
           "tableFrom": "board_templates",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -385,12 +361,8 @@
           "name": "board_templates_team_id_teams_id_fk",
           "tableFrom": "board_templates",
           "tableTo": "teams",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -489,12 +461,8 @@
           "name": "boards_team_id_teams_id_fk",
           "tableFrom": "boards",
           "tableTo": "teams",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -502,12 +470,8 @@
           "name": "boards_owner_id_users_id_fk",
           "tableFrom": "boards",
           "tableTo": "users",
-          "columnsFrom": [
-            "owner_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["owner_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -617,12 +581,8 @@
           "name": "rooms_team_id_teams_id_fk",
           "tableFrom": "rooms",
           "tableTo": "teams",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         },
@@ -630,12 +590,8 @@
           "name": "rooms_creator_id_users_id_fk",
           "tableFrom": "rooms",
           "tableTo": "users",
-          "columnsFrom": [
-            "creator_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["creator_id"],
+          "columnsTo": ["id"],
           "onDelete": "set null",
           "onUpdate": "no action"
         }
@@ -732,12 +688,8 @@
           "name": "rounds_room_id_rooms_id_fk",
           "tableFrom": "rounds",
           "tableTo": "rooms",
-          "columnsFrom": [
-            "room_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["room_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -816,12 +768,8 @@
           "name": "sessions_user_id_users_id_fk",
           "tableFrom": "sessions",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -870,12 +818,8 @@
           "name": "team_members_team_id_teams_id_fk",
           "tableFrom": "team_members",
           "tableTo": "teams",
-          "columnsFrom": [
-            "team_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["team_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -883,12 +827,8 @@
           "name": "team_members_user_id_users_id_fk",
           "tableFrom": "team_members",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -896,10 +836,7 @@
       "compositePrimaryKeys": {
         "team_members_team_id_user_id_pk": {
           "name": "team_members_team_id_user_id_pk",
-          "columns": [
-            "team_id",
-            "user_id"
-          ]
+          "columns": ["team_id", "user_id"]
         }
       },
       "uniqueConstraints": {},
@@ -945,9 +882,7 @@
         "teams_invite_code_unique": {
           "name": "teams_invite_code_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "invite_code"
-          ]
+          "columns": ["invite_code"]
         }
       },
       "policies": {},
@@ -1181,12 +1116,8 @@
           "name": "votes_round_id_rounds_id_fk",
           "tableFrom": "votes",
           "tableTo": "rounds",
-          "columnsFrom": [
-            "round_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["round_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -1194,12 +1125,8 @@
           "name": "votes_user_id_users_id_fk",
           "tableFrom": "votes",
           "tableTo": "users",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -1228,69 +1155,42 @@
     "public.auth_provider": {
       "name": "auth_provider",
       "schema": "public",
-      "values": [
-        "google",
-        "yandex"
-      ]
+      "values": ["google", "yandex"]
     },
     "public.board_share_role": {
       "name": "board_share_role",
       "schema": "public",
-      "values": [
-        "view",
-        "edit"
-      ]
+      "values": ["view", "edit"]
     },
     "public.board_status": {
       "name": "board_status",
       "schema": "public",
-      "values": [
-        "active",
-        "archived"
-      ]
+      "values": ["active", "archived"]
     },
     "public.board_template_scope": {
       "name": "board_template_scope",
       "schema": "public",
-      "values": [
-        "builtin",
-        "personal",
-        "team"
-      ]
+      "values": ["builtin", "personal", "team"]
     },
     "public.deck_type": {
       "name": "deck_type",
       "schema": "public",
-      "values": [
-        "fibonacci",
-        "scale_0_5",
-        "tshirt"
-      ]
+      "values": ["fibonacci", "scale_0_5", "tshirt"]
     },
     "public.room_status": {
       "name": "room_status",
       "schema": "public",
-      "values": [
-        "active",
-        "closed"
-      ]
+      "values": ["active", "closed"]
     },
     "public.round_status": {
       "name": "round_status",
       "schema": "public",
-      "values": [
-        "voting",
-        "revealed"
-      ]
+      "values": ["voting", "revealed"]
     },
     "public.team_role": {
       "name": "team_role",
       "schema": "public",
-      "values": [
-        "admin",
-        "member",
-        "guest"
-      ]
+      "values": ["admin", "member", "guest"]
     }
   },
   "schemas": {},
