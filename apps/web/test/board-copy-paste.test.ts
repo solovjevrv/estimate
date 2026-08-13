@@ -116,7 +116,11 @@ describe('serializeSelection / parseClipboardPayload — round-trip', () => {
     });
     const sticky = sourceItem({ type: 'sticky', text: 'ok' });
 
-    const json = await serializeSelection([image, sticky], [], fetchMock as unknown as typeof fetch);
+    const json = await serializeSelection(
+      [image, sticky],
+      [],
+      fetchMock as unknown as typeof fetch,
+    );
     const payload = parseClipboardPayload(json);
 
     expect(payload?.items).toHaveLength(1);
@@ -182,21 +186,48 @@ describe('serializeSelection / parseClipboardPayload — round-trip', () => {
   it('включает рёбра, у которых оба конца входят в выделение, с ремапом на индексы items', async () => {
     const a = sourceItem({ type: 'sticky', text: 'A' });
     const b = sourceItem({ type: 'sticky', text: 'B' }, { x: 200 });
-    const json = await serializeSelection([a, b], [
-      { sourceItemId: a.id, targetItemId: b.id, sourceHandle: 'right', targetHandle: 'left', label: null, style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' } },
-    ]);
+    const json = await serializeSelection(
+      [a, b],
+      [
+        {
+          sourceItemId: a.id,
+          targetItemId: b.id,
+          sourceHandle: 'right',
+          targetHandle: 'left',
+          label: null,
+          style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
+        },
+      ],
+    );
     const payload = parseClipboardPayload(json);
     expect(payload?.edges).toEqual([
-      { sourceIndex: 0, targetIndex: 1, sourceHandle: 'right', targetHandle: 'left', label: null, style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' } },
+      {
+        sourceIndex: 0,
+        targetIndex: 1,
+        sourceHandle: 'right',
+        targetHandle: 'left',
+        label: null,
+        style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
+      },
     ]);
   });
 
   it('отбрасывает ребро, если один из концов не входит в выделение', async () => {
     const a = sourceItem({ type: 'sticky', text: 'A' });
     const b = sourceItem({ type: 'sticky', text: 'B' });
-    const json = await serializeSelection([a], [
-      { sourceItemId: a.id, targetItemId: b.id, sourceHandle: null, targetHandle: null, label: null, style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' } },
-    ]);
+    const json = await serializeSelection(
+      [a],
+      [
+        {
+          sourceItemId: a.id,
+          targetItemId: b.id,
+          sourceHandle: null,
+          targetHandle: null,
+          label: null,
+          style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
+        },
+      ],
+    );
     const payload = parseClipboardPayload(json);
     expect(payload?.edges).toEqual([]);
   });
@@ -207,7 +238,16 @@ describe('serializeSelection / parseClipboardPayload — round-trip', () => {
     const sticky = sourceItem({ type: 'sticky', text: 'A' });
     const json = await serializeSelection(
       [image, sticky],
-      [{ sourceItemId: image.id, targetItemId: sticky.id, sourceHandle: null, targetHandle: null, label: null, style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' } }],
+      [
+        {
+          sourceItemId: image.id,
+          targetItemId: sticky.id,
+          sourceHandle: null,
+          targetHandle: null,
+          label: null,
+          style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
+        },
+      ],
       failingFetch as unknown as typeof fetch,
     );
     const payload = parseClipboardPayload(json);
@@ -241,6 +281,42 @@ describe('parseClipboardPayload — валидация формата', () => {
         }),
       ),
     ).toBeNull();
+  });
+
+  it('поддерживает payload v1, скопированный до появления рёбер', () => {
+    const payload = parseClipboardPayload(
+      JSON.stringify({
+        source: BOARD_CLIPBOARD_SOURCE,
+        version: BOARD_CLIPBOARD_VERSION,
+        items: [],
+      }),
+    );
+
+    expect(payload?.edges).toEqual([]);
+  });
+
+  it('отбрасывает невалидные рёбра из clipboard payload', () => {
+    const payload = parseClipboardPayload(
+      JSON.stringify({
+        source: BOARD_CLIPBOARD_SOURCE,
+        version: BOARD_CLIPBOARD_VERSION,
+        items: [{ content: { type: 'sticky', text: 'A' } }],
+        edges: [
+          null,
+          { sourceIndex: 0, targetIndex: 1 },
+          {
+            sourceIndex: 0,
+            targetIndex: 0,
+            sourceHandle: null,
+            targetHandle: null,
+            label: null,
+            style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
+          },
+        ],
+      }),
+    );
+
+    expect(payload?.edges).toHaveLength(1);
   });
 
   it('битый JSON — null, не бросает исключение', () => {

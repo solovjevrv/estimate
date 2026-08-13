@@ -178,7 +178,7 @@ test.describe('Доски: копирование/вставка', () => {
     expect(served.headers()['content-type']).toBe('image/webp');
   });
 
-  test('копирование/дублирование двух связанных стрелкой стикеров переносит и стрелку', async ({
+  test('копирование/вставка и дублирование двух связанных стикеров переносят стрелку', async ({
     browser,
     createUser,
     loginAs,
@@ -187,15 +187,16 @@ test.describe('Доски: копирование/вставка', () => {
     test.slow();
     const owner = await createUser('board-copy-edges');
     const context = await newContext(browser);
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     await loginAs(context, owner);
     const page = await context.newPage();
 
     // Создаём доску
     await page.goto('/boards');
     await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
-    await page.getByPlaceholder('Например, Ретро спринта 24').fill(
-      `${E2E_ROOM_PREFIX}CopyEdges ${randomUUID().slice(0, 8)}`,
-    );
+    await page
+      .getByPlaceholder('Например, Ретро спринта 24')
+      .fill(`${E2E_ROOM_PREFIX}CopyEdges ${randomUUID().slice(0, 8)}`);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(page.locator('.vue-flow__pane')).toBeVisible();
@@ -231,7 +232,10 @@ test.describe('Доски: копирование/вставка', () => {
     const targetBox = await targetHandle.boundingBox();
     expect(sourceBox).not.toBeNull();
     expect(targetBox).not.toBeNull();
-    await page.mouse.move(sourceBox!.x + sourceBox!.width / 2, sourceBox!.y + sourceBox!.height / 2);
+    await page.mouse.move(
+      sourceBox!.x + sourceBox!.width / 2,
+      sourceBox!.y + sourceBox!.height / 2,
+    );
     await page.mouse.down();
     await page.mouse.move(
       targetBox!.x + targetBox!.width / 2,
@@ -244,21 +248,34 @@ test.describe('Доски: копирование/вставка', () => {
 
     // --- Выделяем оба стикера (shift-click) ---
     await page.locator(`.vue-flow__node[data-id="${firstId}"]`).click();
-    await page
-      .locator(`.vue-flow__node[data-id="${secondId}"]`)
-      .click({ modifiers: ['Shift'] });
+    await page.locator(`.vue-flow__node[data-id="${secondId}"]`).click({ modifiers: ['Shift'] });
     await expect(page.locator('.vue-flow__node.selected')).toHaveCount(2);
 
-    // --- Дублируем (Ctrl/Cmd+D) — должно перенести и рёбро ---
+    // --- Копируем и вставляем (Ctrl/Cmd+C / Ctrl/Cmd+V) ---
+    const clipboardBeforeCopy = await page.evaluate(() => navigator.clipboard.readText());
+    await page.keyboard.press('ControlOrMeta+c');
+    await expect(async () => {
+      expect(await page.evaluate(() => navigator.clipboard.readText())).not.toBe(
+        clipboardBeforeCopy,
+      );
+    }).toPass({ timeout: 5_000 });
+    await page.keyboard.press('Escape');
+    await page.keyboard.press('ControlOrMeta+v');
+
+    // 2 оригинала + 2 вставленные копии; у каждой пары — своё ребро
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(4);
+    await expect(page.locator('.vue-flow__edge')).toHaveCount(2);
+    await expect(page.locator('.vue-flow__node.selected')).toHaveCount(2);
+
+    // --- Дублируем вставленные копии (Ctrl/Cmd+D) — должно перенести и рёбро ---
     await page.keyboard.press('ControlOrMeta+d');
 
-    // 2 оригинала + 2 копии
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(4);
-    // оригинальное ребро + новое между копиями
-    await expect(page.locator('.vue-flow__edge')).toHaveCount(2);
+    // 2 оригинала + 2 вставленные + 2 дубликата
+    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(6);
+    // оригинальное ребро + для вставленной и дублированной пар
+    await expect(page.locator('.vue-flow__edge')).toHaveCount(3);
 
-    // Среди выделенных узлов ровно 2 (копии не выделяются дублированием, но
-    // исходные остаются выбранными — проверяем, что не выделено всё подряд)
+    // Дублирование не меняет выделение вставленной пары.
     await expect(page.locator('.vue-flow__node.selected')).toHaveCount(2);
   });
 });

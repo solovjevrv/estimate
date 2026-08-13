@@ -9,7 +9,12 @@
  * вставка тогда работает и на другой доске без обращения к исходному URL.
  * Остальные типы контента копируются как есть.
  */
-import type { BoardEdgeStyle, BoardImageContent, BoardItemContent, BoardItemStyle } from '@poker/shared';
+import type {
+  BoardEdgeStyle,
+  BoardImageContent,
+  BoardItemContent,
+  BoardItemStyle,
+} from '@poker/shared';
 
 export const BOARD_CLIPBOARD_SOURCE = 'poker-board';
 export const BOARD_CLIPBOARD_VERSION = 1;
@@ -259,13 +264,52 @@ export function parseClipboardPayload(text: string): BoardClipboardPayload | nul
   }
   if (!data || typeof data !== 'object') return null;
   const record = data as Record<string, unknown>;
+  const items = record.items;
   if (
     record.source !== BOARD_CLIPBOARD_SOURCE ||
     record.version !== BOARD_CLIPBOARD_VERSION ||
-    !Array.isArray(record.items) ||
-    !Array.isArray(record.edges)
+    !Array.isArray(items)
   ) {
     return null;
   }
-  return data as BoardClipboardPayload;
+  // До 18.1 поле edges в payload v1 отсутствовало. Считаем его пустым, чтобы
+  // данные, скопированные до обновления, по-прежнему можно было вставить.
+  const rawEdges = record.edges ?? [];
+  if (!Array.isArray(rawEdges)) return null;
+
+  const edges = rawEdges.filter((edge): edge is BoardClipboardEdge => {
+    if (!edge || typeof edge !== 'object') return false;
+    const candidate = edge as Record<string, unknown>;
+    const style = candidate.style;
+    if (!style || typeof style !== 'object') return false;
+    const styleRecord = style as Record<string, unknown>;
+    return (
+      Number.isInteger(candidate.sourceIndex) &&
+      (candidate.sourceIndex as number) >= 0 &&
+      (candidate.sourceIndex as number) < items.length &&
+      Number.isInteger(candidate.targetIndex) &&
+      (candidate.targetIndex as number) >= 0 &&
+      (candidate.targetIndex as number) < items.length &&
+      (typeof candidate.sourceHandle === 'string' || candidate.sourceHandle === null) &&
+      (typeof candidate.targetHandle === 'string' || candidate.targetHandle === null) &&
+      (typeof candidate.label === 'string' || candidate.label === null) &&
+      (styleRecord.color === undefined || typeof styleRecord.color === 'string') &&
+      (styleRecord.line === 'straight' ||
+        styleRecord.line === 'orthogonal' ||
+        styleRecord.line === 'curved') &&
+      (styleRecord.markerStart === 'none' ||
+        styleRecord.markerStart === 'arrow' ||
+        styleRecord.markerStart === 'dot') &&
+      (styleRecord.markerEnd === 'none' ||
+        styleRecord.markerEnd === 'arrow' ||
+        styleRecord.markerEnd === 'dot')
+    );
+  });
+
+  return {
+    source: BOARD_CLIPBOARD_SOURCE,
+    version: BOARD_CLIPBOARD_VERSION,
+    items: items as BoardClipboardItem[],
+    edges,
+  };
 }

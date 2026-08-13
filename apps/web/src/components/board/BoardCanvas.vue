@@ -43,7 +43,6 @@ import {
   type BoardItemPatchOp,
   type BoardOp,
   type BoardPresenceEntry,
-  type BoardTemplate,
   type BoardTextAlign,
   type ReactionEmoji,
 } from '@poker/shared';
@@ -1124,7 +1123,10 @@ async function onCopy(event: ClipboardEvent): Promise<void> {
 }
 
 /** Вставка элементов доски из буфера (наш формат, 13.5) — работает и между досками */
-async function pasteBoardItems(items: BoardClipboardItem[], edges: BoardClipboardEdge[]): Promise<void> {
+async function pasteBoardItems(
+  items: BoardClipboardItem[],
+  edges: BoardClipboardEdge[],
+): Promise<void> {
   breakFollowOnEdit();
   if (!props.canEdit || !items.length) return;
   if (!canCreateItems(items.length)) return;
