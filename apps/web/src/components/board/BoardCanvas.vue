@@ -937,6 +937,18 @@ async function replaceSelectedImage(): Promise<void> {
  * работают всегда независимо от инструмента.
  */
 function onPaneClick(event: MouseEvent): void {
+  // Клик пустым инструментом (select/arrow) ничего не создаёт и не редактирует —
+  // follow-mode рвать незачем, иначе обычный клик для снятия выделения во время
+  // слежения обрывал бы его без какого-либо реального вмешательства в доску
+  if (
+    activeTool.value !== 'sticky' &&
+    activeTool.value !== 'shape' &&
+    activeTool.value !== 'text' &&
+    activeTool.value !== 'image' &&
+    activeTool.value !== 'frame'
+  ) {
+    return;
+  }
   breakFollowOnEdit();
   if (activeTool.value === 'sticky') {
     createSticky(flowPositionFromEvent(event));
@@ -953,8 +965,6 @@ function onPaneClick(event: MouseEvent): void {
     return;
   } else if (activeTool.value === 'frame') {
     createFrame(flowPositionFromEvent(event));
-  } else {
-    return;
   }
   activeTool.value = 'select';
 }

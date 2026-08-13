@@ -380,7 +380,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
           if (!activeIds.has(participantId)) awarenessByParticipant.delete(participantId);
         }
         // Та же самая «призрачная блокировка» (14.2): если участник отключился,
-        // его editing-запь тоже навсегда не исчезнет без этой сверки — и
+        // его editing-запись тоже навсегда не исчезнет без этой сверки — и
         // элемент останется недоступным для редактирования вечно.
         for (const [itemId, lock] of editingByItem) {
           if (!activeIds.has(lock.participantId)) editingByItem.delete(itemId);
@@ -406,7 +406,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
         }
         // Мягкая блокировка редактирования (14.2) — отдельная ветка, НЕ
         // трогает awarenessByParticipant: курсорные патчи (mousemove) не должны
-        // затирать editing-запь, иначе индикатор блокировки погаснет посреди
+        // затирать editing-запись, иначе индикатор блокировки погаснет посреди
         // реального редактирования
         if (payload.kind === 'editing') {
           const { itemId, active: isActive } = payload.data as {

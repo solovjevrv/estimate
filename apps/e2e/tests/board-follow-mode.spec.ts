@@ -80,20 +80,25 @@ test.describe('follow-mode камеры (14.5)', () => {
     await pageB.waitForTimeout(300);
 
     // --- B кликает аватарку A (НЕ свою) → входит в follow-mode ---
-    const nonSelfAvatars = pageB.locator('.board-presence-avatar:not(.board-presence-avatar--self)');
+    const nonSelfAvatars = pageB.locator(
+      '.board-presence-avatar:not(.board-presence-avatar--self)',
+    );
     await expect(nonSelfAvatars).toHaveCount(1);
     const avatarBox = await nonSelfAvatars.boundingBox();
     expect(avatarBox).not.toBeNull();
-    await pageB.mouse.click(avatarBox!.x + avatarBox!.width / 2, avatarBox!.y + avatarBox!.height / 2);
+    await pageB.mouse.click(
+      avatarBox!.x + avatarBox!.width / 2,
+      avatarBox!.y + avatarBox!.height / 2,
+    );
 
-    // Включился follow-mode: появился чип «Слежу за…» и обводка --following
-    await expect(pageB.locator('.board-presence').filter({ hasText: /Слежу за/i })).toBeVisible();
+    // Включился follow-mode: появился чип «Вы следите за…» и обводка --following
+    await expect(
+      pageB.locator('.board-following').filter({ hasText: /Вы следите за/i }),
+    ).toBeVisible();
     await expect(pageB.locator('.board-presence-avatar--following')).toHaveCount(1);
 
     // viewport B должен совпадать с позицией камеры A
-    const viewportB = await pageB
-      .locator('.vue-flow__viewport')
-      .getAttribute('style');
+    const viewportB = await pageB.locator('.vue-flow__viewport').getAttribute('style');
     // Позиция изменилась от начальной (fit-view-on-init), а не осталась в нуле
     expect(viewportB).not.toBeNull();
     expect(viewportB).toMatch(/translate\(\s*-?\d+/);
@@ -155,15 +160,26 @@ test('ручной пан/зум участника B во время слеже
   expect(paneBBox).not.toBeNull();
   await pageB.mouse.move(paneBBox!.x + paneBBox!.width / 2, paneBBox!.y + paneBBox!.height / 2);
   await pageB.mouse.down();
-  await pageB.mouse.move(paneBBox!.x + paneBBox!.width / 2 + 100, paneBBox!.y + paneBBox!.height / 2 + 50, { steps: 3 });
+  await pageB.mouse.move(
+    paneBBox!.x + paneBBox!.width / 2 + 100,
+    paneBBox!.y + paneBBox!.height / 2 + 50,
+    { steps: 3 },
+  );
   await pageB.mouse.up();
 
   // follow-mode разорван: обводка --following исчезла, чип исчез
   await expect(pageB.locator('.board-presence-avatar--following')).toHaveCount(0);
-  await expect(pageB.locator('.board-presence').filter({ hasText: /Слежу за/i })).toHaveCount(0);
+  await expect(pageB.locator('.board-following').filter({ hasText: /Вы следите за/i })).toHaveCount(
+    0,
+  );
 });
 
-test('уход A с доски снимает слежение у B', async ({ browser, createUser, loginAs, newContext }) => {
+test('уход A с доски снимает слежение у B', async ({
+  browser,
+  createUser,
+  loginAs,
+  newContext,
+}) => {
   test.slow();
 
   const owner = await createUser('follow-leave-owner');
@@ -213,5 +229,7 @@ test('уход A с доски снимает слежение у B', async ({ b
   // B автоматически снимает слежение — A исчез из presence
   await expect(pageB.locator('.board-presence-avatar')).toHaveCount(1);
   await expect(pageB.locator('.board-presence-avatar--following')).toHaveCount(0);
-  await expect(pageB.locator('.board-presence').filter({ hasText: /Слежу за/i })).toHaveCount(0);
+  await expect(pageB.locator('.board-following').filter({ hasText: /Вы следите за/i })).toHaveCount(
+    0,
+  );
 });
