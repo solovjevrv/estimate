@@ -37,6 +37,7 @@ PROGRESS_BUGS.md
 PROGRESS_ARCHIVE.md
 PROGRESS_ARCHIVE/
 REVIEW_*.md
+REFACTORING_PLAN.md
 
 # Дизайн-референсы (мокапы Claude Design и т.п.) — рабочий материал, не код
 .design/

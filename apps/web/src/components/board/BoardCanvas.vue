@@ -33,6 +33,7 @@ import {
   BOARD_IMAGE_ALLOWED_MIME_TYPES,
   BOARD_IMAGE_MAX_BYTES,
   BOARD_MAX_ITEMS,
+  BOARD_OPS_BATCH_MAX,
   isBoardContainer,
   type Board,
   type BoardColorHex,
@@ -105,7 +106,9 @@ import { readableTextColor } from '../../lib/board/board-colors';
 import type { BoardTextEditorHandle } from '../../lib/board/board-rich-text';
 import {
   base64ToFile,
+  type BoardClipboardEdge,
   type BoardClipboardItem,
+  type BoardClipboardSourceEdge,
   hasActiveTextSelection,
   isPlainTextField,
   parseClipboardPayload,
@@ -471,6 +474,21 @@ function canCreateItems(count: number): boolean {
 
 function canCreateItem(): boolean {
   return canCreateItems(1);
+}
+
+/**
+ * Батч WS `board:apply` ограничен BOARD_OPS_BATCH_MAX операций за раз (12.1) —
+ * копирование/дублирование теперь может слать item.create + edge.create в
+ * одном батче, так что при насыщенной схеме (много карточек и связей) лимит
+ * можно превысить даже при небольшом числе items. Без этой проверки батч
+ * молча отклонился бы сервером целиком (ничего не вставилось бы).
+ */
+function canApplyOpsCount(count: number): boolean {
+  if (count > BOARD_OPS_BATCH_MAX) {
+    toast.add({ title: t('board.tooManyOpsAtOnce'), color: 'error' });
+    return false;
+  }
+  return true;
 }
 
 /**
@@ -1021,7 +1039,7 @@ function onPaste(event: ClipboardEvent): void {
     const payload = text ? parseClipboardPayload(text) : null;
     if (payload) {
       event.preventDefault();
-      void pasteBoardItems(payload.items);
+      void pasteBoardItems(payload.items, payload.edges);
       return;
     }
   }
@@ -1068,11 +1086,13 @@ async function onCopy(event: ClipboardEvent): Promise<void> {
   if (!selected.length) return;
   event.preventDefault();
 
-  // Копируя фрейм/группу целиком или хотя бы одного участника группы (14.3),
-  // тянем за собой и остальное содержимое — иначе вставленная копия оставалась
-  // бы пустой оболочкой без детей, либо единственным вырванным из группы
-  // элементом (найдено вручную)
   const sourceItems = expandContainerFamily(selected);
+  const sourceIds = new Set(sourceItems.map((item) => item.id));
+  // Только рёбра, у которых ОБА конца входят в копируемый набор — Miro-подобное
+  // поведение: связь с элементом ВНЕ выделения не переносится (некуда её вести)
+  const sourceEdges = props.edges.filter(
+    (edge) => sourceIds.has(edge.sourceItemId) && sourceIds.has(edge.targetItemId),
+  );
 
   const payload = await serializeSelection(
     sourceItems.map((item) => ({
@@ -1086,6 +1106,14 @@ async function onCopy(event: ClipboardEvent): Promise<void> {
       width: item.width,
       height: item.height,
     })),
+    sourceEdges.map((edge): BoardClipboardSourceEdge => ({
+      sourceItemId: edge.sourceItemId,
+      targetItemId: edge.targetItemId,
+      sourceHandle: edge.sourceHandle,
+      targetHandle: edge.targetHandle,
+      label: edge.label,
+      style: edge.style,
+    })),
   );
   try {
     await navigator.clipboard.writeText(payload);
@@ -1095,10 +1123,14 @@ async function onCopy(event: ClipboardEvent): Promise<void> {
 }
 
 /** Вставка элементов доски из буфера (наш формат, 13.5) — работает и между досками */
-async function pasteBoardItems(items: BoardClipboardItem[]): Promise<void> {
+async function pasteBoardItems(
+  items: BoardClipboardItem[],
+  edges: BoardClipboardEdge[],
+): Promise<void> {
   breakFollowOnEdit();
   if (!props.canEdit || !items.length) return;
   if (!canCreateItems(items.length)) return;
+  if (!canApplyOpsCount(items.length + edges.length)) return;
 
   const rect = rootEl.value?.getBoundingClientRect();
   if (!rect) return;
@@ -1156,6 +1188,27 @@ async function pasteBoardItems(items: BoardClipboardItem[]): Promise<void> {
         content,
         style: item.style,
         reactions: [],
+      },
+    });
+  }
+
+  for (const edge of edges) {
+    const sourceItemId = newIds[edge.sourceIndex];
+    const targetItemId = newIds[edge.targetIndex];
+    // Один из концов не вставился (например, картинку не удалось перезалить) —
+    // рёбро в никуда не создаём
+    if (!sourceItemId || !targetItemId) continue;
+    ops.push({
+      type: 'edge.create',
+      clientOpId: uuid(),
+      edge: {
+        id: uuid(),
+        sourceItemId,
+        targetItemId,
+        sourceHandle: edge.sourceHandle,
+        targetHandle: edge.targetHandle,
+        label: edge.label,
+        style: edge.style,
       },
     });
   }
@@ -1899,33 +1952,51 @@ function duplicateSelected(): void {
   breakFollowOnEdit();
   const sourceItems = expandContainerFamily(selected);
   if (!sourceItems.length || !canCreateItems(sourceItems.length)) return;
+  const sourceIds = new Set(sourceItems.map((item) => item.id));
+  const sourceEdges = props.edges.filter(
+    (edge) => sourceIds.has(edge.sourceItemId) && sourceIds.has(edge.targetItemId),
+  );
+  if (!canApplyOpsCount(sourceItems.length + sourceEdges.length)) return;
   const base = maxZIndex(props.items) + 1;
   const idMap = new Map(sourceItems.map((source) => [source.id, uuid()]));
-  void boardSession.applyOps(
-    sourceItems.map(
-      (source, index) =>
-        ({
-          type: 'item.create',
-          clientOpId: uuid(),
-          item: {
-            id: idMap.get(source.id)!,
-            parentId:
-              source.parentId !== null ? (idMap.get(source.parentId) ?? source.parentId) : null,
-            x: source.x + BOARD_DUPLICATE_OFFSET,
-            y: source.y + BOARD_DUPLICATE_OFFSET,
-            width: source.width,
-            height: source.height,
-            rotation: source.rotation,
-            zIndex: base + index,
-            content: source.content,
-            style: source.style,
-            // Реакции — личное действие конкретного участника на конкретную карточку,
-            // дубликат начинает с чистого листа, а не наследует чужие реакции
-            reactions: [],
-          },
-        }) satisfies BoardOp,
-    ),
+  const itemOps: BoardOp[] = sourceItems.map(
+    (source, index) =>
+      ({
+        type: 'item.create',
+        clientOpId: uuid(),
+        item: {
+          id: idMap.get(source.id)!,
+          parentId:
+            source.parentId !== null ? (idMap.get(source.parentId) ?? source.parentId) : null,
+          x: source.x + BOARD_DUPLICATE_OFFSET,
+          y: source.y + BOARD_DUPLICATE_OFFSET,
+          width: source.width,
+          height: source.height,
+          rotation: source.rotation,
+          zIndex: base + index,
+          content: source.content,
+          style: source.style,
+          reactions: [],
+        },
+      }) satisfies BoardOp,
   );
+  const edgeOps: BoardOp[] = sourceEdges.map(
+    (edge) =>
+      ({
+        type: 'edge.create',
+        clientOpId: uuid(),
+        edge: {
+          id: uuid(),
+          sourceItemId: idMap.get(edge.sourceItemId)!,
+          targetItemId: idMap.get(edge.targetItemId)!,
+          sourceHandle: edge.sourceHandle,
+          targetHandle: edge.targetHandle,
+          label: edge.label,
+          style: edge.style,
+        },
+      }) satisfies BoardOp,
+  );
+  void boardSession.applyOps([...itemOps, ...edgeOps]);
 }
 
 function bringSelectedToFront(): void {
