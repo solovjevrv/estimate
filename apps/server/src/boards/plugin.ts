@@ -1,4 +1,8 @@
-import { BOARD_SHARE_ROLES, BOARD_TITLE_MAX_LENGTH } from '@poker/shared';
+import {
+  BOARD_SHARE_ROLES,
+  BOARD_TITLE_MAX_LENGTH,
+  TEXT_INPUT_TRIM_ALLOWANCE,
+} from '@poker/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
@@ -33,7 +37,11 @@ const titleBody = {
   required: ['title'],
   properties: {
     // Настоящий предел длины проверяет сервис после обрезки пробелов
-    title: { type: 'string', minLength: 1, maxLength: BOARD_TITLE_MAX_LENGTH + 100 },
+    title: {
+      type: 'string',
+      minLength: 1,
+      maxLength: BOARD_TITLE_MAX_LENGTH + TEXT_INPUT_TRIM_ALLOWANCE,
+    },
   },
 } as const;
 
@@ -41,7 +49,11 @@ const createBoardBody = {
   type: 'object',
   required: ['title'],
   properties: {
-    title: { type: 'string', minLength: 1, maxLength: BOARD_TITLE_MAX_LENGTH + 100 },
+    title: {
+      type: 'string',
+      minLength: 1,
+      maxLength: BOARD_TITLE_MAX_LENGTH + TEXT_INPUT_TRIM_ALLOWANCE,
+    },
     teamId: { type: ['string', 'null'], format: 'uuid' },
   },
 } as const;

@@ -1,6 +1,11 @@
 import {
   GUEST_NAME_MAX_LENGTH,
+  isHttpUrl,
+  isTextLengthInRange,
+  ROOM_LINK_MAX_LENGTH,
   ROOM_NAME_MAX_LENGTH,
+  trimOptionalText,
+  trimText,
   type Participant,
   type Reaction,
   type Room,
@@ -59,7 +64,6 @@ export interface JoinResult {
 
 /** Верхняя граница оценки: защищает от переполнения integer в базе */
 const MAX_VOTE_VALUE = 1000;
-const MAX_LINK_LENGTH = 2000;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -646,8 +650,8 @@ export class RoomsService {
   }
 
   private normalizeName(raw: string, maxLength: number, field: string): string {
-    const value = raw.trim();
-    if (value.length === 0 || value.length > maxLength) {
+    const value = trimText(raw);
+    if (!isTextLengthInRange(value, { min: 1, max: maxLength })) {
       throw new ValidationError(`${field}: от 1 до ${maxLength} символов`);
     }
     return value;
@@ -655,14 +659,14 @@ export class RoomsService {
 
   /** Пустая строка означает «ссылку убрали» */
   private normalizeLink(raw: string | null | undefined): string | null {
-    const value = typeof raw === 'string' ? raw.trim() : null;
+    const value = trimOptionalText(raw);
     if (!value) {
       return null;
     }
-    if (value.length > MAX_LINK_LENGTH) {
+    if (value.length > ROOM_LINK_MAX_LENGTH) {
       throw new ValidationError('Ссылка слишком длинная');
     }
-    if (!/^https?:\/\//i.test(value)) {
+    if (!isHttpUrl(value)) {
       throw new ValidationError('Ссылка должна начинаться с http:// или https://');
     }
     return value;

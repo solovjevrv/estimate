@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
-import { TEAM_NAME_MAX_LENGTH } from '@poker/shared';
+import { TEAM_NAME_MAX_LENGTH, trimText } from '@poker/shared';
 import { onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
@@ -43,7 +43,7 @@ onMounted(async () => {
 /** Проверяем то же, что и сервер: непустое название в пределах длины. */
 function validate(s: { name: string }): FormError[] {
   const errors: FormError[] = [];
-  const name = s.name.trim();
+  const name = trimText(s.name);
   if (!name) {
     errors.push({ name: 'name', message: t('teams.nameRequired') });
   } else if (name.length > TEAM_NAME_MAX_LENGTH) {
@@ -56,7 +56,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
   submitting.value = true;
   createFailed.value = false;
   try {
-    const team = await teams.create(event.data.name.trim());
+    const team = await teams.create(trimText(event.data.name));
     open.value = false;
     state.name = '';
     await router.push({ name: 'team', params: { id: team.id } });

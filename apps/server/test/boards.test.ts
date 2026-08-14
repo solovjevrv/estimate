@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-import type { AuthUser } from '@poker/shared';
+import { BOARD_TITLE_MAX_LENGTH, TEXT_INPUT_TRIM_ALLOWANCE, type AuthUser } from '@poker/shared';
 import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -178,6 +178,27 @@ describeDb('API досок', () => {
 
       expect(blank.statusCode).toBe(400);
       expect(tooLong.statusCode).toBe(400);
+    });
+
+    it('схема принимает запас на trim, но не строку за его пределом', async () => {
+      const user = await newUser('create-trim-allowance');
+      const title = 'д'.repeat(BOARD_TITLE_MAX_LENGTH);
+      const accepted = await app.inject({
+        method: 'POST',
+        url: '/api/boards',
+        headers: as(user),
+        payload: { title: `${' '.repeat(TEXT_INPUT_TRIM_ALLOWANCE)}${title}` },
+      });
+
+      expect(accepted.statusCode).toBe(201);
+      const board = (accepted.json() as { board: { id: string; title: string } }).board;
+      boardIds.push(board.id);
+      expect(board.title).toBe(title);
+
+      const rejected = await createBoard(user, {
+        title: 'д'.repeat(BOARD_TITLE_MAX_LENGTH + TEXT_INPUT_TRIM_ALLOWANCE + 1),
+      });
+      expect(rejected.statusCode).toBe(400);
     });
 
     it('без входа доску не создать', async () => {

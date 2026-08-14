@@ -4,7 +4,9 @@ import { useToast } from '@nuxt/ui/composables';
 import {
   DECK_CARDS,
   GUEST_NAME_MAX_LENGTH,
+  isHttpUrl,
   ROOM_NAME_MAX_LENGTH,
+  trimText,
   type DeckType,
   type Participant,
   type Reaction,
@@ -79,7 +81,7 @@ watch(renameOpen, (open) => {
 
 function validateRoomName(s: { name: string }): FormError[] {
   const errors: FormError[] = [];
-  const name = s.name.trim();
+  const name = trimText(s.name);
   if (!name) {
     errors.push({ name: 'name', message: t('room.renameNameRequired') });
   } else if (name.length > ROOM_NAME_MAX_LENGTH) {
@@ -94,7 +96,7 @@ function validateRoomName(s: { name: string }): FormError[] {
 async function onRename(event: FormSubmitEvent<{ name: string }>): Promise<void> {
   renaming.value = true;
   try {
-    const renamed = await roomsStore.rename(props.id, event.data.name.trim());
+    const renamed = await roomsStore.rename(props.id, trimText(event.data.name));
     roomInfo.value = renamed;
     const current = room.state;
     if (current) {
@@ -584,10 +586,10 @@ watch(
 
 function validateLinks(state: { jiraUrl: string; confluenceUrl: string }): FormError[] {
   const errors: FormError[] = [];
-  if (state.jiraUrl.trim() && !/^https?:\/\//i.test(state.jiraUrl.trim())) {
+  if (trimText(state.jiraUrl) && !isHttpUrl(trimText(state.jiraUrl))) {
     errors.push({ name: 'jiraUrl', message: t('room.linksInvalid') });
   }
-  if (state.confluenceUrl.trim() && !/^https?:\/\//i.test(state.confluenceUrl.trim())) {
+  if (trimText(state.confluenceUrl) && !isHttpUrl(trimText(state.confluenceUrl))) {
     errors.push({ name: 'confluenceUrl', message: t('room.linksInvalid') });
   }
   return errors;
@@ -599,8 +601,8 @@ async function onSaveLinks(
   savingLinks.value = true;
   try {
     await room.updateLinks({
-      jiraUrl: event.data.jiraUrl.trim(),
-      confluenceUrl: event.data.confluenceUrl.trim(),
+      jiraUrl: trimText(event.data.jiraUrl),
+      confluenceUrl: trimText(event.data.confluenceUrl),
       version: linksBaseVersion.value,
     });
     linksDirty.value = false;
@@ -734,7 +736,7 @@ async function recoverAuthenticatedJoin(): Promise<void> {
 
 function validateName(s: { name: string }): FormError[] {
   const errors: FormError[] = [];
-  const name = s.name.trim();
+  const name = trimText(s.name);
   if (!name) {
     errors.push({ name: 'name', message: t('room.nameRequired') });
   } else if (name.length > GUEST_NAME_MAX_LENGTH) {
@@ -745,7 +747,7 @@ function validateName(s: { name: string }): FormError[] {
 
 async function onJoinAsGuest(event: FormSubmitEvent<{ name: string }>): Promise<void> {
   const token = currentToken;
-  const name = event.data.name.trim();
+  const name = trimText(event.data.name);
   storeGuestName(name);
   phase.value = 'joining';
   try {

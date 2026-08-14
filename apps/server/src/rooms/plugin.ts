@@ -1,5 +1,5 @@
 import fastifyRateLimit from '@fastify/rate-limit';
-import { ROOM_NAME_MAX_LENGTH } from '@poker/shared';
+import { ROOM_NAME_MAX_LENGTH, TEXT_INPUT_TRIM_ALLOWANCE } from '@poker/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
@@ -25,7 +25,11 @@ const createRoomBody = {
   required: ['name'],
   properties: {
     // Настоящий предел длины проверяет сервис после обрезки пробелов
-    name: { type: 'string', minLength: 1, maxLength: ROOM_NAME_MAX_LENGTH + 100 },
+    name: {
+      type: 'string',
+      minLength: 1,
+      maxLength: ROOM_NAME_MAX_LENGTH + TEXT_INPUT_TRIM_ALLOWANCE,
+    },
     teamId: { type: ['string', 'null'], format: 'uuid' },
   },
 } as const;
@@ -34,7 +38,11 @@ const nameBody = {
   type: 'object',
   required: ['name'],
   properties: {
-    name: { type: 'string', minLength: 1, maxLength: ROOM_NAME_MAX_LENGTH + 100 },
+    name: {
+      type: 'string',
+      minLength: 1,
+      maxLength: ROOM_NAME_MAX_LENGTH + TEXT_INPUT_TRIM_ALLOWANCE,
+    },
   },
 } as const;
 

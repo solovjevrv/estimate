@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { ROOM_NAME_MAX_LENGTH, type Room, type RoomStats } from '@poker/shared';
+import { ROOM_NAME_MAX_LENGTH, trimText, type Room, type RoomStats } from '@poker/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
@@ -112,7 +112,7 @@ watch(createOpen, (isOpen) => {
 
 function validateRoomName(s: { name: string }): FormError[] {
   const errors: FormError[] = [];
-  const name = s.name.trim();
+  const name = trimText(s.name);
   if (!name) {
     errors.push({ name: 'name', message: t('teams.nameRequired') });
   } else if (name.length > ROOM_NAME_MAX_LENGTH) {
@@ -124,7 +124,7 @@ function validateRoomName(s: { name: string }): FormError[] {
 async function onCreateRoom(event: FormSubmitEvent<{ name: string }>): Promise<void> {
   creating.value = true;
   try {
-    const room = await rooms.create(event.data.name.trim());
+    const room = await rooms.create(trimText(event.data.name));
     createOpen.value = false;
     await router.push({ name: 'room', params: { id: room.id } });
   } catch {
