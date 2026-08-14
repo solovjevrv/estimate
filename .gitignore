@@ -32,6 +32,8 @@ cloudflare.ini
 # Локальные файлы агента (в репозиторий не попадают)
 claude.md
 CLAUDE.md
+AGENTS.md
+.agents/
 PROGRESS.md
 PROGRESS_BUGS.md
 PROGRESS_ARCHIVE.md

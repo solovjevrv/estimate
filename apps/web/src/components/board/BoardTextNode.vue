@@ -140,7 +140,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       <template v-if="editing">
         <div
           ref="editable"
-          class="nodrag h-full w-full overflow-hidden bg-transparent whitespace-pre-wrap outline-none"
+          class="nodrag h-full w-full cursor-text overflow-hidden bg-transparent whitespace-pre-wrap outline-none"
           contenteditable="true"
           :style="{
             color: textColor,
