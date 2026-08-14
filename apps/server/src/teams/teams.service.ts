@@ -7,6 +7,8 @@ import {
   type TeamRole,
   type TeamWithRole,
   hasTeamRole,
+  isTextLengthInRange,
+  trimText,
 } from '@poker/shared';
 
 import { requireRole } from '../access';
@@ -311,8 +313,8 @@ export class TeamsService {
   }
 
   private normalizeName(raw: string): string {
-    const name = raw.trim();
-    if (name.length < TEAM_NAME_MIN_LENGTH || name.length > TEAM_NAME_MAX_LENGTH) {
+    const name = trimText(raw);
+    if (!isTextLengthInRange(name, { min: TEAM_NAME_MIN_LENGTH, max: TEAM_NAME_MAX_LENGTH })) {
       throw new ValidationError(
         `Название команды должно быть от ${TEAM_NAME_MIN_LENGTH} до ${TEAM_NAME_MAX_LENGTH} символов`,
       );

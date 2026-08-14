@@ -15,7 +15,12 @@ import type {
   RoundResult,
   WsAck,
 } from '@poker/shared';
-import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
+import {
+  ROOM_NAME_MAX_LENGTH,
+  TEXT_INPUT_TRIM_ALLOWANCE,
+  WS_EVENTS,
+  WS_SERVER_EVENTS,
+} from '@poker/shared';
 import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { type Socket, io as createClient } from 'socket.io-client';
@@ -206,6 +211,32 @@ describeDb('комнаты', () => {
       // Без входа комната всё равно видна: гости заходят по прямой ссылке
       const anonymous = await app.inject({ method: 'GET', url: `/api/rooms/${room.id}` });
       expect(anonymous.statusCode).toBe(200);
+    });
+
+    it('схема принимает запас на trim, но не строку за его пределом', async () => {
+      const owner = await newUser('room-trim-allowance');
+      const name = 'к'.repeat(ROOM_NAME_MAX_LENGTH);
+      const accepted = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(owner),
+        payload: { name: `${' '.repeat(TEXT_INPUT_TRIM_ALLOWANCE)}${name}` },
+      });
+
+      expect(accepted.statusCode).toBe(201);
+      const room = (accepted.json() as { room: { id: string; name: string } }).room;
+      roomIds.push(room.id);
+      expect(room.name).toBe(name);
+
+      const rejected = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(owner),
+        payload: {
+          name: 'к'.repeat(ROOM_NAME_MAX_LENGTH + TEXT_INPUT_TRIM_ALLOWANCE + 1),
+        },
+      });
+      expect(rejected.statusCode).toBe(400);
     });
 
     it('комнату команды заводит администратор, но не рядовой участник', async () => {

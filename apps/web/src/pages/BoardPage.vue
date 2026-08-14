@@ -5,6 +5,7 @@ import {
   BOARD_TITLE_MAX_LENGTH,
   GUEST_NAME_MAX_LENGTH,
   hasBoardAccess,
+  trimText,
   type Board,
 } from '@poker/shared';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
@@ -113,7 +114,7 @@ const guestState = reactive({ name: readStoredGuestName() });
 
 function validateGuestName(s: { name: string }): FormError[] {
   const errors: FormError[] = [];
-  const name = s.name.trim();
+  const name = trimText(s.name);
   if (!name) {
     errors.push({ name: 'name', message: t('board.guestNameRequired') });
   } else if (name.length > GUEST_NAME_MAX_LENGTH) {
@@ -175,7 +176,7 @@ async function joinBoard(guestName?: string): Promise<void> {
 }
 
 async function onGuestNameSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  const name = event.data.name.trim();
+  const name = trimText(event.data.name);
   storeGuestName(name);
   guestJoining.value = true;
   guestJoinFailed.value = false;
@@ -211,7 +212,7 @@ watch(renameOpen, (open) => {
 
 function validateTitle(s: { title: string }): FormError[] {
   const errors: FormError[] = [];
-  const title = s.title.trim();
+  const title = trimText(s.title);
   if (!title) {
     errors.push({ name: 'title', message: t('teams.nameRequired') });
   } else if (title.length > BOARD_TITLE_MAX_LENGTH) {
@@ -226,7 +227,7 @@ function validateTitle(s: { title: string }): FormError[] {
 async function onRename(event: FormSubmitEvent<{ title: string }>): Promise<void> {
   renaming.value = true;
   try {
-    board.value = await boards.rename(props.id, event.data.title.trim());
+    board.value = await boards.rename(props.id, trimText(event.data.title));
     toast.add({ title: t('board.renamed'), color: 'success', icon: 'i-lucide-check' });
     renameOpen.value = false;
   } catch {

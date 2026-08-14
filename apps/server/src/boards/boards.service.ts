@@ -5,6 +5,8 @@ import {
   GUEST_NAME_MAX_LENGTH,
   hasBoardAccess,
   hasTeamRole,
+  isTextLengthInRange,
+  trimText,
   type Board,
   type BoardAccessLevel,
   type BoardCommittedOp,
@@ -529,8 +531,8 @@ export class BoardsService {
   }
 
   private normalizeTitle(raw: string): string {
-    const title = raw.trim();
-    if (title.length < BOARD_TITLE_MIN_LENGTH || title.length > BOARD_TITLE_MAX_LENGTH) {
+    const title = trimText(raw);
+    if (!isTextLengthInRange(title, { min: BOARD_TITLE_MIN_LENGTH, max: BOARD_TITLE_MAX_LENGTH })) {
       throw new ValidationError(
         `Название доски должно быть от ${BOARD_TITLE_MIN_LENGTH} до ${BOARD_TITLE_MAX_LENGTH} символов`,
       );
@@ -539,8 +541,8 @@ export class BoardsService {
   }
 
   private normalizeGuestName(raw: string): string {
-    const value = raw.trim();
-    if (value.length === 0 || value.length > GUEST_NAME_MAX_LENGTH) {
+    const value = trimText(raw);
+    if (!isTextLengthInRange(value, { min: 1, max: GUEST_NAME_MAX_LENGTH })) {
       throw new ValidationError(`Имя: от 1 до ${GUEST_NAME_MAX_LENGTH} символов`);
     }
     return value;

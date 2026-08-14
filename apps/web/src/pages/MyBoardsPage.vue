@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { BOARD_TITLE_MAX_LENGTH, type BoardSummary } from '@poker/shared';
+import { BOARD_TITLE_MAX_LENGTH, trimText, type BoardSummary } from '@poker/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
@@ -56,7 +56,7 @@ watch(createOpen, (isOpen) => {
 
 function validateBoardTitle(s: { title: string }): FormError[] {
   const errors: FormError[] = [];
-  const title = s.title.trim();
+  const title = trimText(s.title);
   if (!title) {
     errors.push({ name: 'title', message: t('teams.nameRequired') });
   } else if (title.length > BOARD_TITLE_MAX_LENGTH) {
@@ -71,7 +71,7 @@ function validateBoardTitle(s: { title: string }): FormError[] {
 async function onCreateBoard(event: FormSubmitEvent<{ title: string }>): Promise<void> {
   creating.value = true;
   try {
-    const board = await boards.create(event.data.title.trim());
+    const board = await boards.create(trimText(event.data.title));
     createOpen.value = false;
     await router.push({ name: 'board', params: { id: board.id } });
   } catch {

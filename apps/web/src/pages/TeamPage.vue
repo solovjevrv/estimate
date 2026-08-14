@@ -7,6 +7,7 @@ import {
   ROOM_NAME_MAX_LENGTH,
   TEAM_NAME_MAX_LENGTH,
   TEAM_ROLES,
+  trimText,
   type BoardSummary,
   type Room,
   type TeamMember,
@@ -257,7 +258,7 @@ watch(createRoomOpen, (isOpen) => {
 
 function validateRoomName(s: { name: string }): FormError[] {
   const errors: FormError[] = [];
-  const name = s.name.trim();
+  const name = trimText(s.name);
   if (!name) {
     errors.push({ name: 'name', message: t('teams.nameRequired') });
   } else if (name.length > ROOM_NAME_MAX_LENGTH) {
@@ -269,7 +270,7 @@ function validateRoomName(s: { name: string }): FormError[] {
 async function onCreateRoom(event: FormSubmitEvent<{ name: string }>): Promise<void> {
   creatingRoom.value = true;
   try {
-    const room = await rooms.create(event.data.name.trim(), props.id);
+    const room = await rooms.create(trimText(event.data.name), props.id);
     createRoomOpen.value = false;
     await router.push({ name: 'room', params: { id: room.id } });
   } catch {
@@ -290,7 +291,7 @@ watch(createBoardOpen, (isOpen) => {
 
 function validateBoardTitle(s: { title: string }): FormError[] {
   const errors: FormError[] = [];
-  const title = s.title.trim();
+  const title = trimText(s.title);
   if (!title) {
     errors.push({ name: 'title', message: t('teams.nameRequired') });
   } else if (title.length > BOARD_TITLE_MAX_LENGTH) {
@@ -305,7 +306,7 @@ function validateBoardTitle(s: { title: string }): FormError[] {
 async function onCreateBoard(event: FormSubmitEvent<{ title: string }>): Promise<void> {
   creatingBoard.value = true;
   try {
-    const board = await boards.create(event.data.title.trim(), props.id);
+    const board = await boards.create(trimText(event.data.title), props.id);
     createBoardOpen.value = false;
     await router.push({ name: 'board', params: { id: board.id } });
   } catch {
@@ -461,7 +462,7 @@ watch(renameOpen, (open) => {
 
 function validateName(s: { name: string }): FormError[] {
   const errors: FormError[] = [];
-  const name = s.name.trim();
+  const name = trimText(s.name);
   if (!name) {
     errors.push({ name: 'name', message: t('teams.nameRequired') });
   } else if (name.length > TEAM_NAME_MAX_LENGTH) {
@@ -473,7 +474,7 @@ function validateName(s: { name: string }): FormError[] {
 async function onRename(event: FormSubmitEvent<{ name: string }>): Promise<void> {
   renaming.value = true;
   try {
-    await teams.rename(props.id, event.data.name.trim());
+    await teams.rename(props.id, trimText(event.data.name));
     toast.add({ title: t('team.renamed'), color: 'success', icon: 'i-lucide-check' });
     renameOpen.value = false;
   } catch {

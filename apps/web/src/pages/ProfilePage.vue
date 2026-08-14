@@ -6,6 +6,7 @@ import {
   AVATAR_MAX_BYTES,
   USER_JOB_TITLE_MAX_LENGTH,
   USER_NAME_MAX_LENGTH,
+  trimText,
 } from '@poker/shared';
 import { reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -73,13 +74,13 @@ watch(
 
 function validate(state: { name: string; jobTitle: string }): FormError[] {
   const errors: FormError[] = [];
-  const name = state.name.trim();
+  const name = trimText(state.name);
   if (!name) {
     errors.push({ name: 'name', message: t('profile.nameRequired') });
   } else if (name.length > USER_NAME_MAX_LENGTH) {
     errors.push({ name: 'name', message: t('profile.nameTooLong', { max: USER_NAME_MAX_LENGTH }) });
   }
-  if (state.jobTitle.trim().length > USER_JOB_TITLE_MAX_LENGTH) {
+  if (trimText(state.jobTitle).length > USER_JOB_TITLE_MAX_LENGTH) {
     errors.push({
       name: 'jobTitle',
       message: t('profile.jobTitleTooLong', { max: USER_JOB_TITLE_MAX_LENGTH }),
@@ -92,8 +93,8 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
   saving.value = true;
   try {
     await session.updateProfile({
-      name: event.data.name.trim(),
-      jobTitle: event.data.jobTitle.trim(),
+      name: trimText(event.data.name),
+      jobTitle: trimText(event.data.jobTitle),
     });
     toast.add({ title: t('profile.saved'), color: 'success', icon: 'i-lucide-check' });
   } catch {
