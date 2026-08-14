@@ -152,7 +152,7 @@ describe('BoardSelectionToolbar — цвет через UColorPicker', () => {
     await openTextOptionsPopover(wrapper);
 
     const swatch = document.querySelectorAll<HTMLButtonElement>(
-      '.board-text-menu-swatches button',
+      '.board-color-menu .board-selection-swatch',
     )[0]!;
     expect(swatch.getAttribute('aria-label')).toBe(BOARD_COLOR_PALETTE[0]);
 
