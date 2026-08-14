@@ -622,16 +622,16 @@ export const BOARD_TEXT_ALIGNS: readonly BoardTextAlign[] = ['left', 'center', '
 /**
  * Границы ручного размера шрифта (12.9). Шире дефолтного диапазона авто-fit
  * (`FIT_FONT_MIN/MAX` = 10–20 в `use-fit-font-size.ts`) — заданное здесь
- * значение служит ВЕРХНЕЙ границей для авто-fit, а не заменяет его: если
- * текста больше, чем помещается при выбранном размере, авто-fit всё равно
- * ужимает шрифт вплоть до `BOARD_ITEM_FONT_SIZE_MIN`.
+ * значение является БАЗОВЫМ размером для дефолтной геометрии элемента. При
+ * resize оно масштабируется вместе с боксом, а авто-fit при длинном тексте
+ * всё равно может ужать итоговый шрифт вплоть до `BOARD_ITEM_FONT_SIZE_MIN`.
  */
 export const BOARD_ITEM_FONT_SIZE_MIN = 10;
 export const BOARD_ITEM_FONT_SIZE_MAX = 48;
 
 export interface BoardItemStyle {
   color: BoardColorHex;
-  /** Верхняя граница авто-fit; не задано — используется дефолт авто-fit (20px) */
+  /** Базовый размер для дефолтной геометрии; не задано — используется 20px */
   fontSize?: number;
   /** Не задано — `sans` (Manrope, как было до 12.9) */
   fontFamily?: BoardFontFamily;

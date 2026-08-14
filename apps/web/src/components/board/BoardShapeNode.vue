@@ -2,12 +2,17 @@
 import type { BoardItem, BoardShapeContent } from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
-import { computed, inject, ref, toRef, useTemplateRef } from 'vue';
+import { computed, inject, onBeforeUnmount, ref, toRef, useTemplateRef, watch } from 'vue';
 
-import { BOARD_CAN_EDIT_KEY } from '../../lib/board/board-canvas-keys';
+import {
+  BOARD_CAN_EDIT_KEY,
+  BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
+} from '../../lib/board/board-canvas-keys';
 import { darkenHex, readableTextColor } from '../../lib/board/board-colors';
 import {
   boardFontFamilyCss,
+  SHAPE_DEFAULT_HEIGHT,
+  SHAPE_DEFAULT_WIDTH,
   SHAPE_MAX_HEIGHT,
   SHAPE_MAX_WIDTH,
   SHAPE_MIN_HEIGHT,
@@ -23,6 +28,7 @@ const props = defineProps<NodeProps<BoardItem>>();
 
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
+const effectiveFontSizes = inject(BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY, null);
 
 const content = computed(() => props.data.content as BoardShapeContent);
 const bgColor = computed(() => props.data.style.color);
@@ -31,7 +37,7 @@ const borderColor = computed(() => darkenHex(bgColor.value, 0.2));
 const textColor = computed(() => props.data.style.textColor ?? readableTextColor(bgColor.value));
 const fontFamily = computed(() => boardFontFamilyCss(props.data.style.fontFamily));
 const textAlign = computed(() => props.data.style.textAlign ?? 'center');
-const maxFontSize = computed(() => props.data.style.fontSize ?? FIT_FONT_MAX);
+const baseFontSize = computed(() => props.data.style.fontSize ?? FIT_FONT_MAX);
 
 /** Ромб — не поворот прямоугольника (искажался бы при несимметричном резайзе), а вырез
  * по границам бокса, чтобы форма оставалась настоящим ромбом при любом соотношении сторон */
@@ -113,8 +119,25 @@ const fontSize = useFitFontSize(
   boxWidth,
   boxHeight,
   editing,
-  maxFontSize,
+  baseFontSize,
+  SHAPE_DEFAULT_WIDTH,
+  SHAPE_DEFAULT_HEIGHT,
 );
+
+let reportedItemId: string | null = null;
+watch(
+  [() => props.id, fontSize],
+  ([itemId, size]) => {
+    if (!effectiveFontSizes) return;
+    if (reportedItemId && reportedItemId !== itemId) effectiveFontSizes.remove(reportedItemId);
+    effectiveFontSizes.set(itemId, size);
+    reportedItemId = itemId;
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  if (reportedItemId) effectiveFontSizes?.remove(reportedItemId);
+});
 
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
   void boardSession.applyOps([

@@ -2,12 +2,17 @@
 import type { BoardItem, BoardTextContent } from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
-import { computed, inject, ref, toRef, useTemplateRef } from 'vue';
+import { computed, inject, onBeforeUnmount, ref, toRef, useTemplateRef, watch } from 'vue';
 
-import { BOARD_CAN_EDIT_KEY } from '../../lib/board/board-canvas-keys';
+import {
+  BOARD_CAN_EDIT_KEY,
+  BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
+} from '../../lib/board/board-canvas-keys';
 import { readableTextColor } from '../../lib/board/board-colors';
 import {
   boardFontFamilyCss,
+  TEXT_DEFAULT_HEIGHT,
+  TEXT_DEFAULT_WIDTH,
   TEXT_MAX_HEIGHT,
   TEXT_MAX_WIDTH,
   TEXT_MIN_HEIGHT,
@@ -23,6 +28,7 @@ const props = defineProps<NodeProps<BoardItem>>();
 
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
+const effectiveFontSizes = inject(BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY, null);
 
 const content = computed(() => props.data.content as BoardTextContent);
 const textColor = computed(
@@ -30,7 +36,7 @@ const textColor = computed(
 );
 const fontFamily = computed(() => boardFontFamilyCss(props.data.style.fontFamily));
 const textAlign = computed(() => props.data.style.textAlign ?? 'left');
-const maxFontSize = computed(() => props.data.style.fontSize ?? FIT_FONT_MAX);
+const baseFontSize = computed(() => props.data.style.fontSize ?? FIT_FONT_MAX);
 
 const contentBoxEl = useTemplateRef<HTMLDivElement>('contentBox');
 const textEl = useTemplateRef<HTMLSpanElement>('text');
@@ -83,8 +89,25 @@ const fontSize = useFitFontSize(
   boxWidth,
   boxHeight,
   editing,
-  maxFontSize,
+  baseFontSize,
+  TEXT_DEFAULT_WIDTH,
+  TEXT_DEFAULT_HEIGHT,
 );
+
+let reportedItemId: string | null = null;
+watch(
+  [() => props.id, fontSize],
+  ([itemId, size]) => {
+    if (!effectiveFontSizes) return;
+    if (reportedItemId && reportedItemId !== itemId) effectiveFontSizes.remove(reportedItemId);
+    effectiveFontSizes.set(itemId, size);
+    reportedItemId = itemId;
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  if (reportedItemId) effectiveFontSizes?.remove(reportedItemId);
+});
 
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
   void boardSession.applyOps([

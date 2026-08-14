@@ -123,20 +123,29 @@ const ALIGN_ICONS: Record<BoardTextAlign, string> = {
 
 const FONT_SIZE_STEP = 2;
 
-const props = defineProps<{
-  /** Экранные координаты верхней границы выделения — толбар рисуется над ними */
-  left: number;
-  top: number;
-  currentColor: BoardColorHex;
-  currentForm: ItemFormKind;
-  currentFontSize: number;
-  currentTextColor: BoardColorHex;
-  currentTextAlign: BoardTextAlign;
-  /** Идёт редактирование текста этого элемента (12.13) — вне этого режима начертания недоступны */
-  editingText: boolean;
-  /** Метки, единые для текущего выделения текста; `null` — нет выделения (кнопки неактивны) */
-  activeMarks: BoardTextMark | null;
-}>();
+const props = withDefaults(
+  defineProps<{
+    /** Экранные координаты верхней границы выделения — толбар рисуется над ними */
+    left: number;
+    top: number;
+    currentColor: BoardColorHex;
+    currentForm: ItemFormKind;
+    /** Реальный отрисованный размер, может быть больше максимальной сохранённой базы. */
+    currentFontSize: number;
+    canIncreaseFontSize?: boolean;
+    canDecreaseFontSize?: boolean;
+    currentTextColor: BoardColorHex;
+    currentTextAlign: BoardTextAlign;
+    /** Идёт редактирование текста этого элемента (12.13) — вне этого режима начертания недоступны */
+    editingText: boolean;
+    /** Метки, единые для текущего выделения текста; `null` — нет выделения (кнопки неактивны) */
+    activeMarks: BoardTextMark | null;
+  }>(),
+  // Явный default: undefined — без него Vue кастит отсутствующий boolean-проп в false
+  // (а не оставляет undefined), из-за чего фолбэк `?? currentFontSize <= MIN` ниже по
+  // шаблону никогда бы не срабатывал.
+  { canIncreaseFontSize: undefined, canDecreaseFontSize: undefined },
+);
 
 const emit = defineEmits<{
   color: [hex: BoardColorHex];
@@ -244,10 +253,7 @@ function clearLink(): void {
 }
 
 function stepFontSize(delta: number): void {
-  const next = Math.min(
-    BOARD_ITEM_FONT_SIZE_MAX,
-    Math.max(BOARD_ITEM_FONT_SIZE_MIN, props.currentFontSize + delta),
-  );
+  const next = props.currentFontSize + delta;
   if (next !== props.currentFontSize) emit('fontSize', next);
 }
 
@@ -440,7 +446,7 @@ function cancelTextColor(hex: BoardColorHex): void {
                 <button
                   type="button"
                   class="board-stepper-btn"
-                  :disabled="currentFontSize <= BOARD_ITEM_FONT_SIZE_MIN"
+                  :disabled="!(canDecreaseFontSize ?? currentFontSize > BOARD_ITEM_FONT_SIZE_MIN)"
                   :aria-label="t('board.fontSizeDecrease')"
                   @click="stepFontSize(-FONT_SIZE_STEP)"
                 >
@@ -450,7 +456,7 @@ function cancelTextColor(hex: BoardColorHex): void {
                 <button
                   type="button"
                   class="board-stepper-btn"
-                  :disabled="currentFontSize >= BOARD_ITEM_FONT_SIZE_MAX"
+                  :disabled="!(canIncreaseFontSize ?? currentFontSize < BOARD_ITEM_FONT_SIZE_MAX)"
                   :aria-label="t('board.fontSizeIncrease')"
                   @click="stepFontSize(FONT_SIZE_STEP)"
                 >

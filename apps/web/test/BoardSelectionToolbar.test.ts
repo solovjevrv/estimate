@@ -202,3 +202,66 @@ describe('BoardSelectionToolbar — цвет через UColorPicker', () => {
     wrapper.unmount();
   });
 });
+
+describe('BoardSelectionToolbar — стэппер размера шрифта (18.5)', () => {
+  // Содержимое "Aa" UPopover телепортируется в document.body (как и цветовой
+  // попап выше в этом файле) — ищем кнопки вне DOM-поддерева wrapper.element.
+  function decreaseButton(): HTMLButtonElement {
+    return document.querySelector<HTMLButtonElement>('[aria-label="Уменьшить размер шрифта"]')!;
+  }
+
+  function increaseButton(): HTMLButtonElement {
+    return document.querySelector<HTMLButtonElement>('[aria-label="Увеличить размер шрифта"]')!;
+  }
+
+  it('без can*FontSize пропсов кнопки активны для размера внутри границ 10–48', async () => {
+    const wrapper = mountToolbar({ currentFontSize: 20 });
+    await openTextOptionsPopover(wrapper);
+
+    expect(decreaseButton().disabled).toBe(false);
+    expect(increaseButton().disabled).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('canDecreaseFontSize/canIncreaseFontSize=true не блокируют кнопки, даже если currentFontSize (отрисованный размер) вне 10–48', async () => {
+    // Регресс: свойства "можно ли" ошибочно подставлялись напрямую в :disabled без
+    // инверсии — кнопки блокировались именно тогда, когда действие было разрешено.
+    const wrapper = mountToolbar({
+      currentFontSize: 60,
+      canIncreaseFontSize: true,
+      canDecreaseFontSize: true,
+    });
+    await openTextOptionsPopover(wrapper);
+
+    expect(decreaseButton().disabled).toBe(false);
+    expect(increaseButton().disabled).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('canDecreaseFontSize/canIncreaseFontSize=false блокируют кнопки', async () => {
+    const wrapper = mountToolbar({
+      currentFontSize: 20,
+      canIncreaseFontSize: false,
+      canDecreaseFontSize: false,
+    });
+    await openTextOptionsPopover(wrapper);
+
+    expect(decreaseButton().disabled).toBe(true);
+    expect(increaseButton().disabled).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('клик по кнопкам эмитит "fontSize" с шагом ±2', async () => {
+    const wrapper = mountToolbar({ currentFontSize: 20 });
+    await openTextOptionsPopover(wrapper);
+
+    increaseButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    decreaseButton().dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+
+    expect(wrapper.emitted('fontSize')?.[0]?.[0]).toBe(22);
+    expect(wrapper.emitted('fontSize')?.[1]?.[0]).toBe(18);
+    wrapper.unmount();
+  });
+});
