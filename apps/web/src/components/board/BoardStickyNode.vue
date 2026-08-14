@@ -230,7 +230,7 @@ watch(
       <template v-if="editing">
         <div
           ref="editable"
-          class="nodrag h-full w-full overflow-hidden bg-transparent font-semibold whitespace-pre-wrap outline-none"
+          class="nodrag h-full w-full cursor-text overflow-hidden bg-transparent font-semibold whitespace-pre-wrap outline-none"
           contenteditable="true"
           :style="{
             color: textColor,
