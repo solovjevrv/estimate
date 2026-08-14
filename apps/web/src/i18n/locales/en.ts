@@ -357,7 +357,8 @@ export default {
     duplicateSelected: 'Duplicate',
     deleteSelected: 'Delete',
     itemLimitReached: 'Reached the item limit for this board',
-    tooManyOpsAtOnce: 'Too many items and connections at once — paste or duplicate in smaller batches',
+    tooManyOpsAtOnce:
+      'Too many items and connections at once — paste or duplicate in smaller batches',
     imageUploading: 'Uploading image…',
     imageTooLarge: 'File is too large (maximum 8 MB)',
     imageInvalidType: 'Only JPEG, PNG, WebP and GIF are supported',

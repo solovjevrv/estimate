@@ -7,9 +7,11 @@
  *
  * Подпись пишется не в поле здесь, а прямо на стрелке (Miro-паттерн, решение
  * пользователя) — кнопка «текст» лишь открывает этот ввод (см. `BoardFloatingEdge.vue`).
+ *
+ * Цвет стрелки (12.8) — палитра + кастомный цвет через `UColorPicker`
+ * (18.3 — замена нативного `<input type="color">`).
  */
 import { BOARD_COLOR_PALETTE, type BoardColorHex } from '@poker/shared';
-import { useTemplateRef } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 export type BoardEdgeLineKindOption = 'straight' | 'orthogonal' | 'curved';
@@ -57,14 +59,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-const colorInputEl = useTemplateRef<HTMLInputElement>('colorInput');
-
-function openCustomColorPicker(): void {
-  colorInputEl.value?.click();
-}
-
-function onCustomColor(event: Event): void {
-  emit('color', (event.target as HTMLInputElement).value);
+function setCustomColor(value: string | undefined): void {
+  if (value) emit('color', value);
 }
 </script>
 
@@ -179,24 +175,29 @@ function onCustomColor(event: Event): void {
               close();
             "
           />
-          <button
-            type="button"
-            class="board-color-add-btn"
-            :aria-label="t('board.addCustomColor')"
-            @click="openCustomColorPicker"
-          >
-            <UIcon name="i-lucide-pipette" class="size-3.5" />
-          </button>
-          <input
-            ref="colorInput"
-            type="color"
-            class="sr-only"
-            :value="props.currentColor"
-            @input="
-              onCustomColor($event);
-              close();
-            "
-          />
+          <!-- Кастомный цвет (18.3) — своё поле: отдельный вложенный UPopover со
+            своей карточкой, см. пояснение у BoardSelectionToolbar.vue -->
+          <UPopover :content="{ side: 'right', sideOffset: 8 }">
+            <button
+              type="button"
+              class="board-color-add-btn"
+              :aria-label="t('board.addCustomColor')"
+            >
+              <UIcon name="i-lucide-pipette" class="size-3.5" />
+            </button>
+
+            <template #content>
+              <div class="board-color-picker-panel">
+                <UColorPicker
+                  :model-value="props.currentColor"
+                  format="hex"
+                  size="xs"
+                  class="board-color-picker"
+                  @update:model-value="setCustomColor"
+                />
+              </div>
+            </template>
+          </UPopover>
         </div>
       </template>
     </UPopover>
