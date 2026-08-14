@@ -1,10 +1,14 @@
 name: CI
 
+# Ветки накопления крупных фич (`<feature>-feature`, от dev) тоже под CI: без них
+# PR внутрь такой ветки не проверялся вообще — эпики досок накопили 107 коммитов и
+# +30k строк без единого прогона, а красный format:check всплыл бы только на мерже
+# в dev. Push-триггер там же, чтобы прямые коммиты в ветку накопления не проскакивали.
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [dev, main, '*-feature']
   push:
-    branches: [dev]
+    branches: [dev, '*-feature']
 
 permissions:
   contents: read
@@ -58,8 +62,13 @@ jobs:
       - name: Проверка типов
         run: pnpm typecheck
 
-      - name: Unit-тесты
-        run: pnpm test
+      # Разделены намеренно: unit не требует БД и падает быстрее, поэтому по
+      # красной джобе сразу видно, сломана логика или интеграция с PostgreSQL.
+      - name: Unit-тесты (без БД)
+        run: pnpm test:unit
+
+      - name: Тесты сервера (с PostgreSQL)
+        run: pnpm test:server
 
       - name: Сборка
         run: pnpm build
