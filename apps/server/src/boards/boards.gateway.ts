@@ -14,9 +14,10 @@ import {
 import type { FastifyBaseLogger } from 'fastify';
 
 import { AppError, ForbiddenError, ValidationError } from '../errors';
+import { PresenceRegistry } from '../platform/realtime';
 import type { PokerServer, PokerSocket } from '../socket';
 
-import { BoardPresence, type BoardParticipantIdentity } from './presence';
+import type { BoardParticipantIdentity } from './presence';
 import type { BoardsService } from './boards.service';
 
 type Ack<T> = (response: WsAck<T>) => void;
@@ -39,7 +40,7 @@ export class BoardsGateway {
 
   constructor(
     private readonly service: BoardsService,
-    private readonly presence = new BoardPresence(),
+    private readonly presence = new PresenceRegistry<BoardParticipantIdentity>(),
   ) {}
 
   register(io: PokerServer, log: FastifyBaseLogger): void {
@@ -71,7 +72,7 @@ export class BoardsGateway {
         const { payload } = this.readArgs<BoardAwarenessPayload>(args);
         // Эфемерное событие без подтверждения: не авторизован — просто игнорируем,
         // отвечать клиенту нечем и незачем
-        const boardId = this.presence.boardOf(socket.id);
+        const boardId = this.presence.scopeOf(socket.id);
         const identity = this.presence.identityOf(socket.id);
         if (!boardId || !identity || !payload) {
           return;
@@ -119,7 +120,7 @@ export class BoardsGateway {
     });
 
     // Из прошлой доски выходим полностью, иначе сокет продолжит получать её рассылки
-    const previousBoard = this.presence.boardOf(socket.id);
+    const previousBoard = this.presence.scopeOf(socket.id);
     if (previousBoard && previousBoard !== payload.boardId) {
       await socket.leave(previousBoard);
     }
@@ -165,7 +166,7 @@ export class BoardsGateway {
     boardId: string;
     identity: BoardParticipantIdentity;
   } {
-    const boardId = this.presence.boardOf(socket.id);
+    const boardId = this.presence.scopeOf(socket.id);
     const identity = this.presence.identityOf(socket.id);
     if (!boardId || !identity) {
       throw new ForbiddenError('Сначала войдите на доску');

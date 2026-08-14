@@ -20,9 +20,10 @@ import {
 import type { FastifyBaseLogger } from 'fastify';
 
 import { AppError, ForbiddenError, ValidationError } from '../errors';
+import { PresenceRegistry } from '../platform/realtime';
 import type { PokerServer, PokerSocket } from '../socket';
 
-import { RoomPresence, type ParticipantIdentity } from './presence';
+import type { ParticipantIdentity } from './presence';
 import { RoomReactions } from './room-reactions';
 import { RoomTimer } from './room-timer';
 import type { RoomsService } from './rooms.service';
@@ -47,7 +48,7 @@ export class RoomsGateway {
 
   constructor(
     private readonly service: RoomsService,
-    private readonly presence = new RoomPresence(),
+    private readonly presence = new PresenceRegistry<ParticipantIdentity>(),
     private readonly timer = new RoomTimer(),
     private readonly reactions = new RoomReactions(),
   ) {}
@@ -226,7 +227,7 @@ export class RoomsGateway {
     });
 
     // Из прошлой комнаты выходим полностью, иначе сокет продолжит получать её рассылки
-    const previousRoom = this.presence.roomOf(socket.id);
+    const previousRoom = this.presence.scopeOf(socket.id);
     if (previousRoom && previousRoom !== payload.roomId) {
       await socket.leave(previousRoom);
     }
@@ -253,7 +254,7 @@ export class RoomsGateway {
 
   /** Действовать может только тот, кто уже сидит за столом */
   private requireSeat(socket: PokerSocket): { roomId: string; identity: ParticipantIdentity } {
-    const roomId = this.presence.roomOf(socket.id);
+    const roomId = this.presence.scopeOf(socket.id);
     const identity = this.presence.identityOf(socket.id);
     if (!roomId || !identity) {
       throw new ForbiddenError('Сначала войдите в комнату');
