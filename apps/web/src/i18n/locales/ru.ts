@@ -357,7 +357,8 @@ export default {
     duplicateSelected: 'Дублировать',
     deleteSelected: 'Удалить',
     itemLimitReached: 'Достигнут лимит элементов на доске',
-    tooManyOpsAtOnce: 'Слишком много элементов и связей для одной операции — вставьте или продублируйте меньшими частями',
+    tooManyOpsAtOnce:
+      'Слишком много элементов и связей для одной операции — вставьте или продублируйте меньшими частями',
     imageUploading: 'Загружаем картинку…',
     imageTooLarge: 'Файл слишком большой (максимум 8 МБ)',
     imageInvalidType: 'Поддерживаются только JPEG, PNG, WebP и GIF',

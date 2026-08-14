@@ -166,3 +166,17 @@
 .board-emoji-menu-item:hover {
   background: var(--ui-bg-elevated);
 }
+
+/* UColorPicker (18.3) — своё поле, не встроено в сетку свотчей: пипетка
+   открывает ВТОРОЙ, вложенный UPopover со своей карточкой (как раньше
+   открывался нативный `<input type="color">` отдельным окном ОС, только
+   теперь это наш собственный флоатинг, не системный диалог). Flat
+   селекторы — попап телепортируется в body и не является потомком корня
+   тулбара. */
+.board-color-picker-panel {
+  padding: 10px;
+}
+.board-color-picker [data-color-picker-background],
+.board-color-picker [data-color-picker-track] {
+  border-radius: 8px;
+}

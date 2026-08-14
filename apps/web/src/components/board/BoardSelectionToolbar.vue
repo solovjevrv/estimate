@@ -14,8 +14,9 @@
  *
  * Цвет (12.7) — палитра сменилась с 7 предустановленных токенов на
  * произвольный hex: кнопка-триггер (кружок текущего цвета, без обводки) +
- * попап с сеткой 4×4 предложенных свотчей и кастомным цветом через нативный
- * `<input type="color">`.
+ * попап с сеткой 4×4 предложенных свотчей и кастомным цветом через `UColorPicker`
+ * (18.3 — замена нативного `<input type="color">`, чей попап закрывался
+ * нестабильно).
  *
  * Текст (12.9→12.13, решение пользователя по референсу Miro): сначала весь
  * текстовый функционал (шрифт/размер/цвет/выравнивание/начертание/маркер/
@@ -155,9 +156,6 @@ const emit = defineEmits<{
 
 const { t } = useI18n();
 
-const colorInputEl = useTemplateRef<HTMLInputElement>('colorInput');
-const textColorInputEl = useTemplateRef<HTMLInputElement>('textColorInput');
-
 /**
  * Картинка (13.2) — не текстовый элемент и не меняет форму: цвет/текстовые
  * регуляторы (Aa/выравнивание/начертание/маркер/ссылка) и переключатель формы
@@ -233,20 +231,12 @@ function clearLink(): void {
   linkPopoverOpen.value = false;
 }
 
-function openCustomColorPicker(): void {
-  colorInputEl.value?.click();
+function setCustomColor(value: string | undefined): void {
+  if (value) emit('color', value);
 }
 
-function onCustomColor(event: Event): void {
-  emit('color', (event.target as HTMLInputElement).value);
-}
-
-function openCustomTextColorPicker(): void {
-  textColorInputEl.value?.click();
-}
-
-function onCustomTextColor(event: Event): void {
-  emit('textColor', (event.target as HTMLInputElement).value);
+function setCustomTextColor(value: string | undefined): void {
+  if (value) emit('textColor', value);
 }
 
 function stepFontSize(delta: number): void {
@@ -396,24 +386,33 @@ function stepFontSize(delta: number): void {
                 close();
               "
             />
-            <button
-              type="button"
-              class="board-color-add-btn"
-              :aria-label="t('board.addCustomColor')"
-              @click="openCustomColorPicker"
-            >
-              <UIcon name="i-lucide-pipette" class="size-3.5" />
-            </button>
-            <input
-              ref="colorInput"
-              type="color"
-              class="sr-only"
-              :value="props.currentColor"
-              @input="
-                onCustomColor($event);
-                close();
-              "
-            />
+            <!-- Кастомный цвет (18.3) — своё поле: отдельный вложенный UPopover
+              со своей карточкой, а не встроенный в сетку свотчей виджет. Раньше
+              так же отдельным окном открывался нативный `<input type="color">`
+              (см. историю файла) — теперь то же место, но свой UColorPicker
+              вместо системного диалога ОС. Вложенный попап открывается/закрывается
+              независимо от родительского — родитель не закрывается при drag внутри. -->
+            <UPopover :content="{ side: 'right', sideOffset: 8 }">
+              <button
+                type="button"
+                class="board-color-add-btn"
+                :aria-label="t('board.addCustomColor')"
+              >
+                <UIcon name="i-lucide-pipette" class="size-3.5" />
+              </button>
+
+              <template #content>
+                <div class="board-color-picker-panel">
+                  <UColorPicker
+                    :model-value="props.currentColor"
+                    format="hex"
+                    size="xs"
+                    class="board-color-picker"
+                    @update:model-value="setCustomColor"
+                  />
+                </div>
+              </template>
+            </UPopover>
           </div>
         </template>
       </UPopover>
@@ -474,21 +473,29 @@ function stepFontSize(delta: number): void {
                   :aria-label="hex"
                   @click="emit('textColor', hex)"
                 ></button>
-                <button
-                  type="button"
-                  class="board-color-add-btn"
-                  :aria-label="t('board.addCustomColor')"
-                  @click="openCustomTextColorPicker"
-                >
-                  <UIcon name="i-lucide-pipette" class="size-3.5" />
-                </button>
-                <input
-                  ref="textColorInput"
-                  type="color"
-                  class="sr-only"
-                  :value="props.currentTextColor"
-                  @input="onCustomTextColor"
-                />
+                <!-- Кастомный цвет (18.3) — своё поле, отдельный вложенный UPopover,
+                  см. пояснение у аналогичного блока заливки выше -->
+                <UPopover :content="{ side: 'right', sideOffset: 8 }">
+                  <button
+                    type="button"
+                    class="board-color-add-btn"
+                    :aria-label="t('board.addCustomColor')"
+                  >
+                    <UIcon name="i-lucide-pipette" class="size-3.5" />
+                  </button>
+
+                  <template #content>
+                    <div class="board-color-picker-panel">
+                      <UColorPicker
+                        :model-value="props.currentTextColor"
+                        format="hex"
+                        size="xs"
+                        class="board-color-picker"
+                        @update:model-value="setCustomTextColor"
+                      />
+                    </div>
+                  </template>
+                </UPopover>
               </div>
             </div>
           </div>
