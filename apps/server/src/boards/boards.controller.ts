@@ -57,9 +57,7 @@ export class BoardsController {
     ),
   });
 
-  readonly get = async (
-    req: FastifyRequest<{ Params: BoardIdParams }>,
-  ): Promise<unknown> =>
+  readonly get = async (req: FastifyRequest<{ Params: BoardIdParams }>): Promise<unknown> =>
     this.service.getSnapshot(req.actorId ?? null, req.params.id);
 
   readonly rename = async (

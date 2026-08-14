@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import {
-  computeSnapGuides,
-  SNAP_THRESHOLD_PX,
-  type SnapRect,
-} from '../src/lib/board/board-snap';
+import { computeSnapGuides, SNAP_THRESHOLD_PX, type SnapRect } from '../src/lib/board/board-snap';
 
 function rect(id: string, x: number, y: number, width = 100, height = 100): SnapRect {
   return { id, x, y, width, height };
@@ -50,10 +46,7 @@ describe('computeSnapGuides', () => {
     // a: width=100, x=0, right=100. b: width=50, x=150, right=200. right diff=100 > 8
     // a: left=0, b: left=150, diff=150 > 8. a: center=50, b: center=175, diff=125 > 8
     // Ничего не снапит
-    const result = computeSnapGuides(
-      [rect('a', 0, 100, 100, 100)],
-      [rect('b', 150, 250, 50, 100)],
-    );
+    const result = computeSnapGuides([rect('a', 0, 100, 100, 100)], [rect('b', 150, 250, 50, 100)]);
     expect(result.positions.size).toBe(0);
   });
 
@@ -120,10 +113,7 @@ describe('computeSnapGuides', () => {
 
   it('снапит по обеим осям одновременно', () => {
     // a: x=103, y=104. b: x=100, y=100. left diff=3, top diff=4, оба < 8
-    const result = computeSnapGuides(
-      [rect('a', 103, 104)],
-      [rect('b', 100, 100)],
-    );
+    const result = computeSnapGuides([rect('a', 103, 104)], [rect('b', 100, 100)]);
     expect(result.positions.get('a')).toEqual({ x: 100, y: 100 });
     expect(result.guides).toHaveLength(2);
     const vGuides = result.guides.filter((g) => g.orientation === 'vertical');
@@ -207,7 +197,7 @@ describe('computeSnapGuides', () => {
       orientation: 'vertical',
       position: 100, // b.left победил (первый в массиве X_KEYS при равных приоритетах)
       from: 100, // min(a.y, a.bottom, b.y, b.bottom) = min(100, 200, 1000, 1100) = 100
-      to: 1100,  // max(100, 200, 1000, 1100) = 1100
+      to: 1100, // max(100, 200, 1000, 1100) = 1100
     });
   });
 });

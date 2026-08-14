@@ -83,11 +83,7 @@ export class BoardsService {
     private readonly images?: BoardImagesService,
   ) {}
 
-  static forDatabase(
-    db: Db,
-    guestSecret: string,
-    images?: BoardImagesService,
-  ): BoardsService {
+  static forDatabase(db: Db, guestSecret: string, images?: BoardImagesService): BoardsService {
     return new BoardsService(
       db,
       new BoardsRepository(db),

@@ -196,10 +196,22 @@ export function computeSnapGuides(
 
   const guides: SnapGuide[] = [];
   for (const [pos, state] of vGuides) {
-    guides.push({ orientation: 'vertical', position: pos, targetIds: [...state.targetIds], from: state.from, to: state.to });
+    guides.push({
+      orientation: 'vertical',
+      position: pos,
+      targetIds: [...state.targetIds],
+      from: state.from,
+      to: state.to,
+    });
   }
   for (const [pos, state] of hGuides) {
-    guides.push({ orientation: 'horizontal', position: pos, targetIds: [...state.targetIds], from: state.from, to: state.to });
+    guides.push({
+      orientation: 'horizontal',
+      position: pos,
+      targetIds: [...state.targetIds],
+      from: state.from,
+      to: state.to,
+    });
   }
 
   return { guides, positions };

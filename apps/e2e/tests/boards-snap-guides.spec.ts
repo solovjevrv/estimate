@@ -32,9 +32,9 @@ test.describe('Доски: snap-направляющие при перетаск
 
     await page.goto('/boards');
     await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
-    await page.getByPlaceholder('Например, Ретро спринта 24').fill(
-      `${E2E_ROOM_PREFIX}Snap ${randomUUID().slice(0, 8)}`,
-    );
+    await page
+      .getByPlaceholder('Например, Ретро спринта 24')
+      .fill(`${E2E_ROOM_PREFIX}Snap ${randomUUID().slice(0, 8)}`);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(page.locator('.vue-flow__pane')).toBeVisible();

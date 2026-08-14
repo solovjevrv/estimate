@@ -48,7 +48,12 @@ const style = computed(() => {
 </script>
 
 <template>
-    <div v-show="visible" :style="style" class="board-cursor" :data-participant-id="entry.participantId">
+  <div
+    v-show="visible"
+    :style="style"
+    class="board-cursor"
+    :data-participant-id="entry.participantId"
+  >
     <!-- CSS-курсор: маленький неравносторонний треугольник -->
     <div class="board-cursor-tip" />
     <!-- Имя пользователя рядом с курсором -->

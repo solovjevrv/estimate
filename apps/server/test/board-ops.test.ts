@@ -275,11 +275,7 @@ describe('applyBoardOp — item.create', () => {
     const state = emptyState();
     const id = randomUUID();
 
-    applyBoardOp(
-      state,
-      stickerCreateOp(id, 'eduardkonstantinovich', '01'),
-      BOARD_ID, ACTOR,
-    );
+    applyBoardOp(state, stickerCreateOp(id, 'eduardkonstantinovich', '01'), BOARD_ID, ACTOR);
 
     const item = state.items.get(id);
     expect(item?.content.type).toBe('sticker');
@@ -349,17 +345,15 @@ describe('applyBoardOp — item.create', () => {
     const id = randomUUID();
     applyBoardOp(state, stickyCreateOp(id), BOARD_ID, ACTOR);
 
-    expect(() => applyBoardOp(state, stickyCreateOp(id), BOARD_ID, ACTOR)).toThrow(
-      ValidationError,
-    );
+    expect(() => applyBoardOp(state, stickyCreateOp(id), BOARD_ID, ACTOR)).toThrow(ValidationError);
   });
 
   it('отклоняет некорректный id (не UUID)', () => {
     const state = emptyState();
 
-    expect(() =>
-      applyBoardOp(state, stickyCreateOp('not-a-uuid'), BOARD_ID, ACTOR),
-    ).toThrow(ValidationError);
+    expect(() => applyBoardOp(state, stickyCreateOp('not-a-uuid'), BOARD_ID, ACTOR)).toThrow(
+      ValidationError,
+    );
   });
 
   it('отклоняет недопустимый цвет', () => {
@@ -475,9 +469,9 @@ describe('applyBoardOp — item.create', () => {
       } satisfies BoardItem);
     }
 
-    expect(() =>
-      applyBoardOp(state, stickyCreateOp(randomUUID()), BOARD_ID, ACTOR),
-    ).toThrow(ValidationError);
+    expect(() => applyBoardOp(state, stickyCreateOp(randomUUID()), BOARD_ID, ACTOR)).toThrow(
+      ValidationError,
+    );
   });
 });
 
@@ -603,7 +597,8 @@ describe('applyBoardOp — item.patch', () => {
     applyBoardOp(
       state,
       { type: 'item.patch', clientOpId: randomUUID(), id, patch: { x: 500, y: 500 } },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     const item = state.items.get(id)!;
@@ -625,7 +620,8 @@ describe('applyBoardOp — item.patch', () => {
         id,
         patch: { content: { type: 'sticky', text: 'Новый текст' } },
       },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect(state.items.get(id)!.content).toEqual({ type: 'sticky', text: 'Новый текст' });
@@ -650,7 +646,8 @@ describe('applyBoardOp — item.patch', () => {
           },
         },
       },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
     expect(state.items.get(id)!.content).toEqual({
       type: 'sticky',
@@ -669,7 +666,8 @@ describe('applyBoardOp — item.patch', () => {
             content: { type: 'sticky', text: 'жирный', runs: [{ text: 'другое' }] },
           },
         },
-        BOARD_ID, ACTOR,
+        BOARD_ID,
+        ACTOR,
       ),
     ).toThrow(ValidationError);
   });
@@ -681,7 +679,8 @@ describe('applyBoardOp — item.patch', () => {
       applyBoardOp(
         state,
         { type: 'item.patch', clientOpId: randomUUID(), id: randomUUID(), patch: { x: 1 } },
-        BOARD_ID, ACTOR,
+        BOARD_ID,
+        ACTOR,
       ),
     ).toThrow(ValidationError);
   });
@@ -702,7 +701,8 @@ describe('applyBoardOp — item.patch', () => {
         id,
         patch: { style: { color: '#A8CAFF' } },
       },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect(state.items.get(id)!.style).toEqual({ color: '#A8CAFF', fontSize: 24 });
@@ -786,14 +786,11 @@ describe('applyBoardOp — item.delete', () => {
           style: { color: '#A8CAFF', line: 'straight', markerStart: 'none', markerEnd: 'none' },
         },
       },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
-    applyBoardOp(
-      state,
-      { type: 'item.delete', clientOpId: randomUUID(), id: a },
-      BOARD_ID, ACTOR,
-    );
+    applyBoardOp(state, { type: 'item.delete', clientOpId: randomUUID(), id: a }, BOARD_ID, ACTOR);
 
     expect(state.items.has(a)).toBe(false);
     expect(state.edges.has(edgeId)).toBe(false);
@@ -806,7 +803,8 @@ describe('applyBoardOp — item.delete', () => {
       applyBoardOp(
         state,
         { type: 'item.delete', clientOpId: randomUUID(), id: randomUUID() },
-        BOARD_ID, ACTOR,
+        BOARD_ID,
+        ACTOR,
       ),
     ).toThrow(ValidationError);
   });
@@ -829,7 +827,8 @@ describe('applyBoardOp — item.react', () => {
     applyBoardOp(
       state,
       { type: 'item.react', clientOpId: randomUUID(), id, emoji: '👍' },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect(state.items.get(id)!.reactions).toEqual([
@@ -844,13 +843,15 @@ describe('applyBoardOp — item.react', () => {
     applyBoardOp(
       state,
       { type: 'item.react', clientOpId: randomUUID(), id, emoji: '👍' },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     applyBoardOp(
       state,
       { type: 'item.react', clientOpId: randomUUID(), id, emoji: '👍' },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect(state.items.get(id)!.reactions).toEqual([]);
@@ -863,13 +864,15 @@ describe('applyBoardOp — item.react', () => {
     applyBoardOp(
       state,
       { type: 'item.react', clientOpId: randomUUID(), id, emoji: '👍' },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     applyBoardOp(
       state,
       { type: 'item.react', clientOpId: randomUUID(), id, emoji: '🔥' },
-      BOARD_ID, OTHER_ACTOR,
+      BOARD_ID,
+      OTHER_ACTOR,
     );
 
     expect(state.items.get(id)!.reactions).toEqual(
@@ -887,7 +890,8 @@ describe('applyBoardOp — item.react', () => {
       applyBoardOp(
         state,
         { type: 'item.react', clientOpId: randomUUID(), id: randomUUID(), emoji: '👍' },
-        BOARD_ID, ACTOR,
+        BOARD_ID,
+        ACTOR,
       ),
     ).toThrow(ValidationError);
   });
@@ -907,7 +911,8 @@ describe('applyBoardOp — item.react', () => {
       applyBoardOp(
         state,
         { type: 'item.react', clientOpId: randomUUID(), id, emoji: '👍' },
-        BOARD_ID, ACTOR,
+        BOARD_ID,
+        ACTOR,
       ),
     ).toThrow(ValidationError);
   });
@@ -921,7 +926,8 @@ describe('applyBoardOp — item.react', () => {
       applyBoardOp(
         state,
         { type: 'item.react', clientOpId: randomUUID(), id, emoji: '🤡' as never },
-        BOARD_ID, ACTOR,
+        BOARD_ID,
+        ACTOR,
       ),
     ).toThrow(ValidationError);
   });
@@ -966,20 +972,16 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
     const { state, a } = withTwoItems();
 
     expect(() =>
-      applyBoardOp(
-        state,
-        edgeCreateOp(randomUUID(), a, randomUUID()),
-        BOARD_ID, ACTOR,
-      ),
+      applyBoardOp(state, edgeCreateOp(randomUUID(), a, randomUUID()), BOARD_ID, ACTOR),
     ).toThrow(ValidationError);
   });
 
   it('отклоняет связь элемента с самим собой', () => {
     const { state, a } = withTwoItems();
 
-    expect(() =>
-      applyBoardOp(state, edgeCreateOp(randomUUID(), a, a), BOARD_ID, ACTOR),
-    ).toThrow(ValidationError);
+    expect(() => applyBoardOp(state, edgeCreateOp(randomUUID(), a, a), BOARD_ID, ACTOR)).toThrow(
+      ValidationError,
+    );
   });
 
   it('отклоняет недопустимый тип линии', () => {
@@ -1008,7 +1010,8 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
         id: edgeId,
         patch: { style: { line: 'orthogonal' } },
       },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect((state.edges.get(edgeId) as BoardEdge).style.line).toBe('orthogonal');
@@ -1051,7 +1054,8 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
         id: edgeId,
         patch: { style: { markerStart: 'arrow', markerEnd: 'dot' } },
       },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect((state.edges.get(edgeId) as BoardEdge).style.markerStart).toBe('arrow');
@@ -1066,7 +1070,8 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
     applyBoardOp(
       state,
       { type: 'edge.patch', clientOpId: randomUUID(), id: edgeId, patch: { label: 'зависит от' } },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect((state.edges.get(edgeId) as BoardEdge).label).toBe('зависит от');
@@ -1082,7 +1087,8 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
       applyBoardOp(
         state,
         { type: 'edge.patch', clientOpId: randomUUID(), id: edgeId, patch: { label: tooLong } },
-        BOARD_ID, ACTOR,
+        BOARD_ID,
+        ACTOR,
       ),
     ).toThrow(ValidationError);
   });
@@ -1095,7 +1101,8 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
     applyBoardOp(
       state,
       { type: 'edge.delete', clientOpId: randomUUID(), id: edgeId },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect(state.edges.has(edgeId)).toBe(false);
@@ -1108,7 +1115,8 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
       applyBoardOp(
         state,
         { type: 'edge.delete', clientOpId: randomUUID(), id: randomUUID() },
-        BOARD_ID, ACTOR,
+        BOARD_ID,
+        ACTOR,
       ),
     ).toThrow(ValidationError);
   });
@@ -1123,13 +1131,10 @@ describe('applyBoardOp — батч операций подряд', () => {
     applyBoardOp(
       state,
       { type: 'item.patch', clientOpId: randomUUID(), id, patch: { x: 42 } },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
-    applyBoardOp(
-      state,
-      { type: 'item.delete', clientOpId: randomUUID(), id },
-      BOARD_ID, ACTOR,
-    );
+    applyBoardOp(state, { type: 'item.delete', clientOpId: randomUUID(), id }, BOARD_ID, ACTOR);
 
     expect(state.items.has(id)).toBe(false);
   });
@@ -1202,9 +1207,9 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
     applyBoardOp(state, stickyCreateOp(stickyId), BOARD_ID, ACTOR);
 
     const childId = randomUUID();
-    expect(() =>
-      applyBoardOp(state, childItemOp(childId, stickyId), BOARD_ID, ACTOR),
-    ).toThrow(ValidationError);
+    expect(() => applyBoardOp(state, childItemOp(childId, stickyId), BOARD_ID, ACTOR)).toThrow(
+      ValidationError,
+    );
   });
 
   it('удаление контейнера осирает детей (parentId → null), не удаляя их', () => {
@@ -1217,7 +1222,8 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
     applyBoardOp(
       state,
       { type: 'item.delete', clientOpId: randomUUID(), id: frameId },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect(state.items.has(frameId)).toBe(false);
@@ -1235,7 +1241,8 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
     applyBoardOp(
       state,
       { type: 'item.patch', clientOpId: randomUUID(), id: childId, patch: { x: 999 } },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect(state.items.get(childId)!.parentId).toBe(frameId);
@@ -1258,12 +1265,14 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
     applyBoardOp(
       state,
       { type: 'item.delete', clientOpId: randomUUID(), id: frameId },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
     applyBoardOp(
       state,
       { type: 'item.patch', clientOpId: randomUUID(), id: childId, patch: { x: 999 } },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect(state.items.has(frameId)).toBe(false);
@@ -1281,7 +1290,8 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
     applyBoardOp(
       state,
       { type: 'item.patch', clientOpId: randomUUID(), id: childId, patch: { parentId: frameId } },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect(state.items.get(childId)!.parentId).toBe(frameId);
@@ -1301,7 +1311,8 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
           id: childId,
           patch: { parentId: randomUUID() },
         },
-        BOARD_ID, ACTOR,
+        BOARD_ID,
+        ACTOR,
       ),
     ).toThrow(ValidationError);
   });
@@ -1316,7 +1327,8 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
     applyBoardOp(
       state,
       { type: 'item.patch', clientOpId: randomUUID(), id: childId, patch: { parentId: null } },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect(state.items.get(childId)!.parentId).toBeNull();
@@ -1348,7 +1360,8 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
         id: frameId,
         patch: { content: { type: 'sticky', text: '' } },
       },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     const demoted = state.items.get(frameId)!;
@@ -1371,7 +1384,8 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
         id: groupId,
         patch: { content: { type: 'sticky', text: '' } },
       },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect(state.items.get(groupId)!.content.type).toBe('sticky');
@@ -1393,7 +1407,8 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
         id: frameId,
         patch: { content: { type: 'group' } },
       },
-      BOARD_ID, ACTOR,
+      BOARD_ID,
+      ACTOR,
     );
 
     expect(state.items.get(frameId)!.content.type).toBe('group');
