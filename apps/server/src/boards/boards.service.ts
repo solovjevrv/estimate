@@ -14,12 +14,12 @@ import {
   type BoardSummary,
 } from '@poker/shared';
 
+import { TeamAccess } from '../access';
 import { UsersRepository } from '../auth';
+import type { DbExecutor } from '../common/db-executor';
 import type { Db } from '../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
 import { GuestSessions } from '../platform/realtime';
-import { TeamsRepository } from '../teams';
-import type { DbExecutor as TeamsDbExecutor } from '../teams/teams.repository';
 
 import type { BoardImagesService } from './board-images.service';
 import { applyBoardOp, type BoardOpState } from './board-ops';
@@ -64,7 +64,7 @@ export class BoardsService {
   constructor(
     private readonly db: Db,
     private readonly repository: BoardsRepository,
-    private readonly teams: TeamsRepository,
+    private readonly teams: TeamAccess,
     private readonly users: UsersRepository,
     private readonly guests: GuestSessions,
     /**
@@ -76,9 +76,8 @@ export class BoardsService {
     private readonly createBoardsRepository: (executor: BoardsDbExecutor) => BoardsRepository = (
       executor,
     ) => new BoardsRepository(executor),
-    private readonly createTeamsRepository: (executor: TeamsDbExecutor) => TeamsRepository = (
-      executor,
-    ) => new TeamsRepository(executor),
+    private readonly createTeamAccess: (executor: DbExecutor) => TeamAccess = (executor) =>
+      TeamAccess.forExecutor(executor),
     /** Не задан — на диске файлы картинок досок не чистятся (13.2) */
     private readonly images?: BoardImagesService,
   ) {}
@@ -87,11 +86,11 @@ export class BoardsService {
     return new BoardsService(
       db,
       new BoardsRepository(db),
-      new TeamsRepository(db),
+      TeamAccess.forExecutor(db),
       new UsersRepository(db),
       new GuestSessions(guestSecret, 'boardGuest'),
       (executor) => new BoardsRepository(executor),
-      (executor) => new TeamsRepository(executor),
+      (executor) => TeamAccess.forExecutor(executor),
       images,
     );
   }
@@ -113,13 +112,12 @@ export class BoardsService {
     const teamId = input.teamId ?? null;
 
     if (teamId) {
-      const membership = await this.teams.findMembership(teamId, actorId);
-      if (!membership) {
-        throw new NotFoundError('Команда не найдена');
-      }
-      if (!hasTeamRole(membership.role, 'member')) {
-        throw new ForbiddenError('Заводить доски команды может участник или администратор');
-      }
+      await this.teams.require(
+        teamId,
+        actorId,
+        'member',
+        'Заводить доски команды может участник или администратор',
+      );
     }
 
     return this.repository.insertBoard(title, teamId, actorId);
@@ -130,10 +128,8 @@ export class BoardsService {
   }
 
   async listForTeam(actorId: string, teamId: string, archived = false): Promise<BoardSummary[]> {
-    const membership = await this.teams.findMembership(teamId, actorId);
-    if (!membership) {
-      throw new NotFoundError('Команда не найдена');
-    }
+    // Доски команды видит любой её участник, включая гостя — отдельного права нет
+    await this.teams.require(teamId, actorId, 'guest');
     return this.repository.listTeamBoards(teamId, archived);
   }
 
@@ -262,7 +258,7 @@ export class BoardsService {
       if (!board) {
         throw new NotFoundError('Доска не найдена');
       }
-      await this.assertAccess(board, actor.userId, 'edit', this.createTeamsRepository(tx));
+      await this.assertAccess(board, actor.userId, 'edit', this.createTeamAccess(tx));
       if (board.status !== 'active') {
         throw new ConflictError('Доска в архиве');
       }
@@ -394,7 +390,7 @@ export class BoardsService {
       if (!board) {
         throw new NotFoundError('Доска не найдена');
       }
-      await this.assertAccess(board, actorId, 'manage', this.createTeamsRepository(tx));
+      await this.assertAccess(board, actorId, 'manage', this.createTeamAccess(tx));
       const updated = await repo.updateTitle(boardId, title);
       if (!updated) {
         throw new NotFoundError('Доска не найдена');
@@ -411,7 +407,7 @@ export class BoardsService {
       if (!board) {
         throw new NotFoundError('Доска не найдена');
       }
-      await this.assertAccess(board, actorId, 'manage', this.createTeamsRepository(tx));
+      await this.assertAccess(board, actorId, 'manage', this.createTeamAccess(tx));
       const archived = await repo.archiveBoard(boardId);
       if (!archived) {
         throw new ConflictError('Доска уже в архиве');
@@ -427,7 +423,7 @@ export class BoardsService {
       if (!board) {
         throw new NotFoundError('Доска не найдена');
       }
-      await this.assertAccess(board, actorId, 'manage', this.createTeamsRepository(tx));
+      await this.assertAccess(board, actorId, 'manage', this.createTeamAccess(tx));
       const restored = await repo.unarchiveBoard(boardId);
       if (!restored) {
         throw new ConflictError('Доска не в архиве');
@@ -444,7 +440,7 @@ export class BoardsService {
       if (!board) {
         throw new NotFoundError('Доска не найдена');
       }
-      await this.assertAccess(board, actorId, 'manage', this.createTeamsRepository(tx));
+      await this.assertAccess(board, actorId, 'manage', this.createTeamAccess(tx));
       if (board.status !== 'archived') {
         throw new ConflictError('Сначала заархивируйте доску');
       }
@@ -476,7 +472,7 @@ export class BoardsService {
     board: Board,
     actorId: string | null,
     required: BoardAccessLevel,
-    teams: TeamsRepository = this.teams,
+    teams: TeamAccess = this.teams,
   ): Promise<void> {
     const membershipLevel = await this.resolveMembershipLevel(board, actorId, teams);
     if (membershipLevel && hasBoardAccess(membershipLevel, required)) return;
@@ -498,13 +494,13 @@ export class BoardsService {
   private async resolveMembershipLevel(
     board: Board,
     actorId: string | null,
-    teams: TeamsRepository,
+    teams: TeamAccess,
   ): Promise<BoardAccessLevel | null> {
     if (!actorId) return null;
     if (!board.teamId) {
       return board.ownerId === actorId ? 'manage' : null;
     }
-    const membership = await teams.findMembership(board.teamId, actorId);
+    const membership = await teams.membershipOf(board.teamId, actorId);
     if (!membership) return null;
     if (hasTeamRole(membership.role, 'admin') || board.ownerId === actorId) return 'manage';
     if (hasTeamRole(membership.role, 'member')) return 'edit';
@@ -523,7 +519,7 @@ export class BoardsService {
       if (!board) {
         throw new NotFoundError('Доска не найдена');
       }
-      await this.assertAccess(board, actorId, 'manage', this.createTeamsRepository(tx));
+      await this.assertAccess(board, actorId, 'manage', this.createTeamAccess(tx));
       const updated = await repo.updateShareRole(boardId, role);
       if (!updated) {
         throw new NotFoundError('Доска не найдена');
