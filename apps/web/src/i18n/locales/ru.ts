@@ -376,6 +376,7 @@ export default {
     formPickerLabel: 'Тип элемента',
     colorPickerLabel: 'Цвет',
     addCustomColor: 'Добавить цвет',
+    customColorApply: 'Применить',
     recentColorsLabel: 'Недавние',
     share: 'Поделиться ссылкой',
     shareTitle: 'Поделиться ссылкой',

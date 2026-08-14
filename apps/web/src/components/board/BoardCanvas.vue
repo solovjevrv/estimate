@@ -1684,6 +1684,114 @@ function patchSelectedEdge(patchByEdge: (edge: Edge<BoardEdge>) => BoardOp): voi
   if (ops.length) void boardSession.applyOps(ops);
 }
 
+/**
+ * Сессии «превью кастомного цвета» из UColorPicker (18.4, баг с живой
+ * проверки): drag красит объект live через ту же `applyOps`, что и обычный
+ * коммит. Раньше отмена (BoardColorPickerMenu, попап закрыт без «Применить»)
+ * шла через тот же путь, что и live-превью, и патчила ТЕКУЩЕЕ выделение
+ * (`patchSelected`/`patchSelectedEdge`) — а клик мимо объекта синхронно
+ * снимает выделение РАНЬШЕ, чем успевает отработать откат: к моменту, когда
+ * приходит эмит отмены, выделение уже пустое, патч не бьёт никуда, откат
+ * молча теряется, цвет остаётся висеть на объекте перманентно.
+ *
+ * Фикс — не читать выделение на каждый тик, а зафиксировать id один раз в
+ * начале сессии (первый вызов preview после явного коммита/отмены) и всегда
+ * использовать именно эти id, включая финальную отмену — тогда она бьёт в
+ * тот же объект, что и живое превью, независимо от состояния выделения к
+ * моменту закрытия попапа. Коммит (клик по свотчу/«Применить», через
+ * patchSelected/patchSelectedEdge выше) ЗАВЕРШАЕТ сессию — сбрасывает id в
+ * null. Отмена — это ОТДЕЛЬНОЕ, не переиспользующее preview, событие
+ * (`BoardColorPickerMenu`'s `cancel`) ИМЕННО потому, что тоже обязана
+ * завершить сессию: если бы отмена шла через preview, id остались бы
+ * зафиксированными, и следующее открытие пикера (даже на другом объекте)
+ * красило бы старый.
+ */
+let colorPreviewIds: string[] | null = null;
+let textColorPreviewIds: string[] | null = null;
+let edgeColorPreviewIds: string[] | null = null;
+
+function previewSelectedColor(color: BoardColorHex): void {
+  colorPreviewIds ??= selectedNodes.value.map((node) => node.id);
+  const ops: BoardOp[] = colorPreviewIds.map((id) => ({
+    type: 'item.patch',
+    clientOpId: uuid(),
+    id,
+    patch: { style: { color } },
+  }));
+  if (ops.length) void boardSession.applyOps(ops);
+}
+
+function cancelSelectedColorPreview(originalColor: BoardColorHex): void {
+  const ids = colorPreviewIds;
+  colorPreviewIds = null;
+  if (!ids?.length) return;
+  const ops: BoardOp[] = ids.map((id) => ({
+    type: 'item.patch',
+    clientOpId: uuid(),
+    id,
+    patch: { style: { color: originalColor } },
+  }));
+  void boardSession.applyOps(ops);
+}
+
+function previewSelectedTextColor(textColor: BoardColorHex): void {
+  textColorPreviewIds ??= selectedNodes.value.map((node) => node.id);
+  const ops: BoardOp[] = textColorPreviewIds.map((id) => ({
+    type: 'item.patch',
+    clientOpId: uuid(),
+    id,
+    patch: { style: { textColor } },
+  }));
+  if (ops.length) void boardSession.applyOps(ops);
+}
+
+function cancelSelectedTextColorPreview(originalTextColor: BoardColorHex): void {
+  const ids = textColorPreviewIds;
+  textColorPreviewIds = null;
+  if (!ids?.length) return;
+  const ops: BoardOp[] = ids.map((id) => ({
+    type: 'item.patch',
+    clientOpId: uuid(),
+    id,
+    patch: { style: { textColor: originalTextColor } },
+  }));
+  void boardSession.applyOps(ops);
+}
+
+function previewEdgeColor(color: BoardColorHex): void {
+  edgeColorPreviewIds ??= selectedEdges.value.map((edge) => edge.id);
+  const ops: BoardOp[] = [];
+  for (const id of edgeColorPreviewIds) {
+    const edge = props.edges.find((candidate) => candidate.id === id);
+    if (!edge) continue;
+    ops.push({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id,
+      patch: { style: { ...edge.style, color } },
+    });
+  }
+  if (ops.length) void boardSession.applyOps(ops);
+}
+
+function cancelEdgeColorPreview(originalColor: BoardColorHex): void {
+  const ids = edgeColorPreviewIds;
+  edgeColorPreviewIds = null;
+  if (!ids?.length) return;
+  const ops: BoardOp[] = [];
+  for (const id of ids) {
+    const edge = props.edges.find((candidate) => candidate.id === id);
+    if (!edge) continue;
+    ops.push({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id,
+      patch: { style: { ...edge.style, color: originalColor } },
+    });
+  }
+  if (ops.length) void boardSession.applyOps(ops);
+}
+
 function patchEdgeLine(line: BoardEdgeLineKindOption): void {
   patchSelectedEdge((edge) => {
     const data = edge.data as BoardEdge;
@@ -1721,6 +1829,7 @@ function patchEdgeMarkerEnd(marker: BoardEdgeMarkerOption): void {
 }
 
 function patchEdgeColor(color: BoardColorHex): void {
+  edgeColorPreviewIds = null;
   patchSelectedEdge((edge) => {
     const data = edge.data as BoardEdge;
     return {
@@ -1862,6 +1971,7 @@ function setSelectedForm(kind: ItemFormKind): void {
 }
 
 function setSelectedColor(color: BoardColorHex): void {
+  colorPreviewIds = null;
   patchSelected((node) => ({
     type: 'item.patch',
     clientOpId: uuid(),
@@ -1891,6 +2001,7 @@ function setSelectedFontSize(fontSize: number): void {
 }
 
 function setSelectedTextColor(textColor: BoardColorHex): void {
+  textColorPreviewIds = null;
   patchSelected((node) => ({
     type: 'item.patch',
     clientOpId: uuid(),
@@ -2284,9 +2395,13 @@ function onConnect(event: Connection): void {
         :editing-text="!!activeTextEditor"
         :active-marks="activeTextEditor?.activeMarks.value ?? null"
         @color="setSelectedColor"
+        @color-preview="previewSelectedColor"
+        @color-cancel="cancelSelectedColorPreview"
         @form="setSelectedForm"
         @font-size="setSelectedFontSize"
         @text-color="setSelectedTextColor"
+        @text-color-preview="previewSelectedTextColor"
+        @text-color-cancel="cancelSelectedTextColorPreview"
         @text-align="setSelectedTextAlign"
         @toggle-mark="activeTextEditor?.toggle($event)"
         @set-highlight="activeTextEditor?.setHighlight($event)"
@@ -2310,6 +2425,8 @@ function onConnect(event: Connection): void {
         @marker-start="patchEdgeMarkerStart"
         @marker-end="patchEdgeMarkerEnd"
         @color="patchEdgeColor"
+        @color-preview="previewEdgeColor"
+        @color-cancel="cancelEdgeColorPreview"
         @add-text="addTextToSelectedEdge"
         @delete="deleteSelectedEdges"
       />

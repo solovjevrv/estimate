@@ -140,9 +140,21 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   color: [hex: BoardColorHex];
+  /** Живое превью из кастомного UColorPicker (18.4) — своё событие, не `color`:
+   * `BoardCanvas.vue` должен зафиксировать id объекта(ов) на первом тике и не
+   * читать текущее выделение заново на каждый следующий (иначе финальный откат
+   * при закрытии попапа без «Применить» бьёт в уже снятое выделение и теряется,
+   * если пользователь кликнул мимо объекта). См. пояснение в BoardCanvas.vue. */
+  colorPreview: [hex: BoardColorHex];
+  /** Откат брошенного превью заливки (18.4) — см. пояснение у `cancel` в
+   * BoardColorPickerMenu.vue и у `previewSelectedColor`/`colorPreviewIds`
+   * в BoardCanvas.vue. */
+  colorCancel: [hex: BoardColorHex];
   form: [kind: ItemFormKind];
   fontSize: [size: number];
   textColor: [hex: BoardColorHex];
+  textColorPreview: [hex: BoardColorHex];
+  textColorCancel: [hex: BoardColorHex];
   textAlign: [align: BoardTextAlign];
   toggleMark: [key: FormatMarkKey];
   setHighlight: [color: BoardHighlightColor | null];
@@ -247,7 +259,11 @@ function pickColor(hex: BoardColorHex, close: () => void): void {
 }
 
 function previewColor(hex: BoardColorHex): void {
-  emit('color', hex);
+  emit('colorPreview', hex);
+}
+
+function cancelColor(hex: BoardColorHex): void {
+  emit('colorCancel', hex);
 }
 
 /** Цвет текста из пикера (18.4). Попап «Aa» СВОЙ — close() тут недоступен
@@ -259,7 +275,11 @@ function pickTextColor(hex: BoardColorHex): void {
 }
 
 function previewTextColor(hex: BoardColorHex): void {
-  emit('textColor', hex);
+  emit('textColorPreview', hex);
+}
+
+function cancelTextColor(hex: BoardColorHex): void {
+  emit('textColorCancel', hex);
 }
 </script>
 
@@ -391,6 +411,7 @@ function previewTextColor(hex: BoardColorHex): void {
             :current-color="props.currentColor"
             @pick="(hex) => pickColor(hex, close)"
             @preview="previewColor"
+            @cancel="cancelColor"
           />
         </template>
       </UPopover>
@@ -441,9 +462,11 @@ function previewTextColor(hex: BoardColorHex): void {
             <div class="board-text-menu-row">
               <span class="board-text-menu-label">{{ t('board.textColorLabel') }}</span>
               <BoardColorPickerMenu
+                inline
                 :current-color="props.currentTextColor"
                 @pick="pickTextColor"
                 @preview="previewTextColor"
+                @cancel="cancelTextColor"
               />
             </div>
           </div>
@@ -679,7 +702,6 @@ function previewTextColor(hex: BoardColorHex): void {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 190px;
   padding: 10px;
 }
 

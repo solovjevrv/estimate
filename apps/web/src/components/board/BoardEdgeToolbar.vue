@@ -55,6 +55,14 @@ const emit = defineEmits<{
   markerStart: [kind: BoardEdgeMarkerOption];
   markerEnd: [kind: BoardEdgeMarkerOption];
   color: [hex: BoardColorHex];
+  /** Живое превью из кастомного UColorPicker (18.4) — своё событие, не
+   * `color`, см. пояснение у одноимённого emit в BoardSelectionToolbar.vue
+   * и у previewEdgeColor в BoardCanvas.vue. */
+  colorPreview: [hex: BoardColorHex];
+  /** Откат брошенного превью (18.4) — см. пояснение у `cancel` в
+   * BoardColorPickerMenu.vue и у `previewEdgeColor`/`edgeColorPreviewIds`
+   * в BoardCanvas.vue. */
+  colorCancel: [hex: BoardColorHex];
   addText: [];
   delete: [];
 }>();
@@ -69,7 +77,11 @@ function pickColor(hex: BoardColorHex, close: () => void): void {
 }
 
 function previewColor(hex: BoardColorHex): void {
-  emit('color', hex);
+  emit('colorPreview', hex);
+}
+
+function cancelColor(hex: BoardColorHex): void {
+  emit('colorCancel', hex);
 }
 </script>
 
@@ -174,6 +186,7 @@ function previewColor(hex: BoardColorHex): void {
           :current-color="props.currentColor"
           @pick="(hex) => pickColor(hex, close)"
           @preview="previewColor"
+          @cancel="cancelColor"
         />
       </template>
     </UPopover>
