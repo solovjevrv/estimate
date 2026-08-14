@@ -9,8 +9,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { UsersRepository } from '../src/auth';
 import type { Db } from '../src/db';
 import { ConflictError, ForbiddenError, ValidationError } from '../src/errors';
+import { GuestSessions } from '../src/platform/realtime';
 import type { ParticipantIdentity } from '../src/rooms';
-import { GuestSessions, RoomsService } from '../src/rooms';
+import { RoomsService } from '../src/rooms';
 import { RoomsRepository } from '../src/rooms/rooms.repository';
 import { TeamsRepository } from '../src/teams';
 
@@ -87,7 +88,7 @@ function serviceWith(
     new RoomsRepository(db),
     teams as TeamsRepository,
     users as UsersRepository,
-    new GuestSessions(GUEST_SECRET),
+    new GuestSessions(GUEST_SECRET, 'guest'),
   );
 }
 
@@ -351,7 +352,7 @@ describe('RoomsService: вход за стол', () => {
       roomId: ROOM.id,
       userId: null,
       guestName: '  Гость  ',
-      guestToken: new GuestSessions(GUEST_SECRET).issue(ROOM.id, 'guest-42'),
+      guestToken: new GuestSessions(GUEST_SECRET, 'guest').issue(ROOM.id, 'guest-42'),
     });
 
     expect(identity).toMatchObject({
@@ -640,7 +641,7 @@ describe('RoomsService.getState (7.30)', () => {
       new RoomsRepository(db),
       new TeamsRepository(db),
       {} as UsersRepository,
-      new GuestSessions(GUEST_SECRET),
+      new GuestSessions(GUEST_SECRET, 'guest'),
       () => fakeRepo as RoomsRepository,
     );
 

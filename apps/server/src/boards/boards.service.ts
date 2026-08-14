@@ -17,10 +17,10 @@ import {
 import { UsersRepository } from '../auth';
 import type { Db } from '../db';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
+import { GuestSessions } from '../platform/realtime';
 import { TeamsRepository } from '../teams';
 import type { DbExecutor as TeamsDbExecutor } from '../teams/teams.repository';
 
-import { BoardGuestSessions } from './board-guest-sessions';
 import type { BoardImagesService } from './board-images.service';
 import { applyBoardOp, type BoardOpState } from './board-ops';
 import { BoardsRepository, type DbExecutor as BoardsDbExecutor } from './boards.repository';
@@ -66,7 +66,7 @@ export class BoardsService {
     private readonly repository: BoardsRepository,
     private readonly teams: TeamsRepository,
     private readonly users: UsersRepository,
-    private readonly guests: BoardGuestSessions,
+    private readonly guests: GuestSessions,
     /**
      * Репозитории для действий под транзакцией (`getSnapshot`/`applyOps`) —
      * фабрики, а не прямой `new BoardsRepository(tx)`, чтобы в юнит-тестах
@@ -89,7 +89,7 @@ export class BoardsService {
       new BoardsRepository(db),
       new TeamsRepository(db),
       new UsersRepository(db),
-      new BoardGuestSessions(guestSecret),
+      new GuestSessions(guestSecret, 'boardGuest'),
       (executor) => new BoardsRepository(executor),
       (executor) => new TeamsRepository(executor),
       images,
@@ -215,10 +215,7 @@ export class BoardsService {
       throw new NotFoundError('Доска не найдена');
     }
     const name = this.normalizeGuestName(request.guestName ?? '');
-    const returning = this.guests.verify(board.id, request.guestToken);
-    const session = returning
-      ? { guestId: returning, token: this.guests.issue(board.id, returning) }
-      : this.guests.create(board.id);
+    const session = this.guests.resume(board.id, request.guestToken);
 
     return {
       board,

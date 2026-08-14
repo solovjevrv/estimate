@@ -26,10 +26,10 @@ import { UsersRepository } from '../auth';
 import type { Db } from '../db';
 import { isForeignKeyViolation, isUniqueViolation } from '../db/errors';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
+import { GuestSessions } from '../platform/realtime';
 import { TeamsRepository } from '../teams';
 import type { DbExecutor as TeamsDbExecutor } from '../teams/teams.repository';
 
-import { GuestSessions } from './guest-sessions';
 import type { ParticipantIdentity } from './presence';
 import {
   type DbExecutor as RoomsDbExecutor,
@@ -102,7 +102,7 @@ export class RoomsService {
       new RoomsRepository(db),
       new TeamsRepository(db),
       new UsersRepository(db),
-      new GuestSessions(guestSecret),
+      new GuestSessions(guestSecret, 'guest'),
     );
   }
 
@@ -309,10 +309,7 @@ export class RoomsService {
     // Идентификатор гостя виден всем за столом, поэтому личность подтверждает
     // подписанный токен, а не сам идентификатор. Токен проверяется именно на
     // эту комнату — токен другой комнаты сюда не подходит.
-    const returning = this.guests.verify(room.id, request.guestToken);
-    const session = returning
-      ? { guestId: returning, token: this.guests.issue(room.id, returning) }
-      : this.guests.create(room.id);
+    const session = this.guests.resume(room.id, request.guestToken);
 
     return {
       room,
