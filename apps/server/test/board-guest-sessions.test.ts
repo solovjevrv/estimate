@@ -14,9 +14,7 @@ describe('BoardGuestSessions', () => {
   it('create выписывает токен для конкретной доски', () => {
     const { guestId, token } = sessions.create('board-1');
 
-    expect(guestId).toMatch(
-      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i,
-    );
+    expect(guestId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
     expect(token).toMatch(/^board-1\./);
     expect(token.split('.')[1]).toBe(guestId);
   });

@@ -58,11 +58,7 @@ export class BoardsGateway {
           if (!ops || ops.length === 0) {
             throw new ValidationError('Пустой список операций');
           }
-          const { revision, ops: committed } = await this.service.applyOps(
-            identity,
-            boardId,
-            ops,
-          );
+          const { revision, ops: committed } = await this.service.applyOps(identity, boardId, ops);
           const batch: BoardOpsBatch = { revision, ops: committed };
           this.pushToBuffer(boardId, batch);
           // Рассылаем всем, включая отправителя — своя же операция отбрасывается

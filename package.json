@@ -18,6 +18,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
+    "test:unit": "vitest run --project @poker/web --project @poker/shared",
+    "test:server": "vitest run --project @poker/server",
     "test:e2e": "pnpm --filter @poker/e2e test",
     "test:e2e:smoke": "pnpm --filter @poker/e2e test:smoke",
     "loadtest": "pnpm --filter @poker/load-test start"
