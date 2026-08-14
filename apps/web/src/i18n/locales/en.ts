@@ -376,6 +376,8 @@ export default {
     formPickerLabel: 'Item type',
     colorPickerLabel: 'Color',
     addCustomColor: 'Add color',
+    customColorApply: 'Apply',
+    recentColorsLabel: 'Recent',
     share: 'Share link',
     shareTitle: 'Share link',
     shareToggleLabel: 'Link access',

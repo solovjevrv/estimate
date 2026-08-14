@@ -11,8 +11,10 @@
  * Цвет стрелки (12.8) — палитра + кастомный цвет через `UColorPicker`
  * (18.3 — замена нативного `<input type="color">`).
  */
-import { BOARD_COLOR_PALETTE, type BoardColorHex } from '@poker/shared';
+import { type BoardColorHex } from '@poker/shared';
 import { useI18n } from 'vue-i18n';
+
+import BoardColorPickerMenu from './BoardColorPickerMenu.vue';
 
 export type BoardEdgeLineKindOption = 'straight' | 'orthogonal' | 'curved';
 export type BoardEdgeMarkerOption = 'none' | 'arrow' | 'dot';
@@ -53,14 +55,33 @@ const emit = defineEmits<{
   markerStart: [kind: BoardEdgeMarkerOption];
   markerEnd: [kind: BoardEdgeMarkerOption];
   color: [hex: BoardColorHex];
+  /** Живое превью из кастомного UColorPicker (18.4) — своё событие, не
+   * `color`, см. пояснение у одноимённого emit в BoardSelectionToolbar.vue
+   * и у previewEdgeColor в BoardCanvas.vue. */
+  colorPreview: [hex: BoardColorHex];
+  /** Откат брошенного превью (18.4) — см. пояснение у `cancel` в
+   * BoardColorPickerMenu.vue и у `previewEdgeColor`/`edgeColorPreviewIds`
+   * в BoardCanvas.vue. */
+  colorCancel: [hex: BoardColorHex];
   addText: [];
   delete: [];
 }>();
 
 const { t } = useI18n();
 
-function setCustomColor(value: string | undefined): void {
-  if (value) emit('color', value);
+/** Цвет стрелки из пикера (18.4) — обёртка над emit, чтобы не писать
+ * многострелку в атрибуте @pick (Vue-компилятор не парсит такие). */
+function pickColor(hex: BoardColorHex, close: () => void): void {
+  emit('color', hex);
+  close();
+}
+
+function previewColor(hex: BoardColorHex): void {
+  emit('colorPreview', hex);
+}
+
+function cancelColor(hex: BoardColorHex): void {
+  emit('colorCancel', hex);
 }
 </script>
 
@@ -161,44 +182,12 @@ function setCustomColor(value: string | undefined): void {
       />
 
       <template #content="{ close }">
-        <div class="board-color-menu">
-          <button
-            v-for="hex in BOARD_COLOR_PALETTE"
-            :key="hex"
-            type="button"
-            class="board-selection-swatch"
-            :class="{ 'board-selection-swatch-active': hex === props.currentColor }"
-            :style="{ backgroundColor: hex }"
-            :aria-label="hex"
-            @click="
-              emit('color', hex);
-              close();
-            "
-          />
-          <!-- Кастомный цвет (18.3) — своё поле: отдельный вложенный UPopover со
-            своей карточкой, см. пояснение у BoardSelectionToolbar.vue -->
-          <UPopover :content="{ side: 'right', sideOffset: 8 }">
-            <button
-              type="button"
-              class="board-color-add-btn"
-              :aria-label="t('board.addCustomColor')"
-            >
-              <UIcon name="i-lucide-pipette" class="size-3.5" />
-            </button>
-
-            <template #content>
-              <div class="board-color-picker-panel">
-                <UColorPicker
-                  :model-value="props.currentColor"
-                  format="hex"
-                  size="xs"
-                  class="board-color-picker"
-                  @update:model-value="setCustomColor"
-                />
-              </div>
-            </template>
-          </UPopover>
-        </div>
+        <BoardColorPickerMenu
+          :current-color="props.currentColor"
+          @pick="(hex) => pickColor(hex, close)"
+          @preview="previewColor"
+          @cancel="cancelColor"
+        />
       </template>
     </UPopover>
 

@@ -51,7 +51,7 @@ async function openColorPopover(wrapper: ReturnType<typeof mountToolbar>) {
 
 /** Пикер (18.3) — отдельное вложенное поле, открывается только по клику на пипетку */
 async function openColorPickerWidget() {
-  const pipette = document.querySelector<HTMLButtonElement>('.board-color-add-btn')!;
+  const pipette = document.querySelector<HTMLButtonElement>('.board-color-add-trigger')!;
   pipette.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   await nextTick();
 }
@@ -67,7 +67,7 @@ describe('BoardEdgeToolbar — цвет стрелки через UColorPicker',
     await openColorPopover(wrapper);
 
     expect(findColorPicker(wrapper).exists()).toBe(false);
-    expect(document.querySelector('.board-color-add-btn')).not.toBeNull();
+    expect(document.querySelector('.board-color-add-trigger')).not.toBeNull();
     wrapper.unmount();
   });
 
@@ -80,11 +80,13 @@ describe('BoardEdgeToolbar — цвет стрелки через UColorPicker',
 
     expect(findColorPicker(wrapper).exists()).toBe(true);
     expect(trigger.attributes('data-state')).toBe('open');
-    expect(document.querySelector('.board-color-add-btn')?.getAttribute('data-state')).toBe('open');
+    expect(document.querySelector('.board-color-add-trigger')?.getAttribute('data-state')).toBe(
+      'open',
+    );
     wrapper.unmount();
   });
 
-  it('emit "color" при выборе кастомного цвета в пикере', async () => {
+  it('emit "colorPreview" при выборе кастомного цвета в пикере', async () => {
     const wrapper = mountToolbar();
     await openColorPopover(wrapper);
     await openColorPickerWidget();
@@ -92,7 +94,9 @@ describe('BoardEdgeToolbar — цвет стрелки через UColorPicker',
     const picker = findColorPicker(wrapper);
     await picker.vm.$emit('update:modelValue', '#123456');
 
-    expect(wrapper.emitted('color')?.[0]?.[0]).toBe('#123456');
+    // Drag — своё событие "colorPreview" (18.4), не "color": родитель ведёт
+    // сессию превью по зафиксированным id, а не по текущему выделению
+    expect(wrapper.emitted('colorPreview')?.[0]?.[0]).toBe('#123456');
     wrapper.unmount();
   });
 
@@ -158,7 +162,7 @@ describe('BoardEdgeToolbar — цвет стрелки через UColorPicker',
     const picker = findColorPicker(wrapper);
     await picker.vm.$emit('update:modelValue', undefined);
 
-    expect(wrapper.emitted('color')).toBeFalsy();
+    expect(wrapper.emitted('colorPreview')).toBeFalsy();
     wrapper.unmount();
   });
 });

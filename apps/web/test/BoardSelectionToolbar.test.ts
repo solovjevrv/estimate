@@ -59,7 +59,7 @@ async function openTextOptionsPopover(wrapper: ReturnType<typeof mountToolbar>) 
 
 /** Пикер (18.3) — отдельное вложенное поле, открывается только по клику на пипетку */
 async function openColorPickerWidget() {
-  const pipette = document.querySelector<HTMLButtonElement>('.board-color-add-btn')!;
+  const pipette = document.querySelector<HTMLButtonElement>('.board-color-add-trigger')!;
   pipette.dispatchEvent(new MouseEvent('click', { bubbles: true }));
   await nextTick();
 }
@@ -75,7 +75,7 @@ describe('BoardSelectionToolbar — цвет через UColorPicker', () => {
     await openFillColorPopover(wrapper);
 
     expect(findColorPicker(wrapper).exists()).toBe(false);
-    expect(document.querySelector('.board-color-add-btn')).not.toBeNull();
+    expect(document.querySelector('.board-color-add-trigger')).not.toBeNull();
     wrapper.unmount();
   });
 
@@ -89,11 +89,13 @@ describe('BoardSelectionToolbar — цвет через UColorPicker', () => {
     expect(findColorPicker(wrapper).exists()).toBe(true);
     expect(trigger.attributes('data-state')).toBe('open');
     // Пипетка — триггер СВОЕГО вложенного UPopover, а не просто кнопка-переключатель
-    expect(document.querySelector('.board-color-add-btn')?.getAttribute('data-state')).toBe('open');
+    expect(document.querySelector('.board-color-add-trigger')?.getAttribute('data-state')).toBe(
+      'open',
+    );
     wrapper.unmount();
   });
 
-  it('emit "color" при выборе кастомного цвета заливки', async () => {
+  it('emit "colorPreview" при выборе кастомного цвета заливки', async () => {
     const wrapper = mountToolbar();
     await openFillColorPopover(wrapper);
     await openColorPickerWidget();
@@ -101,11 +103,13 @@ describe('BoardSelectionToolbar — цвет через UColorPicker', () => {
     const picker = findColorPicker(wrapper);
     await picker.vm.$emit('update:modelValue', '#123456');
 
-    expect(wrapper.emitted('color')?.[0]?.[0]).toBe('#123456');
+    // Drag — своё событие "colorPreview" (18.4), не "color": родитель ведёт
+    // сессию превью по зафиксированным id, а не по текущему выделению
+    expect(wrapper.emitted('colorPreview')?.[0]?.[0]).toBe('#123456');
     wrapper.unmount();
   });
 
-  it('emit "textColor" при выборе кастомного цвета текста', async () => {
+  it('emit "textColorPreview" при выборе кастомного цвета текста', async () => {
     const wrapper = mountToolbar();
     await openTextOptionsPopover(wrapper);
     await openColorPickerWidget();
@@ -113,7 +117,7 @@ describe('BoardSelectionToolbar — цвет через UColorPicker', () => {
     const picker = findColorPicker(wrapper);
     await picker.vm.$emit('update:modelValue', '#AABBCC');
 
-    expect(wrapper.emitted('textColor')?.[0]?.[0]).toBe('#AABBCC');
+    expect(wrapper.emitted('textColorPreview')?.[0]?.[0]).toBe('#AABBCC');
     wrapper.unmount();
   });
 
@@ -152,7 +156,7 @@ describe('BoardSelectionToolbar — цвет через UColorPicker', () => {
     await openTextOptionsPopover(wrapper);
 
     const swatch = document.querySelectorAll<HTMLButtonElement>(
-      '.board-text-menu-swatches button',
+      '.board-color-menu .board-selection-swatch',
     )[0]!;
     expect(swatch.getAttribute('aria-label')).toBe(BOARD_COLOR_PALETTE[0]);
 
@@ -194,7 +198,7 @@ describe('BoardSelectionToolbar — цвет через UColorPicker', () => {
     const picker = findColorPicker(wrapper);
     await picker.vm.$emit('update:modelValue', undefined);
 
-    expect(wrapper.emitted('color')).toBeFalsy();
+    expect(wrapper.emitted('colorPreview')).toBeFalsy();
     wrapper.unmount();
   });
 });

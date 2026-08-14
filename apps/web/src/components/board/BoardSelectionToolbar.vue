@@ -51,7 +51,6 @@
  * версия защищала от коммита клик по ЛЮБОЙ кнопке всего тулбара).
  */
 import {
-  BOARD_COLOR_PALETTE,
   BOARD_HIGHLIGHT_COLORS,
   BOARD_ITEM_FONT_SIZE_MAX,
   BOARD_ITEM_FONT_SIZE_MIN,
@@ -72,6 +71,7 @@ import { useI18n } from 'vue-i18n';
 import { HIGHLIGHT_CSS } from '../../lib/board/board-rich-text';
 import type { FormatMarkKey } from '../../lib/board/use-rich-text-editing';
 import BoardStickerPicker from './BoardStickerPicker.vue';
+import BoardColorPickerMenu from './BoardColorPickerMenu.vue';
 
 const FORMAT_BUTTONS: readonly { key: FormatMarkKey; icon: string }[] = [
   { key: 'bold', icon: 'i-lucide-bold' },
@@ -140,9 +140,21 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   color: [hex: BoardColorHex];
+  /** Живое превью из кастомного UColorPicker (18.4) — своё событие, не `color`:
+   * `BoardCanvas.vue` должен зафиксировать id объекта(ов) на первом тике и не
+   * читать текущее выделение заново на каждый следующий (иначе финальный откат
+   * при закрытии попапа без «Применить» бьёт в уже снятое выделение и теряется,
+   * если пользователь кликнул мимо объекта). См. пояснение в BoardCanvas.vue. */
+  colorPreview: [hex: BoardColorHex];
+  /** Откат брошенного превью заливки (18.4) — см. пояснение у `cancel` в
+   * BoardColorPickerMenu.vue и у `previewSelectedColor`/`colorPreviewIds`
+   * в BoardCanvas.vue. */
+  colorCancel: [hex: BoardColorHex];
   form: [kind: ItemFormKind];
   fontSize: [size: number];
   textColor: [hex: BoardColorHex];
+  textColorPreview: [hex: BoardColorHex];
+  textColorCancel: [hex: BoardColorHex];
   textAlign: [align: BoardTextAlign];
   toggleMark: [key: FormatMarkKey];
   setHighlight: [color: BoardHighlightColor | null];
@@ -231,20 +243,43 @@ function clearLink(): void {
   linkPopoverOpen.value = false;
 }
 
-function setCustomColor(value: string | undefined): void {
-  if (value) emit('color', value);
-}
-
-function setCustomTextColor(value: string | undefined): void {
-  if (value) emit('textColor', value);
-}
-
 function stepFontSize(delta: number): void {
   const next = Math.min(
     BOARD_ITEM_FONT_SIZE_MAX,
     Math.max(BOARD_ITEM_FONT_SIZE_MIN, props.currentFontSize + delta),
   );
   if (next !== props.currentFontSize) emit('fontSize', next);
+}
+
+/** Цвет заливки из пикера (18.4) — обёртка над emit, чтобы не писать
+ * многострочную стрелку в атрибуте @pick (Vue-компилятор не парсит такие). */
+function pickColor(hex: BoardColorHex, close: () => void): void {
+  emit('color', hex);
+  close();
+}
+
+function previewColor(hex: BoardColorHex): void {
+  emit('colorPreview', hex);
+}
+
+function cancelColor(hex: BoardColorHex): void {
+  emit('colorCancel', hex);
+}
+
+/** Цвет текста из пикера (18.4). Попап «Aa» СВОЙ — close() тут недоступен
+ * (нет доступа к #content="{ close }" внешнего UPopover в этом месте разметки),
+ * закрывать его не нужно: цвет текста и раньше НЕ закрывал попап «Aa» при клике
+ * по свотчу (в нём есть ещё font-size — пользователь мог продолжить настройку). */
+function pickTextColor(hex: BoardColorHex): void {
+  emit('textColor', hex);
+}
+
+function previewTextColor(hex: BoardColorHex): void {
+  emit('textColorPreview', hex);
+}
+
+function cancelTextColor(hex: BoardColorHex): void {
+  emit('textColorCancel', hex);
 }
 </script>
 
@@ -372,48 +407,12 @@ function stepFontSize(delta: number): void {
         />
 
         <template #content="{ close }">
-          <div class="board-color-menu">
-            <button
-              v-for="hex in BOARD_COLOR_PALETTE"
-              :key="hex"
-              type="button"
-              class="board-selection-swatch"
-              :class="{ 'board-selection-swatch-active': hex === props.currentColor }"
-              :style="{ backgroundColor: hex }"
-              :aria-label="hex"
-              @click="
-                emit('color', hex);
-                close();
-              "
-            />
-            <!-- Кастомный цвет (18.3) — своё поле: отдельный вложенный UPopover
-              со своей карточкой, а не встроенный в сетку свотчей виджет. Раньше
-              так же отдельным окном открывался нативный `<input type="color">`
-              (см. историю файла) — теперь то же место, но свой UColorPicker
-              вместо системного диалога ОС. Вложенный попап открывается/закрывается
-              независимо от родительского — родитель не закрывается при drag внутри. -->
-            <UPopover :content="{ side: 'right', sideOffset: 8 }">
-              <button
-                type="button"
-                class="board-color-add-btn"
-                :aria-label="t('board.addCustomColor')"
-              >
-                <UIcon name="i-lucide-pipette" class="size-3.5" />
-              </button>
-
-              <template #content>
-                <div class="board-color-picker-panel">
-                  <UColorPicker
-                    :model-value="props.currentColor"
-                    format="hex"
-                    size="xs"
-                    class="board-color-picker"
-                    @update:model-value="setCustomColor"
-                  />
-                </div>
-              </template>
-            </UPopover>
-          </div>
+          <BoardColorPickerMenu
+            :current-color="props.currentColor"
+            @pick="(hex) => pickColor(hex, close)"
+            @preview="previewColor"
+            @cancel="cancelColor"
+          />
         </template>
       </UPopover>
     </template>
@@ -462,41 +461,13 @@ function stepFontSize(delta: number): void {
 
             <div class="board-text-menu-row">
               <span class="board-text-menu-label">{{ t('board.textColorLabel') }}</span>
-              <div class="board-text-menu-swatches">
-                <button
-                  v-for="hex in BOARD_COLOR_PALETTE"
-                  :key="hex"
-                  type="button"
-                  class="board-selection-swatch"
-                  :class="{ 'board-selection-swatch-active': hex === props.currentTextColor }"
-                  :style="{ backgroundColor: hex }"
-                  :aria-label="hex"
-                  @click="emit('textColor', hex)"
-                ></button>
-                <!-- Кастомный цвет (18.3) — своё поле, отдельный вложенный UPopover,
-                  см. пояснение у аналогичного блока заливки выше -->
-                <UPopover :content="{ side: 'right', sideOffset: 8 }">
-                  <button
-                    type="button"
-                    class="board-color-add-btn"
-                    :aria-label="t('board.addCustomColor')"
-                  >
-                    <UIcon name="i-lucide-pipette" class="size-3.5" />
-                  </button>
-
-                  <template #content>
-                    <div class="board-color-picker-panel">
-                      <UColorPicker
-                        :model-value="props.currentTextColor"
-                        format="hex"
-                        size="xs"
-                        class="board-color-picker"
-                        @update:model-value="setCustomTextColor"
-                      />
-                    </div>
-                  </template>
-                </UPopover>
-              </div>
+              <BoardColorPickerMenu
+                inline
+                :current-color="props.currentTextColor"
+                @pick="pickTextColor"
+                @preview="previewTextColor"
+                @cancel="cancelTextColor"
+              />
             </div>
           </div>
         </template>
@@ -731,7 +702,6 @@ function stepFontSize(delta: number): void {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  width: 190px;
   padding: 10px;
 }
 
