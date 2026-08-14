@@ -38,34 +38,11 @@ import {
   regenerateClientOpIds,
   type BoardHistoryEntry,
 } from '../lib/board/board-op-history';
-import { createSocket, emitWithAck, WsError, type PokerSocket } from '../lib/socket';
+import { createRealtimeConnection, GuestTokenStore, type JoinContext } from '../lib/realtime';
+import { emitWithAck, WsError, type PokerSocket } from '../lib/socket';
 import { useSessionStore } from './session';
 
-/**
- * Токен гостя доски переживает перезагрузку страницы (14.4): без него гость
- * вернётся на доску новым человеком и потеряет свою presence-идентичность.
- */
-function guestTokenKey(boardId: string): string {
-  return `poker:board-guest:${boardId}`;
-}
-
-function readGuestToken(boardId: string): string | undefined {
-  try {
-    return localStorage.getItem(guestTokenKey(boardId)) ?? undefined;
-  } catch {
-    // Приватный режим браузера может запрещять хранилище — тогда просто входим заново
-    return undefined;
-  }
-}
-
-function writeGuestToken(boardId: string, token: string | null): void {
-  try {
-    if (token === null) return;
-    localStorage.setItem(guestTokenKey(boardId), token);
-  } catch {
-    // Не смогли сохранить — переподключение потребует ввести имя ещё раз
-  }
-}
+const guestTokens = new GuestTokenStore('poker:board-guest:');
 
 /** Ключ цели операции — общий для `BoardOp` (клиент → сервер) и `BoardCommittedOp` (рассылка) */
 function opTargetKey(op: BoardOp): string {
@@ -219,7 +196,6 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   function stopFollowing(): void {
     followedParticipantId.value = null;
   }
-  const connected = ref(false);
   const joined = ref(false);
 
   /**
@@ -255,18 +231,9 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     redoStack.value = [];
   }
 
-  let socket: PokerSocket | null = null;
   let boardId: string | null = null;
   /** Имя гостя этого сеанса — self.name в applyOps ниже, пока для него нет session.user */
   let ownGuestName: string | null = null;
-  /** Прошёл ли первый успешный вход — по нему отличаем реконнект от начального подключения */
-  let established = false;
-  /**
-   * Растёт при каждом `join()`/`leave()`: `performJoin` сверяет его после
-   * ожидания ответа сервера и не применяет результат, если за это время
-   * успели выйти или запросить другой вход — тот же приём, что в `room.ts`.
-   */
-  let joinToken = 0;
 
   const items = computed(() => [...local.items.values()]);
   const edges = computed(() => [...local.edges.values()]);
@@ -306,25 +273,31 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     ownClientOpIds.clear();
   }
 
-  async function performJoin(id: string, guestName?: string): Promise<void> {
-    const active = socket;
-    if (!active) return;
-    const token = joinToken;
-    if (guestName !== undefined) ownGuestName = guestName;
+  /**
+   * Доска берётся из `boardId`, а не из замыкания: при переходе на другую доску
+   * на живом сокете вход после обрыва должен вернуть на текущую доску, а не на
+   * ту, с которой сессию когда-то начали.
+   */
+  async function performJoin(active: PokerSocket, ctx: JoinContext): Promise<void> {
+    const id = boardId;
+    if (!id) return;
+    // Гостю сервер требует имя на каждый join, включая реконнект — то же имя,
+    // что и при первом входе
+    const guestName = ownGuestName ?? undefined;
 
     const result: JoinBoardResult = await emitWithAck(active, BOARD_WS_EVENTS.JOIN, {
       boardId: id,
       guestName,
-      guestToken: readGuestToken(id),
+      guestToken: guestTokens.read(id),
       // При первом входе на доску (ещё не видели ни одной ревизии) полный
       // снимок дешевле, чем прогонять пустой догон — присылаем только на реконнекте
-      sinceRevision: established ? revision.value : undefined,
+      sinceRevision: ctx.reconnect ? revision.value : undefined,
     });
 
     // Пока ждали ответ, вызвали leave() или новый join() — это уже не наш вход
-    if (token !== joinToken) return;
+    if (!ctx.isCurrent()) return;
 
-    writeGuestToken(id, result.guestToken);
+    guestTokens.write(id, result.guestToken);
     participantId.value = result.participantId;
     access.value = result.access;
 
@@ -336,6 +309,73 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     }
     joined.value = true;
   }
+
+  /** Доменные события доски — вешаются один раз на каждый созданный сокет */
+  function attachBoardListeners(active: PokerSocket): void {
+    active.on(BOARD_WS_SERVER_EVENTS.OPS, applyBatch);
+    active.on(BOARD_WS_SERVER_EVENTS.PRESENCE, (entries) => {
+      presence.value = entries;
+      // Awareness (курсоры, 14.1) не приходит событием "участник ушёл" — без
+      // этой сверки курсор отключившегося застывал бы на экране навсегда
+      // (последняя полученная позиция), так как awarenessByParticipant пополняется,
+      // но никогда сам по себе не убывает. presence — источник истины о том,
+      // кто сейчас реально на доске.
+      const activeIds = new Set(entries.map((entry) => entry.participantId));
+      for (const participantId of awarenessByParticipant.keys()) {
+        if (!activeIds.has(participantId)) awarenessByParticipant.delete(participantId);
+      }
+      // Та же самая «призрачная блокировка» (14.2): если участник отключился,
+      // его editing-запись тоже навсегда не исчезнет без этой сверки — и
+      // элемент останется недоступным для редактирования вечно.
+      for (const [itemId, lock] of editingByItem) {
+        if (!activeIds.has(lock.participantId)) editingByItem.delete(itemId);
+      }
+      // Камера того же участника (14.5) тоже не приходит в "ушёл" — чистим вместе
+      for (const [id] of cameraByParticipant) {
+        if (!activeIds.has(id)) cameraByParticipant.delete(id);
+      }
+      if (followedParticipantId.value && !activeIds.has(followedParticipantId.value)) {
+        followedParticipantId.value = null; // объект слежения ушёл с доски — авто-отписка
+      }
+    });
+    active.on(BOARD_WS_SERVER_EVENTS.AWARENESS, (payload) => {
+      // Камера (14.5) — отдельная карта, а не в awarenessByParticipant: иначе
+      // throttled cursor (каждые 80мс) затирал бы запись камеры того же
+      // participantId до того, как её успеет прочитать наблюдатель follow-mode
+      if (payload.kind === 'camera') {
+        cameraByParticipant.set(
+          payload.participantId,
+          payload.data as unknown as BoardCameraAwarenessData,
+        );
+        return;
+      }
+      // Мягкая блокировка редактирования (14.2) — отдельная ветка, НЕ
+      // трогает awarenessByParticipant: курсорные патчи (mousemove) не должны
+      // затирать editing-запись, иначе индикатор блокировки погаснет посреди
+      // реального редактирования
+      if (payload.kind === 'editing') {
+        const { itemId, active: isActive } = payload.data as {
+          itemId: string;
+          active: boolean;
+        };
+        if (isActive) {
+          editingByItem.set(itemId, {
+            participantId: payload.participantId,
+            name: payload.name,
+          });
+        } else if (editingByItem.get(itemId)?.participantId === payload.participantId) {
+          editingByItem.delete(itemId);
+        }
+        return;
+      }
+      awarenessByParticipant.set(payload.participantId, payload);
+    });
+  }
+
+  const connection = createRealtimeConnection({
+    attach: attachBoardListeners,
+    join: performJoin,
+  });
 
   async function join(
     id: string,
@@ -351,7 +391,6 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       participantId.value = null;
       access.value = 'view';
       applyError.value = null;
-      established = false;
       ownGuestName = null;
       lastOwnOpByTarget.clear();
       ownClientOpIds.clear();
@@ -360,118 +399,19 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       followedParticipantId.value = null;
     }
     boardId = id;
+    // Имя гостя нужно и на автоматическом входе после обрыва — сервер требует
+    // его на каждый join, а второй раз спрашивать пользователя негде
+    if (guestName !== undefined) ownGuestName = guestName;
     joined.value = false;
-    joinToken++;
 
-    socket ??= createSocket();
-    const active = socket;
-
-    if (!active.hasListeners(BOARD_WS_SERVER_EVENTS.OPS)) {
-      active.on(BOARD_WS_SERVER_EVENTS.OPS, applyBatch);
-      active.on(BOARD_WS_SERVER_EVENTS.PRESENCE, (entries) => {
-        presence.value = entries;
-        // Awareness (курсоры, 14.1) не приходит событием "участник ушёл" — без
-        // этой сверки курсор отключившегося застывал бы на экране навсегда
-        // (последняя полученная позиция), так как awarenessByParticipant пополняется,
-        // но никогда сам по себе не убывает. presence — источник истины о том,
-        // кто сейчас реально на доске.
-        const activeIds = new Set(entries.map((entry) => entry.participantId));
-        for (const participantId of awarenessByParticipant.keys()) {
-          if (!activeIds.has(participantId)) awarenessByParticipant.delete(participantId);
-        }
-        // Та же самая «призрачная блокировка» (14.2): если участник отключился,
-        // его editing-запись тоже навсегда не исчезнет без этой сверки — и
-        // элемент останется недоступным для редактирования вечно.
-        for (const [itemId, lock] of editingByItem) {
-          if (!activeIds.has(lock.participantId)) editingByItem.delete(itemId);
-        }
-        // Камера того же участника (14.5) тоже не приходит в "ушёл" — чистим вместе
-        for (const [id] of cameraByParticipant) {
-          if (!activeIds.has(id)) cameraByParticipant.delete(id);
-        }
-        if (followedParticipantId.value && !activeIds.has(followedParticipantId.value)) {
-          followedParticipantId.value = null; // объект слежения ушёл с доски — авто-отписка
-        }
-      });
-      active.on(BOARD_WS_SERVER_EVENTS.AWARENESS, (payload) => {
-        // Камера (14.5) — отдельная карта, а не в awarenessByParticipant: иначе
-        // throttled cursor (каждые 80мс) затирал бы запись камеры того же
-        // participantId до того, как её успеет прочитать наблюдатель follow-mode
-        if (payload.kind === 'camera') {
-          cameraByParticipant.set(
-            payload.participantId,
-            payload.data as unknown as BoardCameraAwarenessData,
-          );
-          return;
-        }
-        // Мягкая блокировка редактирования (14.2) — отдельная ветка, НЕ
-        // трогает awarenessByParticipant: курсорные патчи (mousemove) не должны
-        // затирать editing-запись, иначе индикатор блокировки погаснет посреди
-        // реального редактирования
-        if (payload.kind === 'editing') {
-          const { itemId, active: isActive } = payload.data as {
-            itemId: string;
-            active: boolean;
-          };
-          if (isActive) {
-            editingByItem.set(itemId, {
-              participantId: payload.participantId,
-              name: payload.name,
-            });
-          } else if (editingByItem.get(itemId)?.participantId === payload.participantId) {
-            editingByItem.delete(itemId);
-          }
-          return;
-        }
-        awarenessByParticipant.set(payload.participantId, payload);
-      });
-      active.on('connect', () => {
-        connected.value = true;
-        // Место на доске не переживает обрыв соединения — после переподключения
-        // входим заново. Первый connect не трогаем — вход по нему сделает join() ниже.
-        // Реконнект может и не удаться (доступ отозвали, пока вкладка простаивала,
-        // сервер ещё не поднялся) — без .catch() это был бы необработанный
-        // отказ промиса, а joined остался бы false навсегда без единого сигнала
-        // пользователю (по образцу room.ts, где такой же пробел уже был найден и закрыт, 7.16)
-        if (established) {
-          // Гостю сервер требует имя на каждый join, включая реконнект — то же
-          // имя, что и при первом входе (сохранено в ownGuestName выше)
-          void performJoin(id, ownGuestName ?? undefined).catch(() => onReconnectFailure?.());
-        }
-      });
-      active.on('disconnect', (reason: string) => {
-        connected.value = false;
-        // Socket.io сам не переподключается только при 'io server disconnect' —
-        // единственной причине, когда сервер намеренно разорвал соединение (деплой,
-        // рестарт). В остальных случаях (сеть, таймаут) клиент стянет себя — для
-        // presence/cursors (14.1) это критично: без принудительного reconnect после
-        // рестарта сервера участники зависнут на мёртвом сокете. Остальное — как у room.ts.
-        if (reason === 'io server disconnect' && established) {
-          active.connect();
-        }
-      });
-    }
-
-    if (!active.connected) {
-      active.connect();
-    }
-
-    await performJoin(id, guestName);
-    established = true;
+    await connection.open(onReconnectFailure);
   }
 
   function leave(): void {
-    if (boardId) {
-      writeGuestToken(boardId, null);
-    }
-    joinToken++;
-    socket?.disconnect();
-    socket = null;
+    connection.close();
     boardId = null;
-    established = false;
     ownGuestName = null;
     joined.value = false;
-    connected.value = false;
     participantId.value = null;
     access.value = 'view';
     applyError.value = null;
@@ -489,8 +429,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   }
 
   function requireSocket(): PokerSocket {
-    if (!socket) throw new Error('Доска не подключена');
-    return socket;
+    return connection.require('Доска не подключена');
   }
 
   /**
@@ -594,7 +533,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
    * `item.patch` через `applyOps` (12.6) — курсоры участников появятся в 14.1.
    */
   function sendAwareness(kind: BoardAwarenessKind, data: Record<string, unknown>): void {
-    socket?.emit(BOARD_WS_EVENTS.AWARENESS, { kind, data });
+    connection.current()?.emit(BOARD_WS_EVENTS.AWARENESS, { kind, data });
   }
 
   async function setShare(role: BoardShareRole | null): Promise<Board> {
@@ -614,7 +553,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     cameraOfFollowed,
     followParticipant,
     stopFollowing,
-    connected,
+    connected: connection.connected,
     joined,
     participantId,
     access,
