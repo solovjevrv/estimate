@@ -11,6 +11,8 @@ coverage/
 
 # Загруженные аватарки (10.15) — локальное хранилище для dev/e2e, на проде отдельный volume
 apps/server/avatars/
+# Картинки, загруженные на доски в дев-режиме (13.2) — рантайм-данные, не код
+apps/server/board-assets/
 
 # Типы, которые генерирует плагин Nuxt UI при каждой сборке
 apps/web/auto-imports.d.ts
@@ -30,8 +32,14 @@ cloudflare.ini
 # Локальные файлы агента (в репозиторий не попадают)
 claude.md
 CLAUDE.md
+AGENTS.md
+.agents/
 PROGRESS.md
 PROGRESS_ARCHIVE.md
+PROGRESS_ARCHIVE/
+PROGRESS_BUGS.md
+REFACTORING_PLAN.md
+REVIEW_*.md
 
 # Дизайн-референсы (мокапы Claude Design и т.п.) — рабочий материал, не код
 .design/

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { initSentry } from './monitoring';
+import { initSentry } from '../src/monitoring';
 
 describe('initSentry', () => {
   it('не включается без DSN', () => {
