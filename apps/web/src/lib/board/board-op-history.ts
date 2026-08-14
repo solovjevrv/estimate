@@ -58,7 +58,7 @@ function invertItemPatch(
       inverse[key] = (existing as unknown as Record<string, unknown>)[key];
     }
   }
-  return inverse as BoardItemPatchOp['patch'];
+  return inverse;
 }
 
 function invertEdgePatch(
@@ -78,7 +78,7 @@ function invertEdgePatch(
       inverse[key] = (existing as unknown as Record<string, unknown>)[key];
     }
   }
-  return inverse as BoardEdgePatchOp['patch'];
+  return inverse;
 }
 
 /**

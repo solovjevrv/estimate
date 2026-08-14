@@ -101,7 +101,8 @@ describe('BoardSelectionToolbar — цвет через UColorPicker', () => {
     await openColorPickerWidget();
 
     const picker = findColorPicker(wrapper);
-    await picker.vm.$emit('update:modelValue', '#123456');
+    picker.vm.$emit('update:modelValue', '#123456');
+    await nextTick();
 
     // Drag — своё событие "colorPreview" (18.4), не "color": родитель ведёт
     // сессию превью по зафиксированным id, а не по текущему выделению
@@ -115,7 +116,8 @@ describe('BoardSelectionToolbar — цвет через UColorPicker', () => {
     await openColorPickerWidget();
 
     const picker = findColorPicker(wrapper);
-    await picker.vm.$emit('update:modelValue', '#AABBCC');
+    picker.vm.$emit('update:modelValue', '#AABBCC');
+    await nextTick();
 
     expect(wrapper.emitted('textColorPreview')?.[0]?.[0]).toBe('#AABBCC');
     wrapper.unmount();
@@ -128,7 +130,8 @@ describe('BoardSelectionToolbar — цвет через UColorPicker', () => {
 
     const trigger = wrapper.find('[aria-label="Цвет"]');
     const picker = findColorPicker(wrapper);
-    await picker.vm.$emit('update:modelValue', '#123456');
+    picker.vm.$emit('update:modelValue', '#123456');
+    await nextTick();
     await nextTick();
 
     expect(trigger.attributes('data-state')).toBe('open');
@@ -196,7 +199,8 @@ describe('BoardSelectionToolbar — цвет через UColorPicker', () => {
     await openColorPickerWidget();
 
     const picker = findColorPicker(wrapper);
-    await picker.vm.$emit('update:modelValue', undefined);
+    picker.vm.$emit('update:modelValue', undefined);
+    await nextTick();
 
     expect(wrapper.emitted('colorPreview')).toBeFalsy();
     wrapper.unmount();

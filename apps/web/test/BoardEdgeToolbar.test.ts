@@ -92,7 +92,8 @@ describe('BoardEdgeToolbar — цвет стрелки через UColorPicker',
     await openColorPickerWidget();
 
     const picker = findColorPicker(wrapper);
-    await picker.vm.$emit('update:modelValue', '#123456');
+    picker.vm.$emit('update:modelValue', '#123456');
+    await nextTick();
 
     // Drag — своё событие "colorPreview" (18.4), не "color": родитель ведёт
     // сессию превью по зафиксированным id, а не по текущему выделению
@@ -107,7 +108,8 @@ describe('BoardEdgeToolbar — цвет стрелки через UColorPicker',
 
     const trigger = wrapper.find('.board-selection-swatch');
     const picker = findColorPicker(wrapper);
-    await picker.vm.$emit('update:modelValue', '#123456');
+    picker.vm.$emit('update:modelValue', '#123456');
+    await nextTick();
     await nextTick();
 
     expect(trigger.attributes('data-state')).toBe('open');
@@ -160,7 +162,8 @@ describe('BoardEdgeToolbar — цвет стрелки через UColorPicker',
     await openColorPickerWidget();
 
     const picker = findColorPicker(wrapper);
-    await picker.vm.$emit('update:modelValue', undefined);
+    picker.vm.$emit('update:modelValue', undefined);
+    await nextTick();
 
     expect(wrapper.emitted('colorPreview')).toBeFalsy();
     wrapper.unmount();
