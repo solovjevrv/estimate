@@ -12,10 +12,9 @@ import {
   type WsAck,
 } from '@poker/shared';
 import type { FastifyBaseLogger } from 'fastify';
-import type { Socket } from 'socket.io';
 
 import { AppError, ForbiddenError, ValidationError } from '../errors';
-import type { PokerServer } from '../socket';
+import type { PokerServer, PokerSocket } from '../socket';
 
 import { BoardPresence, type BoardParticipantIdentity } from './presence';
 import type { BoardsService } from './boards.service';
@@ -105,7 +104,7 @@ export class BoardsGateway {
 
   private async join(
     io: PokerServer,
-    socket: Socket,
+    socket: PokerSocket,
     payload: JoinBoardPayload | undefined,
   ): Promise<JoinBoardResult> {
     if (!payload?.boardId) {
@@ -162,7 +161,10 @@ export class BoardsGateway {
   }
 
   /** Действовать может только тот, кто уже вошёл на доску */
-  private requireSeat(socket: Socket): { boardId: string; identity: BoardParticipantIdentity } {
+  private requireSeat(socket: PokerSocket): {
+    boardId: string;
+    identity: BoardParticipantIdentity;
+  } {
     const boardId = this.presence.boardOf(socket.id);
     const identity = this.presence.identityOf(socket.id);
     if (!boardId || !identity) {
@@ -233,7 +235,7 @@ export class BoardsGateway {
    * необработанный отказ уронил бы процесс вместе со всеми досками.
    */
   private run<T>(
-    socket: Socket,
+    socket: PokerSocket,
     log: FastifyBaseLogger,
     ack: Ack<unknown>,
     action: () => Promise<T>,

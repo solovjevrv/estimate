@@ -163,7 +163,7 @@ function validateEdgeStyle(style: unknown): BoardEdge['style'] {
     line: line as BoardEdge['style']['line'],
     markerStart: validMarkerStart,
     markerEnd: validMarkerEnd,
-  } as BoardEdge['style'];
+  };
 }
 
 function validateEdgeLabel(label: unknown): string | null {

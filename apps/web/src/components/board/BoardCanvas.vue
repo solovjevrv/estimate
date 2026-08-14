@@ -415,15 +415,23 @@ function toggleFullscreen(): void {
   }
 }
 
+// `onCopy` асинхронная (сериализация картинок читает байты), а слушатель события
+// ждёт синхронную функцию: отданный ему промис никто не подхватывает, и отказ
+// внутри стал бы необработанным. Оборачиваем один раз — ссылка нужна той же
+// самой, иначе removeEventListener ниже не снимет обработчик.
+const onCopyListener = (event: ClipboardEvent): void => {
+  void onCopy(event);
+};
+
 onMounted(() => {
   document.addEventListener('fullscreenchange', onFullscreenChange);
   document.addEventListener('paste', onPaste);
-  document.addEventListener('copy', onCopy);
+  document.addEventListener('copy', onCopyListener);
 });
 onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange);
   document.removeEventListener('paste', onPaste);
-  document.removeEventListener('copy', onCopy);
+  document.removeEventListener('copy', onCopyListener);
   dragThrottlers.clear();
   dragStartPositions.clear();
 });
@@ -802,15 +810,16 @@ function groupSelection(): void {
         reactions: [],
       },
     },
-    ...selected.map(
-      (node) =>
-        ({
-          type: 'item.patch',
-          clientOpId: uuid(),
-          id: node.id,
-          patch: { parentId: groupId },
-        }) as BoardOp,
-    ),
+    // Аннотация возврата, а не `as BoardOp`: контекстный тип массива не протекает
+    // внутрь колбэка `.map` через спред, поэтому без неё `type` расширяется до
+    // string и литерал перестаёт подходить под union. Аннотацию компилятор
+    // проверяет, в отличие от утверждения.
+    ...selected.map((node): BoardOp => ({
+      type: 'item.patch',
+      clientOpId: uuid(),
+      id: node.id,
+      patch: { parentId: groupId },
+    })),
   ];
   void boardSession.applyOps(ops);
 }
@@ -1037,7 +1046,7 @@ function onPaneDrop(event: DragEvent): void {
   event.preventDefault();
   const file = event.dataTransfer?.files[0];
   if (file) {
-    createImage(flowPositionFromEvent(event), file);
+    void createImage(flowPositionFromEvent(event), file);
   }
 }
 
@@ -1082,7 +1091,7 @@ function onPaste(event: ClipboardEvent): void {
         const rect = rootEl.value?.getBoundingClientRect();
         if (rect) {
           const center = project({ x: rect.width / 2, y: rect.height / 2 });
-          createImage(center, file);
+          void createImage(center, file);
         }
       }
       break;

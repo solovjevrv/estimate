@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { Server } from 'socket.io';
+import { Server, type Socket } from 'socket.io';
 
 import { BoardsGateway, BoardsService } from './boards';
 import { RoomsGateway, RoomsService } from './rooms';
@@ -11,6 +11,18 @@ export interface SocketData {
 }
 
 export type PokerServer = Server<
+  Record<string, never>,
+  Record<string, never>,
+  Record<string, never>,
+  SocketData
+>;
+
+/**
+ * Сокет с типизированным `data`. Шлюзы раньше принимали голый `Socket` из
+ * socket.io — у него `data` имеет тип `any`, поэтому `socket.data.userId`
+ * молча превращался в `any` и тёк дальше в вызовы сервисов.
+ */
+export type PokerSocket = Socket<
   Record<string, never>,
   Record<string, never>,
   Record<string, never>,
@@ -72,10 +84,12 @@ export class SocketGateway {
     io.on('connection', (socket) => {
       app.log.info({ socketId: socket.id, userId: socket.data.userId }, 'Socket.io: подключение');
 
-      // Служебное событие для smoke-проверки соединения
+      // Служебное событие для smoke-проверки соединения. Подтверждение приходит
+      // от клиента, поэтому сужаем его до вызываемого типа явно: `typeof === 'function'`
+      // даёт голый `Function`, вызов которого не типизирован вообще.
       socket.on('app:ping', (ack: unknown) => {
         if (typeof ack === 'function') {
-          ack('pong');
+          (ack as (response: string) => void)('pong');
         }
       });
 

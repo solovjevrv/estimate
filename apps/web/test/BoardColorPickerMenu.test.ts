@@ -67,7 +67,9 @@ describe('BoardColorPickerMenu', () => {
     await wrapper.find('.board-color-add-trigger').trigger('click');
     await nextTick();
 
-    await findColorPicker(wrapper).vm.$emit('update:modelValue', '#ABCDEF');
+    findColorPicker(wrapper).vm.$emit('update:modelValue', '#ABCDEF');
+
+    await nextTick();
 
     expect(wrapper.emitted('preview')?.[0]?.[0]).toBe('#ABCDEF');
     expect(wrapper.emitted('pick')).toBeFalsy();
@@ -91,9 +93,12 @@ describe('BoardColorPickerMenu', () => {
 
     const picker = findColorPicker(wrapper);
     // Имитация "потаскали мышкой": несколько промежуточных значений подряд
-    await picker.vm.$emit('update:modelValue', '#111111');
-    await picker.vm.$emit('update:modelValue', '#222222');
-    await picker.vm.$emit('update:modelValue', '#333333');
+    picker.vm.$emit('update:modelValue', '#111111');
+    await nextTick();
+    picker.vm.$emit('update:modelValue', '#222222');
+    await nextTick();
+    picker.vm.$emit('update:modelValue', '#333333');
+    await nextTick();
     await nextTick();
 
     // Ничего не осело в недавних, пока не нажали «Применить»
@@ -116,7 +121,9 @@ describe('BoardColorPickerMenu', () => {
     await wrapper.find('.board-color-add-trigger').trigger('click');
     await nextTick();
 
-    await findColorPicker(wrapper).vm.$emit('update:modelValue', '#123456');
+    findColorPicker(wrapper).vm.$emit('update:modelValue', '#123456');
+
+    await nextTick();
     document
       .querySelector<HTMLButtonElement>('.board-color-apply-btn')!
       .dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -132,7 +139,9 @@ describe('BoardColorPickerMenu', () => {
     await wrapper.find('.board-color-add-trigger').trigger('click');
     await nextTick();
 
-    await findColorPicker(wrapper).vm.$emit('update:modelValue', undefined);
+    findColorPicker(wrapper).vm.$emit('update:modelValue', undefined);
+
+    await nextTick();
     expect(wrapper.emitted('preview')).toBeFalsy();
     wrapper.unmount();
   });
@@ -142,7 +151,9 @@ describe('BoardColorPickerMenu', () => {
     await wrapper.find('.board-color-add-trigger').trigger('click');
     await nextTick();
 
-    await findColorPicker(wrapper).vm.$emit('update:modelValue', '#00FF00');
+    findColorPicker(wrapper).vm.$emit('update:modelValue', '#00FF00');
+
+    await nextTick();
     expect(wrapper.emitted('preview')?.[0]?.[0]).toBe('#00FF00');
     expect(wrapper.emitted('cancel')).toBeFalsy();
 
@@ -161,7 +172,9 @@ describe('BoardColorPickerMenu', () => {
     await wrapper.find('.board-color-add-trigger').trigger('click');
     await nextTick();
 
-    await findColorPicker(wrapper).vm.$emit('update:modelValue', '#00FF00');
+    findColorPicker(wrapper).vm.$emit('update:modelValue', '#00FF00');
+
+    await nextTick();
     document
       .querySelector<HTMLButtonElement>('.board-color-apply-btn')!
       .dispatchEvent(new MouseEvent('click', { bubbles: true }));
@@ -179,7 +192,9 @@ describe('BoardColorPickerMenu', () => {
     await wrapper.find('.board-color-add-trigger').trigger('click');
     await nextTick();
 
-    await findColorPicker(wrapper).vm.$emit('update:modelValue', '#00FF00');
+    findColorPicker(wrapper).vm.$emit('update:modelValue', '#00FF00');
+
+    await nextTick();
     await wrapper.findAll('.board-color-menu .board-selection-swatch')[0]!.trigger('click');
 
     // "pick" — до unmount(): VTU теряет ранее записанные emit после unmount()

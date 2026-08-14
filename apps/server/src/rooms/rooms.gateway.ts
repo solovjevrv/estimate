@@ -18,10 +18,9 @@ import {
   type WsAck,
 } from '@poker/shared';
 import type { FastifyBaseLogger } from 'fastify';
-import type { Socket } from 'socket.io';
 
 import { AppError, ForbiddenError, ValidationError } from '../errors';
-import type { PokerServer } from '../socket';
+import type { PokerServer, PokerSocket } from '../socket';
 
 import { RoomPresence, type ParticipantIdentity } from './presence';
 import { RoomReactions } from './room-reactions';
@@ -212,7 +211,7 @@ export class RoomsGateway {
 
   private async join(
     io: PokerServer,
-    socket: Socket,
+    socket: PokerSocket,
     payload: JoinRoomPayload | undefined,
   ): Promise<JoinRoomResult> {
     if (!payload?.roomId) {
@@ -253,7 +252,7 @@ export class RoomsGateway {
   }
 
   /** Действовать может только тот, кто уже сидит за столом */
-  private requireSeat(socket: Socket): { roomId: string; identity: ParticipantIdentity } {
+  private requireSeat(socket: PokerSocket): { roomId: string; identity: ParticipantIdentity } {
     const roomId = this.presence.roomOf(socket.id);
     const identity = this.presence.identityOf(socket.id);
     if (!roomId || !identity) {
@@ -309,7 +308,7 @@ export class RoomsGateway {
    * необработанный отказ уронил бы процесс вместе со всеми комнатами.
    */
   private run<T>(
-    socket: Socket,
+    socket: PokerSocket,
     log: FastifyBaseLogger,
     ack: Ack<unknown>,
     action: () => Promise<T>,
