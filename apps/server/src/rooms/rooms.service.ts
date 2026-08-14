@@ -19,16 +19,15 @@ import {
   DECK_TYPES,
   TIMER_DEFAULT_DURATION_SEC,
   TSHIRT_DECK,
-  hasTeamRole,
 } from '@poker/shared';
 
+import { TeamAccess } from '../access';
 import { UsersRepository } from '../auth';
+import type { DbExecutor } from '../common/db-executor';
 import type { Db } from '../db';
 import { isForeignKeyViolation, isUniqueViolation } from '../db/errors';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
 import { GuestSessions } from '../platform/realtime';
-import { TeamsRepository } from '../teams';
-import type { DbExecutor as TeamsDbExecutor } from '../teams/teams.repository';
 
 import type { ParticipantIdentity } from './presence';
 import {
@@ -80,7 +79,7 @@ export class RoomsService {
   constructor(
     private readonly db: Db,
     private readonly repository: RoomsRepository,
-    private readonly teams: TeamsRepository,
+    private readonly teams: TeamAccess,
     private readonly users: UsersRepository,
     private readonly guests: GuestSessions,
     /**
@@ -91,16 +90,15 @@ export class RoomsService {
     private readonly createRoomsRepository: (executor: RoomsDbExecutor) => RoomsRepository = (
       executor,
     ) => new RoomsRepository(executor),
-    private readonly createTeamsRepository: (executor: TeamsDbExecutor) => TeamsRepository = (
-      executor,
-    ) => new TeamsRepository(executor),
+    private readonly createTeamAccess: (executor: DbExecutor) => TeamAccess = (executor) =>
+      TeamAccess.forExecutor(executor),
   ) {}
 
   static forDatabase(db: Db, guestSecret: string): RoomsService {
     return new RoomsService(
       db,
       new RoomsRepository(db),
-      new TeamsRepository(db),
+      TeamAccess.forExecutor(db),
       new UsersRepository(db),
       new GuestSessions(guestSecret, 'guest'),
     );
@@ -112,13 +110,12 @@ export class RoomsService {
 
     if (teamId) {
       // Комнату от лица команды заводит администратор
-      const membership = await this.teams.findMembership(teamId, actorId);
-      if (!membership) {
-        throw new NotFoundError('Команда не найдена');
-      }
-      if (!hasTeamRole(membership.role, 'admin')) {
-        throw new ForbiddenError('Создавать комнаты команды может администратор');
-      }
+      await this.teams.require(
+        teamId,
+        actorId,
+        'admin',
+        'Создавать комнаты команды может администратор',
+      );
     }
 
     return this.repository.insertRoom(name, teamId, actorId);
@@ -134,14 +131,15 @@ export class RoomsService {
   }
 
   async listTeamRooms(actorId: string, teamId: string, archived = false): Promise<Room[]> {
-    const membership = await this.teams.findMembership(teamId, actorId);
-    if (!membership) {
-      throw new NotFoundError('Команда не найдена');
-    }
-    // Архив команды видит только администратор — обычный список открыт всем участникам
-    if (archived && !hasTeamRole(membership.role, 'admin')) {
-      throw new ForbiddenError('Архив комнат команды видит только администратор');
-    }
+    // Обычный список открыт любому участнику команды, архив — только администратору.
+    // `guest` — младшая роль, на этой ветке проверка сводится к самому членству
+    // и текстом про архив ответить не может.
+    await this.teams.require(
+      teamId,
+      actorId,
+      archived ? 'admin' : 'guest',
+      'Архив комнат команды видит только администратор',
+    );
     return this.repository.listRoomsByTeam(teamId, archived);
   }
 
@@ -265,7 +263,7 @@ export class RoomsService {
   async resolveRole(
     room: Room,
     userId: string | null,
-    teams: TeamsRepository = this.teams,
+    teams: TeamAccess = this.teams,
   ): Promise<RoomRole> {
     if (!userId) {
       return 'voter';
@@ -273,11 +271,8 @@ export class RoomsService {
     if (room.creatorId === userId) {
       return 'scrum_master';
     }
-    if (room.teamId) {
-      const membership = await teams.findMembership(room.teamId, userId);
-      if (membership && hasTeamRole(membership.role, 'admin')) {
-        return 'scrum_master';
-      }
+    if (room.teamId && (await teams.isAtLeast(room.teamId, userId, 'admin'))) {
+      return 'scrum_master';
     }
     return 'voter';
   }
@@ -527,7 +522,7 @@ export class RoomsService {
    */
   private async inRoom<T>(
     roomId: string,
-    action: (repo: RoomsRepository, room: Room, teams: TeamsRepository) => Promise<T>,
+    action: (repo: RoomsRepository, room: Room, teams: TeamAccess) => Promise<T>,
   ): Promise<T> {
     return this.withLockedRoom(roomId, async (repo, room, teams) => {
       if (room.archivedAt) {
@@ -547,7 +542,7 @@ export class RoomsService {
    */
   private async withLockedRoom<T>(
     roomId: string,
-    action: (repo: RoomsRepository, room: Room, teams: TeamsRepository) => Promise<T>,
+    action: (repo: RoomsRepository, room: Room, teams: TeamAccess) => Promise<T>,
   ): Promise<T> {
     return this.db.transaction(async (tx) => {
       const repo = this.createRoomsRepository(tx);
@@ -555,7 +550,7 @@ export class RoomsService {
       if (!room) {
         throw new NotFoundError('Комната не найдена');
       }
-      return action(repo, room, this.createTeamsRepository(tx));
+      return action(repo, room, this.createTeamAccess(tx));
     });
   }
 
@@ -582,7 +577,7 @@ export class RoomsService {
     room: Room,
     identity: ParticipantIdentity,
     message: string,
-    teams: TeamsRepository,
+    teams: TeamAccess,
   ): Promise<void> {
     if ((await this.resolveRole(room, identity.userId, teams)) !== 'scrum_master') {
       throw new ForbiddenError(message);

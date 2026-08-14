@@ -6,6 +6,7 @@ import { randomUUID } from 'node:crypto';
 import type { Room, Round } from '@poker/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { TeamAccess } from '../src/access';
 import type { UsersRepository } from '../src/auth';
 import type { Db } from '../src/db';
 import { ConflictError, ForbiddenError, ValidationError } from '../src/errors';
@@ -86,7 +87,7 @@ function serviceWith(
   return new RoomsService(
     db,
     new RoomsRepository(db),
-    teams as TeamsRepository,
+    new TeamAccess(teams as TeamsRepository),
     users as UsersRepository,
     new GuestSessions(GUEST_SECRET, 'guest'),
   );
@@ -639,7 +640,7 @@ describe('RoomsService.getState (7.30)', () => {
     const service = new RoomsService(
       db,
       new RoomsRepository(db),
-      new TeamsRepository(db),
+      TeamAccess.forExecutor(db),
       {} as UsersRepository,
       new GuestSessions(GUEST_SECRET, 'guest'),
       () => fakeRepo as RoomsRepository,
