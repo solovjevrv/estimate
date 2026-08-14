@@ -1,5 +1,7 @@
 import js from '@eslint/js';
 import prettierConfig from 'eslint-config-prettier';
+import { createTypeScriptImportResolver } from 'eslint-import-resolver-typescript';
+import importX from 'eslint-plugin-import-x';
 import pluginVue from 'eslint-plugin-vue';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
@@ -40,12 +42,58 @@ export default tseslint.config(
         tsconfigRootDir: import.meta.dirname,
       },
     },
+    plugins: { 'import-x': importX },
+    settings: {
+      'import-x/resolver-next': [createTypeScriptImportResolver({ alwaysTryTypes: true })],
+    },
     rules: {
       // Async-функция без await — не дефект: у Fastify плагины и хендлеры async
       // по контракту сигнатуры, ждать им при этом нечего. 80 срабатываний, ни
       // одной реальной ошибки — правило только приучало бы игнорировать вывод.
       '@typescript-eslint/require-await': 'off',
+
+      // Циклы между модулями: из-за них порядок инициализации становится
+      // неочевидным (импортируемое значение может оказаться undefined в момент
+      // обращения), а вынести кусок кода в отдельный файл становится нельзя.
+      'import-x/no-cycle': ['error', { maxDepth: 10, ignoreExternal: true }],
+
+      // Комментарии и пустые строки не считаем: в этом проекте комментарии
+      // объясняют «почему» и их много — метрика должна мерить код, а не документацию.
+      // Порог сознательно высокий: это не стилевой идеал, а граница, за которой
+      // файл перестаёт помещаться в голову и его нельзя протестировать.
+      'max-lines': ['error', { max: 700, skipBlankLines: true, skipComments: true }],
     },
+  },
+  {
+    // Словари локалей — данные, а не логика: они растут вместе с фичами, и
+    // дробить их по размеру нечего.
+    files: ['apps/web/src/i18n/locales/**'],
+    rules: { 'max-lines': 'off' },
+  },
+  {
+    // Тесты — линейный перечень случаев: их читают по одному, а не держат в
+    // голове целиком, и связность внутри файла не растёт от его длины. Правило
+    // нацелено на продовый код, где размер означает переплетённые обязанности.
+    // (Отдельные разросшиеся файлы вроде room-page.test.ts дробить всё же стоит —
+    // по случаю, а не под угрозой красного CI.)
+    files: ['**/test/**', '**/tests/**', '**/*.test.ts', '**/*.spec.ts'],
+    rules: { 'max-lines': 'off' },
+  },
+  {
+    /**
+     * Известный долг: файлы, уже переросшие порог до его появления. Список —
+     * не индульгенция, а реестр: он должен только сокращаться, и каждая строка
+     * названа задачей, которая его уберёт. Новый файл сверх порога так не
+     * пройдёт — правило для него остаётся ошибкой.
+     */
+    files: [
+      // 19.27–19.32: холст разбирается на composable, цель — 500–700 строк
+      'apps/web/src/components/board/BoardCanvas.vue',
+      // 19.19: формы и вкладки уезжают в отдельные компоненты и composable
+      'apps/web/src/pages/RoomPage.vue',
+      'apps/web/src/pages/TeamPage.vue',
+    ],
+    rules: { 'max-lines': 'off' },
   },
   {
     files: ['**/*.vue'],
@@ -72,6 +120,52 @@ export default tseslint.config(
     languageOptions: {
       // __APP_VERSION__ — build-time define из vite.config.ts (см. env.d.ts)
       globals: { ...globals.browser, __APP_VERSION__: 'readonly' },
+    },
+  },
+  {
+    // HTTP-клиент — принадлежность слоя данных. Страница или компонент, знающие
+    // маршрут `/api/...`, форму FormData и коды ответов, перестают быть заменяемыми
+    // и не тестируются без сети (находка W-5: холст сам маппил 413/400/403).
+    // Класс `ApiError` не ограничен — разбирать ошибку в UI это нормально.
+    files: ['apps/web/src/pages/**', 'apps/web/src/components/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            {
+              name: '../lib/api',
+              importNames: ['api', 'request'],
+              message:
+                'HTTP-запросы живут в сторах (features/*/api после 19.17), не в UI. Здесь допустим только ApiError.',
+            },
+            {
+              name: '../../lib/api',
+              importNames: ['api', 'request'],
+              message:
+                'HTTP-запросы живут в сторах (features/*/api после 19.17), не в UI. Здесь допустим только ApiError.',
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    // Контракт не должен зависеть ни от одного приложения — иначе он перестаёт
+    // быть общим знаменателем и тянет за собой Vue или Fastify.
+    files: ['packages/shared/**'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['@poker/web', '@poker/server', '**/apps/**'],
+              message: 'packages/shared — общий контракт, он не может зависеть от приложений.',
+            },
+          ],
+        },
+      ],
     },
   },
   {

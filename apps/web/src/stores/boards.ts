@@ -48,5 +48,22 @@ export const useBoardsStore = defineStore('boards', () => {
     await api.delete(`/api/boards/${encodeURIComponent(boardId)}`);
   }
 
-  return { create, listMine, get, rename, archive, unarchive, remove };
+  /**
+   * Загружает файл картинки на доску (13.2) и возвращает её URL с размерами.
+   * Ошибки не глотает — их разбирает вызывающий: у холста на каждый код ответа
+   * свой текст. Сам холст при этом не должен знать ни маршрут, ни FormData.
+   */
+  async function uploadAsset(
+    boardId: string,
+    file: File,
+  ): Promise<{ url: string; width: number; height: number }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    return api.upload<{ url: string; width: number; height: number }>(
+      `/api/boards/${encodeURIComponent(boardId)}/assets`,
+      formData,
+    );
+  }
+
+  return { create, listMine, get, rename, archive, unarchive, remove, uploadAsset };
 });
