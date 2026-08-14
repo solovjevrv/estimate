@@ -17,3 +17,17 @@ export const BOARD_PENDING_EDGE_EDIT_ID_KEY: InjectionKey<Ref<string | null>> =
 /** Хэндл узла, сейчас редактирующего текст (12.13) — см. `BoardTextEditorHandle` */
 export const BOARD_ACTIVE_TEXT_EDITOR_KEY: InjectionKey<Ref<BoardTextEditorHandle | null>> =
   Symbol('boardActiveTextEditor');
+
+/**
+ * Runtime-значения отрисованного размера текста. Это намеренно не часть
+ * `BoardItem`: размер выводится из сохранённой базы, геометрии и DOM-fit и не
+ * должен попасть в op-протокол/БД.
+ */
+export interface BoardEffectiveFontSizeRegistry {
+  readonly sizes: Readonly<Ref<ReadonlyMap<string, number>>>;
+  set(itemId: string, fontSize: number): void;
+  remove(itemId: string): void;
+}
+
+export const BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY: InjectionKey<BoardEffectiveFontSizeRegistry> =
+  Symbol('boardEffectiveFontSizeRegistry');

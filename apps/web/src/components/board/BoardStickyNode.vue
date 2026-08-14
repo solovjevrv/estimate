@@ -7,15 +7,20 @@ import {
 } from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
-import { computed, inject, ref, toRef, useTemplateRef, watch } from 'vue';
+import { computed, inject, onBeforeUnmount, ref, toRef, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { BOARD_CAN_EDIT_KEY } from '../../lib/board/board-canvas-keys';
+import {
+  BOARD_CAN_EDIT_KEY,
+  BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
+} from '../../lib/board/board-canvas-keys';
 import { readableTextColor } from '../../lib/board/board-colors';
 import {
   boardFontFamilyCss,
   STICKY_MAX_HEIGHT,
   STICKY_MAX_WIDTH,
+  STICKY_DEFAULT_HEIGHT,
+  STICKY_DEFAULT_WIDTH,
   STICKY_MIN_HEIGHT,
   STICKY_MIN_WIDTH,
 } from '../../lib/board/board-item-defaults';
@@ -32,13 +37,14 @@ const { t } = useI18n();
 const boardSession = useBoardSessionStore();
 const session = useSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
+const effectiveFontSizes = inject(BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY, null);
 
 const content = computed(() => props.data.content as BoardStickyContent);
 const bgColor = computed(() => props.data.style.color);
 const textColor = computed(() => props.data.style.textColor ?? readableTextColor(bgColor.value));
 const fontFamily = computed(() => boardFontFamilyCss(props.data.style.fontFamily));
 const textAlign = computed(() => props.data.style.textAlign ?? 'center');
-const maxFontSize = computed(() => props.data.style.fontSize ?? FIT_FONT_MAX);
+const baseFontSize = computed(() => props.data.style.fontSize ?? FIT_FONT_MAX);
 
 const contentBoxEl = useTemplateRef<HTMLDivElement>('contentBox');
 const textEl = useTemplateRef<HTMLSpanElement>('text');
@@ -91,8 +97,26 @@ const fontSize = useFitFontSize(
   boxWidth,
   boxHeight,
   editing,
-  maxFontSize,
+  baseFontSize,
+  STICKY_DEFAULT_WIDTH,
+  STICKY_DEFAULT_HEIGHT,
 );
+
+/** Тулбар должен показывать отрисованный, а не сохранённый базовый размер. */
+let reportedItemId: string | null = null;
+watch(
+  [() => props.id, fontSize],
+  ([itemId, size]) => {
+    if (!effectiveFontSizes) return;
+    if (reportedItemId && reportedItemId !== itemId) effectiveFontSizes.remove(reportedItemId);
+    effectiveFontSizes.set(itemId, size);
+    reportedItemId = itemId;
+  },
+  { immediate: true },
+);
+onBeforeUnmount(() => {
+  if (reportedItemId) effectiveFontSizes?.remove(reportedItemId);
+});
 
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
   void boardSession.applyOps([
@@ -199,7 +223,7 @@ watch(
     />
     <div
       ref="contentBox"
-      class="board-sticky-content flex h-full w-full items-center justify-center overflow-hidden rounded-md p-4 text-center font-semibold"
+      class="board-sticky-content flex h-full w-full items-center justify-center overflow-hidden rounded-md p-5 text-center font-semibold"
       :style="{ backgroundColor: bgColor, color: textColor }"
       @dblclick.stop="startEditing"
     >

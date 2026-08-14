@@ -33,6 +33,8 @@
 import {
   BOARD_IMAGE_ALLOWED_MIME_TYPES,
   BOARD_IMAGE_MAX_BYTES,
+  BOARD_ITEM_FONT_SIZE_MAX,
+  BOARD_ITEM_FONT_SIZE_MIN,
   BOARD_MAX_ITEMS,
   BOARD_OPS_BATCH_MAX,
   isBoardContainer,
@@ -100,6 +102,7 @@ import {
 import {
   BOARD_ACTIVE_TEXT_EDITOR_KEY,
   BOARD_CAN_EDIT_KEY,
+  BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
   BOARD_PENDING_EDGE_EDIT_ID_KEY,
   BOARD_PENDING_EDIT_ID_KEY,
 } from '../../lib/board/board-canvas-keys';
@@ -116,7 +119,11 @@ import {
   serializeSelection,
 } from '../../lib/board/board-clipboard';
 import { useBoardHotkeys } from '../../lib/board/use-board-hotkeys';
-import { FIT_FONT_MAX } from '../../lib/board/use-fit-font-size';
+import {
+  FIT_FONT_MAX,
+  getScaledFontSize,
+  unscaleFontSizeStep,
+} from '../../lib/board/use-fit-font-size';
 import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
 import { throttle } from '../../lib/throttle';
 import { uuid } from '../../lib/board/uuid';
@@ -456,6 +463,25 @@ provide(BOARD_PENDING_EDGE_EDIT_ID_KEY, pendingEdgeEditId);
  */
 const activeTextEditor = shallowRef<BoardTextEditorHandle | null>(null);
 provide(BOARD_ACTIVE_TEXT_EDITOR_KEY, activeTextEditor);
+
+/**
+ * Узлы Vue Flow измеряют свой DOM сами, а тулбар живёт уровнем выше. Передаём
+ * только производный runtime-размер через registry: ни в BoardItem, ни в WS
+ * op он не попадает.
+ */
+const effectiveFontSizes = shallowRef<ReadonlyMap<string, number>>(new Map());
+provide(BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY, {
+  sizes: effectiveFontSizes,
+  set(itemId, fontSize) {
+    effectiveFontSizes.value = new Map(effectiveFontSizes.value).set(itemId, fontSize);
+  },
+  remove(itemId) {
+    if (!effectiveFontSizes.value.has(itemId)) return;
+    const next = new Map(effectiveFontSizes.value);
+    next.delete(itemId);
+    effectiveFontSizes.value = next;
+  },
+});
 
 function flowPositionFromEvent(event: MouseEvent): { x: number; y: number } {
   const rect = rootEl.value?.getBoundingClientRect();
@@ -1980,9 +2006,57 @@ function setSelectedColor(color: BoardColorHex): void {
   }));
 }
 
-/** Верхняя граница авто-fit (12.9) — не задана в style, показываем эффективный дефолт (FIT_FONT_MAX) */
-const selectedFontSize = computed<number>(
+function textDefaultDimensions(
+  content: BoardItemContent,
+): { width: number; height: number } | null {
+  switch (content.type) {
+    case 'sticky':
+      return { width: STICKY_DEFAULT_WIDTH, height: STICKY_DEFAULT_HEIGHT };
+    case 'shape':
+      return { width: SHAPE_DEFAULT_WIDTH, height: SHAPE_DEFAULT_HEIGHT };
+    case 'text':
+      return { width: TEXT_DEFAULT_WIDTH, height: TEXT_DEFAULT_HEIGHT };
+    default:
+      return null;
+  }
+}
+
+function selectedTextScale(node: GraphNode<BoardItem>): number | null {
+  const defaults = textDefaultDimensions(node.data.content);
+  if (!defaults) return null;
+  return Math.min(node.dimensions.width / defaults.width, node.dimensions.height / defaults.height);
+}
+
+/** Сохранённый базовый размер — только для изменения +/- и его границ. */
+const selectedBaseFontSize = computed<number>(
   () => selectedNodes.value[0]?.data.style.fontSize ?? FIT_FONT_MAX,
+);
+
+/**
+ * Тулбар показывает размер, который реально нарисовал node. Пока node ещё не
+ * смонтирован, fallback применяет геометрическое масштабирование; после DOM-fit
+ * registry заменяет его точным значением с учётом длины и форматирования текста.
+ */
+const selectedFontSize = computed<number>(() => {
+  const node = selectedNodes.value[0];
+  if (!node) return FIT_FONT_MAX;
+  const measured = effectiveFontSizes.value.get(node.id);
+  if (measured !== undefined) return measured;
+  const defaults = textDefaultDimensions(node.data.content);
+  if (!defaults) return selectedBaseFontSize.value;
+  return getScaledFontSize(
+    selectedBaseFontSize.value,
+    node.dimensions.width,
+    node.dimensions.height,
+    defaults.width,
+    defaults.height,
+  );
+});
+const canIncreaseSelectedFontSize = computed(
+  () => selectedBaseFontSize.value < BOARD_ITEM_FONT_SIZE_MAX,
+);
+const canDecreaseSelectedFontSize = computed(
+  () => selectedBaseFontSize.value > BOARD_ITEM_FONT_SIZE_MIN,
 );
 const selectedTextColor = computed<BoardColorHex>(
   () => selectedNodes.value[0]?.data.style.textColor ?? readableTextColor(selectedColor.value),
@@ -1992,11 +2066,42 @@ const selectedTextAlign = computed<BoardTextAlign>(
 );
 
 function setSelectedFontSize(fontSize: number): void {
+  const selected = selectedNodes.value[0];
+  if (!selected) return;
+  const defaults = textDefaultDimensions(selected.data.content);
+  const scale = selectedTextScale(selected);
+  const currentBase = selectedBaseFontSize.value;
+  const displayed = selectedFontSize.value;
+  const scaledBase =
+    defaults === null
+      ? currentBase
+      : getScaledFontSize(
+          currentBase,
+          selected.dimensions.width,
+          selected.dimensions.height,
+          defaults.width,
+          defaults.height,
+        );
+
+  // Длинный текст может быть ужат ниже масштабированной базы. В таком случае
+  // +/- меняет настройку пользователя на ту же дельту, а не понижает её до
+  // fit-результата, который всё равно не поместится. Берём разницу displayed
+  // с целевым fontSize (а не хардкодим шаг стэппера) — иначе значение молча
+  // разойдётся с FONT_SIZE_STEP в BoardSelectionToolbar.vue при его смене.
+  const nextBase =
+    scale === null || displayed !== scaledBase
+      ? currentBase + (fontSize - displayed)
+      : unscaleFontSizeStep(currentBase, fontSize, scale);
+  const clampedBase = Math.min(
+    BOARD_ITEM_FONT_SIZE_MAX,
+    Math.max(BOARD_ITEM_FONT_SIZE_MIN, nextBase),
+  );
+  if (clampedBase === currentBase) return;
   patchSelected((node) => ({
     type: 'item.patch',
     clientOpId: uuid(),
     id: node.id,
-    patch: { style: { fontSize } },
+    patch: { style: { fontSize: clampedBase } },
   }));
 }
 
@@ -2390,6 +2495,8 @@ function onConnect(event: Connection): void {
         :current-color="selectedColor"
         :current-form="selectedForm"
         :current-font-size="selectedFontSize"
+        :can-increase-font-size="canIncreaseSelectedFontSize"
+        :can-decrease-font-size="canDecreaseSelectedFontSize"
         :current-text-color="selectedTextColor"
         :current-text-align="selectedTextAlign"
         :editing-text="!!activeTextEditor"
