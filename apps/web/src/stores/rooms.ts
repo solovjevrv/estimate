@@ -1,5 +1,5 @@
 /** Создание и архивация комнат: личных (без команды) и от лица команды. */
-import type { Room, RoomStats } from '@poker/shared';
+import type { Room, RoomStats, RoundHistoryEntry } from '@poker/shared';
 import { defineStore } from 'pinia';
 
 import { api } from '../lib/api';
@@ -8,6 +8,20 @@ export const useRoomsStore = defineStore('rooms', () => {
   async function create(name: string, teamId?: string): Promise<Room> {
     const res = await api.post<{ room: Room }>('/api/rooms', { name, teamId });
     return res.room;
+  }
+
+  /** Комната по идентификатору — открыта по прямой ссылке, отдельных прав на просмотр нет */
+  async function get(roomId: string): Promise<Room> {
+    const res = await api.get<{ room: Room }>(`/api/rooms/${encodeURIComponent(roomId)}`);
+    return res.room;
+  }
+
+  /** История вскрытых раундов с итогами — для страницы комнаты */
+  async function roundHistory(roomId: string): Promise<RoundHistoryEntry[]> {
+    const res = await api.get<{ rounds: RoundHistoryEntry[] }>(
+      `/api/rooms/${encodeURIComponent(roomId)}/rounds`,
+    );
+    return res.rounds;
   }
 
   /** Список комнат без команды: свои личные, активные и закрытые, если archived не задан */
@@ -41,5 +55,5 @@ export const useRoomsStore = defineStore('rooms', () => {
     return res.stats;
   }
 
-  return { create, listMine, archive, remove, rename, stats };
+  return { create, get, roundHistory, listMine, archive, remove, rename, stats };
 });

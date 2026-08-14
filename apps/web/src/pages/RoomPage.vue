@@ -23,7 +23,7 @@ import type { FlyingReaction, ReceivedReaction } from '../components/room/Partic
 import RoomTimerCard from '../components/room/RoomTimerCard.vue';
 import RoomTopBar from '../components/room/RoomTopBar.vue';
 import RoundResultPanel from '../components/room/RoundResultPanel.vue';
-import { ApiError, api } from '../lib/api';
+import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useRoomStore } from '../stores/room';
 import { useRoomsStore } from '../stores/rooms';
@@ -400,12 +400,10 @@ async function loadHistory(): Promise<void> {
   historyLoading.value = true;
   historyFailed.value = false;
   try {
-    const res = await api.get<{ rounds: RoundHistoryEntry[] }>(
-      `/api/rooms/${encodeURIComponent(roomId)}/rounds`,
-    );
+    const rounds = await roomsStore.roundHistory(roomId);
     // Пока запрос летел, могли перейти в другую комнату — её историю не подменяем
     if (token !== currentToken) return;
-    historyEntries.value = res.rounds;
+    historyEntries.value = rounds;
   } catch {
     if (token !== currentToken) return;
     historyFailed.value = true;
@@ -659,8 +657,7 @@ async function load(): Promise<void> {
   room.leave();
   let loadedRoom: Room;
   try {
-    const res = await api.get<{ room: Room }>(`/api/rooms/${encodeURIComponent(props.id)}`);
-    loadedRoom = res.room;
+    loadedRoom = await roomsStore.get(props.id);
   } catch (err) {
     if (token !== currentToken) return; // уже перешли дальше — этот ответ не наш
     phase.value = err instanceof ApiError && err.status === 404 ? 'notFound' : 'loadError';

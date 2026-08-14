@@ -142,7 +142,8 @@ import {
   type SnapRect,
 } from '../../lib/board/board-snap';
 import { useBoardSessionStore } from '../../stores/board-session';
-import { api } from '../../lib/api';
+import { useBoardsStore } from '../../stores/boards';
+import { ApiError } from '../../lib/api';
 import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
 import BoardContextMenu, { type BoardContextMenuTarget } from './BoardContextMenu.vue';
 import BoardCursor from './BoardCursor.vue';
@@ -188,6 +189,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const toast = useToast();
 const boardSession = useBoardSessionStore();
+const boardsStore = useBoardsStore();
 
 const flowNodes = computed(() => toFlowNodes(props.items, props.canEdit));
 const flowEdges = computed(() => toFlowEdges(props.edges));
@@ -898,18 +900,13 @@ async function uploadBoardImage(
 
   const loadingToast = toast.add({ title: t('board.imageUploading'), color: 'info' });
   try {
-    const formData = new FormData();
-    formData.append('file', file);
-    const result = await api.upload<{ url: string; width: number; height: number }>(
-      `/api/boards/${props.board.id}/assets`,
-      formData,
-    );
+    const result = await boardsStore.uploadAsset(props.board.id, file);
     toast.remove(loadingToast.id);
     return result;
   } catch (err) {
     toast.remove(loadingToast.id);
-    if (err instanceof Error && 'status' in err) {
-      const apiErr = err as { status: number; code?: string; message?: string };
+    if (err instanceof ApiError) {
+      const apiErr = err;
       if (apiErr.status === 413) {
         toast.add({ title: t('board.imageTooLarge'), color: 'error' });
       } else if (apiErr.status === 400) {
