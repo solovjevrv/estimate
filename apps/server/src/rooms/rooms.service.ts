@@ -35,6 +35,7 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '.
 import { GuestSessions } from '../platform/realtime';
 
 import type { ParticipantIdentity } from './presence';
+import { resolveRoomRole } from './rooms.policy';
 import { summarizeRound } from './round-scoring';
 import { type DbExecutor as RoomsDbExecutor, RoomsRepository } from './rooms.repository';
 
@@ -266,16 +267,11 @@ export class RoomsService {
     userId: string | null,
     teams: TeamAccess = this.teams,
   ): Promise<RoomRole> {
-    if (!userId) {
-      return 'voter';
-    }
-    if (room.creatorId === userId) {
-      return 'scrum_master';
-    }
-    if (room.teamId && (await teams.isAtLeast(room.teamId, userId, 'admin'))) {
-      return 'scrum_master';
-    }
-    return 'voter';
+    const teamRole =
+      room.teamId && userId && room.creatorId !== userId
+        ? ((await teams.membershipOf(room.teamId, userId))?.role ?? null)
+        : null;
+    return resolveRoomRole(room.creatorId, userId, teamRole);
   }
 
   /** Готовит участника к посадке за стол: проверяет комнату и собирает личность */
