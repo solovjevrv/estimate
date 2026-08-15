@@ -157,21 +157,16 @@ export class RoomsService {
   async listRoundHistory(roomId: string): Promise<RoundHistoryEntry[]> {
     await this.getRoom(roomId);
     const rounds = await this.repository.listRevealedRounds(roomId, ROUND_HISTORY_LIMIT);
-    const entries = await Promise.all(
-      rounds.map(async (round) => {
-        const votes = await this.repository.listVotes(round.id);
-        return { round, votes };
-      }),
-    );
+    const votesByRound = await this.repository.listVotesForRounds(rounds.map((round) => round.id));
     // Раунд без единого голоса при вскрытии невозможен (revealCards это проверяет),
     // но со временем голос мог уйти каскадом вместе с удалённым аккаунтом (7.10) —
     // summarize() на пустом массиве даёт NaN/Infinity, такой раунд лучше пропустить
-    return entries
-      .filter((entry) => entry.votes.length > 0)
-      .map((entry) => ({
-        round: entry.round,
-        result: summarizeRound(entry.votes, entry.round.deckType, entry.round.average),
-      }));
+    return rounds.flatMap((round) => {
+      const votes = votesByRound.get(round.id) ?? [];
+      return votes.length === 0
+        ? []
+        : [{ round, result: summarizeRound(votes, round.deckType, round.average) }];
+    });
   }
 
   /** Раундов сыграно, задач оценено и среднее время раунда — по всем комнатам пользователя */

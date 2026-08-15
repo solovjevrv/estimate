@@ -1,5 +1,5 @@
 import type { DeckType, Room, RoomStats, Round } from '@poker/shared';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 
 import { schema } from '../db';
@@ -188,6 +188,42 @@ export class RoomsRepository {
       name: row.userName ?? row.guestName,
       value: row.value,
     }));
+  }
+
+  /**
+   * Голоса нескольких раундов одним запросом. Массив в каждой группе сохраняет
+   * порядок создания голосов — тот же, что у listVotes для одного раунда.
+   */
+  async listVotesForRounds(roundIds: readonly string[]): Promise<Map<string, VoteRecord[]>> {
+    const votesByRound = new Map(roundIds.map((roundId) => [roundId, [] as VoteRecord[]]));
+    if (roundIds.length === 0) return votesByRound;
+
+    const rows = await this.db
+      .select({
+        roundId: schema.votes.roundId,
+        userId: schema.votes.userId,
+        guestSessionId: schema.votes.guestSessionId,
+        guestName: schema.votes.guestName,
+        userName: sql<string | null>`coalesce(${schema.users.displayName}, ${schema.users.name})`,
+        value: schema.votes.value,
+        createdAt: schema.votes.createdAt,
+      })
+      .from(schema.votes)
+      .leftJoin(schema.users, eq(schema.users.id, schema.votes.userId))
+      .where(inArray(schema.votes.roundId, roundIds))
+      .orderBy(schema.votes.createdAt);
+
+    for (const row of rows) {
+      const votes = votesByRound.get(row.roundId);
+      if (votes) {
+        votes.push({
+          participantId: row.userId ?? row.guestSessionId ?? 'unknown',
+          name: row.userName ?? row.guestName,
+          value: row.value,
+        });
+      }
+    }
+    return votesByRound;
   }
 
   /**
