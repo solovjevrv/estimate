@@ -77,7 +77,12 @@ async function boardImagesPluginImpl(
       },
       async (req, reply) => {
         const boardId = req.params.id;
-        const boardsService = BoardsService.forDatabase(app.db, opts.auth.guestSecret);
+        const boardsService = BoardsService.forDatabase(
+          app.db,
+          opts.auth.guestSecret,
+          undefined,
+          app.log,
+        );
 
         // Проверяем edit-доступ к доске
         try {
@@ -134,7 +139,12 @@ async function boardImagesPluginImpl(
       async (req, reply) => {
         const boardId = req.params.id;
         const filename = req.params.filename;
-        const boardsService = BoardsService.forDatabase(app.db, opts.auth.guestSecret);
+        const boardsService = BoardsService.forDatabase(
+          app.db,
+          opts.auth.guestSecret,
+          undefined,
+          app.log,
+        );
 
         // Проверяем view-доступ к доске (как у GET /api/boards/:id)
         try {

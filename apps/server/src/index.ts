@@ -30,7 +30,12 @@ async function main(): Promise<void> {
 
   const roomsService = RoomsService.forDatabase(db, config.auth.guestSecret);
   const boardImagesService = await BoardImagesService.forDirectory(config.boardAssetsDir);
-  const boardsService = BoardsService.forDatabase(db, config.auth.guestSecret, boardImagesService);
+  const boardsService = BoardsService.forDatabase(
+    db,
+    config.auth.guestSecret,
+    boardImagesService,
+    app.log,
+  );
   new SocketGateway(roomsService, boardsService, { corsOrigin: config.webOrigin }).attach(app);
 
   // Одна неудачная операция не должна уносить процесс вместе со всеми комнатами
