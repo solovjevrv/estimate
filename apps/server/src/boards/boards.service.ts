@@ -3,8 +3,6 @@ import {
   BOARD_TITLE_MAX_LENGTH,
   BOARD_TITLE_MIN_LENGTH,
   GUEST_NAME_MAX_LENGTH,
-  hasBoardAccess,
-  hasTeamRole,
   isTextLengthInRange,
   trimText,
   type Board,
@@ -25,6 +23,11 @@ import { GuestSessions } from '../platform/realtime';
 
 import type { BoardImagesService } from './board-images.service';
 import { applyBoardOp, type BoardOpState } from './board-ops';
+import {
+  hasRequiredBoardAccess,
+  resolveBoardAccess,
+  resolveMembershipBoardAccess,
+} from './boards.policy';
 import { BoardsRepository, type DbExecutor as BoardsDbExecutor } from './boards.repository';
 import type { BoardParticipantIdentity } from './presence';
 
@@ -142,22 +145,21 @@ export class BoardsService {
    * связь на элемент, которого уже нет в присланном списке элементов).
    */
   async getSnapshot(actorId: string | null, boardId: string): Promise<BoardSnapshot> {
-    await this.assertViewAccess(actorId, boardId);
-    const board = await this.requireBoard(boardId);
-    const access =
-      (await this.resolveMembershipLevel(board, actorId, this.teams)) ?? board.shareRole;
     return this.db.transaction(
       async (tx) => {
         const repo = this.createBoardsRepository(tx);
-        const freshBoard = await repo.findBoard(boardId);
-        if (!freshBoard) {
+        const board = await repo.findBoard(boardId);
+        if (!board) {
           throw new NotFoundError('Доска не найдена');
         }
+        // Проверяем право по тому же repeatable-read снимку, что и содержимое
+        // доски: нет предварительных чтений и нет access! из-за разрыва типов.
+        const access = await this.assertAccess(board, actorId, 'view', this.createTeamAccess(tx));
         const [items, edges] = await Promise.all([
           repo.listItems(boardId),
           repo.listEdges(boardId),
         ]);
-        return { board: freshBoard, items, edges, access: access! };
+        return { board, items, edges, access };
       },
       { isolationLevel: 'repeatable read', accessMode: 'read only' },
     );
@@ -187,10 +189,7 @@ export class BoardsService {
 
     if (request.userId) {
       const membershipLevel = await this.resolveMembershipLevel(board, request.userId, this.teams);
-      const effectiveAccess =
-        membershipLevel && (!board.shareRole || hasBoardAccess(membershipLevel, board.shareRole))
-          ? membershipLevel
-          : (board.shareRole ?? membershipLevel);
+      const effectiveAccess = resolveBoardAccess(membershipLevel, board.shareRole);
       if (!effectiveAccess) throw new NotFoundError('Доска не найдена');
       const user = await this.users.findById(request.userId);
       if (!user) throw new ForbiddenError('Аккаунт не найден, войдите заново');
@@ -475,10 +474,12 @@ export class BoardsService {
     actorId: string | null,
     required: BoardAccessLevel,
     teams: TeamAccess = this.teams,
-  ): Promise<void> {
+  ): Promise<BoardAccessLevel> {
     const membershipLevel = await this.resolveMembershipLevel(board, actorId, teams);
-    if (membershipLevel && hasBoardAccess(membershipLevel, required)) return;
-    if (board.shareRole && hasBoardAccess(board.shareRole, required)) return;
+    const effectiveAccess = resolveBoardAccess(membershipLevel, board.shareRole);
+    if (hasRequiredBoardAccess(membershipLevel, board.shareRole, required) && effectiveAccess) {
+      return effectiveAccess;
+    }
 
     if (membershipLevel === null) {
       // Чужому/анониму не подтверждаем даже факт существования доски (анти-перебор)
@@ -498,15 +499,11 @@ export class BoardsService {
     actorId: string | null,
     teams: TeamAccess,
   ): Promise<BoardAccessLevel | null> {
-    if (!actorId) return null;
-    if (!board.teamId) {
-      return board.ownerId === actorId ? 'manage' : null;
-    }
-    const membership = await teams.membershipOf(board.teamId, actorId);
-    if (!membership) return null;
-    if (hasTeamRole(membership.role, 'admin') || board.ownerId === actorId) return 'manage';
-    if (hasTeamRole(membership.role, 'member')) return 'edit';
-    return 'view';
+    const teamRole =
+      board.teamId && actorId
+        ? ((await teams.membershipOf(board.teamId, actorId))?.role ?? null)
+        : null;
+    return resolveMembershipBoardAccess(board, actorId, teamRole);
   }
 
   /** Ссылка на шаринг доступен только автору доски или администратору команды */
