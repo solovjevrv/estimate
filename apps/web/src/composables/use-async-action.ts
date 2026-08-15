@@ -27,9 +27,9 @@ export interface AsyncAction<TArgs extends unknown[], TResult> {
   pending: Readonly<Ref<boolean>>;
 
   /**
-   * Никогда не пробрасывает штатную ошибку run в DOM-обработчик:
+   * Никогда не пробрасывает штатную ошибку операции в DOM-обработчик:
    * - успех: возвращает TResult;
-   * - ошибка run: вызывает error (если задан), возвращает undefined;
+   * - ошибка run или success: вызывает error (если задан), возвращает undefined;
    * - повторный вызов при pending=true: не запускает run повторно и возвращает undefined.
    */
   execute: (...args: TArgs) => Promise<TResult | undefined>;
@@ -51,19 +51,13 @@ export function useAsyncAction<TArgs extends unknown[], TResult>(
     pending.value = true;
 
     try {
-      let result: TResult;
-      try {
-        result = await options.run(...args);
-      } catch (runError) {
-        await options.error?.(runError, ...args);
-        // Штатная ошибка run не пробрасывается наружу (execute возвращает undefined)
-        return undefined;
-      }
-
-      // Ошибка success-колбэка — программная; не маскируем её под ошибку run
-      // и не превращаем в toast, даём упасть наружу (в тесты/консоль).
+      const result = await options.run(...args);
       await options.success?.(result, ...args);
       return result;
+    } catch (error) {
+      await options.error?.(error, ...args);
+      // Штатная ошибка операции не пробрасывается наружу (execute возвращает undefined)
+      return undefined;
     } finally {
       pending.value = false;
     }

@@ -40,7 +40,10 @@ describe('useAsyncAction', () => {
     let receivedError: unknown;
     let receivedArgs: unknown[] = [];
     const { execute } = useAsyncAction({
-      run: (_arg: string) => Promise.reject(boom),
+      run: (arg: string) => {
+        void arg;
+        return Promise.reject(boom);
+      },
       error: (error, ...args) => {
         receivedError = error;
         receivedArgs = args;
@@ -89,16 +92,19 @@ describe('useAsyncAction', () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
-  it('сбрасывает pending, если success callback выбросил исключение', async () => {
+  it('обрабатывает ошибку success callback как ошибку операции и сбрасывает pending', async () => {
     const successError = new Error('success boom');
+    const error = vi.fn();
     const { pending, execute } = useAsyncAction({
       run: () => Promise.resolve(1),
       success: () => {
         throw successError;
       },
+      error,
     });
 
-    await expect(execute()).rejects.toBe(successError);
+    await expect(execute()).resolves.toBeUndefined();
+    expect(error).toHaveBeenCalledWith(successError);
     expect(pending.value).toBe(false);
   });
 

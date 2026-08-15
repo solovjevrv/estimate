@@ -188,6 +188,7 @@ const { pending: guestJoining, execute: joinAsGuest } = useAsyncAction({
 async function onGuestNameSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void> {
   const name = trimText(event.data.name);
   storeGuestName(name);
+  guestJoinFailed.value = false;
   await joinAsGuest(name);
 }
 
