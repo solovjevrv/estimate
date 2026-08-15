@@ -8,6 +8,7 @@ import fp from 'fastify-plugin';
 
 import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
+import { archivedQuerySchema, idParamsSchema, nullableUuidSchema } from '../http/schemas';
 
 import { BoardImagesService } from './board-images.service';
 import type {
@@ -26,11 +27,6 @@ export interface BoardsPluginOptions {
   assetsDir?: string;
   auth: AuthConfig;
 }
-
-const uuid = { type: 'string', format: 'uuid' } as const;
-
-const boardIdParams = { type: 'object', required: ['id'], properties: { id: uuid } } as const;
-const teamIdParams = { type: 'object', required: ['id'], properties: { id: uuid } } as const;
 
 const titleBody = {
   type: 'object',
@@ -54,7 +50,7 @@ const createBoardBody = {
       minLength: 1,
       maxLength: BOARD_TITLE_MAX_LENGTH + TEXT_INPUT_TRIM_ALLOWANCE,
     },
-    teamId: { type: ['string', 'null'], format: 'uuid' },
+    teamId: nullableUuidSchema,
   },
 } as const;
 
@@ -64,13 +60,6 @@ const shareBody = {
   properties: {
     role: { type: ['string', 'null'], enum: [...BOARD_SHARE_ROLES, null] },
   },
-} as const;
-
-// coerceTypes выключен глобально, поэтому булево из строки запроса не собрать
-// схемой — принимаем строку 'true'/'false' и разбираем её в контроллере
-const archivedQuery = {
-  type: 'object',
-  properties: { archived: { type: 'string', enum: ['true', 'false'] } },
 } as const;
 
 const boardResponse = {
@@ -196,7 +185,7 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
           'Личные доски текущего пользователя (без командных). По умолчанию без архивных; ' +
           '`archived=true` — только архивные.',
         security: [{ session: [] }],
-        querystring: archivedQuery,
+        querystring: archivedQuerySchema,
         response: {
           200: { description: 'Список досок', ...boardsResponse },
           401: { description: 'Требуется вход', ...errorResponse },
@@ -217,8 +206,8 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
           'Доступно любому участнику команды, включая гостя. По умолчанию без архивных; ' +
           '`archived=true` — только архивные.',
         security: [{ session: [] }],
-        params: teamIdParams,
-        querystring: archivedQuery,
+        params: idParamsSchema,
+        querystring: archivedQuerySchema,
         response: {
           200: { description: 'Список досок', ...boardsResponse },
           401: { description: 'Требуется вход', ...errorResponse },
@@ -240,7 +229,7 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
           'Доска целиком: метаданные, элементы и связи. Личная — только владельцу, ' +
           'командная — любому участнику команды, включая гостя. Гость по ' +
           'включённой ссылке (14.4) видит снимок без входа.',
-        params: boardIdParams,
+        params: idParamsSchema,
         response: {
           200: { description: 'Доска', ...boardSnapshotResponse },
           404: { description: 'Доска не найдена или у вас нет доступа', ...errorResponse },
@@ -259,7 +248,7 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
         summary: 'Переименовать доску',
         description: 'Доступно автору доски или администратору команды.',
         security: [{ session: [] }],
-        params: boardIdParams,
+        params: idParamsSchema,
         body: titleBody,
         response: {
           200: {
@@ -288,7 +277,7 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
           'Доступно автору доски или администратору команды. ' +
           'role: "view" | "edit" | null (null — выключить шаринг).',
         security: [{ session: [] }],
-        params: boardIdParams,
+        params: idParamsSchema,
         body: shareBody,
         response: {
           200: {
@@ -317,7 +306,7 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
           'списков, но остаётся доступна по прямой ссылке. Настоящее удаление — отдельным ' +
           'действием, только для уже заархивированной доски.',
         security: [{ session: [] }],
-        params: boardIdParams,
+        params: idParamsSchema,
         response: {
           200: {
             description: 'Доска заархивирована',
@@ -343,7 +332,7 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
         summary: 'Вернуть доску из архива',
         description: 'Доступно автору доски или администратору команды.',
         security: [{ session: [] }],
-        params: boardIdParams,
+        params: idParamsSchema,
         response: {
           200: {
             description: 'Доска возвращена из архива',
@@ -371,7 +360,7 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
           'Необратимо: удаляет все элементы и связи вместе с доской. Доступно только для уже ' +
           'заархивированной доски и только её автору или администратору команды.',
         security: [{ session: [] }],
-        params: boardIdParams,
+        params: idParamsSchema,
         response: {
           204: { description: 'Доска удалена', type: 'null' },
           401: { description: 'Требуется вход', ...errorResponse },
