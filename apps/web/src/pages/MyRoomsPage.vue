@@ -1,21 +1,22 @@
 <script setup lang="ts">
-import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { ROOM_NAME_MAX_LENGTH, trimText, type Room, type RoomStats } from '@poker/shared';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { ROOM_NAME_MAX_LENGTH, type Room, type RoomStats } from '@poker/shared';
+import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
+import EntityTextModal from '../components/EntityTextModal.vue';
+import { useArchiveTab } from '../composables/use-archive-tab';
 import { usePagedList } from '../composables/use-paged-list';
 import { useAsyncAction } from '../composables/use-async-action';
+import { useEntityModal } from '../composables/use-entity-modal';
 import {
   createRoom as createRoomRequest,
   deleteRoom,
   getMyRoomStats,
   listMyRooms,
 } from '../features/rooms/api/rooms-api';
-import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 
 const { t, locale } = useI18n();
 const router = useRouter();
@@ -107,28 +108,12 @@ async function load(): Promise<void> {
 }
 
 // --- Создание комнаты ---
-const createOpen = ref(false);
-const createState = reactive({ name: '' });
-
-watch(createOpen, (isOpen) => {
-  if (!isOpen) createState.name = '';
-});
-
-function validateRoomName(s: { name: string }): FormError[] {
-  const errors: FormError[] = [];
-  const name = trimText(s.name);
-  if (!name) {
-    errors.push({ name: 'name', message: t('teams.nameRequired') });
-  } else if (name.length > ROOM_NAME_MAX_LENGTH) {
-    errors.push({ name: 'name', message: t('teams.nameTooLong', { max: ROOM_NAME_MAX_LENGTH }) });
-  }
-  return errors;
-}
+const createRoomModal = useEntityModal();
 
 const { pending: creating, execute: createRoom } = useAsyncAction({
   run: (name: string) => createRoomRequest(name),
   success: async (room) => {
-    createOpen.value = false;
+    createRoomModal.close();
     await router.push({ name: 'room', params: { id: room.id } });
   },
   error: () => {
@@ -136,35 +121,17 @@ const { pending: creating, execute: createRoom } = useAsyncAction({
   },
 });
 
-async function onCreateRoom(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  await createRoom(trimText(event.data.name));
+async function onCreateRoom(name: string): Promise<void> {
+  await createRoom(name);
 }
 
 // --- Архив: грузится отдельно и по требованию, чтобы не тянуть его при каждом заходе ---
-const archiveOpen = ref(false);
-const archiveLoading = ref(false);
-const archiveFailed = ref(false);
 const archived = ref<Room[]>([]);
 const archivedComputed = computed(() => archived.value);
 const archivePaging = usePagedList(archivedComputed);
-let archiveLoaded = false;
-
-async function toggleArchive(): Promise<void> {
-  archiveOpen.value = !archiveOpen.value;
-  if (archiveOpen.value && !archiveLoaded) {
-    archiveLoading.value = true;
-    archiveFailed.value = false;
-    try {
-      archived.value = await listMyRooms(true);
-      archivePaging.reset();
-      archiveLoaded = true;
-    } catch {
-      archiveFailed.value = true;
-    } finally {
-      archiveLoading.value = false;
-    }
-  }
-}
+const archive = useArchiveTab(async () => {
+  archived.value = await listMyRooms(true);
+}, archivePaging.reset);
 
 const deleteTarget = ref<Room | null>(null);
 const deleteOpen = ref(false);
@@ -200,7 +167,7 @@ async function confirmDelete(): Promise<void> {
       <UButton
         icon="i-lucide-plus"
         class="h-[43px] px-[22px] text-[15px] font-bold"
-        @click="createOpen = true"
+        @click="createRoomModal.show"
       >
         {{ t('room.create') }}
       </UButton>
@@ -292,21 +259,21 @@ async function confirmDelete(): Promise<void> {
           <button
             type="button"
             class="text-primary cursor-pointer text-sm font-bold"
-            @click="toggleArchive"
+            @click="archive.toggle"
           >
-            {{ archiveOpen ? t('myRooms.archiveHide') : t('myRooms.archiveShow') }}
+            {{ archive.open ? t('myRooms.archiveHide') : t('myRooms.archiveShow') }}
           </button>
         </div>
 
-        <template v-if="archiveOpen">
+        <template v-if="archive.open">
           <UAlert
-            v-if="archiveFailed"
+            v-if="archive.failed"
             color="error"
             variant="subtle"
             class="mx-4 mb-5 sm:mx-[30px]"
             :description="t('myRooms.archiveError')"
           />
-          <div v-else-if="archiveLoading" class="text-muted flex justify-center pb-5">
+          <div v-else-if="archive.loading" class="text-muted flex justify-center pb-5">
             <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
           </div>
           <p
@@ -358,41 +325,19 @@ async function confirmDelete(): Promise<void> {
       </div>
     </template>
 
-    <UModal v-model:open="createOpen" :title="t('room.createTitle')" :ui="MODAL_UI">
-      <template #body>
-        <UForm
-          :state="createState"
-          :validate="validateRoomName"
-          class="space-y-4"
-          @submit="onCreateRoom"
-        >
-          <UFormField :label="t('teams.nameLabel')" name="name">
-            <UInput
-              v-model="createState.name"
-              :placeholder="t('room.createNamePlaceholder')"
-              :maxlength="ROOM_NAME_MAX_LENGTH"
-              autofocus
-              class="w-full"
-              :ui="MODAL_INPUT_UI"
-            />
-          </UFormField>
-
-          <div class="flex justify-end gap-2.5">
-            <UButton
-              color="neutral"
-              variant="outline"
-              :ui="MODAL_BUTTON_UI"
-              @click="createOpen = false"
-            >
-              {{ t('teams.cancel') }}
-            </UButton>
-            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="creating">
-              {{ creating ? t('room.creating') : t('room.create') }}
-            </UButton>
-          </div>
-        </UForm>
-      </template>
-    </UModal>
+    <EntityTextModal
+      v-model:open="createRoomModal.open"
+      :title="t('room.createTitle')"
+      :label="t('common.nameLabel')"
+      :placeholder="t('room.createNamePlaceholder')"
+      :max-length="ROOM_NAME_MAX_LENGTH"
+      :required-message="t('common.nameRequired')"
+      :too-long-message="t('common.nameTooLong', { max: ROOM_NAME_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="creating ? t('room.creating') : t('room.create')"
+      :pending="creating"
+      @submit="onCreateRoom"
+    />
 
     <ConfirmModal
       v-model:open="deleteOpen"

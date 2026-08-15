@@ -2,6 +2,12 @@ export default {
   app: {
     name: 'EstiMate',
   },
+  common: {
+    cancel: 'Отмена',
+    nameLabel: 'Название',
+    nameRequired: 'Введите название',
+    nameTooLong: 'Слишком длинное название (максимум {max})',
+  },
   nav: {
     home: 'Главная',
     teams: 'Команды',
@@ -57,11 +63,7 @@ export default {
     create: 'Создать команду',
     loadError: 'Не удалось загрузить команды. Попробуйте обновить страницу.',
     createTitle: 'Новая команда',
-    nameLabel: 'Название',
     namePlaceholder: 'Например, Команда фронтенда',
-    nameRequired: 'Введите название',
-    nameTooLong: 'Слишком длинное название (максимум {max})',
-    cancel: 'Отмена',
     submit: 'Создать',
     createError: 'Не удалось создать команду. Попробуйте ещё раз.',
     memberCount: '{count} участник | {count} участника | {count} участников',

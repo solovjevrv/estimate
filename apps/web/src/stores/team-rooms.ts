@@ -10,13 +10,20 @@ export const useTeamRoomsStore = defineStore('teamRooms', () => {
   const list = ref<Room[]>([]);
   /** Архив команды — виден только владельцу/администратору, грузится отдельно и по требованию */
   const archivedList = ref<Room[]>([]);
+  // При переходе между командами старый HTTP-ответ не должен перезаписать новый список.
+  let listGeneration = 0;
+  let archiveGeneration = 0;
 
   async function load(teamId: string): Promise<void> {
-    list.value = await listTeamRooms(teamId);
+    const requestGeneration = ++listGeneration;
+    const rooms = await listTeamRooms(teamId);
+    if (requestGeneration === listGeneration) list.value = rooms;
   }
 
   async function loadArchived(teamId: string): Promise<void> {
-    archivedList.value = await listTeamRooms(teamId, true);
+    const requestGeneration = ++archiveGeneration;
+    const rooms = await listTeamRooms(teamId, true);
+    if (requestGeneration === archiveGeneration) archivedList.value = rooms;
   }
 
   // ISO-даты сравниваются лексикографически, поэтому свежие оказываются сверху
@@ -34,6 +41,8 @@ export const useTeamRoomsStore = defineStore('teamRooms', () => {
 
   /** Уходя со страницы команды, не показываем чужой список до новой загрузки */
   function reset(): void {
+    listGeneration += 1;
+    archiveGeneration += 1;
     list.value = [];
     archivedList.value = [];
   }

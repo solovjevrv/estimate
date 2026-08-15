@@ -29,7 +29,7 @@ const { t } = useI18n();
   >
     <template #footer="{ close }">
       <UButton color="neutral" variant="outline" :ui="MODAL_BUTTON_UI" @click="close">
-        {{ t('teams.cancel') }}
+        {{ t('common.cancel') }}
       </UButton>
       <UButton
         :color="props.confirmColor"

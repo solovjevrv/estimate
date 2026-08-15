@@ -1,13 +1,13 @@
 <script setup lang="ts">
-import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { ROOM_NAME_MAX_LENGTH, trimText } from '@poker/shared';
-import { computed, reactive, ref, watch } from 'vue';
+import { ROOM_NAME_MAX_LENGTH } from '@poker/shared';
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
-import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useAsyncAction } from '../composables/use-async-action';
+import { useEntityModal } from '../composables/use-entity-modal';
+import EntityTextModal from '../components/EntityTextModal.vue';
 import { createRoom as createRoomRequest } from '../features/rooms/api/rooms-api';
 import { useSessionStore } from '../stores/session';
 
@@ -42,30 +42,14 @@ const cards = computed(() => [
   },
 ]);
 
-const open = ref(false);
-const state = reactive({ name: '' });
-
-watch(open, (isOpen) => {
-  if (!isOpen) state.name = '';
-});
-
-function validate(s: { name: string }): FormError[] {
-  const errors: FormError[] = [];
-  const name = trimText(s.name);
-  if (!name) {
-    errors.push({ name: 'name', message: t('teams.nameRequired') });
-  } else if (name.length > ROOM_NAME_MAX_LENGTH) {
-    errors.push({ name: 'name', message: t('teams.nameTooLong', { max: ROOM_NAME_MAX_LENGTH }) });
-  }
-  return errors;
-}
+const createRoomModal = useEntityModal();
 
 const toast = useToast();
 
 const { pending: creating, execute: createRoom } = useAsyncAction({
   run: (name: string) => createRoomRequest(name),
   success: async (room) => {
-    open.value = false;
+    createRoomModal.close();
     await router.push({ name: 'room', params: { id: room.id } });
   },
   error: () => {
@@ -73,8 +57,8 @@ const { pending: creating, execute: createRoom } = useAsyncAction({
   },
 });
 
-async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  await createRoom(trimText(event.data.name));
+async function onSubmit(name: string): Promise<void> {
+  await createRoom(name);
 }
 </script>
 
@@ -102,7 +86,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
               size="lg"
               icon="i-lucide-plus"
               class="px-[26px] py-[15px] text-base font-bold"
-              @click="open = true"
+              @click="createRoomModal.show"
             >
               {{ t('room.create') }}
             </UButton>
@@ -153,30 +137,18 @@ async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void>
       </div>
     </div>
 
-    <UModal v-model:open="open" :title="t('room.createTitle')" :ui="MODAL_UI">
-      <template #body>
-        <UForm :state="state" :validate="validate" class="space-y-4" @submit="onSubmit">
-          <UFormField :label="t('teams.nameLabel')" name="name">
-            <UInput
-              v-model="state.name"
-              :placeholder="t('room.createNamePlaceholder')"
-              :maxlength="ROOM_NAME_MAX_LENGTH"
-              autofocus
-              class="w-full"
-              :ui="MODAL_INPUT_UI"
-            />
-          </UFormField>
-
-          <div class="flex justify-end gap-2.5">
-            <UButton color="neutral" variant="outline" :ui="MODAL_BUTTON_UI" @click="open = false">
-              {{ t('teams.cancel') }}
-            </UButton>
-            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="creating">
-              {{ creating ? t('room.creating') : t('room.create') }}
-            </UButton>
-          </div>
-        </UForm>
-      </template>
-    </UModal>
+    <EntityTextModal
+      v-model:open="createRoomModal.open"
+      :title="t('room.createTitle')"
+      :label="t('common.nameLabel')"
+      :placeholder="t('room.createNamePlaceholder')"
+      :max-length="ROOM_NAME_MAX_LENGTH"
+      :required-message="t('common.nameRequired')"
+      :too-long-message="t('common.nameTooLong', { max: ROOM_NAME_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="creating ? t('room.creating') : t('room.create')"
+      :pending="creating"
+      @submit="onSubmit"
+    />
   </section>
 </template>
