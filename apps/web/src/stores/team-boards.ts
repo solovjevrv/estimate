@@ -3,7 +3,7 @@ import type { BoardSummary } from '@poker/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
-import { api } from '../lib/api';
+import { listTeamBoards } from '../features/teams/api/teams-api';
 
 export const useTeamBoardsStore = defineStore('teamBoards', () => {
   const list = ref<BoardSummary[]>([]);
@@ -11,17 +11,11 @@ export const useTeamBoardsStore = defineStore('teamBoards', () => {
   const archivedList = ref<BoardSummary[]>([]);
 
   async function load(teamId: string): Promise<void> {
-    const res = await api.get<{ boards: BoardSummary[] }>(
-      `/api/teams/${encodeURIComponent(teamId)}/boards`,
-    );
-    list.value = res.boards;
+    list.value = await listTeamBoards(teamId);
   }
 
   async function loadArchived(teamId: string): Promise<void> {
-    const res = await api.get<{ boards: BoardSummary[] }>(
-      `/api/teams/${encodeURIComponent(teamId)}/boards?archived=true`,
-    );
-    archivedList.value = res.boards;
+    archivedList.value = await listTeamBoards(teamId, true);
   }
 
   // ISO-даты сравниваются лексикографически, поэтому свежие оказываются сверху

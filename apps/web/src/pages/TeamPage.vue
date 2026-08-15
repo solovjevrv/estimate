@@ -23,8 +23,15 @@ import { useAsyncAction } from '../composables/use-async-action';
 import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
-import { useBoardsStore } from '../stores/boards';
-import { useRoomsStore } from '../stores/rooms';
+import {
+  createBoard as createBoardRequest,
+  deleteBoard as deleteBoardRequest,
+  unarchiveBoard as unarchiveBoardRequest,
+} from '../features/boards/api/boards-api';
+import {
+  createRoom as createRoomRequest,
+  deleteRoom as deleteRoomRequest,
+} from '../features/rooms/api/rooms-api';
 import { useSessionStore } from '../stores/session';
 import { useTeamBoardsStore } from '../stores/team-boards';
 import { useTeamRoomsStore } from '../stores/team-rooms';
@@ -37,9 +44,7 @@ const toast = useToast();
 const router = useRouter();
 const teams = useTeamsStore();
 const teamRooms = useTeamRoomsStore();
-const rooms = useRoomsStore();
 const teamBoards = useTeamBoardsStore();
-const boards = useBoardsStore();
 const session = useSessionStore();
 
 const loading = ref(true);
@@ -232,7 +237,7 @@ function askDeleteRoom(room: Room): void {
 }
 
 const { pending: deletingRoom, execute: deleteRoom } = useAsyncAction({
-  run: (target: Room) => rooms.remove(target.id),
+  run: (target: Room) => deleteRoomRequest(target.id),
   success: async () => {
     await teamRooms.loadArchived(props.id);
     toast.add({ title: t('team.archiveDeleted'), color: 'success', icon: 'i-lucide-check' });
@@ -269,7 +274,7 @@ function validateRoomName(s: { name: string }): FormError[] {
 }
 
 const { pending: creatingRoom, execute: createTeamRoom } = useAsyncAction({
-  run: (name: string) => rooms.create(name, props.id),
+  run: (name: string) => createRoomRequest(name, props.id),
   success: async (room) => {
     createRoomOpen.value = false;
     await router.push({ name: 'room', params: { id: room.id } });
@@ -306,7 +311,7 @@ function validateBoardTitle(s: { title: string }): FormError[] {
 }
 
 const { pending: creatingBoard, execute: createTeamBoard } = useAsyncAction({
-  run: (title: string) => boards.create(title, props.id),
+  run: (title: string) => createBoardRequest(title, props.id),
   success: async (board) => {
     createBoardOpen.value = false;
     await router.push({ name: 'board', params: { id: board.id } });
@@ -325,7 +330,7 @@ const unarchivingBoardId = ref<string | null>(null);
 async function unarchiveBoard(board: BoardSummary): Promise<void> {
   unarchivingBoardId.value = board.id;
   try {
-    await boards.unarchive(board.id);
+    await unarchiveBoardRequest(board.id);
     await Promise.all([teamBoards.load(props.id), teamBoards.loadArchived(props.id)]);
     toast.add({
       title: t('team.archiveBoardUnarchived'),
@@ -348,7 +353,7 @@ function askDeleteBoard(board: BoardSummary): void {
 }
 
 const { pending: deletingBoard, execute: deleteTeamBoard } = useAsyncAction({
-  run: (target: BoardSummary) => boards.remove(target.id),
+  run: (target: BoardSummary) => deleteBoardRequest(target.id),
   success: async () => {
     await teamBoards.loadArchived(props.id);
     toast.add({ title: t('team.archiveBoardDeleted'), color: 'success', icon: 'i-lucide-check' });

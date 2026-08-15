@@ -8,13 +8,12 @@ import { useRouter } from 'vue-router';
 
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useAsyncAction } from '../composables/use-async-action';
-import { useRoomsStore } from '../stores/rooms';
+import { createRoom as createRoomRequest } from '../features/rooms/api/rooms-api';
 import { useSessionStore } from '../stores/session';
 
 const { t } = useI18n();
 const router = useRouter();
 const session = useSessionStore();
-const rooms = useRoomsStore();
 
 const bullets = computed(() => [
   { label: t('home.bullet1'), dotClass: 'bg-primary' },
@@ -64,7 +63,7 @@ function validate(s: { name: string }): FormError[] {
 const toast = useToast();
 
 const { pending: creating, execute: createRoom } = useAsyncAction({
-  run: (name: string) => rooms.create(name),
+  run: (name: string) => createRoomRequest(name),
   success: async (room) => {
     open.value = false;
     await router.push({ name: 'room', params: { id: room.id } });

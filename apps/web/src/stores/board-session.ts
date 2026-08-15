@@ -29,7 +29,7 @@ import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, toggleItemReaction } from '@po
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 
-import { api } from '../lib/api';
+import { setBoardShare } from '../features/boards/api/boards-api';
 import { applyLocalBoardOp, type BoardLocalState } from '../lib/board/apply-local-op';
 import {
   BOARD_HISTORY_LIMIT,
@@ -537,8 +537,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   }
 
   async function setShare(role: BoardShareRole | null): Promise<Board> {
-    const { board } = await api.patch<{ board: Board }>(`/api/boards/${boardId}/share`, { role });
-    return board;
+    if (!boardId) throw new Error('Нельзя изменить доступ к доске вне активной сессии');
+    return setBoardShare(boardId, role);
   }
 
   return {

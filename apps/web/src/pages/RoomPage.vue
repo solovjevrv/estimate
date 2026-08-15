@@ -29,8 +29,8 @@ import RoundResultPanel from '../components/room/RoundResultPanel.vue';
 import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useAsyncAction } from '../composables/use-async-action';
+import { archiveRoom, getRoom, getRoundHistory, renameRoom } from '../features/rooms/api/rooms-api';
 import { useRoomStore } from '../stores/room';
-import { useRoomsStore } from '../stores/rooms';
 import { useSessionStore } from '../stores/session';
 
 const props = defineProps<{ id: string }>();
@@ -39,7 +39,6 @@ const { t } = useI18n();
 const toast = useToast();
 const session = useSessionStore();
 const room = useRoomStore();
-const roomsStore = useRoomsStore();
 
 const isArchived = computed(() => room.room?.archivedAt != null);
 const archiveOpen = ref(false);
@@ -54,7 +53,7 @@ async function copyInviteLink(): Promise<void> {
 }
 
 const { pending: archiving, execute: archive } = useAsyncAction({
-  run: () => roomsStore.archive(props.id),
+  run: () => archiveRoom(props.id),
   success: (archivedRoom) => {
     const current = room.state;
     if (current) {
@@ -96,7 +95,7 @@ function validateRoomName(s: { name: string }): FormError[] {
 }
 
 const { pending: renaming, execute: rename } = useAsyncAction({
-  run: (name: string) => roomsStore.rename(props.id, name),
+  run: (name: string) => renameRoom(props.id, name),
   success: (renamed) => {
     roomInfo.value = renamed;
     const current = room.state;
@@ -399,7 +398,7 @@ async function loadHistory(): Promise<void> {
   historyLoading.value = true;
   historyFailed.value = false;
   try {
-    const rounds = await roomsStore.roundHistory(roomId);
+    const rounds = await getRoundHistory(roomId);
     // Пока запрос летел, могли перейти в другую комнату — её историю не подменяем
     if (token !== currentToken) return;
     historyEntries.value = rounds;
@@ -663,7 +662,7 @@ async function load(): Promise<void> {
   room.leave();
   let loadedRoom: Room;
   try {
-    loadedRoom = await roomsStore.get(props.id);
+    loadedRoom = await getRoom(props.id);
   } catch (err) {
     if (token !== currentToken) return; // уже перешли дальше — этот ответ не наш
     phase.value = err instanceof ApiError && err.status === 404 ? 'notFound' : 'loadError';

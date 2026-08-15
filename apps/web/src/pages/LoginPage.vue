@@ -5,6 +5,7 @@ import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 
 import { rememberRedirect } from '../lib/auth-redirect';
+import { getProviderLoginUrl } from '../features/auth/api/auth-api';
 import { useSessionStore } from '../stores/session';
 
 const { t } = useI18n();
@@ -36,9 +37,6 @@ const redirectTarget = computed(() =>
  * Вход — это переход браузера на сервер, а не запрос из приложения: провайдер
  * должен показать свой экран согласия и вернуть пользователя обратно с кукой.
  */
-function startUrl(provider: AuthProvider): string {
-  return `/api/auth/${provider}`;
-}
 
 /**
  * Перед уходом к провайдеру запоминаем цель перехода и помечаем кнопку.
@@ -50,7 +48,7 @@ function startUrl(provider: AuthProvider): string {
 function start(provider: AuthProvider): void {
   rememberRedirect(redirectTarget.value);
   pending.value = provider;
-  window.location.assign(startUrl(provider));
+  window.location.assign(getProviderLoginUrl(provider));
 }
 
 onMounted(() => {
@@ -85,7 +83,7 @@ onMounted(() => {
         <UButton
           v-for="provider in session.providers"
           :key="provider"
-          :href="startUrl(provider)"
+          :href="getProviderLoginUrl(provider)"
           external
           :loading="pending === provider"
           :disabled="pending !== null"

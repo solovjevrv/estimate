@@ -9,13 +9,17 @@ import { useRouter } from 'vue-router';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import { usePagedList } from '../composables/use-paged-list';
 import { useAsyncAction } from '../composables/use-async-action';
+import {
+  createBoard as createBoardRequest,
+  deleteBoard,
+  listMyBoards,
+  unarchiveBoard,
+} from '../features/boards/api/boards-api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
-import { useBoardsStore } from '../stores/boards';
 
 const { t, locale } = useI18n();
 const router = useRouter();
 const toast = useToast();
-const boards = useBoardsStore();
 
 const loading = ref(true);
 const loadFailed = ref(false);
@@ -37,7 +41,7 @@ async function load(): Promise<void> {
   loading.value = true;
   loadFailed.value = false;
   try {
-    list.value = await boards.listMine(false);
+    list.value = await listMyBoards(false);
     activePaging.reset();
   } catch {
     loadFailed.value = true;
@@ -69,7 +73,7 @@ function validateBoardTitle(s: { title: string }): FormError[] {
 }
 
 const { pending: creating, execute: createBoard } = useAsyncAction({
-  run: (title: string) => boards.create(title),
+  run: (title: string) => createBoardRequest(title),
   success: async (board) => {
     createOpen.value = false;
     await router.push({ name: 'board', params: { id: board.id } });
@@ -98,7 +102,7 @@ async function toggleArchive(): Promise<void> {
     archiveLoading.value = true;
     archiveFailed.value = false;
     try {
-      archived.value = await boards.listMine(true);
+      archived.value = await listMyBoards(true);
       archivePaging.reset();
       archiveLoaded = true;
     } catch {
@@ -114,7 +118,7 @@ const unarchivingId = ref<string | null>(null);
 async function unarchive(board: BoardSummary): Promise<void> {
   unarchivingId.value = board.id;
   try {
-    const updated = await boards.unarchive(board.id);
+    const updated = await unarchiveBoard(board.id);
     archived.value = archived.value.filter((b) => b.id !== board.id);
     // Возвращаем в основной список, не только убираем из архивного — иначе доска
     // пропадала бы из обоих списков до перезагрузки страницы
@@ -136,7 +140,7 @@ function askDelete(board: BoardSummary): void {
 }
 
 const { pending: deleting, execute: removeBoard } = useAsyncAction({
-  run: (target: BoardSummary) => boards.remove(target.id),
+  run: (target: BoardSummary) => deleteBoard(target.id),
   success: (_, target) => {
     archived.value = archived.value.filter((board) => board.id !== target.id);
     toast.add({ title: t('boards.deleted'), color: 'success', icon: 'i-lucide-check' });
