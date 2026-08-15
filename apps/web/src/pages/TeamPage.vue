@@ -19,6 +19,7 @@ import { useRouter } from 'vue-router';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
 import { usePagedList } from '../composables/use-paged-list';
+import { useAsyncAction } from '../composables/use-async-action';
 import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
@@ -224,32 +225,32 @@ async function selectBoardsTab(tab: 'active' | 'archive'): Promise<void> {
 
 const deleteRoomTarget = ref<Room | null>(null);
 const deleteRoomOpen = ref(false);
-const deletingRoom = ref(false);
 
 function askDeleteRoom(room: Room): void {
   deleteRoomTarget.value = room;
   deleteRoomOpen.value = true;
 }
 
-async function confirmDeleteRoom(): Promise<void> {
-  const target = deleteRoomTarget.value;
-  if (!target) return;
-  deletingRoom.value = true;
-  try {
-    await rooms.remove(target.id);
+const { pending: deletingRoom, execute: deleteRoom } = useAsyncAction({
+  run: (target: Room) => rooms.remove(target.id),
+  success: async () => {
     await teamRooms.loadArchived(props.id);
     toast.add({ title: t('team.archiveDeleted'), color: 'success', icon: 'i-lucide-check' });
     deleteRoomOpen.value = false;
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('team.archiveDeleteError'), color: 'error' });
-  } finally {
-    deletingRoom.value = false;
-  }
+  },
+});
+
+async function confirmDeleteRoom(): Promise<void> {
+  const target = deleteRoomTarget.value;
+  if (!target) return;
+  await deleteRoom(target);
 }
 
 // --- Создание комнаты от лица команды ---
 const createRoomOpen = ref(false);
-const creatingRoom = ref(false);
 const createRoomState = reactive({ name: '' });
 
 watch(createRoomOpen, (isOpen) => {
@@ -267,22 +268,23 @@ function validateRoomName(s: { name: string }): FormError[] {
   return errors;
 }
 
-async function onCreateRoom(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  creatingRoom.value = true;
-  try {
-    const room = await rooms.create(trimText(event.data.name), props.id);
+const { pending: creatingRoom, execute: createTeamRoom } = useAsyncAction({
+  run: (name: string) => rooms.create(name, props.id),
+  success: async (room) => {
     createRoomOpen.value = false;
     await router.push({ name: 'room', params: { id: room.id } });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('room.createError'), color: 'error' });
-  } finally {
-    creatingRoom.value = false;
-  }
+  },
+});
+
+async function onCreateRoom(event: FormSubmitEvent<{ name: string }>): Promise<void> {
+  await createTeamRoom(trimText(event.data.name));
 }
 
 // --- Создание доски от лица команды ---
 const createBoardOpen = ref(false);
-const creatingBoard = ref(false);
 const createBoardState = reactive({ title: '' });
 
 watch(createBoardOpen, (isOpen) => {
@@ -303,17 +305,19 @@ function validateBoardTitle(s: { title: string }): FormError[] {
   return errors;
 }
 
-async function onCreateBoard(event: FormSubmitEvent<{ title: string }>): Promise<void> {
-  creatingBoard.value = true;
-  try {
-    const board = await boards.create(trimText(event.data.title), props.id);
+const { pending: creatingBoard, execute: createTeamBoard } = useAsyncAction({
+  run: (title: string) => boards.create(title, props.id),
+  success: async (board) => {
     createBoardOpen.value = false;
     await router.push({ name: 'board', params: { id: board.id } });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('board.createError'), color: 'error' });
-  } finally {
-    creatingBoard.value = false;
-  }
+  },
+});
+
+async function onCreateBoard(event: FormSubmitEvent<{ title: string }>): Promise<void> {
+  await createTeamBoard(trimText(event.data.title));
 }
 
 const unarchivingBoardId = ref<string | null>(null);
@@ -337,27 +341,28 @@ async function unarchiveBoard(board: BoardSummary): Promise<void> {
 
 const deleteBoardTarget = ref<BoardSummary | null>(null);
 const deleteBoardOpen = ref(false);
-const deletingBoard = ref(false);
 
 function askDeleteBoard(board: BoardSummary): void {
   deleteBoardTarget.value = board;
   deleteBoardOpen.value = true;
 }
 
-async function confirmDeleteBoard(): Promise<void> {
-  const target = deleteBoardTarget.value;
-  if (!target) return;
-  deletingBoard.value = true;
-  try {
-    await boards.remove(target.id);
+const { pending: deletingBoard, execute: deleteTeamBoard } = useAsyncAction({
+  run: (target: BoardSummary) => boards.remove(target.id),
+  success: async () => {
     await teamBoards.loadArchived(props.id);
     toast.add({ title: t('team.archiveBoardDeleted'), color: 'success', icon: 'i-lucide-check' });
     deleteBoardOpen.value = false;
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('team.archiveBoardDeleteError'), color: 'error' });
-  } finally {
-    deletingBoard.value = false;
-  }
+  },
+});
+
+async function confirmDeleteBoard(): Promise<void> {
+  const target = deleteBoardTarget.value;
+  if (!target) return;
+  await deleteTeamBoard(target);
 }
 
 async function copyInvite(): Promise<void> {
@@ -371,19 +376,20 @@ async function copyInvite(): Promise<void> {
 }
 
 const rotateOpen = ref(false);
-const rotating = ref(false);
 
-async function rotate(): Promise<void> {
-  rotating.value = true;
-  try {
-    await teams.rotateInvite(props.id);
+const { pending: rotating, execute: rotateInvite } = useAsyncAction({
+  run: () => teams.rotateInvite(props.id),
+  success: () => {
     toast.add({ title: t('team.rotated'), color: 'success', icon: 'i-lucide-check' });
     rotateOpen.value = false;
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('team.rotateError'), color: 'error' });
-  } finally {
-    rotating.value = false;
-  }
+  },
+});
+
+async function rotate(): Promise<void> {
+  await rotateInvite();
 }
 
 // --- Смена роли ---
@@ -430,29 +436,29 @@ async function confirmRemove(): Promise<void> {
 
 // --- Собственный выход из команды ---
 const leaveOpen = ref(false);
-const leaving = ref(false);
+
+const { pending: leaving, execute: leave } = useAsyncAction<[string], void>({
+  run: (userId: string) => teams.removeMember(props.id, userId),
+  success: async () => {
+    toast.add({ title: t('team.left'), color: 'success', icon: 'i-lucide-check' });
+    leaveOpen.value = false;
+    await router.push({ name: 'teams' });
+  },
+  error: (err) => {
+    // Единственному администратору бэкенд отвечает 409 — сначала назначить другого
+    const key = err instanceof ApiError && err.status === 409 ? 'leaveLastAdmin' : 'leaveError';
+    toast.add({ title: t(`team.${key}`), color: 'error' });
+  },
+});
 
 async function confirmLeave(): Promise<void> {
   const userId = currentUserId.value;
   if (!userId) return;
-  leaving.value = true;
-  try {
-    await teams.removeMember(props.id, userId);
-    toast.add({ title: t('team.left'), color: 'success', icon: 'i-lucide-check' });
-    leaveOpen.value = false;
-    await router.push({ name: 'teams' });
-  } catch (err) {
-    // Единственному администратору бэкенд отвечает 409 — сначала назначить другого
-    const key = err instanceof ApiError && err.status === 409 ? 'leaveLastAdmin' : 'leaveError';
-    toast.add({ title: t(`team.${key}`), color: 'error' });
-  } finally {
-    leaving.value = false;
-  }
+  await leave(userId);
 }
 
 // --- Переименование ---
 const renameOpen = ref(false);
-const renaming = ref(false);
 const renameState = reactive({ name: '' });
 
 // Открыли — подставляем текущее имя; закрыли — очищаем, чтобы не мигало старое
@@ -471,35 +477,38 @@ function validateName(s: { name: string }): FormError[] {
   return errors;
 }
 
-async function onRename(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  renaming.value = true;
-  try {
-    await teams.rename(props.id, trimText(event.data.name));
+const { pending: renaming, execute: renameTeam } = useAsyncAction({
+  run: (name: string) => teams.rename(props.id, name),
+  success: () => {
     toast.add({ title: t('team.renamed'), color: 'success', icon: 'i-lucide-check' });
     renameOpen.value = false;
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('team.renameError'), color: 'error' });
-  } finally {
-    renaming.value = false;
-  }
+  },
+});
+
+async function onRename(event: FormSubmitEvent<{ name: string }>): Promise<void> {
+  await renameTeam(trimText(event.data.name));
 }
 
 // --- Удаление команды ---
 const deleteOpen = ref(false);
-const deleting = ref(false);
 
-async function confirmDelete(): Promise<void> {
-  deleting.value = true;
-  try {
-    await teams.remove(props.id);
+const { pending: deleting, execute: deleteTeam } = useAsyncAction({
+  run: () => teams.remove(props.id),
+  success: async () => {
     toast.add({ title: t('team.deleted'), color: 'success', icon: 'i-lucide-check' });
     deleteOpen.value = false;
     await router.push({ name: 'teams' });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('team.deleteError'), color: 'error' });
-  } finally {
-    deleting.value = false;
-  }
+  },
+});
+
+async function confirmDelete(): Promise<void> {
+  await deleteTeam();
 }
 </script>
 

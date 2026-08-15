@@ -17,6 +17,7 @@ import BoardShareModal from '../components/board/BoardShareModal.vue';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
+import { useAsyncAction } from '../composables/use-async-action';
 import { useBoardsStore } from '../stores/boards';
 import { useBoardSessionStore } from '../stores/board-session';
 import { useSessionStore } from '../stores/session';
@@ -108,7 +109,6 @@ function storeGuestName(name: string): void {
 }
 
 const needsGuestName = ref(false);
-const guestJoining = ref(false);
 const guestJoinFailed = ref(false);
 const guestState = reactive({ name: readStoredGuestName() });
 
@@ -175,19 +175,21 @@ async function joinBoard(guestName?: string): Promise<void> {
   });
 }
 
+const { pending: guestJoining, execute: joinAsGuest } = useAsyncAction({
+  run: (name: string) => joinBoard(name),
+  success: () => {
+    needsGuestName.value = false;
+  },
+  error: () => {
+    guestJoinFailed.value = true;
+  },
+});
+
 async function onGuestNameSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void> {
   const name = trimText(event.data.name);
   storeGuestName(name);
-  guestJoining.value = true;
   guestJoinFailed.value = false;
-  try {
-    await joinBoard(name);
-    needsGuestName.value = false;
-  } catch {
-    guestJoinFailed.value = true;
-  } finally {
-    guestJoining.value = false;
-  }
+  await joinAsGuest(name);
 }
 
 // immediate: true запускает load() синхронно прямо здесь — она читает состояние
@@ -203,7 +205,6 @@ onBeforeUnmount(() => {
 // --- Переименование ---
 const renameOpen = ref(false);
 const shareOpen = ref(false);
-const renaming = ref(false);
 const renameState = reactive({ title: '' });
 
 watch(renameOpen, (open) => {
@@ -224,34 +225,39 @@ function validateTitle(s: { title: string }): FormError[] {
   return errors;
 }
 
-async function onRename(event: FormSubmitEvent<{ title: string }>): Promise<void> {
-  renaming.value = true;
-  try {
-    board.value = await boards.rename(props.id, trimText(event.data.title));
+const { pending: renaming, execute: renameBoard } = useAsyncAction({
+  run: (title: string) => boards.rename(props.id, title),
+  success: (updated) => {
+    board.value = updated;
     toast.add({ title: t('board.renamed'), color: 'success', icon: 'i-lucide-check' });
     renameOpen.value = false;
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('board.renameError'), color: 'error' });
-  } finally {
-    renaming.value = false;
-  }
+  },
+});
+
+async function onRename(event: FormSubmitEvent<{ title: string }>): Promise<void> {
+  await renameBoard(trimText(event.data.title));
 }
 
 // --- Архивация / восстановление ---
 const archiveOpen = ref(false);
-const archiving = ref(false);
 
-async function confirmArchive(): Promise<void> {
-  archiving.value = true;
-  try {
-    board.value = await boards.archive(props.id);
+const { pending: archiving, execute: archiveBoard } = useAsyncAction({
+  run: () => boards.archive(props.id),
+  success: (updated) => {
+    board.value = updated;
     toast.add({ title: t('board.archivedToast'), color: 'success', icon: 'i-lucide-check' });
     archiveOpen.value = false;
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('board.archiveError'), color: 'error' });
-  } finally {
-    archiving.value = false;
-  }
+  },
+});
+
+async function confirmArchive(): Promise<void> {
+  await archiveBoard();
 }
 
 async function unarchive(): Promise<void> {
@@ -265,20 +271,21 @@ async function unarchive(): Promise<void> {
 
 // --- Удаление навсегда ---
 const deleteOpen = ref(false);
-const deleting = ref(false);
 
-async function confirmDelete(): Promise<void> {
-  deleting.value = true;
-  try {
-    await boards.remove(props.id);
+const { pending: deleting, execute: removeBoard } = useAsyncAction({
+  run: () => boards.remove(props.id),
+  success: async () => {
     toast.add({ title: t('board.deleted'), color: 'success', icon: 'i-lucide-check' });
     deleteOpen.value = false;
     await router.push({ name: 'boards' });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('board.deleteError'), color: 'error' });
-  } finally {
-    deleting.value = false;
-  }
+  },
+});
+
+async function confirmDelete(): Promise<void> {
+  await removeBoard();
 }
 </script>
 

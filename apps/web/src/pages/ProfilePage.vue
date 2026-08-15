@@ -13,6 +13,7 @@ import { useI18n } from 'vue-i18n';
 
 import AvatarCropModal from '../components/AvatarCropModal.vue';
 import { providerLabel } from '../lib/auth-provider';
+import { useAsyncAction } from '../composables/use-async-action';
 import { useSessionStore } from '../stores/session';
 
 const { t } = useI18n();
@@ -20,13 +21,11 @@ const toast = useToast();
 const session = useSessionStore();
 
 const form = reactive({ name: '', jobTitle: '' });
-const saving = ref(false);
 
 // --- Аватарка (10.15) ---
 const fileInput = ref<HTMLInputElement | null>(null);
 const cropFile = ref<File | null>(null);
 const cropOpen = ref(false);
-const uploadingAvatar = ref(false);
 
 function pickAvatar(): void {
   fileInput.value?.click();
@@ -51,16 +50,18 @@ function onAvatarSelected(event: Event): void {
   cropOpen.value = true;
 }
 
-async function onCropConfirm(blob: Blob): Promise<void> {
-  uploadingAvatar.value = true;
-  try {
-    await session.uploadAvatar(blob);
+const { pending: uploadingAvatar, execute: uploadAvatar } = useAsyncAction({
+  run: (blob: Blob) => session.uploadAvatar(blob),
+  success: () => {
     toast.add({ title: t('profile.avatar.saved'), color: 'success', icon: 'i-lucide-check' });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('profile.avatar.saveError'), color: 'error' });
-  } finally {
-    uploadingAvatar.value = false;
-  }
+  },
+});
+
+async function onCropConfirm(blob: Blob): Promise<void> {
+  await uploadAvatar(blob);
 }
 
 watch(
@@ -89,19 +90,19 @@ function validate(state: { name: string; jobTitle: string }): FormError[] {
   return errors;
 }
 
-async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string }>): Promise<void> {
-  saving.value = true;
-  try {
-    await session.updateProfile({
-      name: trimText(event.data.name),
-      jobTitle: trimText(event.data.jobTitle),
-    });
+const { pending: saving, execute: saveProfile } = useAsyncAction({
+  run: ({ name, jobTitle }: { name: string; jobTitle: string }) =>
+    session.updateProfile({ name: trimText(name), jobTitle: trimText(jobTitle) }),
+  success: () => {
     toast.add({ title: t('profile.saved'), color: 'success', icon: 'i-lucide-check' });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('profile.saveError'), color: 'error' });
-  } finally {
-    saving.value = false;
-  }
+  },
+});
+
+async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string }>): Promise<void> {
+  await saveProfile(event.data);
 }
 </script>
 

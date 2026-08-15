@@ -7,6 +7,7 @@ import { useRouter } from 'vue-router';
 
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
+import { useAsyncAction } from '../composables/use-async-action';
 import { useTeamsStore } from '../stores/teams';
 
 const { t } = useI18n();
@@ -17,7 +18,6 @@ const loading = ref(true);
 const loadFailed = ref(false);
 
 const open = ref(false);
-const submitting = ref(false);
 const createFailed = ref(false);
 const state = reactive({ name: '' });
 
@@ -52,19 +52,21 @@ function validate(s: { name: string }): FormError[] {
   return errors;
 }
 
-async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  submitting.value = true;
-  createFailed.value = false;
-  try {
-    const team = await teams.create(trimText(event.data.name));
+const { pending: submitting, execute: createTeam } = useAsyncAction({
+  run: (name: string) => teams.create(name),
+  success: async (team) => {
     open.value = false;
     state.name = '';
     await router.push({ name: 'team', params: { id: team.id } });
-  } catch {
+  },
+  error: () => {
     createFailed.value = true;
-  } finally {
-    submitting.value = false;
-  }
+  },
+});
+
+async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void> {
+  createFailed.value = false;
+  await createTeam(trimText(event.data.name));
 }
 </script>
 
