@@ -9,6 +9,7 @@ import fp from 'fastify-plugin';
 import type { AuthConfig } from '../config';
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
+import { idParamsSchema, uuidSchema } from '../http/schemas';
 
 import { BoardImagesService } from './board-images.service';
 import { BoardsService } from './boards.service';
@@ -53,11 +54,7 @@ async function boardImagesPluginImpl(
             'multipart/form-data с одним файлом (JPEG/PNG/WebP/GIF, до 8 МБ). Пережимается в WebP с ограничением стороны 2048px. Требует права редактирования доски.',
           security: [{ session: [] }],
           consumes: ['multipart/form-data'],
-          params: {
-            type: 'object',
-            required: ['id'],
-            properties: { id: { type: 'string', format: 'uuid' } },
-          },
+          params: idParamsSchema,
           response: {
             200: {
               description: 'Картинка загружена',
@@ -126,7 +123,7 @@ async function boardImagesPluginImpl(
             type: 'object',
             required: ['id', 'filename'],
             properties: {
-              id: { type: 'string', format: 'uuid' },
+              id: uuidSchema,
               filename: { type: 'string', pattern: '^[a-f0-9]{32}\\.webp$' },
             },
           },
