@@ -20,6 +20,7 @@ import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI } from '../lib/modal-ui';
 import { useAsyncAction } from '../composables/use-async-action';
 import { useEntityModal } from '../composables/use-entity-modal';
+import { useGuestIdentity } from '../composables/use-guest-identity';
 import {
   archiveBoard as archiveBoardRequest,
   deleteBoard,
@@ -97,26 +98,10 @@ watch(
   },
 );
 
-/** Гость называет имя один раз за вкладку — переживает перезагрузку, не переживает закрытие (по образцу RoomPage.vue) */
-function readStoredGuestName(): string {
-  try {
-    return sessionStorage.getItem('poker:board-guest-name') ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function storeGuestName(name: string): void {
-  try {
-    sessionStorage.setItem('poker:board-guest-name', name);
-  } catch {
-    // Приватный режим браузера может запрещать хранилище — в рамках вкладки не критично
-  }
-}
-
+const guestIdentity = useGuestIdentity('board');
 const needsGuestName = ref(false);
 const guestJoinFailed = ref(false);
-const guestState = reactive({ name: readStoredGuestName() });
+const guestState = reactive({ name: guestIdentity.name.value });
 
 function validateGuestName(s: { name: string }): FormError[] {
   const errors: FormError[] = [];
@@ -193,7 +178,7 @@ const { pending: guestJoining, execute: joinAsGuest } = useAsyncAction({
 
 async function onGuestNameSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void> {
   const name = trimText(event.data.name);
-  storeGuestName(name);
+  guestIdentity.remember(name);
   guestJoinFailed.value = false;
   await joinAsGuest(name);
 }

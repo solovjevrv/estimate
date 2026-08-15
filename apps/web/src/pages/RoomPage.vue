@@ -30,6 +30,7 @@ import RoundResultPanel from '../components/room/RoundResultPanel.vue';
 import { ApiError } from '../lib/api';
 import { useAsyncAction } from '../composables/use-async-action';
 import { useEntityModal } from '../composables/use-entity-modal';
+import { useGuestIdentity } from '../composables/use-guest-identity';
 import { archiveRoom, getRoom, getRoundHistory, renameRoom } from '../features/rooms/api/rooms-api';
 import { useRoomStore } from '../stores/room';
 import { useSessionStore } from '../stores/session';
@@ -602,7 +603,8 @@ type Phase =
 
 const phase = ref<Phase>('loading');
 const roomInfo = ref<Room | null>(null);
-const guestState = reactive({ name: readStoredGuestName() });
+const guestIdentity = useGuestIdentity('room');
+const guestState = reactive({ name: guestIdentity.name.value });
 
 /**
  * Растёт при каждом `load()`/размонтировании: асинхронные продолжения (запрос
@@ -612,23 +614,6 @@ const guestState = reactive({ name: readStoredGuestName() });
  * побеждала бы независимо от того, к какой комнате она относится.
  */
 let currentToken = 0;
-
-/** Гость называет имя один раз за вкладку — переживает перезагрузку, не переживает закрытие */
-function readStoredGuestName(): string {
-  try {
-    return sessionStorage.getItem('poker:guest-name') ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function storeGuestName(name: string): void {
-  try {
-    sessionStorage.setItem('poker:guest-name', name);
-  } catch {
-    // Приватный режим браузера может запрещать хранилище — в рамках вкладки не критично
-  }
-}
 
 watch(() => props.id, load, { immediate: true });
 
@@ -732,7 +717,7 @@ function validateName(s: { name: string }): FormError[] {
 async function onJoinAsGuest(event: FormSubmitEvent<{ name: string }>): Promise<void> {
   const token = currentToken;
   const name = trimText(event.data.name);
-  storeGuestName(name);
+  guestIdentity.remember(name);
   phase.value = 'joining';
   try {
     await room.join(props.id, name);
