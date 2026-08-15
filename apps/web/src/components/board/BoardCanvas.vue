@@ -31,10 +31,8 @@
  * affordance поверх уже рабочего drag-от-хендла (см. `onConnect` ниже).
  */
 import {
-  BOARD_IMAGE_ALLOWED_MIME_TYPES,
   BOARD_ITEM_FONT_SIZE_MAX,
   BOARD_ITEM_FONT_SIZE_MIN,
-  BOARD_MAX_ITEMS,
   BOARD_OPS_BATCH_MAX,
   isBoardContainer,
   type Board,
@@ -79,16 +77,10 @@ import {
 import { useI18n } from 'vue-i18n';
 
 import {
-  EMOJI_DEFAULT_HEIGHT,
-  EMOJI_DEFAULT_WIDTH,
-  STICKER_DEFAULT_HEIGHT,
-  STICKER_DEFAULT_WIDTH,
-  fitImageToDefaultBox,
   maxZIndex,
   minZIndex,
   nextZIndexAbove,
   resolveEdgeColor,
-  SHAPE_DEFAULT_COLOR,
   SHAPE_DEFAULT_HEIGHT,
   SHAPE_DEFAULT_WIDTH,
   STICKY_DEFAULT_COLOR,
@@ -119,8 +111,6 @@ import {
   BOARD_CAMERA_THROTTLE_MS,
   BOARD_DRAG_THROTTLE_MS,
   BOARD_CURSOR_THROTTLE_MS,
-  FRAME_DEFAULT_HEIGHT,
-  FRAME_DEFAULT_WIDTH,
 } from '../../lib/board/board-constants';
 import {
   computeSnapGuides,
@@ -129,8 +119,8 @@ import {
   type SnapRect,
 } from '../../lib/board/board-snap';
 import { useBoardSessionStore } from '../../stores/board-session';
-import { uploadBoardAsset } from '../../features/boards/api/boards-api';
 import { useBoardClipboard } from '../../features/boards/composables/use-board-clipboard';
+import { useBoardCreation } from '../../features/boards/composables/use-board-creation';
 import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
 import BoardContextMenu, { type BoardContextMenuTarget } from './BoardContextMenu.vue';
 import BoardCursor from './BoardCursor.vue';
@@ -146,7 +136,7 @@ import BoardStickyNode from './BoardStickyNode.vue';
 import BoardTextNode from './BoardTextNode.vue';
 import BoardEmojiNode from './BoardEmojiNode.vue';
 import BoardStickerNode from './BoardStickerNode.vue';
-import BoardToolbar, { type BoardTool } from './BoardToolbar.vue';
+import BoardToolbar from './BoardToolbar.vue';
 import BoardFrameNode from './BoardFrameNode.vue';
 
 import '@vue-flow/core/dist/style.css';
@@ -310,6 +300,30 @@ const rootEl = useTemplateRef<HTMLElement>('root');
 const isFullscreen = ref(false);
 
 const {
+  activeTool,
+  pendingEditId,
+  canCreateItems,
+  canCreateItem,
+  pickImageFile,
+  uploadImage,
+  createImage,
+  createEmojiAtCenter,
+  createStickerAtCenter,
+  onPaneClick,
+  onPaneDoubleClick,
+  onPaneDrop,
+} = useBoardCreation({
+  boardId: () => props.board.id,
+  canEdit: () => props.canEdit,
+  getItems: () => props.items,
+  getCanvasRect: () => rootEl.value?.getBoundingClientRect(),
+  project,
+  findContainerAt: containerAt,
+  applyOps: (ops) => void boardSession.applyOps(ops),
+  breakFollowOnEdit,
+});
+
+const {
   copy: onCopy,
   paste: onPaste,
   duplicateSelection: duplicateSelected,
@@ -323,7 +337,7 @@ const {
   findContainerAt: (point) => containerAt(point),
   canCreateItems,
   canApplyOpsCount,
-  uploadImage: uploadBoardImage,
+  uploadImage,
   createImage,
   applyOps: (ops) => void boardSession.applyOps(ops),
   breakFollowOnEdit,
@@ -368,7 +382,10 @@ const followedName = computed(() => {
 
 function onPaneMouseMove(event: MouseEvent): void {
   if (!props.canEdit) return;
-  const point = flowPositionFromEvent(event);
+  const rect = rootEl.value?.getBoundingClientRect();
+  const point = rect
+    ? project({ x: event.clientX - rect.left, y: event.clientY - rect.top })
+    : { x: 0, y: 0 };
   void boardSession.sendAwareness('cursor', { x: point.x, y: point.y });
 }
 
@@ -461,10 +478,9 @@ watch(
 );
 
 // --- Инструменты и создание стикеров (12.6) ---
+// activeTool и pendingEditId пришли из useBoardCreation (см. выше), здесь
+// только provide для потребителей через контекст доски.
 
-const activeTool = ref<BoardTool>('select');
-/** Id только что созданного стикера — новый узел сразу входит в редактирование текста */
-const pendingEditId = ref<string | null>(null);
 /** Id связи, подпись которой нужно открыть для ввода текста прямо на стрелке (12.8) */
 const pendingEdgeEditId = ref<string | null>(null);
 provide(
@@ -501,25 +517,8 @@ provide(BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY, {
   },
 });
 
-function flowPositionFromEvent(event: MouseEvent): { x: number; y: number } {
-  const rect = rootEl.value?.getBoundingClientRect();
-  if (!rect) return { x: 0, y: 0 };
-  return project({ x: event.clientX - rect.left, y: event.clientY - rect.top });
-}
-
-/** Общая проверка перед созданием любого числа элементов — лимит на доску (12.1) один на все типы */
-function canCreateItems(count: number): boolean {
-  if (!props.canEdit) return false;
-  if (props.items.length + count > BOARD_MAX_ITEMS) {
-    toast.add({ title: t('board.itemLimitReached'), color: 'error' });
-    return false;
-  }
-  return true;
-}
-
-function canCreateItem(): boolean {
-  return canCreateItems(1);
-}
+/* canCreateItems/canCreateItem вынесены в useBoardCreation. Canvas сохраняет
+ * canApplyOpsCount — он про батч-лимит WS, а не про создание элемента. */
 
 /**
  * Батч WS `board:apply` ограничен BOARD_OPS_BATCH_MAX операций за раз (12.1) —
@@ -585,182 +584,6 @@ function containerAt(point: { x: number; y: number }, excludeId?: string): Board
     }
   }
   return best;
-}
-
-function createSticky(center: { x: number; y: number }): void {
-  if (!canCreateItem()) return;
-  const id = uuid();
-  pendingEditId.value = id;
-  void boardSession.applyOps([
-    {
-      type: 'item.create',
-      clientOpId: uuid(),
-      item: {
-        id,
-        parentId: containerAt(center)?.id ?? null,
-        x: center.x - STICKY_DEFAULT_WIDTH / 2,
-        y: center.y - STICKY_DEFAULT_HEIGHT / 2,
-        width: STICKY_DEFAULT_WIDTH,
-        height: STICKY_DEFAULT_HEIGHT,
-        rotation: 0,
-        zIndex: nextZIndexAbove(props.items),
-        content: { type: 'sticky', text: '' },
-        style: { color: STICKY_DEFAULT_COLOR },
-        reactions: [],
-      },
-    },
-  ]);
-}
-
-function createShape(center: { x: number; y: number }): void {
-  if (!canCreateItem()) return;
-  const id = uuid();
-  pendingEditId.value = id;
-  void boardSession.applyOps([
-    {
-      type: 'item.create',
-      clientOpId: uuid(),
-      item: {
-        id,
-        parentId: containerAt(center)?.id ?? null,
-        x: center.x - SHAPE_DEFAULT_WIDTH / 2,
-        y: center.y - SHAPE_DEFAULT_HEIGHT / 2,
-        width: SHAPE_DEFAULT_WIDTH,
-        height: SHAPE_DEFAULT_HEIGHT,
-        rotation: 0,
-        zIndex: nextZIndexAbove(props.items),
-        content: { type: 'shape', shape: 'rectangle', text: '' },
-        style: { color: SHAPE_DEFAULT_COLOR },
-        reactions: [],
-      },
-    },
-  ]);
-}
-
-function createText(center: { x: number; y: number }): void {
-  if (!canCreateItem()) return;
-  const id = uuid();
-  pendingEditId.value = id;
-  void boardSession.applyOps([
-    {
-      type: 'item.create',
-      clientOpId: uuid(),
-      item: {
-        id,
-        parentId: containerAt(center)?.id ?? null,
-        x: center.x - TEXT_DEFAULT_WIDTH / 2,
-        y: center.y - TEXT_DEFAULT_HEIGHT / 2,
-        width: TEXT_DEFAULT_WIDTH,
-        height: TEXT_DEFAULT_HEIGHT,
-        rotation: 0,
-        zIndex: nextZIndexAbove(props.items),
-        content: { type: 'text', text: '' },
-        style: { color: STICKY_DEFAULT_COLOR },
-        reactions: [],
-      },
-    },
-  ]);
-}
-
-/**
- * Эмодзи (13.3) — единственный «инструмент», у которого нет режима
- * арм+клик-по-холсту: кнопка в `BoardToolbar.vue` сама открывает список,
- * выбор сразу вставляет элемент в центр текущего вьюпорта — тем же приёмом,
- * что paste картинки (`onPaste` ниже), без лишнего клика по пустому месту.
- */
-function createEmojiAtCenter(emoji: ReactionEmoji): void {
-  breakFollowOnEdit();
-  if (!props.canEdit || !canCreateItem()) return;
-  const rect = rootEl.value?.getBoundingClientRect();
-  if (!rect) return;
-  const center = project({ x: rect.width / 2, y: rect.height / 2 });
-
-  const id = uuid();
-  void boardSession.applyOps([
-    {
-      type: 'item.create',
-      clientOpId: uuid(),
-      item: {
-        id,
-        parentId: containerAt(center)?.id ?? null,
-        x: center.x - EMOJI_DEFAULT_WIDTH / 2,
-        y: center.y - EMOJI_DEFAULT_HEIGHT / 2,
-        width: EMOJI_DEFAULT_WIDTH,
-        height: EMOJI_DEFAULT_HEIGHT,
-        rotation: 0,
-        zIndex: nextZIndexAbove(props.items),
-        content: { type: 'emoji', emoji },
-        style: { color: STICKY_DEFAULT_COLOR },
-        reactions: [],
-      },
-    },
-  ]);
-}
-
-/**
- * Стикер (13.4) — как эмодзи, выбор из поповера сразу вставляет элемент
- * в центр текущего вьюпорта, без промежуточного клика по холсту.
- */
-function createStickerAtCenter(pack: string, id: string): void {
-  breakFollowOnEdit();
-  if (!props.canEdit || !canCreateItem()) return;
-  const rect = rootEl.value?.getBoundingClientRect();
-  if (!rect) return;
-  const center = project({ x: rect.width / 2, y: rect.height / 2 });
-
-  const itemId = uuid();
-  void boardSession.applyOps([
-    {
-      type: 'item.create',
-      clientOpId: uuid(),
-      item: {
-        id: itemId,
-        parentId: containerAt(center)?.id ?? null,
-        x: center.x - STICKER_DEFAULT_WIDTH / 2,
-        y: center.y - STICKER_DEFAULT_HEIGHT / 2,
-        width: STICKER_DEFAULT_WIDTH,
-        height: STICKER_DEFAULT_HEIGHT,
-        rotation: 0,
-        zIndex: nextZIndexAbove(props.items),
-        content: { type: 'sticker', pack, id },
-        style: { color: STICKY_DEFAULT_COLOR },
-        reactions: [],
-      },
-    },
-  ]);
-}
-
-/**
- * Создание фрейма (14.3) — видимого контейнера с заголовком. Схож с созданием
- * стикера: клик по пустому холсту в режиме инструмента «Фрейм» создаёт его
- * в точке клика и возвращает инструмент на «Выделение».
- */
-function createFrame(center: { x: number; y: number }): void {
-  if (!canCreateItem()) return;
-  const id = uuid();
-  pendingEditId.value = id;
-  void boardSession.applyOps([
-    {
-      type: 'item.create',
-      clientOpId: uuid(),
-      item: {
-        id,
-        parentId: null,
-        x: center.x - FRAME_DEFAULT_WIDTH / 2,
-        y: center.y - FRAME_DEFAULT_HEIGHT / 2,
-        width: FRAME_DEFAULT_WIDTH,
-        height: FRAME_DEFAULT_HEIGHT,
-        rotation: 0,
-        // Фрейм создаётся ПОЗАДИ уже существующих элементов (как в Miro) —
-        // иначе он визуально накрывал бы всё, что уже было на доске, заставляя
-        // пользователя вручную слать фрейм назад или все остальные элементы вперёд
-        zIndex: minZIndex(props.items) - 1,
-        content: { type: 'frame', title: '' },
-        style: { color: STICKY_DEFAULT_COLOR },
-        reactions: [],
-      },
-    },
-  ]);
 }
 
 /**
@@ -872,96 +695,17 @@ function ungroupSelection(): void {
   if (ops.length) void boardSession.applyOps(ops);
 }
 
-function pickImageFile(): Promise<File | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = BOARD_IMAGE_ALLOWED_MIME_TYPES.join(',');
-    input.style.display = 'none';
-    // И выбор файла, и отмена диалога должны убрать за собой скрытый input —
-    // иначе при отмене он навсегда остаётся висеть в DOM
-    const cleanup = (file: File | null): void => {
-      input.remove();
-      resolve(file);
-    };
-    input.addEventListener('change', () => cleanup(input.files?.[0] ?? null));
-    input.addEventListener('cancel', () => cleanup(null));
-    document.body.appendChild(input);
-    input.click();
-  });
-}
-
-/** Загружает файл картинки на доску и возвращает URL с размерами. Холст не знает
- * ни маршрут, ни FormData, ни коды ответов — `uploadBoardAsset` возвращает
- * результат-объединение, а маппинг причины отказа в тост оставлен здесь. */
-async function uploadBoardImage(
-  file: File,
-): Promise<{ url: string; width: number; height: number } | null> {
-  const loadingToast = toast.add({ title: t('board.imageUploading'), color: 'info' });
-  const result = await uploadBoardAsset(props.board.id, file);
-  toast.remove(loadingToast.id);
-  if (result.ok) return result.asset;
-  if (result.reason === 'invalid_type') {
-    toast.add({ title: t('board.imageInvalidType'), color: 'error' });
-  } else if (result.reason === 'too_large') {
-    toast.add({ title: t('board.imageTooLarge'), color: 'error' });
-  } else if (result.reason === 'forbidden') {
-    toast.add({ title: t('board.imageNoPermission'), color: 'error' });
-  } else {
-    toast.add({ title: t('board.imageUploadFailed'), color: 'error' });
-  }
-  return null;
-}
-
-/** Создаёт элемент-картинку: сначала загружает файл на сервер, затем создаёт элемент с возвращённым URL */
-async function createImage(center: { x: number; y: number }, file: File): Promise<void> {
-  if (!canCreateItem()) return;
-  if (!props.canEdit) return;
-
-  const id = uuid();
-  pendingEditId.value = id;
-
-  const result = await uploadBoardImage(file);
-  // Сбрасываем «висящий» pendingEditId только если он всё ещё от этой же
-  // попытки — иначе параллельная более поздняя загрузка (новый id) осталась бы
-  // заблокированной навсегда (W-15).
-  if (!result) {
-    if (pendingEditId.value === id) pendingEditId.value = null;
-    return;
-  }
-
-  const { width, height } = fitImageToDefaultBox(result.width, result.height);
-  void boardSession.applyOps([
-    {
-      type: 'item.create',
-      clientOpId: uuid(),
-      item: {
-        id,
-        parentId: containerAt(center)?.id ?? null,
-        x: center.x - width / 2,
-        y: center.y - height / 2,
-        width,
-        height,
-        rotation: 0,
-        zIndex: nextZIndexAbove(props.items),
-        content: { type: 'image', url: result.url, width: result.width, height: result.height },
-        style: { color: STICKY_DEFAULT_COLOR },
-        reactions: [],
-      },
-    },
-  ]);
-}
-
 /**
  * Заменяет файл у уже созданных картинок в выделении (13.2, тулбар выделения) —
  * рамка/позиция на холсте не трогается, меняется только содержимое `<img>`
  * (как замена картинки в Miro). Не-картинки в смешанном выделении пропускаются.
+ * pickImageFile и uploadImage — из useBoardCreation (см. выше).
  */
 async function replaceSelectedImage(): Promise<void> {
   if (!props.canEdit) return;
   const file = await pickImageFile();
   if (!file) return;
-  const result = await uploadBoardImage(file);
+  const result = await uploadImage(file);
   if (!result) return;
 
   const ops: BoardOp[] = selectedNodes.value
@@ -975,72 +719,6 @@ async function replaceSelectedImage(): Promise<void> {
       },
     }));
   if (ops.length) void boardSession.applyOps(ops);
-}
-
-/** Инструмент «Стикер»/«Фигура»/«Текст»/«Картинка» — следующий одиночный клик по пустому холсту создаёт элемент и там же.
- * Для картинки — открывает файловый диалог (как нативный input type=file), так как
- * клик сам по себе не несёт файла. Эмодзи в этот список не входит — у него
- * нет режима «инструмент+клик», см. `createEmojiAtCenter`. Drop и Paste
- * работают всегда независимо от инструмента.
- */
-function onPaneClick(event: MouseEvent): void {
-  // Клик пустым инструментом (select/arrow) ничего не создаёт и не редактирует —
-  // follow-mode рвать незачем, иначе обычный клик для снятия выделения во время
-  // слежения обрывал бы его без какого-либо реального вмешательства в доску
-  if (
-    activeTool.value !== 'sticky' &&
-    activeTool.value !== 'shape' &&
-    activeTool.value !== 'text' &&
-    activeTool.value !== 'image' &&
-    activeTool.value !== 'frame'
-  ) {
-    return;
-  }
-  breakFollowOnEdit();
-  if (activeTool.value === 'sticky') {
-    createSticky(flowPositionFromEvent(event));
-  } else if (activeTool.value === 'shape') {
-    createShape(flowPositionFromEvent(event));
-  } else if (activeTool.value === 'text') {
-    createText(flowPositionFromEvent(event));
-  } else if (activeTool.value === 'image') {
-    const position = flowPositionFromEvent(event);
-    activeTool.value = 'select';
-    void pickImageFile().then((file) => {
-      if (file) void createImage(position, file);
-    });
-    return;
-  } else if (activeTool.value === 'frame') {
-    createFrame(flowPositionFromEvent(event));
-  }
-  activeTool.value = 'select';
-}
-
-/**
- * Двойной клик — всегда доступное быстрое создание, независимо от активного
- * инструмента. Vue Flow не отдаёт отдельное событие двойного клика по пане
- * (только по узлам), поэтому слушаем нативный dblclick сами — и обязательно
- * в фазе перехвата (`.capture`): сам Vue Flow гасит всплытие клика по пане
- * своим внутренним обработчиком (жестовая логика pan/selection), так что
- * обычный `@dblclick` на предке никогда бы не сработал. Проверка класса цели
- * отсекает клики по узлу/панели/тулбару — у них есть собственный DOM поверх
- * фона пане.
- */
-function onPaneDoubleClick(event: MouseEvent): void {
-  if (!(event.target as HTMLElement).classList.contains('vue-flow__pane')) return;
-  breakFollowOnEdit();
-  createSticky(flowPositionFromEvent(event));
-}
-
-/** Drag & Drop файла на канвас — создаёт элемент-картинку в месте курсора */
-function onPaneDrop(event: DragEvent): void {
-  if (!props.canEdit) return;
-  breakFollowOnEdit();
-  event.preventDefault();
-  const file = event.dataTransfer?.files[0];
-  if (file) {
-    void createImage(flowPositionFromEvent(event), file);
-  }
 }
 
 /** Drag over — нужен, чтобы браузер разрешил drop */

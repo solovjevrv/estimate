@@ -24,9 +24,10 @@
 import { REACTION_EMOJIS, type ReactionEmoji } from '@poker/shared';
 import { useI18n } from 'vue-i18n';
 
+import type { BoardTool } from '../../features/boards/board-tools';
 import BoardStickerPicker from './BoardStickerPicker.vue';
 
-export type BoardTool = 'select' | 'sticky' | 'shape' | 'text' | 'image' | 'arrow' | 'frame';
+export type { BoardTool };
 
 const tool = defineModel<BoardTool>({ required: true });
 
