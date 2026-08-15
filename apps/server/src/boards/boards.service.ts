@@ -24,6 +24,7 @@ import { GuestSessions } from '../platform/realtime';
 
 import type { BoardImagesService } from './board-images.service';
 import { applyBoardOp, type BoardOpState } from './board-ops';
+import { persistBoardOps } from './board-ops.persistence';
 import {
   hasRequiredBoardAccess,
   resolveBoardAccess,
@@ -307,78 +308,10 @@ export class BoardsService {
         }
       }
 
-      // Состояние уже провалидировано целиком — теперь просто персистим и
-      // собираем закоммиченные операции для рассылки. Create/patch несут
-      // целиком собранную запись из БД (не патч) — другим участникам не нужно
-      // ничего мержить самим, только положить запись по id (12.4). Удаление,
-      // не задевшее ни одной строки в БД, не считается ошибкой: это может
-      // быть связь, уже ушедшая каскадом при удалении её элемента тем же
-      // батчем (applyBoardOp выше уже убрал такую связь из state).
-      const committed: BoardCommittedOp[] = [];
-      for (const op of ops) {
-        switch (op.type) {
-          case 'item.create': {
-            const draft = state.items.get(op.item.id);
-            if (draft) {
-              const item = await repo.insertItem(boardId, actor.userId, draft);
-              committed.push({ type: 'item.create', clientOpId: op.clientOpId, item });
-            }
-            break;
-          }
-          case 'item.patch': {
-            // Пишем провалидированную запись из state, а не сырой op.patch с
-            // клиента — иначе непровалидированные поля (включая boardId) ушли
-            // бы в БД мимо и валидации, и проверки прав на чужую доску (12.4)
-            const draft = state.items.get(op.id);
-            if (draft) {
-              const item = await repo.updateItem(boardId, op.id, draft);
-              if (item) {
-                committed.push({ type: 'item.patch', clientOpId: op.clientOpId, item });
-              }
-            }
-            break;
-          }
-          case 'item.delete':
-            await repo.deleteItem(boardId, op.id);
-            committed.push({ type: 'item.delete', clientOpId: op.clientOpId, id: op.id });
-            break;
-          case 'item.react': {
-            // Рассылается в форме item.patch — для остальных участников это
-            // обычное обновление записи по id, реакции не отдельный протокол
-            const draft = state.items.get(op.id);
-            if (draft) {
-              const item = await repo.updateItem(boardId, op.id, draft);
-              if (item) {
-                committed.push({ type: 'item.patch', clientOpId: op.clientOpId, item });
-              }
-            }
-            break;
-          }
-          case 'edge.create': {
-            const draft = state.edges.get(op.edge.id);
-            if (draft) {
-              const edge = await repo.insertEdge(boardId, draft);
-              committed.push({ type: 'edge.create', clientOpId: op.clientOpId, edge });
-            }
-            break;
-          }
-          case 'edge.patch': {
-            // Та же причина, что у item.patch выше — пишем провалидированное state
-            const draft = state.edges.get(op.id);
-            if (draft) {
-              const edge = await repo.updateEdge(boardId, op.id, draft);
-              if (edge) {
-                committed.push({ type: 'edge.patch', clientOpId: op.clientOpId, edge });
-              }
-            }
-            break;
-          }
-          case 'edge.delete':
-            await repo.deleteEdge(boardId, op.id);
-            committed.push({ type: 'edge.delete', clientOpId: op.clientOpId, id: op.id });
-            break;
-        }
-      }
+      const committed = await persistBoardOps(
+        { repository: repo, boardId, actorUserId: actor.userId, state },
+        ops,
+      );
 
       const revision = await repo.bumpRevision(boardId);
       return { revision, ops: committed, orphanedImageUrls };
