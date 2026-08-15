@@ -9,13 +9,17 @@ import { useRouter } from 'vue-router';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import { usePagedList } from '../composables/use-paged-list';
 import { useAsyncAction } from '../composables/use-async-action';
+import {
+  createRoom as createRoomRequest,
+  deleteRoom,
+  getMyRoomStats,
+  listMyRooms,
+} from '../features/rooms/api/rooms-api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
-import { useRoomsStore } from '../stores/rooms';
 
 const { t, locale } = useI18n();
 const router = useRouter();
 const toast = useToast();
-const rooms = useRoomsStore();
 
 const loading = ref(true);
 const loadFailed = ref(false);
@@ -87,7 +91,7 @@ async function load(): Promise<void> {
   loading.value = true;
   loadFailed.value = false;
   try {
-    list.value = await rooms.listMine(false);
+    list.value = await listMyRooms(false);
     activePaging.reset();
     closedPaging.reset();
   } catch {
@@ -96,7 +100,7 @@ async function load(): Promise<void> {
     loading.value = false;
   }
   try {
-    roomStats.value = await rooms.stats();
+    roomStats.value = await getMyRoomStats();
   } catch {
     roomStats.value = null;
   }
@@ -122,7 +126,7 @@ function validateRoomName(s: { name: string }): FormError[] {
 }
 
 const { pending: creating, execute: createRoom } = useAsyncAction({
-  run: (name: string) => rooms.create(name),
+  run: (name: string) => createRoomRequest(name),
   success: async (room) => {
     createOpen.value = false;
     await router.push({ name: 'room', params: { id: room.id } });
@@ -151,7 +155,7 @@ async function toggleArchive(): Promise<void> {
     archiveLoading.value = true;
     archiveFailed.value = false;
     try {
-      archived.value = await rooms.listMine(true);
+      archived.value = await listMyRooms(true);
       archivePaging.reset();
       archiveLoaded = true;
     } catch {
@@ -171,7 +175,7 @@ function askDelete(room: Room): void {
 }
 
 const { pending: deleting, execute: removeRoom } = useAsyncAction({
-  run: (target: Room) => rooms.remove(target.id),
+  run: (target: Room) => deleteRoom(target.id),
   success: (_, target) => {
     archived.value = archived.value.filter((room) => room.id !== target.id);
     toast.add({ title: t('myRooms.deleted'), color: 'success', icon: 'i-lucide-check' });

@@ -18,7 +18,13 @@ import ConfirmModal from '../components/ConfirmModal.vue';
 import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useAsyncAction } from '../composables/use-async-action';
-import { useBoardsStore } from '../stores/boards';
+import {
+  archiveBoard as archiveBoardRequest,
+  deleteBoard,
+  getBoard,
+  renameBoard as renameBoardRequest,
+  unarchiveBoard,
+} from '../features/boards/api/boards-api';
 import { useBoardSessionStore } from '../stores/board-session';
 import { useSessionStore } from '../stores/session';
 import { useTeamsStore } from '../stores/teams';
@@ -28,7 +34,6 @@ const props = defineProps<{ id: string }>();
 const { t } = useI18n();
 const toast = useToast();
 const router = useRouter();
-const boards = useBoardsStore();
 const teams = useTeamsStore();
 const session = useSessionStore();
 const boardSession = useBoardSessionStore();
@@ -77,8 +82,7 @@ watch(
 
     if (err.code === 'forbidden' || err.code === 'not_found') {
       toast.add({ title: t('board.applyAccessChanged'), color: 'error' });
-      void boards
-        .get(props.id)
+      void getBoard(props.id)
         .then((snapshot) => {
           boardSession.access = snapshot.access;
         })
@@ -133,7 +137,7 @@ async function load(): Promise<void> {
   needsGuestName.value = false;
   guestJoinFailed.value = false;
   try {
-    const snapshot = await boards.get(props.id);
+    const snapshot = await getBoard(props.id);
     board.value = snapshot.board;
     // REST-снимок уже знает наш access — синхронизируем в store, чтобы
     // canManage/canEdit отработали до первого WS `join`, а `canManage` можно
@@ -226,7 +230,7 @@ function validateTitle(s: { title: string }): FormError[] {
 }
 
 const { pending: renaming, execute: renameBoard } = useAsyncAction({
-  run: (title: string) => boards.rename(props.id, title),
+  run: (title: string) => renameBoardRequest(props.id, title),
   success: (updated) => {
     board.value = updated;
     toast.add({ title: t('board.renamed'), color: 'success', icon: 'i-lucide-check' });
@@ -245,7 +249,7 @@ async function onRename(event: FormSubmitEvent<{ title: string }>): Promise<void
 const archiveOpen = ref(false);
 
 const { pending: archiving, execute: archiveBoard } = useAsyncAction({
-  run: () => boards.archive(props.id),
+  run: () => archiveBoardRequest(props.id),
   success: (updated) => {
     board.value = updated;
     toast.add({ title: t('board.archivedToast'), color: 'success', icon: 'i-lucide-check' });
@@ -262,7 +266,7 @@ async function confirmArchive(): Promise<void> {
 
 async function unarchive(): Promise<void> {
   try {
-    board.value = await boards.unarchive(props.id);
+    board.value = await unarchiveBoard(props.id);
     toast.add({ title: t('board.unarchived'), color: 'success', icon: 'i-lucide-check' });
   } catch {
     toast.add({ title: t('board.unarchiveError'), color: 'error' });
@@ -273,7 +277,7 @@ async function unarchive(): Promise<void> {
 const deleteOpen = ref(false);
 
 const { pending: deleting, execute: removeBoard } = useAsyncAction({
-  run: () => boards.remove(props.id),
+  run: () => deleteBoard(props.id),
   success: async () => {
     toast.add({ title: t('board.deleted'), color: 'success', icon: 'i-lucide-check' });
     deleteOpen.value = false;

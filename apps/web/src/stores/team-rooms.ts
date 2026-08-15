@@ -4,7 +4,7 @@ import type { Room } from '@poker/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
-import { api } from '../lib/api';
+import { listTeamRooms } from '../features/teams/api/teams-api';
 
 export const useTeamRoomsStore = defineStore('teamRooms', () => {
   const list = ref<Room[]>([]);
@@ -12,15 +12,11 @@ export const useTeamRoomsStore = defineStore('teamRooms', () => {
   const archivedList = ref<Room[]>([]);
 
   async function load(teamId: string): Promise<void> {
-    const res = await api.get<{ rooms: Room[] }>(`/api/teams/${encodeURIComponent(teamId)}/rooms`);
-    list.value = res.rooms;
+    list.value = await listTeamRooms(teamId);
   }
 
   async function loadArchived(teamId: string): Promise<void> {
-    const res = await api.get<{ rooms: Room[] }>(
-      `/api/teams/${encodeURIComponent(teamId)}/rooms?archived=true`,
-    );
-    archivedList.value = res.rooms;
+    archivedList.value = await listTeamRooms(teamId, true);
   }
 
   // ISO-даты сравниваются лексикографически, поэтому свежие оказываются сверху

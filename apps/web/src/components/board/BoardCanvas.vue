@@ -32,7 +32,6 @@
  */
 import {
   BOARD_IMAGE_ALLOWED_MIME_TYPES,
-  BOARD_IMAGE_MAX_BYTES,
   BOARD_ITEM_FONT_SIZE_MAX,
   BOARD_ITEM_FONT_SIZE_MIN,
   BOARD_MAX_ITEMS,
@@ -142,8 +141,7 @@ import {
   type SnapRect,
 } from '../../lib/board/board-snap';
 import { useBoardSessionStore } from '../../stores/board-session';
-import { useBoardsStore } from '../../stores/boards';
-import { ApiError } from '../../lib/api';
+import { uploadBoardAsset } from '../../features/boards/api/boards-api';
 import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
 import BoardContextMenu, { type BoardContextMenuTarget } from './BoardContextMenu.vue';
 import BoardCursor from './BoardCursor.vue';
@@ -189,7 +187,6 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const toast = useToast();
 const boardSession = useBoardSessionStore();
-const boardsStore = useBoardsStore();
 
 const flowNodes = computed(() => toFlowNodes(props.items, props.canEdit));
 const flowEdges = computed(() => toFlowEdges(props.edges));
@@ -883,44 +880,26 @@ function pickImageFile(): Promise<File | null> {
   });
 }
 
-/** Валидирует и загружает файл на сервер; `null` — ошибка (уже показан тост) */
+/** Загружает файл картинки на доску и возвращает URL с размерами. Холст не знает
+ * ни маршрут, ни FormData, ни коды ответов — `uploadBoardAsset` возвращает
+ * результат-объединение, а маппинг причины отказа в тост оставлен здесь. */
 async function uploadBoardImage(
   file: File,
 ): Promise<{ url: string; width: number; height: number } | null> {
-  // Валидация MIME и размера на клиенте до отправки (сервер тоже проверит)
-  const allowedMime: readonly string[] = BOARD_IMAGE_ALLOWED_MIME_TYPES;
-  if (!allowedMime.includes(file.type)) {
-    toast.add({ title: t('board.imageInvalidType'), color: 'error' });
-    return null;
-  }
-  if (file.size > BOARD_IMAGE_MAX_BYTES) {
-    toast.add({ title: t('board.imageTooLarge'), color: 'error' });
-    return null;
-  }
-
   const loadingToast = toast.add({ title: t('board.imageUploading'), color: 'info' });
-  try {
-    const result = await boardsStore.uploadAsset(props.board.id, file);
-    toast.remove(loadingToast.id);
-    return result;
-  } catch (err) {
-    toast.remove(loadingToast.id);
-    if (err instanceof ApiError) {
-      const apiErr = err;
-      if (apiErr.status === 413) {
-        toast.add({ title: t('board.imageTooLarge'), color: 'error' });
-      } else if (apiErr.status === 400) {
-        toast.add({ title: t('board.imageInvalidType'), color: 'error' });
-      } else if (apiErr.status === 403) {
-        toast.add({ title: t('board.imageNoPermission'), color: 'error' });
-      } else {
-        toast.add({ title: t('board.imageUploadFailed'), color: 'error' });
-      }
-    } else {
-      toast.add({ title: t('board.imageUploadFailed'), color: 'error' });
-    }
-    return null;
+  const result = await uploadBoardAsset(props.board.id, file);
+  toast.remove(loadingToast.id);
+  if (result.ok) return result.asset;
+  if (result.reason === 'invalid_type') {
+    toast.add({ title: t('board.imageInvalidType'), color: 'error' });
+  } else if (result.reason === 'too_large') {
+    toast.add({ title: t('board.imageTooLarge'), color: 'error' });
+  } else if (result.reason === 'forbidden') {
+    toast.add({ title: t('board.imageNoPermission'), color: 'error' });
+  } else {
+    toast.add({ title: t('board.imageUploadFailed'), color: 'error' });
   }
+  return null;
 }
 
 /** Создаёт элемент-картинку: сначала загружает файл на сервер, затем создаёт элемент с возвращённым URL */
@@ -932,7 +911,13 @@ async function createImage(center: { x: number; y: number }, file: File): Promis
   pendingEditId.value = id;
 
   const result = await uploadBoardImage(file);
-  if (!result) return;
+  // Сбрасываем «висящий» pendingEditId только если он всё ещё от этой же
+  // попытки — иначе параллельная более поздняя загрузка (новый id) осталась бы
+  // заблокированной навсегда (W-15).
+  if (!result) {
+    if (pendingEditId.value === id) pendingEditId.value = null;
+    return;
+  }
 
   const { width, height } = fitImageToDefaultBox(result.width, result.height);
   void boardSession.applyOps([

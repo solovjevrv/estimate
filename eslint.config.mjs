@@ -123,27 +123,23 @@ export default tseslint.config(
     },
   },
   {
-    // HTTP-клиент — принадлежность слоя данных. Страница или компонент, знающие
+    // HTTP-клиент — принадлежность слоя данных. Страница/компонент/стор, знающие
     // маршрут `/api/...`, форму FormData и коды ответов, перестают быть заменяемыми
     // и не тестируются без сети (находка W-5: холст сам маппил 413/400/403).
     // Класс `ApiError` не ограничен — разбирать ошибку в UI это нормально.
-    files: ['apps/web/src/pages/**', 'apps/web/src/components/**'],
+    // Единственное исключение — доменный слой `features/*/api`, который и так
+    // живёт вне этого списка файлов и имеет право импортировать raw API-клиент.
+    files: ['apps/web/src/pages/**', 'apps/web/src/components/**', 'apps/web/src/stores/**'],
     rules: {
       'no-restricted-imports': [
         'error',
         {
-          paths: [
+          patterns: [
             {
-              name: '../lib/api',
+              group: ['**/lib/api'],
               importNames: ['api', 'request'],
               message:
-                'HTTP-запросы живут в сторах (features/*/api после 19.17), не в UI. Здесь допустим только ApiError.',
-            },
-            {
-              name: '../../lib/api',
-              importNames: ['api', 'request'],
-              message:
-                'HTTP-запросы живут в сторах (features/*/api после 19.17), не в UI. Здесь допустим только ApiError.',
+                'HTTP-запросы живут в features/*/api; UI и сторы не импортируют raw API-клиент.',
             },
           ],
         },

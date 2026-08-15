@@ -3,7 +3,14 @@ import type { AuthProvider, AuthUser } from '@poker/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
-import { ApiError, api } from '../lib/api';
+import { ApiError } from '../lib/api';
+import {
+  getCurrentUser,
+  getAuthProviders,
+  logoutCurrentUser,
+  updateCurrentUser,
+  uploadCurrentUserAvatar,
+} from '../features/auth/api/auth-api';
 
 export const useSessionStore = defineStore('session', () => {
   const user = ref<AuthUser | null>(null);
@@ -22,8 +29,7 @@ export const useSessionStore = defineStore('session', () => {
 
   async function load(): Promise<void> {
     try {
-      const { user: profile } = await api.get<{ user: AuthUser }>('/api/me');
-      user.value = profile;
+      user.value = await getCurrentUser();
     } catch (err) {
       // 401 — обычный гость, а не сбой: сеть и прочие ошибки тоже оставляют
       // пользователя неавторизованным, приложение при этом работает
@@ -47,8 +53,7 @@ export const useSessionStore = defineStore('session', () => {
   /** Список провайдеров задаётся ключами в окружении сервера, поэтому спрашиваем его */
   async function loadProviders(): Promise<void> {
     try {
-      const res = await api.get<{ providers: AuthProvider[] }>('/api/auth/providers');
-      providers.value = res.providers;
+      providers.value = await getAuthProviders();
     } catch (err) {
       console.warn('Не удалось получить список провайдеров', err);
       providers.value = [];
@@ -57,23 +62,19 @@ export const useSessionStore = defineStore('session', () => {
 
   /** Правка имени/должности со страницы профиля — оба поля одним запросом */
   async function updateProfile(fields: { name: string; jobTitle: string }): Promise<AuthUser> {
-    const res = await api.patch<{ user: AuthUser }>('/api/me', fields);
-    user.value = res.user;
-    return res.user;
+    user.value = await updateCurrentUser(fields);
+    return user.value;
   }
 
   /** Загрузка своей аватарки (10.15) — blob уже вырезан кроппером на фронте */
   async function uploadAvatar(blob: Blob): Promise<AuthUser> {
-    const body = new FormData();
-    body.append('avatar', blob, 'avatar.webp');
-    const res = await api.upload<{ user: AuthUser }>('/api/me/avatar', body);
-    user.value = res.user;
-    return res.user;
+    user.value = await uploadCurrentUserAvatar(blob);
+    return user.value;
   }
 
   async function logout(): Promise<void> {
     try {
-      await api.post('/api/auth/logout');
+      await logoutCurrentUser();
     } finally {
       // Даже если запрос не дошёл, на клиенте пользователь считается вышедшим
       user.value = null;
