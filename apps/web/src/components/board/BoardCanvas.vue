@@ -68,7 +68,6 @@ import {
 import {
   computed,
   markRaw,
-  nextTick,
   onBeforeUnmount,
   onMounted,
   provide,
@@ -107,16 +106,6 @@ import {
 } from '../../lib/board/board-canvas-keys';
 import { readableTextColor } from '../../lib/board/board-colors';
 import type { BoardTextEditorHandle } from '../../lib/board/board-rich-text';
-import {
-  base64ToFile,
-  type BoardClipboardEdge,
-  type BoardClipboardItem,
-  type BoardClipboardSourceEdge,
-  hasActiveTextSelection,
-  isPlainTextField,
-  parseClipboardPayload,
-  serializeSelection,
-} from '../../lib/board/board-clipboard';
 import { useBoardHotkeys } from '../../lib/board/use-board-hotkeys';
 import {
   FIT_FONT_MAX,
@@ -130,7 +119,6 @@ import {
   BOARD_CAMERA_THROTTLE_MS,
   BOARD_DRAG_THROTTLE_MS,
   BOARD_CURSOR_THROTTLE_MS,
-  BOARD_DUPLICATE_OFFSET,
   FRAME_DEFAULT_HEIGHT,
   FRAME_DEFAULT_WIDTH,
 } from '../../lib/board/board-constants';
@@ -142,6 +130,7 @@ import {
 } from '../../lib/board/board-snap';
 import { useBoardSessionStore } from '../../stores/board-session';
 import { uploadBoardAsset } from '../../features/boards/api/boards-api';
+import { useBoardClipboard } from '../../features/boards/composables/use-board-clipboard';
 import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
 import BoardContextMenu, { type BoardContextMenuTarget } from './BoardContextMenu.vue';
 import BoardCursor from './BoardCursor.vue';
@@ -319,6 +308,28 @@ watch(flowEdges, (next) => setEdges(next), { immediate: true });
 
 const rootEl = useTemplateRef<HTMLElement>('root');
 const isFullscreen = ref(false);
+
+const {
+  copy: onCopy,
+  paste: onPaste,
+  duplicateSelection: duplicateSelected,
+} = useBoardClipboard({
+  canEdit: () => props.canEdit,
+  getItems: () => props.items,
+  getEdges: () => props.edges,
+  getSelectedNodes: () => selectedNodes.value,
+  getCanvasRect: () => rootEl.value?.getBoundingClientRect(),
+  project,
+  findContainerAt: (point) => containerAt(point),
+  canCreateItems,
+  canApplyOpsCount,
+  uploadImage: uploadBoardImage,
+  createImage,
+  applyOps: (ops) => void boardSession.applyOps(ops),
+  breakFollowOnEdit,
+  clearSelection: () => removeSelectedNodes(getSelectedNodes.value),
+  selectItems: (ids) => addSelectedNodes(ids.map((id) => ({ id }) as GraphNode<BoardItem>)),
+});
 
 /**
  * Курсоры участников (14.1). Позиция мыши проецируется в canvas-координаты
@@ -1039,214 +1050,15 @@ function onPaneDragOver(event: DragEvent): void {
   // Визуальная индикация (опционально) — можно добавить класс на rootEl
 }
 
-/**
- * Вставка (Ctrl/Cmd+V) — сначала пробуем наш формат (элементы доски, в т.ч.
- * скопированные с другой доски), иначе — как раньше, картинка из ОС-буфера.
- * В настоящих текстовых полях (input URL-ссылки) наш формат не перехватываем
- * никогда. Текст стикера/фигуры — `contenteditable` всегда, а не только в
- * момент активного редактирования, так что фокус там стоит и после обычного
- * клика на выделение элемента — но раз распознали наш JSON в буфере, значит
- * пользователь только что скопировал именно элемент доски, а не текст; вставлять
- * этот JSON как есть в contenteditable всё равно было бы бессмысленно.
- */
-function onPaste(event: ClipboardEvent): void {
-  if (!props.canEdit) return;
-
-  if (!isPlainTextField(event.target)) {
-    const text = event.clipboardData?.getData('text/plain');
-    const payload = text ? parseClipboardPayload(text) : null;
-    if (payload) {
-      event.preventDefault();
-      void pasteBoardItems(payload.items, payload.edges);
-      return;
-    }
-  }
-
-  const items = event.clipboardData?.items;
-  if (!items) return;
-  for (const item of items) {
-    if (item.type.startsWith('image/')) {
-      event.preventDefault();
-      const file = item.getAsFile();
-      if (file) {
-        // Центр текущего вьюпорта — используем размеры rootEl
-        const rect = rootEl.value?.getBoundingClientRect();
-        if (rect) {
-          const center = project({ x: rect.width / 2, y: rect.height / 2 });
-          void createImage(center, file);
-        }
-      }
-      break;
-    }
-  }
-}
-
-/**
- * Копирование выделения в системный буфер (Ctrl/Cmd+C, 13.5). Пишем через
- * `navigator.clipboard.writeText` (не `event.clipboardData.setData`) —
- * сериализация картинок асинхронная (fetch байтов), а `clipboardData` из
- * события валиден для записи только синхронно в момент диспатча события,
- * запись после `await` в браузере молча не сработает.
- *
- * Не используем общий `isEditableTarget` из хоткеев: текст стикера/фигуры —
- * `contenteditable` всегда, а не только в момент активного редактирования,
- * так что он получает фокус уже от одного клика на выделение элемента —
- * `isEditableTarget` был бы true почти всегда, когда что-то выделено, и
- * Ctrl+C никогда бы не копировал элемент. Настоящий сигнал «пользователь
- * хочет скопировать именно текст» — протянутое (не коллапсированное)
- * текстовое выделение, см. `hasActiveTextSelection`.
- */
-async function onCopy(event: ClipboardEvent): Promise<void> {
-  if (!props.canEdit) return;
-  if (isPlainTextField(event.target) || hasActiveTextSelection()) return;
-
-  const selected = selectedNodes.value;
-  if (!selected.length) return;
-  event.preventDefault();
-
-  const sourceItems = expandContainerFamily(selected);
-  const sourceIds = new Set(sourceItems.map((item) => item.id));
-  // Только рёбра, у которых ОБА конца входят в копируемый набор — Miro-подобное
-  // поведение: связь с элементом ВНЕ выделения не переносится (некуда её вести)
-  const sourceEdges = props.edges.filter(
-    (edge) => sourceIds.has(edge.sourceItemId) && sourceIds.has(edge.targetItemId),
-  );
-
-  const payload = await serializeSelection(
-    sourceItems.map((item) => ({
-      id: item.id,
-      parentId: item.parentId,
-      content: item.content,
-      style: item.style,
-      rotation: item.rotation,
-      x: item.x,
-      y: item.y,
-      width: item.width,
-      height: item.height,
-    })),
-    sourceEdges.map((edge): BoardClipboardSourceEdge => ({
-      sourceItemId: edge.sourceItemId,
-      targetItemId: edge.targetItemId,
-      sourceHandle: edge.sourceHandle,
-      targetHandle: edge.targetHandle,
-      label: edge.label,
-      style: edge.style,
-    })),
-  );
-  try {
-    await navigator.clipboard.writeText(payload);
-  } catch {
-    // Буфер недоступен (нет прав/небезопасный контекст) — молча игнорируем
-  }
-}
-
-/** Вставка элементов доски из буфера (наш формат, 13.5) — работает и между досками */
-async function pasteBoardItems(
-  items: BoardClipboardItem[],
-  edges: BoardClipboardEdge[],
-): Promise<void> {
-  breakFollowOnEdit();
-  if (!props.canEdit || !items.length) return;
-  if (!canCreateItems(items.length)) return;
-  if (!canApplyOpsCount(items.length + edges.length)) return;
-
-  const rect = rootEl.value?.getBoundingClientRect();
-  if (!rect) return;
-  const viewportCenter = project({ x: rect.width / 2, y: rect.height / 2 });
-  const baseZIndex = maxZIndex(props.items) + 1;
-  const ops: BoardOp[] = [];
-  // Индексировано по ПОЗИЦИИ В ИСХОДНОМ items (не по порядку успешных вставок) —
-  // parentIndex в payload ссылается на исходные позиции; пропущенный элемент
-  // (например, картинку не удалось перезалить) оставляет в массиве дыру,
-  // но контейнером (целью parentIndex) картинка быть не может, так что это безопасно
-  const newIds: (string | undefined)[] = new Array(items.length);
-
-  for (const [index, item] of items.entries()) {
-    let content: BoardItemContent;
-    let width = item.width;
-    let height = item.height;
-
-    if (item.content.type === 'image') {
-      // Картинка board-scoped на сервере — байты из буфера грузим как новый ассет текущей доски
-      const file = base64ToFile(item.content.base64, item.content.mimeType, `${uuid()}.webp`);
-      const result = await uploadBoardImage(file);
-      if (!result) continue;
-      const fitted = fitImageToDefaultBox(result.width, result.height);
-      width = fitted.width;
-      height = fitted.height;
-      content = { type: 'image', url: result.url, width: result.width, height: result.height };
-    } else {
-      content = item.content;
-    }
-
-    const id = uuid();
-    newIds[index] = id;
-    const x = viewportCenter.x + item.relX - width / 2;
-    const y = viewportCenter.y + item.relY - height / 2;
-    // Родитель — контейнер (frame/group), тоже скопированный в этом же payload
-    // (14.3, восстанавливаем структуру), иначе — фрейм, в который попал центр
-    // при вставке (как и при обычном создании); контейнер сам не вкладывается
-    const parentId = isBoardContainer(content.type)
-      ? null
-      : item.parentIndex !== null
-        ? (newIds[item.parentIndex] ?? null)
-        : (containerAt({ x: x + width / 2, y: y + height / 2 })?.id ?? null);
-    ops.push({
-      type: 'item.create',
-      clientOpId: uuid(),
-      item: {
-        id,
-        parentId,
-        x,
-        y,
-        width,
-        height,
-        rotation: item.rotation,
-        zIndex: baseZIndex + index,
-        content,
-        style: item.style,
-        reactions: [],
-      },
-    });
-  }
-
-  for (const edge of edges) {
-    const sourceItemId = newIds[edge.sourceIndex];
-    const targetItemId = newIds[edge.targetIndex];
-    // Один из концов не вставился (например, картинку не удалось перезалить) —
-    // рёбро в никуда не создаём
-    if (!sourceItemId || !targetItemId) continue;
-    ops.push({
-      type: 'edge.create',
-      clientOpId: uuid(),
-      edge: {
-        id: uuid(),
-        sourceItemId,
-        targetItemId,
-        sourceHandle: edge.sourceHandle,
-        targetHandle: edge.targetHandle,
-        label: edge.label,
-        style: edge.style,
-      },
-    });
-  }
-
-  if (!ops.length) return;
-  void boardSession.applyOps(ops);
-  // Вставленные элементы сразу остаются выделенными (как в Miro) — иначе
-  // пришлось бы заново выделять их, чтобы подвинуть на нужное место (13.5).
-  // `setNodes` из `watch(flowNodes, ...)` применяется реактивно, не синхронно —
-  // ждём тика, иначе Vue Flow ещё не знает о только что созданных узлах
-  await nextTick();
-  removeSelectedNodes(getSelectedNodes.value);
-  addSelectedNodes(newIds.map((id) => ({ id }) as GraphNode<BoardItem>));
-}
-
 // --- Перетаскивание: локально холст двигает сам Vue Flow, по сети —
 // throttled-патчи на каждый кадр драга плюс гарантированный финальный на
 // dragstop (12.6). Троттлер свой на элемент — иначе при мультивыборе только
 // последний по порядку элемент кадра реально долетал бы до сети.
 const dragThrottlers = new Map<string, (node: GraphNode<BoardItem>) => void>();
+
+function childrenOf(containerId: string): BoardItem[] {
+  return props.items.filter((candidate) => candidate.parentId === containerId);
+}
 
 /** Конвертирует узел Vue Flow в SnapRect для вычисления snap guide */
 function nodeToSnapRect(node: GraphNode<BoardItem>): SnapRect {
@@ -1257,47 +1069,6 @@ function nodeToSnapRect(node: GraphNode<BoardItem>): SnapRect {
     width: node.dimensions.width,
     height: node.dimensions.height,
   };
-}
-
-function childrenOf(containerId: string): BoardItem[] {
-  return props.items.filter((candidate) => candidate.parentId === containerId);
-}
-
-/**
- * Полный набор элементов для копирования/дублирования выделения (14.3):
- * выделение плюс всё, что должно "приехать вместе" с ним, даже если не было
- * явно выделено само:
- * - выделен контейнер (frame/group) → тянем его детей (иначе копия/дубликат
- *   контейнера была бы пустой оболочкой);
- * - выделен участник ГРУППЫ (не фрейма) → тянем саму группу-контейнер и ВСЕХ
- *   остальных участников — группа жёсткий пучок, копируется только целиком,
- *   даже если явно выделен был всего один её участник (как при разгруппировке,
- *   см. ungroupSelection). Фрейм — не то же самое: выделенный ОДИНОЧНЫЙ его
- *   ребёнок копируется сам по себе, без остальных детей фрейма и самого фрейма.
- */
-function expandContainerFamily(selected: readonly GraphNode<BoardItem>[]): BoardItem[] {
-  const selectedIds = new Set(selected.map((n) => n.id));
-  const extra = new Map<string, BoardItem>();
-  for (const node of selected) {
-    if (isBoardContainer(node.data.content.type)) {
-      for (const child of childrenOf(node.id)) {
-        if (!selectedIds.has(child.id)) extra.set(child.id, child);
-      }
-      continue;
-    }
-    if (node.data.parentId !== null) {
-      const parent = props.items.find((candidate) => candidate.id === node.data.parentId);
-      if (parent?.content.type === 'group') {
-        if (!selectedIds.has(parent.id)) extra.set(parent.id, parent);
-        for (const mate of childrenOf(parent.id)) {
-          if (!selectedIds.has(mate.id)) extra.set(mate.id, mate);
-        }
-      }
-    }
-  }
-  return [...selected.map((n) => n.data), ...extra.values()].sort(
-    (a, b) => Number(isBoardContainer(a.content.type)) - Number(isBoardContainer(b.content.type)),
-  );
 }
 
 /**
@@ -2140,71 +1911,6 @@ function setSelectedSticker(pack: string, id: string): void {
       patch: { content: { type: 'sticker', pack, id } },
     }));
   if (ops.length) void boardSession.applyOps(ops);
-}
-
-/**
- * Дублирование (12.9) — копия content/style с офсетом позиции (Miro), встаёт
- * поверх всех. Фрейм/группа (14.3) — мини-холст: дублируя контейнер, тянем за
- * собой и его детей, даже если явно выделен был только сам контейнер —
- * иначе копия фрейма оставалась бы пустой, а оригинал молча терял детей
- * (при этом явно выделенный вместе с контейнером ребёнок не дублируется дважды).
- * Дубликат ребёнка, чей контейнер НЕ дублируется вместе с ним (дублировали
- * только сам элемент), остаётся прикреплён к ТОМУ ЖЕ оригинальному контейнеру —
- * это ожидаемо (Miro): дубликат карточки внутри фрейма остаётся внутри фрейма.
- * Контейнеры сортируются первыми — сервер применяет батч по порядку и
- * отклонил бы item.create ребёнка со ссылкой на ещё не созданный дубликат-родитель.
- */
-function duplicateSelected(): void {
-  const selected = selectedNodes.value;
-  if (!selected.length) return;
-  breakFollowOnEdit();
-  const sourceItems = expandContainerFamily(selected);
-  if (!sourceItems.length || !canCreateItems(sourceItems.length)) return;
-  const sourceIds = new Set(sourceItems.map((item) => item.id));
-  const sourceEdges = props.edges.filter(
-    (edge) => sourceIds.has(edge.sourceItemId) && sourceIds.has(edge.targetItemId),
-  );
-  if (!canApplyOpsCount(sourceItems.length + sourceEdges.length)) return;
-  const base = maxZIndex(props.items) + 1;
-  const idMap = new Map(sourceItems.map((source) => [source.id, uuid()]));
-  const itemOps: BoardOp[] = sourceItems.map(
-    (source, index) =>
-      ({
-        type: 'item.create',
-        clientOpId: uuid(),
-        item: {
-          id: idMap.get(source.id)!,
-          parentId:
-            source.parentId !== null ? (idMap.get(source.parentId) ?? source.parentId) : null,
-          x: source.x + BOARD_DUPLICATE_OFFSET,
-          y: source.y + BOARD_DUPLICATE_OFFSET,
-          width: source.width,
-          height: source.height,
-          rotation: source.rotation,
-          zIndex: base + index,
-          content: source.content,
-          style: source.style,
-          reactions: [],
-        },
-      }) satisfies BoardOp,
-  );
-  const edgeOps: BoardOp[] = sourceEdges.map(
-    (edge) =>
-      ({
-        type: 'edge.create',
-        clientOpId: uuid(),
-        edge: {
-          id: uuid(),
-          sourceItemId: idMap.get(edge.sourceItemId)!,
-          targetItemId: idMap.get(edge.targetItemId)!,
-          sourceHandle: edge.sourceHandle,
-          targetHandle: edge.targetHandle,
-          label: edge.label,
-          style: edge.style,
-        },
-      }) satisfies BoardOp,
-  );
-  void boardSession.applyOps([...itemOps, ...edgeOps]);
 }
 
 function bringSelectedToFront(): void {
