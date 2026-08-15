@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 
 import type { Board } from '@poker/shared';
+import type { FastifyBaseLogger } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TeamAccess } from '../src/access';
 import type { UsersRepository } from '../src/auth';
-import { BoardsService } from '../src/boards';
+import { type BoardImagesService, BoardsService } from '../src/boards';
 import { BoardsRepository } from '../src/boards/boards.repository';
 import type { Db } from '../src/db';
 import { GuestSessions } from '../src/platform/realtime';
@@ -23,7 +24,12 @@ const BOARD: Board = {
   shareRole: null,
 };
 
-function serviceWith(): { service: BoardsService; transaction: ReturnType<typeof vi.fn> } {
+function serviceWith(
+  options: {
+    images?: BoardImagesService;
+    log?: Pick<FastifyBaseLogger, 'warn'>;
+  } = {},
+): { service: BoardsService; transaction: ReturnType<typeof vi.fn> } {
   const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => fn({}));
   const db = { transaction } as unknown as Db;
   const service = new BoardsService(
@@ -32,6 +38,10 @@ function serviceWith(): { service: BoardsService; transaction: ReturnType<typeof
     new TeamAccess({} as TeamsRepository),
     {} as UsersRepository,
     new GuestSessions('секрет-гостевых-сессий-для-тестов', 'boardGuest'),
+    undefined,
+    undefined,
+    options.images,
+    options.log,
   );
   return { service, transaction };
 }
@@ -59,5 +69,33 @@ describe('BoardsService.getSnapshot', () => {
       isolationLevel: 'repeatable read',
       accessMode: 'read only',
     });
+  });
+});
+
+describe('BoardsService: очистка картинок', () => {
+  it('логирует сбой структурно и не пробрасывает его наружу', async () => {
+    const deleteIfOwn = vi.fn(async () => {
+      throw new Error('диск недоступен');
+    });
+    const warn = vi.fn();
+    const { service } = serviceWith({
+      images: { deleteIfOwn } as unknown as BoardImagesService,
+      log: { warn },
+    });
+
+    await (
+      service as unknown as {
+        cleanupImages(boardId: string, urls: readonly string[]): Promise<void>;
+      }
+    ).cleanupImages(BOARD.id, ['/api/boards/image.webp']);
+
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        boardId: BOARD.id,
+        url: '/api/boards/image.webp',
+        err: expect.any(Error),
+      }),
+      'Не удалось удалить файл картинки доски',
+    );
   });
 });

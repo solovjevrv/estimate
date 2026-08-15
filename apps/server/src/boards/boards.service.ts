@@ -13,6 +13,7 @@ import {
   type BoardSnapshot,
   type BoardSummary,
 } from '@poker/shared';
+import type { FastifyBaseLogger } from 'fastify';
 
 import { TeamAccess } from '../access';
 import { UsersRepository } from '../auth';
@@ -33,6 +34,11 @@ import type { BoardParticipantIdentity } from './presence';
 
 /** UUID-проверка для boardId, пришедшего из WS-или REST-payload без схемы */
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type BoardsLogger = Pick<FastifyBaseLogger, 'warn'>;
+
+/** Без логгера сервис остаётся пригодным для изолированных unit-тестов. */
+const NOOP_LOGGER: BoardsLogger = { warn: () => undefined };
 
 export interface CreateBoardInput {
   title: string;
@@ -85,9 +91,15 @@ export class BoardsService {
       TeamAccess.forExecutor(executor),
     /** Не задан — на диске файлы картинок досок не чистятся (13.2) */
     private readonly images?: BoardImagesService,
+    private readonly log: BoardsLogger = NOOP_LOGGER,
   ) {}
 
-  static forDatabase(db: Db, guestSecret: string, images?: BoardImagesService): BoardsService {
+  static forDatabase(
+    db: Db,
+    guestSecret: string,
+    images?: BoardImagesService,
+    log: BoardsLogger = NOOP_LOGGER,
+  ): BoardsService {
     return new BoardsService(
       db,
       new BoardsRepository(db),
@@ -97,6 +109,7 @@ export class BoardsService {
       (executor) => new BoardsRepository(executor),
       (executor) => TeamAccess.forExecutor(executor),
       images,
+      log,
     );
   }
 
@@ -107,7 +120,7 @@ export class BoardsService {
       try {
         await this.images.deleteIfOwn(boardId, url);
       } catch (err) {
-        console.error('Не удалось удалить файл картинки доски', err);
+        this.log.warn({ err, boardId, url }, 'Не удалось удалить файл картинки доски');
       }
     }
   }

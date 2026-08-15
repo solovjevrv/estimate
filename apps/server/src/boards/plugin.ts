@@ -154,7 +154,7 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
 
   const images = opts.assetsDir ? await BoardImagesService.forDirectory(opts.assetsDir) : undefined;
   const controller = new BoardsController(
-    BoardsService.forDatabase(app.db, opts.auth.guestSecret, images),
+    BoardsService.forDatabase(app.db, opts.auth.guestSecret, images, app.log),
   );
 
   app.post<{ Body: CreateBoardBody }>(
