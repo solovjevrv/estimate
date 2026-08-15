@@ -124,6 +124,50 @@ describe('RoomsService: роль в комнате', () => {
   });
 });
 
+describe('RoomsService: история раундов', () => {
+  it('запрашивает голоса всех раундов одним батчем и сохраняет порядок истории', async () => {
+    const newerRound: Round = {
+      ...ROUND,
+      id: randomUUID(),
+      seq: 2,
+      status: 'revealed',
+      average: 8,
+    };
+    const olderRound: Round = { ...ROUND, status: 'revealed', average: 3 };
+    const listVotesForRounds = vi.fn(
+      async () =>
+        new Map([
+          [newerRound.id, [{ participantId: 'newer', name: 'Новый', value: 8 }]],
+          [olderRound.id, [{ participantId: 'older', name: 'Старый', value: 3 }]],
+        ]),
+    );
+    const listVotes = vi.fn(async () => []);
+    const service = serviceWith({
+      findRoom: async () => ROOM,
+      listRevealedRounds: async () => [newerRound, olderRound],
+      listVotesForRounds,
+      listVotes,
+    });
+
+    const history = await service.listRoundHistory(ROOM.id);
+
+    expect(listVotesForRounds).toHaveBeenCalledTimes(1);
+    expect(listVotesForRounds).toHaveBeenCalledWith([newerRound.id, olderRound.id]);
+    expect(listVotes).not.toHaveBeenCalled();
+    expect(history.map((entry) => entry.round.id)).toEqual([newerRound.id, olderRound.id]);
+  });
+
+  it('пропускает раунд, голоса которого исчезли после вскрытия', async () => {
+    const service = serviceWith({
+      findRoom: async () => ROOM,
+      listRevealedRounds: async () => [{ ...ROUND, status: 'revealed' as const }],
+      listVotesForRounds: async () => new Map(),
+    });
+
+    await expect(service.listRoundHistory(ROOM.id)).resolves.toEqual([]);
+  });
+});
+
 describe('RoomsService: голосование', () => {
   const votingRepo: Partial<RoomsRepository> = {
     findRoom: async () => ROOM,
