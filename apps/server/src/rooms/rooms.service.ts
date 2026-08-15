@@ -35,11 +35,8 @@ import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '.
 import { GuestSessions } from '../platform/realtime';
 
 import type { ParticipantIdentity } from './presence';
-import {
-  type DbExecutor as RoomsDbExecutor,
-  RoomsRepository,
-  type VoteRecord,
-} from './rooms.repository';
+import { summarizeRound } from './round-scoring';
+import { type DbExecutor as RoomsDbExecutor, RoomsRepository } from './rooms.repository';
 
 export interface CreateRoomInput {
   name: string;
@@ -172,7 +169,7 @@ export class RoomsService {
       .filter((entry) => entry.votes.length > 0)
       .map((entry) => ({
         round: entry.round,
-        result: this.summarize(entry.votes, entry.round, entry.round.average),
+        result: summarizeRound(entry.votes, entry.round.deckType, entry.round.average),
       }));
   }
 
@@ -370,7 +367,8 @@ export class RoomsService {
         hasVoted: voted.has(identity.participantId),
       })),
       // Оценки видны только после вскрытия карт
-      result: round?.status === 'revealed' ? this.summarize(votes, round, round.average) : null,
+      result:
+        round?.status === 'revealed' ? summarizeRound(votes, round.deckType, round.average) : null,
       timer,
       reactions,
     };
@@ -445,10 +443,10 @@ export class RoomsService {
       }
       // Карты могли вскрыть, пока запрос ждал блокировки — тогда показываем зафиксированное
       if (round.status !== 'voting') {
-        return this.summarize(votes, round, round.average);
+        return summarizeRound(votes, round.deckType, round.average);
       }
 
-      const result = this.summarize(votes, round);
+      const result = summarizeRound(votes, round.deckType);
       await repo.markRevealed(round.id, result.average);
       await repo.bumpRevision(roomId);
       return result;
@@ -599,39 +597,6 @@ export class RoomsService {
     if (round.deckType === 'tshirt' && !TSHIRT_DECK.includes(value)) {
       throw new ValidationError('Для футболочных размеров допустимы только числа из колоды');
     }
-  }
-
-  /** Если раунд уже вскрыт, показываем зафиксированное среднее, а не пересчитанное */
-  private summarize(votes: VoteRecord[], round: Round, stored: number | null = null): RoundResult {
-    const values = votes.map((vote) => vote.value);
-    const sum = values.reduce((total, value) => total + value, 0);
-    // Для футболочных размеров среднее числового веса не несёт смысла — не считаем
-    const average =
-      round.deckType === 'tshirt'
-        ? null
-        : (stored ?? Math.round((sum / values.length) * 100) / 100);
-
-    return {
-      average,
-      min: Math.min(...values),
-      max: Math.max(...values),
-      agreement: this.calculateAgreement(values),
-      votes: votes.map((vote) => ({
-        participantId: vote.participantId,
-        name: vote.name ?? 'Участник',
-        value: vote.value,
-      })),
-    };
-  }
-
-  /** Доля проголосовавших за самое частое значение — метрика согласия команды */
-  private calculateAgreement(values: number[]): number {
-    const counts = new Map<number, number>();
-    for (const value of values) {
-      counts.set(value, (counts.get(value) ?? 0) + 1);
-    }
-    const maxCount = Math.max(...counts.values());
-    return Math.round((maxCount / values.length) * 100);
   }
 
   /** Идентификаторы приходят по сокету без схем — проверяем формат до похода в базу */
