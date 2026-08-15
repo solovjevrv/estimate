@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
+import { useAsyncAction } from '../composables/use-async-action';
 import { useRoomsStore } from '../stores/rooms';
 import { useSessionStore } from '../stores/session';
 
@@ -43,7 +44,6 @@ const cards = computed(() => [
 ]);
 
 const open = ref(false);
-const creating = ref(false);
 const state = reactive({ name: '' });
 
 watch(open, (isOpen) => {
@@ -63,17 +63,19 @@ function validate(s: { name: string }): FormError[] {
 
 const toast = useToast();
 
-async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  creating.value = true;
-  try {
-    const room = await rooms.create(trimText(event.data.name));
+const { pending: creating, execute: createRoom } = useAsyncAction({
+  run: (name: string) => rooms.create(name),
+  success: async (room) => {
     open.value = false;
     await router.push({ name: 'room', params: { id: room.id } });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('room.createError'), color: 'error' });
-  } finally {
-    creating.value = false;
-  }
+  },
+});
+
+async function onSubmit(event: FormSubmitEvent<{ name: string }>): Promise<void> {
+  await createRoom(trimText(event.data.name));
 }
 </script>
 

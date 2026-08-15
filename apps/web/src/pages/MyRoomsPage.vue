@@ -8,6 +8,7 @@ import { useRouter } from 'vue-router';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
 import { usePagedList } from '../composables/use-paged-list';
+import { useAsyncAction } from '../composables/use-async-action';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useRoomsStore } from '../stores/rooms';
 
@@ -103,7 +104,6 @@ async function load(): Promise<void> {
 
 // --- Создание комнаты ---
 const createOpen = ref(false);
-const creating = ref(false);
 const createState = reactive({ name: '' });
 
 watch(createOpen, (isOpen) => {
@@ -121,17 +121,19 @@ function validateRoomName(s: { name: string }): FormError[] {
   return errors;
 }
 
-async function onCreateRoom(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  creating.value = true;
-  try {
-    const room = await rooms.create(trimText(event.data.name));
+const { pending: creating, execute: createRoom } = useAsyncAction({
+  run: (name: string) => rooms.create(name),
+  success: async (room) => {
     createOpen.value = false;
     await router.push({ name: 'room', params: { id: room.id } });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('room.createError'), color: 'error' });
-  } finally {
-    creating.value = false;
-  }
+  },
+});
+
+async function onCreateRoom(event: FormSubmitEvent<{ name: string }>): Promise<void> {
+  await createRoom(trimText(event.data.name));
 }
 
 // --- Архив: грузится отдельно и по требованию, чтобы не тянуть его при каждом заходе ---
@@ -162,27 +164,28 @@ async function toggleArchive(): Promise<void> {
 
 const deleteTarget = ref<Room | null>(null);
 const deleteOpen = ref(false);
-const deleting = ref(false);
 
 function askDelete(room: Room): void {
   deleteTarget.value = room;
   deleteOpen.value = true;
 }
 
-async function confirmDelete(): Promise<void> {
-  const target = deleteTarget.value;
-  if (!target) return;
-  deleting.value = true;
-  try {
-    await rooms.remove(target.id);
+const { pending: deleting, execute: removeRoom } = useAsyncAction({
+  run: (target: Room) => rooms.remove(target.id),
+  success: (_, target) => {
     archived.value = archived.value.filter((room) => room.id !== target.id);
     toast.add({ title: t('myRooms.deleted'), color: 'success', icon: 'i-lucide-check' });
     deleteOpen.value = false;
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('myRooms.deleteError'), color: 'error' });
-  } finally {
-    deleting.value = false;
-  }
+  },
+});
+
+async function confirmDelete(): Promise<void> {
+  const target = deleteTarget.value;
+  if (!target) return;
+  await removeRoom(target);
 }
 </script>
 

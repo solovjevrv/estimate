@@ -8,6 +8,7 @@ import { useRouter } from 'vue-router';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
 import { usePagedList } from '../composables/use-paged-list';
+import { useAsyncAction } from '../composables/use-async-action';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useBoardsStore } from '../stores/boards';
 
@@ -47,7 +48,6 @@ async function load(): Promise<void> {
 
 // --- Создание доски ---
 const createOpen = ref(false);
-const creating = ref(false);
 const createState = reactive({ title: '' });
 
 watch(createOpen, (isOpen) => {
@@ -68,17 +68,19 @@ function validateBoardTitle(s: { title: string }): FormError[] {
   return errors;
 }
 
-async function onCreateBoard(event: FormSubmitEvent<{ title: string }>): Promise<void> {
-  creating.value = true;
-  try {
-    const board = await boards.create(trimText(event.data.title));
+const { pending: creating, execute: createBoard } = useAsyncAction({
+  run: (title: string) => boards.create(title),
+  success: async (board) => {
     createOpen.value = false;
     await router.push({ name: 'board', params: { id: board.id } });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('board.createError'), color: 'error' });
-  } finally {
-    creating.value = false;
-  }
+  },
+});
+
+async function onCreateBoard(event: FormSubmitEvent<{ title: string }>): Promise<void> {
+  await createBoard(trimText(event.data.title));
 }
 
 // --- Архив: грузится отдельно и по требованию, чтобы не тянуть его при каждом заходе ---
@@ -127,27 +129,28 @@ async function unarchive(board: BoardSummary): Promise<void> {
 
 const deleteTarget = ref<BoardSummary | null>(null);
 const deleteOpen = ref(false);
-const deleting = ref(false);
 
 function askDelete(board: BoardSummary): void {
   deleteTarget.value = board;
   deleteOpen.value = true;
 }
 
-async function confirmDelete(): Promise<void> {
-  const target = deleteTarget.value;
-  if (!target) return;
-  deleting.value = true;
-  try {
-    await boards.remove(target.id);
+const { pending: deleting, execute: removeBoard } = useAsyncAction({
+  run: (target: BoardSummary) => boards.remove(target.id),
+  success: (_, target) => {
     archived.value = archived.value.filter((board) => board.id !== target.id);
     toast.add({ title: t('boards.deleted'), color: 'success', icon: 'i-lucide-check' });
     deleteOpen.value = false;
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('boards.deleteError'), color: 'error' });
-  } finally {
-    deleting.value = false;
-  }
+  },
+});
+
+async function confirmDelete(): Promise<void> {
+  const target = deleteTarget.value;
+  if (!target) return;
+  await removeBoard(target);
 }
 </script>
 
