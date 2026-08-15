@@ -2,6 +2,12 @@ export default {
   app: {
     name: 'EstiMate',
   },
+  common: {
+    cancel: 'Cancel',
+    nameLabel: 'Name',
+    nameRequired: 'Enter a name',
+    nameTooLong: 'Name is too long (maximum {max})',
+  },
   nav: {
     home: 'Home',
     teams: 'Teams',
@@ -56,11 +62,7 @@ export default {
     create: 'Create team',
     loadError: 'Could not load teams. Try refreshing the page.',
     createTitle: 'New team',
-    nameLabel: 'Name',
     namePlaceholder: 'For example, Frontend team',
-    nameRequired: 'Enter a name',
-    nameTooLong: 'Name is too long (maximum {max})',
-    cancel: 'Cancel',
     submit: 'Create',
     createError: 'Could not create the team. Please try again.',
     memberCount: '{count} member | {count} members',

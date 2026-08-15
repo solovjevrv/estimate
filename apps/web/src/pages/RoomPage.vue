@@ -20,6 +20,7 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
+import EntityTextModal from '../components/EntityTextModal.vue';
 import DeckBar from '../components/room/DeckBar.vue';
 import ParticipantCard from '../components/room/ParticipantCard.vue';
 import type { FlyingReaction, ReceivedReaction } from '../components/room/ParticipantCardBody.vue';
@@ -27,8 +28,8 @@ import RoomTimerCard from '../components/room/RoomTimerCard.vue';
 import RoomTopBar from '../components/room/RoomTopBar.vue';
 import RoundResultPanel from '../components/room/RoundResultPanel.vue';
 import { ApiError } from '../lib/api';
-import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { useAsyncAction } from '../composables/use-async-action';
+import { useEntityModal } from '../composables/use-entity-modal';
 import { archiveRoom, getRoom, getRoundHistory, renameRoom } from '../features/rooms/api/rooms-api';
 import { useRoomStore } from '../stores/room';
 import { useSessionStore } from '../stores/session';
@@ -72,27 +73,7 @@ async function onArchive(): Promise<void> {
 }
 
 // --- Переименование комнаты (7.20) ---
-const renameOpen = ref(false);
-const renameState = reactive({ name: '' });
-
-// Открыли — подставляем текущее имя; закрыли — очищаем, чтобы не мигало старое
-watch(renameOpen, (open) => {
-  renameState.name = open ? (roomInfo.value?.name ?? '') : '';
-});
-
-function validateRoomName(s: { name: string }): FormError[] {
-  const errors: FormError[] = [];
-  const name = trimText(s.name);
-  if (!name) {
-    errors.push({ name: 'name', message: t('room.renameNameRequired') });
-  } else if (name.length > ROOM_NAME_MAX_LENGTH) {
-    errors.push({
-      name: 'name',
-      message: t('room.renameNameTooLong', { max: ROOM_NAME_MAX_LENGTH }),
-    });
-  }
-  return errors;
-}
+const renameModal = useEntityModal();
 
 const { pending: renaming, execute: rename } = useAsyncAction({
   run: (name: string) => renameRoom(props.id, name),
@@ -102,7 +83,7 @@ const { pending: renaming, execute: rename } = useAsyncAction({
     if (current) {
       room.applyState({ ...current, room: renamed });
     }
-    renameOpen.value = false;
+    renameModal.close();
     toast.add({ title: t('room.renamed'), color: 'success', icon: 'i-lucide-check' });
   },
   error: () => {
@@ -110,8 +91,8 @@ const { pending: renaming, execute: rename } = useAsyncAction({
   },
 });
 
-async function onRename(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  await rename(trimText(event.data.name));
+async function onRename(name: string): Promise<void> {
+  await rename(name);
 }
 
 // --- Исключение участника скрам-мастером (5.8) ---
@@ -868,7 +849,7 @@ function retry(): void {
           :can-archive="room.isScrumMaster && !isArchived"
           :can-rename="room.isScrumMaster"
           @archive="archiveOpen = true"
-          @rename="renameOpen = true"
+          @rename="renameModal.show"
         />
 
         <UAlert
@@ -1109,39 +1090,19 @@ function retry(): void {
       @confirm="onArchive"
     />
 
-    <UModal v-model:open="renameOpen" :title="t('room.renameTitle')" :ui="MODAL_UI">
-      <template #body>
-        <UForm
-          :state="renameState"
-          :validate="validateRoomName"
-          class="space-y-4"
-          @submit="onRename"
-        >
-          <UFormField :label="t('room.roomNameLabel')" name="name">
-            <UInput
-              v-model="renameState.name"
-              :maxlength="ROOM_NAME_MAX_LENGTH"
-              autofocus
-              class="w-full"
-              :ui="MODAL_INPUT_UI"
-            />
-          </UFormField>
-          <div class="flex justify-end gap-2.5">
-            <UButton
-              color="neutral"
-              variant="outline"
-              :ui="MODAL_BUTTON_UI"
-              @click="renameOpen = false"
-            >
-              {{ t('teams.cancel') }}
-            </UButton>
-            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="renaming">
-              {{ t('room.rename') }}
-            </UButton>
-          </div>
-        </UForm>
-      </template>
-    </UModal>
+    <EntityTextModal
+      v-model:open="renameModal.open"
+      :title="t('room.renameTitle')"
+      :label="t('room.roomNameLabel')"
+      :initial-value="roomInfo?.name ?? ''"
+      :max-length="ROOM_NAME_MAX_LENGTH"
+      :required-message="t('room.renameNameRequired')"
+      :too-long-message="t('room.renameNameTooLong', { max: ROOM_NAME_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="t('room.rename')"
+      :pending="renaming"
+      @submit="onRename"
+    />
 
     <ConfirmModal
       v-model:open="cancelConfirmOpen"

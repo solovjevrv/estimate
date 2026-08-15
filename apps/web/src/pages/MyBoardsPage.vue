@@ -1,21 +1,22 @@
 <script setup lang="ts">
-import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { BOARD_TITLE_MAX_LENGTH, trimText, type BoardSummary } from '@poker/shared';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { BOARD_TITLE_MAX_LENGTH, type BoardSummary } from '@poker/shared';
+import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
+import EntityTextModal from '../components/EntityTextModal.vue';
+import { useArchiveTab } from '../composables/use-archive-tab';
 import { usePagedList } from '../composables/use-paged-list';
 import { useAsyncAction } from '../composables/use-async-action';
+import { useEntityModal } from '../composables/use-entity-modal';
 import {
   createBoard as createBoardRequest,
   deleteBoard,
   listMyBoards,
   unarchiveBoard,
 } from '../features/boards/api/boards-api';
-import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 
 const { t, locale } = useI18n();
 const router = useRouter();
@@ -51,31 +52,12 @@ async function load(): Promise<void> {
 }
 
 // --- Создание доски ---
-const createOpen = ref(false);
-const createState = reactive({ title: '' });
-
-watch(createOpen, (isOpen) => {
-  if (!isOpen) createState.title = '';
-});
-
-function validateBoardTitle(s: { title: string }): FormError[] {
-  const errors: FormError[] = [];
-  const title = trimText(s.title);
-  if (!title) {
-    errors.push({ name: 'title', message: t('teams.nameRequired') });
-  } else if (title.length > BOARD_TITLE_MAX_LENGTH) {
-    errors.push({
-      name: 'title',
-      message: t('teams.nameTooLong', { max: BOARD_TITLE_MAX_LENGTH }),
-    });
-  }
-  return errors;
-}
+const createBoardModal = useEntityModal();
 
 const { pending: creating, execute: createBoard } = useAsyncAction({
   run: (title: string) => createBoardRequest(title),
   success: async (board) => {
-    createOpen.value = false;
+    createBoardModal.close();
     await router.push({ name: 'board', params: { id: board.id } });
   },
   error: () => {
@@ -83,35 +65,17 @@ const { pending: creating, execute: createBoard } = useAsyncAction({
   },
 });
 
-async function onCreateBoard(event: FormSubmitEvent<{ title: string }>): Promise<void> {
-  await createBoard(trimText(event.data.title));
+async function onCreateBoard(title: string): Promise<void> {
+  await createBoard(title);
 }
 
 // --- Архив: грузится отдельно и по требованию, чтобы не тянуть его при каждом заходе ---
-const archiveOpen = ref(false);
-const archiveLoading = ref(false);
-const archiveFailed = ref(false);
 const archived = ref<BoardSummary[]>([]);
 const archivedComputed = computed(() => archived.value);
 const archivePaging = usePagedList(archivedComputed);
-let archiveLoaded = false;
-
-async function toggleArchive(): Promise<void> {
-  archiveOpen.value = !archiveOpen.value;
-  if (archiveOpen.value && !archiveLoaded) {
-    archiveLoading.value = true;
-    archiveFailed.value = false;
-    try {
-      archived.value = await listMyBoards(true);
-      archivePaging.reset();
-      archiveLoaded = true;
-    } catch {
-      archiveFailed.value = true;
-    } finally {
-      archiveLoading.value = false;
-    }
-  }
-}
+const archive = useArchiveTab(async () => {
+  archived.value = await listMyBoards(true);
+}, archivePaging.reset);
 
 const unarchivingId = ref<string | null>(null);
 
@@ -165,7 +129,7 @@ async function confirmDelete(): Promise<void> {
       <UButton
         icon="i-lucide-plus"
         class="h-[43px] px-[22px] text-[15px] font-bold"
-        @click="createOpen = true"
+        @click="createBoardModal.show"
       >
         {{ t('board.create') }}
       </UButton>
@@ -221,21 +185,21 @@ async function confirmDelete(): Promise<void> {
           <button
             type="button"
             class="text-primary cursor-pointer text-sm font-bold"
-            @click="toggleArchive"
+            @click="archive.toggle"
           >
-            {{ archiveOpen ? t('boards.archiveHide') : t('boards.archiveShow') }}
+            {{ archive.open ? t('boards.archiveHide') : t('boards.archiveShow') }}
           </button>
         </div>
 
-        <template v-if="archiveOpen">
+        <template v-if="archive.open">
           <UAlert
-            v-if="archiveFailed"
+            v-if="archive.failed"
             color="error"
             variant="subtle"
             class="mx-4 mb-5 sm:mx-[30px]"
             :description="t('boards.archiveError')"
           />
-          <div v-else-if="archiveLoading" class="text-muted flex justify-center pb-5">
+          <div v-else-if="archive.loading" class="text-muted flex justify-center pb-5">
             <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
           </div>
           <p
@@ -297,41 +261,19 @@ async function confirmDelete(): Promise<void> {
       </div>
     </template>
 
-    <UModal v-model:open="createOpen" :title="t('board.createTitle')" :ui="MODAL_UI">
-      <template #body>
-        <UForm
-          :state="createState"
-          :validate="validateBoardTitle"
-          class="space-y-4"
-          @submit="onCreateBoard"
-        >
-          <UFormField :label="t('teams.nameLabel')" name="title">
-            <UInput
-              v-model="createState.title"
-              :placeholder="t('board.createNamePlaceholder')"
-              :maxlength="BOARD_TITLE_MAX_LENGTH"
-              autofocus
-              class="w-full"
-              :ui="MODAL_INPUT_UI"
-            />
-          </UFormField>
-
-          <div class="flex justify-end gap-2.5">
-            <UButton
-              color="neutral"
-              variant="outline"
-              :ui="MODAL_BUTTON_UI"
-              @click="createOpen = false"
-            >
-              {{ t('teams.cancel') }}
-            </UButton>
-            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="creating">
-              {{ creating ? t('board.creating') : t('board.create') }}
-            </UButton>
-          </div>
-        </UForm>
-      </template>
-    </UModal>
+    <EntityTextModal
+      v-model:open="createBoardModal.open"
+      :title="t('board.createTitle')"
+      :label="t('common.nameLabel')"
+      :placeholder="t('board.createNamePlaceholder')"
+      :max-length="BOARD_TITLE_MAX_LENGTH"
+      :required-message="t('common.nameRequired')"
+      :too-long-message="t('common.nameTooLong', { max: BOARD_TITLE_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="creating ? t('board.creating') : t('board.create')"
+      :pending="creating"
+      @submit="onCreateBoard"
+    />
 
     <ConfirmModal
       v-model:open="deleteOpen"

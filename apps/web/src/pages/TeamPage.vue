@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
 import {
   BOARD_TITLE_MAX_LENGTH,
@@ -7,21 +6,22 @@ import {
   ROOM_NAME_MAX_LENGTH,
   TEAM_NAME_MAX_LENGTH,
   TEAM_ROLES,
-  trimText,
   type BoardSummary,
   type Room,
   type TeamMember,
   type TeamRole,
 } from '@poker/shared';
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
+import EntityTextModal from '../components/EntityTextModal.vue';
+import { useArchiveTab } from '../composables/use-archive-tab';
 import { usePagedList } from '../composables/use-paged-list';
 import { useAsyncAction } from '../composables/use-async-action';
+import { useEntityModal } from '../composables/use-entity-modal';
 import { ApiError } from '../lib/api';
-import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
 import {
   createBoard as createBoardRequest,
@@ -75,6 +75,11 @@ function canManageBoard(board: BoardSummary): boolean {
   return canManageTeam.value || board.ownerId === currentUserId.value;
 }
 
+const roomTabs = computed(() => [
+  { key: 'active' as const, label: t('team.roomsActive') },
+  { key: 'archive' as const, label: t('team.tabArchive') },
+]);
+
 /** Пока идёт запрос по участнику — блокируем его элементы управления. Набор, а
  * не один id: операции по разным участникам могут идти внахлёст. */
 const busyUsers = ref<Set<string>>(new Set());
@@ -95,11 +100,6 @@ const roleItems = computed(() =>
   TEAM_ROLES.map((role) => ({ label: t(`role.${role}`), value: role })),
 );
 
-const roomTabs = computed(() => [
-  { key: 'active' as const, label: t('team.roomsActive') },
-  { key: 'archive' as const, label: t('team.tabArchive') },
-]);
-
 /** «Архив» объединяет завершённые (видны всем) и по-настоящему заархивированные
  * (видны только администратору) — они не пересекаются на бэкенде: список
  * `teamRooms.list` вообще не включает заархивированные комнаты. */
@@ -108,7 +108,6 @@ const archiveTabRooms = computed(() =>
     b.createdAt.localeCompare(a.createdAt),
   ),
 );
-
 const activeRoomsPaging = usePagedList(computed(() => teamRooms.active));
 const archiveTabPaging = usePagedList(archiveTabRooms);
 
@@ -129,14 +128,12 @@ const inviteUrl = computed(() =>
 // --- Таб «Архив»: заархивированная часть видна только администратору, грузится
 // по требованию — обычный участник видит в этом табе только завершённые комнаты ---
 const roomsTab = ref<'active' | 'archive'>('active');
-const archiveLoading = ref(false);
-const archiveFailed = ref(false);
-let archiveLoaded = false;
-
 const boardsTab = ref<'active' | 'archive'>('active');
-const archiveBoardsLoading = ref(false);
-const archiveBoardsFailed = ref(false);
-let archiveBoardsLoaded = false;
+const roomArchive = useArchiveTab(() => teamRooms.loadArchived(props.id), archiveTabPaging.reset);
+const boardArchive = useArchiveTab(
+  () => teamBoards.loadArchived(props.id),
+  archiveBoardsPaging.reset,
+);
 
 // immediate — грузим при заходе; watch — на случай перехода между командами,
 // когда vue-router переиспользует компонент и onMounted повторно не срабатывает
@@ -148,15 +145,13 @@ async function load(): Promise<void> {
   loadFailed.value = false;
   roomsFailed.value = false;
   roomsTab.value = 'active';
-  archiveLoaded = false;
-  archiveFailed.value = false;
+  roomArchive.reset();
   teamRooms.reset();
   activeRoomsPaging.reset();
   archiveTabPaging.reset();
   boardsFailed.value = false;
   boardsTab.value = 'active';
-  archiveBoardsLoaded = false;
-  archiveBoardsFailed.value = false;
+  boardArchive.reset();
   teamBoards.reset();
   activeBoardsPaging.reset();
   archiveBoardsPaging.reset();
@@ -194,38 +189,14 @@ async function loadBoards(): Promise<void> {
 
 async function selectRoomsTab(tab: 'active' | 'archive'): Promise<void> {
   roomsTab.value = tab;
-  if (tab === 'archive' && canManageTeam.value && !archiveLoaded) {
-    archiveLoading.value = true;
-    archiveFailed.value = false;
-    try {
-      await teamRooms.loadArchived(props.id);
-      archiveTabPaging.reset();
-      archiveLoaded = true;
-    } catch {
-      archiveFailed.value = true;
-    } finally {
-      archiveLoading.value = false;
-    }
-  }
+  if (tab === 'archive' && canManageTeam.value) await roomArchive.activate();
 }
 
 // Архив досок, в отличие от архива комнат, доступен на чтение любому участнику
 // команды — сервер (`listForTeam`) не сужает его до администратора (12.1)
 async function selectBoardsTab(tab: 'active' | 'archive'): Promise<void> {
   boardsTab.value = tab;
-  if (tab === 'archive' && !archiveBoardsLoaded) {
-    archiveBoardsLoading.value = true;
-    archiveBoardsFailed.value = false;
-    try {
-      await teamBoards.loadArchived(props.id);
-      archiveBoardsPaging.reset();
-      archiveBoardsLoaded = true;
-    } catch {
-      archiveBoardsFailed.value = true;
-    } finally {
-      archiveBoardsLoading.value = false;
-    }
-  }
+  if (tab === 'archive') await boardArchive.activate();
 }
 
 const deleteRoomTarget = ref<Room | null>(null);
@@ -255,28 +226,12 @@ async function confirmDeleteRoom(): Promise<void> {
 }
 
 // --- Создание комнаты от лица команды ---
-const createRoomOpen = ref(false);
-const createRoomState = reactive({ name: '' });
-
-watch(createRoomOpen, (isOpen) => {
-  if (!isOpen) createRoomState.name = '';
-});
-
-function validateRoomName(s: { name: string }): FormError[] {
-  const errors: FormError[] = [];
-  const name = trimText(s.name);
-  if (!name) {
-    errors.push({ name: 'name', message: t('teams.nameRequired') });
-  } else if (name.length > ROOM_NAME_MAX_LENGTH) {
-    errors.push({ name: 'name', message: t('teams.nameTooLong', { max: ROOM_NAME_MAX_LENGTH }) });
-  }
-  return errors;
-}
+const createRoomModal = useEntityModal();
 
 const { pending: creatingRoom, execute: createTeamRoom } = useAsyncAction({
   run: (name: string) => createRoomRequest(name, props.id),
   success: async (room) => {
-    createRoomOpen.value = false;
+    createRoomModal.close();
     await router.push({ name: 'room', params: { id: room.id } });
   },
   error: () => {
@@ -284,36 +239,17 @@ const { pending: creatingRoom, execute: createTeamRoom } = useAsyncAction({
   },
 });
 
-async function onCreateRoom(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  await createTeamRoom(trimText(event.data.name));
+async function onCreateRoom(name: string): Promise<void> {
+  await createTeamRoom(name);
 }
 
 // --- Создание доски от лица команды ---
-const createBoardOpen = ref(false);
-const createBoardState = reactive({ title: '' });
-
-watch(createBoardOpen, (isOpen) => {
-  if (!isOpen) createBoardState.title = '';
-});
-
-function validateBoardTitle(s: { title: string }): FormError[] {
-  const errors: FormError[] = [];
-  const title = trimText(s.title);
-  if (!title) {
-    errors.push({ name: 'title', message: t('teams.nameRequired') });
-  } else if (title.length > BOARD_TITLE_MAX_LENGTH) {
-    errors.push({
-      name: 'title',
-      message: t('teams.nameTooLong', { max: BOARD_TITLE_MAX_LENGTH }),
-    });
-  }
-  return errors;
-}
+const createBoardModal = useEntityModal();
 
 const { pending: creatingBoard, execute: createTeamBoard } = useAsyncAction({
   run: (title: string) => createBoardRequest(title, props.id),
   success: async (board) => {
-    createBoardOpen.value = false;
+    createBoardModal.close();
     await router.push({ name: 'board', params: { id: board.id } });
   },
   error: () => {
@@ -321,8 +257,8 @@ const { pending: creatingBoard, execute: createTeamBoard } = useAsyncAction({
   },
 });
 
-async function onCreateBoard(event: FormSubmitEvent<{ title: string }>): Promise<void> {
-  await createTeamBoard(trimText(event.data.title));
+async function onCreateBoard(title: string): Promise<void> {
+  await createTeamBoard(title);
 }
 
 const unarchivingBoardId = ref<string | null>(null);
@@ -463,38 +399,21 @@ async function confirmLeave(): Promise<void> {
 }
 
 // --- Переименование ---
-const renameOpen = ref(false);
-const renameState = reactive({ name: '' });
-
-// Открыли — подставляем текущее имя; закрыли — очищаем, чтобы не мигало старое
-watch(renameOpen, (open) => {
-  renameState.name = open ? (overview.value?.team.name ?? '') : '';
-});
-
-function validateName(s: { name: string }): FormError[] {
-  const errors: FormError[] = [];
-  const name = trimText(s.name);
-  if (!name) {
-    errors.push({ name: 'name', message: t('teams.nameRequired') });
-  } else if (name.length > TEAM_NAME_MAX_LENGTH) {
-    errors.push({ name: 'name', message: t('teams.nameTooLong', { max: TEAM_NAME_MAX_LENGTH }) });
-  }
-  return errors;
-}
+const renameModal = useEntityModal();
 
 const { pending: renaming, execute: renameTeam } = useAsyncAction({
   run: (name: string) => teams.rename(props.id, name),
   success: () => {
     toast.add({ title: t('team.renamed'), color: 'success', icon: 'i-lucide-check' });
-    renameOpen.value = false;
+    renameModal.close();
   },
   error: () => {
     toast.add({ title: t('team.renameError'), color: 'error' });
   },
 });
 
-async function onRename(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  await renameTeam(trimText(event.data.name));
+async function onRename(name: string): Promise<void> {
+  await renameTeam(name);
 }
 
 // --- Удаление команды ---
@@ -572,7 +491,7 @@ async function confirmDelete(): Promise<void> {
             v-if="canManageTeam"
             icon="i-lucide-plus"
             class="rounded-[11px] px-[18px] py-[11px] text-sm font-bold"
-            @click="createRoomOpen = true"
+            @click="createRoomModal.show"
           >
             {{ t('room.create') }}
           </UButton>
@@ -637,13 +556,13 @@ async function confirmDelete(): Promise<void> {
                уже загруженные завершённые комнаты всё равно показываем ниже, не прячем их
                за баннером. -->
           <UAlert
-            v-if="archiveFailed"
+            v-if="roomArchive.failed"
             color="error"
             variant="subtle"
             class="mx-4 mb-5 sm:mx-[30px]"
             :description="t('team.archiveError')"
           />
-          <div v-if="archiveLoading" class="text-muted flex justify-center pb-5">
+          <div v-if="roomArchive.loading" class="text-muted flex justify-center pb-5">
             <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
           </div>
           <template v-else>
@@ -700,7 +619,7 @@ async function confirmDelete(): Promise<void> {
             v-if="canCreateBoard"
             icon="i-lucide-plus"
             class="rounded-[11px] px-[18px] py-[11px] text-sm font-bold"
-            @click="createBoardOpen = true"
+            @click="createBoardModal.show"
           >
             {{ t('board.create') }}
           </UButton>
@@ -759,13 +678,13 @@ async function confirmDelete(): Promise<void> {
         </template>
         <template v-else>
           <UAlert
-            v-if="archiveBoardsFailed"
+            v-if="boardArchive.failed"
             color="error"
             variant="subtle"
             class="mx-4 mb-5 sm:mx-[30px]"
             :description="t('team.boardsError')"
           />
-          <div v-if="archiveBoardsLoading" class="text-muted flex justify-center pb-5">
+          <div v-if="boardArchive.loading" class="text-muted flex justify-center pb-5">
             <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
           </div>
           <template v-else>
@@ -928,7 +847,7 @@ async function confirmDelete(): Promise<void> {
             color="neutral"
             variant="outline"
             class="w-full justify-center rounded-[10px] px-[18px] py-[11px] text-sm font-bold sm:w-auto"
-            @click="renameOpen = true"
+            @click="renameModal.show"
           >
             {{ t('team.rename') }}
           </UButton>
@@ -1004,108 +923,48 @@ async function confirmDelete(): Promise<void> {
       @confirm="confirmDeleteBoard"
     />
 
-    <UModal v-model:open="createRoomOpen" :title="t('room.createTitle')" :ui="MODAL_UI">
-      <template #body>
-        <UForm
-          :state="createRoomState"
-          :validate="validateRoomName"
-          class="space-y-4"
-          @submit="onCreateRoom"
-        >
-          <UFormField :label="t('teams.nameLabel')" name="name">
-            <UInput
-              v-model="createRoomState.name"
-              :placeholder="t('room.createNamePlaceholder')"
-              :maxlength="ROOM_NAME_MAX_LENGTH"
-              autofocus
-              class="w-full"
-              :ui="MODAL_INPUT_UI"
-            />
-          </UFormField>
+    <EntityTextModal
+      v-model:open="createRoomModal.open"
+      :title="t('room.createTitle')"
+      :label="t('common.nameLabel')"
+      :placeholder="t('room.createNamePlaceholder')"
+      :max-length="ROOM_NAME_MAX_LENGTH"
+      :required-message="t('common.nameRequired')"
+      :too-long-message="t('common.nameTooLong', { max: ROOM_NAME_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="creatingRoom ? t('room.creating') : t('room.create')"
+      :pending="creatingRoom"
+      @submit="onCreateRoom"
+    />
 
-          <div class="flex justify-end gap-2.5">
-            <UButton
-              color="neutral"
-              variant="outline"
-              :ui="MODAL_BUTTON_UI"
-              @click="createRoomOpen = false"
-            >
-              {{ t('teams.cancel') }}
-            </UButton>
-            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="creatingRoom">
-              {{ creatingRoom ? t('room.creating') : t('room.create') }}
-            </UButton>
-          </div>
-        </UForm>
-      </template>
-    </UModal>
+    <EntityTextModal
+      v-model:open="createBoardModal.open"
+      :title="t('board.createTitle')"
+      :label="t('common.nameLabel')"
+      :placeholder="t('board.createNamePlaceholder')"
+      :max-length="BOARD_TITLE_MAX_LENGTH"
+      :required-message="t('common.nameRequired')"
+      :too-long-message="t('common.nameTooLong', { max: BOARD_TITLE_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="creatingBoard ? t('board.creating') : t('board.create')"
+      :pending="creatingBoard"
+      @submit="onCreateBoard"
+    />
 
-    <UModal v-model:open="createBoardOpen" :title="t('board.createTitle')" :ui="MODAL_UI">
-      <template #body>
-        <UForm
-          :state="createBoardState"
-          :validate="validateBoardTitle"
-          class="space-y-4"
-          @submit="onCreateBoard"
-        >
-          <UFormField :label="t('teams.nameLabel')" name="title">
-            <UInput
-              v-model="createBoardState.title"
-              :placeholder="t('board.createNamePlaceholder')"
-              :maxlength="BOARD_TITLE_MAX_LENGTH"
-              autofocus
-              class="w-full"
-              :ui="MODAL_INPUT_UI"
-            />
-          </UFormField>
-
-          <div class="flex justify-end gap-2.5">
-            <UButton
-              color="neutral"
-              variant="outline"
-              :ui="MODAL_BUTTON_UI"
-              @click="createBoardOpen = false"
-            >
-              {{ t('teams.cancel') }}
-            </UButton>
-            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="creatingBoard">
-              {{ creatingBoard ? t('board.creating') : t('board.create') }}
-            </UButton>
-          </div>
-        </UForm>
-      </template>
-    </UModal>
-
-    <UModal v-model:open="renameOpen" :title="t('team.renameTitle')" :ui="MODAL_UI">
-      <template #body>
-        <UForm :state="renameState" :validate="validateName" class="space-y-4" @submit="onRename">
-          <UFormField :label="t('teams.nameLabel')" name="name">
-            <UInput
-              v-model="renameState.name"
-              :placeholder="t('teams.namePlaceholder')"
-              :maxlength="TEAM_NAME_MAX_LENGTH"
-              autofocus
-              class="w-full"
-              :ui="MODAL_INPUT_UI"
-            />
-          </UFormField>
-
-          <div class="flex justify-end gap-2.5">
-            <UButton
-              color="neutral"
-              variant="outline"
-              :ui="MODAL_BUTTON_UI"
-              @click="renameOpen = false"
-            >
-              {{ t('teams.cancel') }}
-            </UButton>
-            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="renaming">
-              {{ t('team.rename') }}
-            </UButton>
-          </div>
-        </UForm>
-      </template>
-    </UModal>
+    <EntityTextModal
+      v-model:open="renameModal.open"
+      :title="t('team.renameTitle')"
+      :label="t('common.nameLabel')"
+      :placeholder="t('teams.namePlaceholder')"
+      :initial-value="overview?.team.name ?? ''"
+      :max-length="TEAM_NAME_MAX_LENGTH"
+      :required-message="t('common.nameRequired')"
+      :too-long-message="t('common.nameTooLong', { max: TEAM_NAME_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="t('team.rename')"
+      :pending="renaming"
+      @submit="onRename"
+    />
 
     <ConfirmModal
       v-model:open="deleteOpen"

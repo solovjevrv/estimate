@@ -9,13 +9,20 @@ export const useTeamBoardsStore = defineStore('teamBoards', () => {
   const list = ref<BoardSummary[]>([]);
   /** Архив загружается отдельно и по требованию — не тянем его при каждом заходе на страницу */
   const archivedList = ref<BoardSummary[]>([]);
+  // При переходе между командами старый HTTP-ответ не должен перезаписать новый список.
+  let listGeneration = 0;
+  let archiveGeneration = 0;
 
   async function load(teamId: string): Promise<void> {
-    list.value = await listTeamBoards(teamId);
+    const requestGeneration = ++listGeneration;
+    const boards = await listTeamBoards(teamId);
+    if (requestGeneration === listGeneration) list.value = boards;
   }
 
   async function loadArchived(teamId: string): Promise<void> {
-    archivedList.value = await listTeamBoards(teamId, true);
+    const requestGeneration = ++archiveGeneration;
+    const boards = await listTeamBoards(teamId, true);
+    if (requestGeneration === archiveGeneration) archivedList.value = boards;
   }
 
   // ISO-даты сравниваются лексикографически, поэтому свежие оказываются сверху
@@ -28,6 +35,8 @@ export const useTeamBoardsStore = defineStore('teamBoards', () => {
 
   /** Уходя со страницы команды, не показываем чужой список до новой загрузки */
   function reset(): void {
+    listGeneration += 1;
+    archiveGeneration += 1;
     list.value = [];
     archivedList.value = [];
   }

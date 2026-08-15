@@ -15,9 +15,11 @@ import { useRouter } from 'vue-router';
 import BoardCanvas from '../components/board/BoardCanvas.vue';
 import BoardShareModal from '../components/board/BoardShareModal.vue';
 import ConfirmModal from '../components/ConfirmModal.vue';
+import EntityTextModal from '../components/EntityTextModal.vue';
 import { ApiError } from '../lib/api';
-import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
+import { MODAL_BUTTON_UI, MODAL_INPUT_UI } from '../lib/modal-ui';
 import { useAsyncAction } from '../composables/use-async-action';
+import { useEntityModal } from '../composables/use-entity-modal';
 import {
   archiveBoard as archiveBoardRequest,
   deleteBoard,
@@ -207,42 +209,23 @@ onBeforeUnmount(() => {
 });
 
 // --- Переименование ---
-const renameOpen = ref(false);
 const shareOpen = ref(false);
-const renameState = reactive({ title: '' });
-
-watch(renameOpen, (open) => {
-  renameState.title = open ? (board.value?.title ?? '') : '';
-});
-
-function validateTitle(s: { title: string }): FormError[] {
-  const errors: FormError[] = [];
-  const title = trimText(s.title);
-  if (!title) {
-    errors.push({ name: 'title', message: t('teams.nameRequired') });
-  } else if (title.length > BOARD_TITLE_MAX_LENGTH) {
-    errors.push({
-      name: 'title',
-      message: t('teams.nameTooLong', { max: BOARD_TITLE_MAX_LENGTH }),
-    });
-  }
-  return errors;
-}
+const renameModal = useEntityModal();
 
 const { pending: renaming, execute: renameBoard } = useAsyncAction({
   run: (title: string) => renameBoardRequest(props.id, title),
   success: (updated) => {
     board.value = updated;
     toast.add({ title: t('board.renamed'), color: 'success', icon: 'i-lucide-check' });
-    renameOpen.value = false;
+    renameModal.close();
   },
   error: () => {
     toast.add({ title: t('board.renameError'), color: 'error' });
   },
 });
 
-async function onRename(event: FormSubmitEvent<{ title: string }>): Promise<void> {
-  await renameBoard(trimText(event.data.title));
+async function onRename(title: string): Promise<void> {
+  await renameBoard(title);
 }
 
 // --- Архивация / восстановление ---
@@ -358,7 +341,7 @@ async function confirmDelete(): Promise<void> {
         :can-edit="canEdit"
         :items="boardSession.items"
         :edges="boardSession.edges"
-        @rename="renameOpen = true"
+        @rename="renameModal.show"
         @archive="archiveOpen = true"
         @unarchive="unarchive"
         @share="shareOpen = true"
@@ -367,35 +350,19 @@ async function confirmDelete(): Promise<void> {
     </div>
   </div>
 
-  <UModal v-model:open="renameOpen" :title="t('board.renameTitle')" :ui="MODAL_UI">
-    <template #body>
-      <UForm :state="renameState" :validate="validateTitle" class="space-y-4" @submit="onRename">
-        <UFormField :label="t('teams.nameLabel')" name="title">
-          <UInput
-            v-model="renameState.title"
-            :maxlength="BOARD_TITLE_MAX_LENGTH"
-            autofocus
-            class="w-full"
-            :ui="MODAL_INPUT_UI"
-          />
-        </UFormField>
-
-        <div class="flex justify-end gap-2.5">
-          <UButton
-            color="neutral"
-            variant="outline"
-            :ui="MODAL_BUTTON_UI"
-            @click="renameOpen = false"
-          >
-            {{ t('teams.cancel') }}
-          </UButton>
-          <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="renaming">
-            {{ t('board.rename') }}
-          </UButton>
-        </div>
-      </UForm>
-    </template>
-  </UModal>
+  <EntityTextModal
+    v-model:open="renameModal.open"
+    :title="t('board.renameTitle')"
+    :label="t('common.nameLabel')"
+    :initial-value="board?.title ?? ''"
+    :max-length="BOARD_TITLE_MAX_LENGTH"
+    :required-message="t('common.nameRequired')"
+    :too-long-message="t('common.nameTooLong', { max: BOARD_TITLE_MAX_LENGTH })"
+    :cancel-label="t('common.cancel')"
+    :submit-label="t('board.rename')"
+    :pending="renaming"
+    @submit="onRename"
+  />
 
   <ConfirmModal
     v-model:open="archiveOpen"
