@@ -1,4 +1,4 @@
-import type { BoardEdge, BoardEdgeStyle, BoardItem, BoardOp, BoardItemStyle } from '@poker/shared';
+import type { BoardEdge, BoardItem, BoardOp, BoardItemStyle } from '@poker/shared';
 import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@poker/shared';
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
@@ -112,7 +112,6 @@ interface MakeOptions {
 function makeSelection(opts: MakeOptions = {}) {
   const applyOps = vi.fn<(ops: BoardOp[]) => void>();
   const onContainerClick = vi.fn();
-  const setPendingEdgeEditId = vi.fn();
   const breakFollowOnEdit = vi.fn();
 
   const itemsRef = ref(opts.items ?? []);
@@ -136,20 +135,17 @@ function makeSelection(opts: MakeOptions = {}) {
     pickImageFile: vi.fn(),
     uploadImage: vi.fn(),
     activeTool: opts.activeTool ?? (() => 'select'),
-    setPendingEdgeEditId,
     breakFollowOnEdit,
     textDefaultDimensions: (c) => defaultTextDims(c),
     getBoardZIndex: opts.getBoardZIndex ?? (() => ({ max: 10, min: 0 })),
     defaultItemColor: opts.defaultItemColor ?? '#CCCCCC',
     resolveTextColor: () => '#111111',
-    resolveEdgeColor: (c) => c ?? '#222222',
   });
 
   return {
     api,
     applyOps,
     onContainerClick,
-    setPendingEdgeEditId,
     breakFollowOnEdit,
     setSelected: (nodes: MockNode[], edges: MockEdge[] = []) => {
       selectedNodesRef.value = nodes;
@@ -167,7 +163,7 @@ type InspectedBoardOp = {
   type: BoardOp['type'];
   id: string;
   item: Pick<BoardItem, 'id' | 'content' | 'style' | 'zIndex'>;
-  patch: Partial<BoardItem> & { style: BoardItemStyle & BoardEdgeStyle };
+  patch: Partial<BoardItem> & { style: BoardItemStyle };
 };
 
 function lastOps(applyOps: ReturnType<typeof vi.fn>): InspectedBoardOp[] {
@@ -223,28 +219,6 @@ describe('useBoardSelection — selectedColor', () => {
   it('falls back to defaultItemColor when no node is selected', () => {
     const { api } = makeSelection({ selectedNodes: [], defaultItemColor: '#ABCDEF' });
     expect(api.selectedColor.value).toBe('#ABCDEF');
-  });
-});
-
-describe('useBoardSelection — selectedEdgeStyle/Color', () => {
-  it('returns a safe default when no edge is selected', () => {
-    const { api } = makeSelection({ selectedEdges: [] });
-    expect(api.selectedEdgeStyle.value).toEqual({
-      line: 'curved',
-      markerStart: 'none',
-      markerEnd: 'arrow',
-    });
-  });
-
-  it('reads style from the first selected edge and resolves its color', () => {
-    const e = flowEdge(
-      boardEdge('e', {
-        style: { line: 'straight', markerStart: 'dot', markerEnd: 'arrow', color: '#FF0000' },
-      }),
-    );
-    const { api } = makeSelection({ selectedEdges: [e] });
-    expect(api.selectedEdgeStyle.value.color).toBe('#FF0000');
-    expect(api.selectedEdgeColor.value).toBe('#FF0000');
   });
 });
 
@@ -535,21 +509,6 @@ describe('useBoardSelection — emoji/sticker/image', () => {
   });
 });
 
-describe('useBoardSelection — edge text edit', () => {
-  it('addTextToSelectedEdge forwards the edge id to the editor', () => {
-    const e = flowEdge(boardEdge('edge-1'));
-    const { api, setPendingEdgeEditId } = makeSelection({ selectedEdges: [e] });
-    api.addTextToSelectedEdge();
-    expect(setPendingEdgeEditId).toHaveBeenCalledWith('edge-1');
-  });
-
-  it('addTextToSelectedEdge is a no-op without a selected edge', () => {
-    const { api, setPendingEdgeEditId } = makeSelection({ selectedEdges: [] });
-    api.addTextToSelectedEdge();
-    expect(setPendingEdgeEditId).not.toHaveBeenCalled();
-  });
-});
-
 describe('useBoardSelection — layer ops', () => {
   it('bringSelectedToFront stacks above current max (max+1, max+2, ...)', () => {
     const a = flowNode(item('a'));
@@ -585,15 +544,6 @@ describe('useBoardSelection — delete ops', () => {
     const ops = lastOps(applyOps);
     expect(ops.map((op) => op.type)).toEqual(['item.delete', 'item.delete']);
     expect(ops.map((op) => op.id).sort()).toEqual(['a', 'b']);
-  });
-
-  it('deleteSelectedEdges emits edge.delete for each selected edge', () => {
-    const { api, applyOps } = makeSelection({
-      selectedEdges: [flowEdge(boardEdge('e1')), flowEdge(boardEdge('e2'))],
-    });
-    api.deleteSelectedEdges();
-    const ops = lastOps(applyOps);
-    expect(ops.map((op) => op.type)).toEqual(['edge.delete', 'edge.delete']);
   });
 });
 
@@ -656,26 +606,6 @@ describe('useBoardSelection — toolbar positions', () => {
       makeSelection({ selectedNodes: [a], canEdit: () => false }).api.selectionToolbarPosition
         .value,
     ).toBeNull();
-  });
-
-  it('edgeToolbarPosition projects the midpoint between source and target', () => {
-    const src = flowNode(item('s'), { x: 0, y: 0 }, { width: 100, height: 100 });
-    const tgt = flowNode(item('t'), { x: 200, y: 100 }, { width: 100, height: 100 });
-    const e = flowEdge(boardEdge('e', { sourceItemId: 's', targetItemId: 't' }));
-    const { api } = makeSelection({
-      selectedEdges: [e],
-      flowNodes: [src, tgt],
-      getViewport: () => ({ x: 0, y: 0, zoom: 1 }),
-    });
-    const pos = api.edgeToolbarPosition.value!;
-    expect(pos.left).toBe(100); // (0 + 200) / 2
-    expect(pos.top).toBe(50); // (0 + 100) / 2
-  });
-
-  it('edgeToolbarPosition is null when source/target nodes are missing', () => {
-    const e = flowEdge(boardEdge('e', { sourceItemId: 'missing', targetItemId: 'also' }));
-    const { api } = makeSelection({ selectedEdges: [e], flowNodes: [] });
-    expect(api.edgeToolbarPosition.value).toBeNull();
   });
 });
 
@@ -759,39 +689,5 @@ describe('useBoardSelection — context menu', () => {
     expect(api.contextMenu.value).not.toBeNull();
     api.closeContextMenu();
     expect(api.contextMenu.value).toBeNull();
-  });
-});
-
-describe('useBoardSelection — edge style ops', () => {
-  it('patchEdgeLine emits edge.patch with the new line kind', () => {
-    const e = flowEdge(boardEdge('e'));
-    const { api, applyOps } = makeSelection({ selectedEdges: [e] });
-    api.patchEdgeLine('orthogonal');
-    const op = lastOps(applyOps)[0]!;
-    expect(op.type).toBe('edge.patch');
-    expect(op.patch.style.line).toBe('orthogonal');
-  });
-
-  it('patchEdgeColor emits edge.patch with the new color', () => {
-    const e = flowEdge(boardEdge('e'));
-    const { api, applyOps } = makeSelection({ selectedEdges: [e] });
-    api.patchEdgeColor('#AABBCC');
-    expect(lastOps(applyOps)[0]!.patch.style.color).toBe('#AABBCC');
-  });
-
-  it('previewEdgeColor overrides only the color, preserving the rest of the style', () => {
-    const e = flowEdge(
-      boardEdge('e', {
-        style: { line: 'curved', markerStart: 'dot', markerEnd: 'arrow', color: '#orig' },
-      }),
-    );
-    const { api, applyOps } = makeSelection({ selectedEdges: [e], flowEdges: [e] });
-    api.previewEdgeColor('#new');
-    expect(lastOps(applyOps)[0]!.patch.style).toEqual({
-      line: 'curved',
-      markerStart: 'dot',
-      markerEnd: 'arrow',
-      color: '#new',
-    });
   });
 });
