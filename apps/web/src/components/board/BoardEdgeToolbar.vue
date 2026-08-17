@@ -61,7 +61,7 @@ const emit = defineEmits<{
   colorPreview: [hex: BoardColorHex];
   /** Откат брошенного превью (18.4) — см. пояснение у `cancel` в
    * BoardColorPickerMenu.vue и у `previewEdgeColor`/`edgeColorPreviewIds`
-   * в BoardCanvas.vue. */
+   * в use-board-edges.ts. */
   colorCancel: [hex: BoardColorHex];
   addText: [];
   delete: [];

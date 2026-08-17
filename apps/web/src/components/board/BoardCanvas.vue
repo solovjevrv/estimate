@@ -47,8 +47,6 @@ import {
   Panel,
   useVueFlow,
   VueFlow,
-  type Connection,
-  type EdgeMouseEvent,
   type GraphNode,
   type NodeDragEvent,
 } from '@vue-flow/core';
@@ -58,7 +56,6 @@ import {
   onBeforeUnmount,
   onMounted,
   provide,
-  ref,
   shallowRef,
   useTemplateRef,
   watch,
@@ -88,16 +85,17 @@ import { readableTextColor } from '../../lib/board/board-colors';
 import type { BoardTextEditorHandle } from '../../lib/board/board-rich-text';
 import { useBoardHotkeys } from '../../lib/board/use-board-hotkeys';
 import type {
+  BoardFlowEdge,
   BoardFlowNode,
   BoardSelectionEdge,
   BoardSelectionNode,
 } from '../../lib/board/vue-flow-adapter';
 import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
-import { uuid } from '../../lib/board/uuid';
 import { useBoardSessionStore } from '../../stores/board-session';
 import { useBoardClipboard } from '../../features/boards/composables/use-board-clipboard';
 import { useBoardCreation } from '../../features/boards/composables/use-board-creation';
 import { useBoardDragAndSnap } from '../../features/boards/composables/use-board-drag-and-snap';
+import { useBoardEdges } from '../../features/boards/composables/use-board-edges';
 import { useBoardSelection } from '../../features/boards/composables/use-board-selection';
 import { useBoardViewport } from '../../features/boards/composables/use-board-viewport';
 import BoardSelectionToolbar from './BoardSelectionToolbar.vue';
@@ -390,9 +388,6 @@ const selection = useBoardSelection({
   pickImageFile,
   uploadImage,
   activeTool: () => activeTool.value,
-  setPendingEdgeEditId: (id) => {
-    pendingEdgeEditId.value = id;
-  },
   breakFollowOnEdit,
   textDefaultDimensions,
   // Сохраняем прежнюю baseline-семантику: максимум не ниже 0, минимум не выше 0.
@@ -401,20 +396,17 @@ const selection = useBoardSelection({
   getBoardZIndex: () => ({ max: maxZIndex(props.items), min: minZIndex(props.items) }),
   defaultItemColor: STICKY_DEFAULT_COLOR,
   resolveTextColor: readableTextColor,
-  resolveEdgeColor,
 });
 
 // Вынесенные в composable состояние и методы, которыми пользуется шаблон.
 // Computed-свойства и методы деструктурируются как есть — Vue 3 автораспаковывает
-// ref/computed в шаблонах для top-level констант <script setup>. onEdgeDoubleClick
-// остается локальным (он про клик по связи, а не про выделение).
+// ref/computed в шаблонах для top-level констант <script setup>. Логика связей
+// (create/patch/label) вынесена в `useBoardEdges` (19.32) — Canvas лишь пробрасывает
+// состояние и методы в шаблон через `edges`.
 const {
   selectionToolbarPosition,
-  edgeToolbarPosition,
   selectedForm,
   selectedColor,
-  selectedEdgeStyle,
-  selectedEdgeColor,
   selectedFontSize,
   canIncreaseSelectedFontSize,
   canDecreaseSelectedFontSize,
@@ -442,19 +434,46 @@ const {
   bringSelectedToFront,
   sendSelectedToBack,
   deleteSelected,
+  previewSelectedColor,
+  cancelSelectedColorPreview,
+  previewSelectedTextColor,
+  cancelSelectedTextColorPreview,
+} = selection;
+
+/**
+ * Управление связями (12.8–12.9) — создание edge.create, форматирование стиля,
+ * live-preview цвета и открытие редактора подписи. Вынесено из Canvas/selection
+ * в отдельный composable (19.32); Canvas пробрасывает только адаптерные callbacks
+ * и потребляет `pendingEdgeEditId` через provide (см. ниже).
+ */
+const edges = useBoardEdges({
+  canEdit: () => props.canEdit,
+  getNodes: () => getNodes.value as BoardFlowNode[],
+  getEdges: () => getEdges.value as BoardFlowEdge[],
+  getSelectedEdges: () => getSelectedEdges.value as BoardFlowEdge[],
+  getViewport: () => viewport.value,
+  applyOps: (ops) => void boardSession.applyOps(ops),
+  activeTool: () => activeTool.value,
+  setActiveTool: (tool) => {
+    activeTool.value = tool as typeof activeTool.value;
+  },
+  resolveEdgeColor,
+  breakFollowOnEdit,
+});
+
+const {
+  edgeToolbarPosition,
+  selectedEdgeStyle,
+  selectedEdgeColor,
+  addTextToSelectedEdge,
   deleteSelectedEdges,
   patchEdgeLine,
   patchEdgeMarkerStart,
   patchEdgeMarkerEnd,
   patchEdgeColor,
-  addTextToSelectedEdge,
-  previewSelectedColor,
-  cancelSelectedColorPreview,
-  previewSelectedTextColor,
-  cancelSelectedTextColorPreview,
   previewEdgeColor,
   cancelEdgeColorPreview,
-} = selection;
+} = edges;
 
 /**
  * Управление viewport, fullscreen, follow-mode и cursor/camera awareness
@@ -501,13 +520,12 @@ watch(
 // только provide для потребителей через контекст доски.
 
 /** Id связи, подпись которой нужно открыть для ввода текста прямо на стрелке (12.8) */
-const pendingEdgeEditId = ref<string | null>(null);
 provide(
   BOARD_CAN_EDIT_KEY,
   computed(() => props.canEdit),
 );
 provide(BOARD_PENDING_EDIT_ID_KEY, pendingEditId);
-provide(BOARD_PENDING_EDGE_EDIT_ID_KEY, pendingEdgeEditId);
+provide(BOARD_PENDING_EDGE_EDIT_ID_KEY, edges.pendingEdgeEditId);
 /**
  * Хэндл узла, сейчас редактирующего текст (12.13) — публикует его сам узел,
  * см. `board-rich-text.ts`. `shallowRef`, не `ref` — иначе Vue своим
@@ -608,11 +626,6 @@ function onNodeDrag(event: NodeDragEvent): void {
   if (event.event instanceof MouseEvent) cursorThrottler(event.event);
 }
 
-function onEdgeDoubleClick({ edge }: EdgeMouseEvent): void {
-  if (!props.canEdit) return;
-  pendingEdgeEditId.value = edge.id;
-}
-
 function textDefaultDimensions(
   content: BoardItemContent,
 ): { width: number; height: number } | null {
@@ -634,7 +647,7 @@ useBoardHotkeys({
   canEdit: computed(() => props.canEdit),
   deleteSelection: () => {
     selection.deleteSelected();
-    selection.deleteSelectedEdges();
+    edges.deleteSelectedEdges();
   },
   duplicateSelection: duplicateSelected,
   selectAll: selection.selectAllElements,
@@ -647,35 +660,6 @@ useBoardHotkeys({
   undo: () => void boardSession.undo(),
   redo: () => void boardSession.redo(),
 });
-
-function onConnect(event: Connection): void {
-  if (!props.canEdit) return;
-  const id = uuid();
-  void boardSession.applyOps([
-    {
-      type: 'edge.create',
-      clientOpId: uuid(),
-      edge: {
-        id,
-        sourceItemId: event.source,
-        targetItemId: event.target,
-        // Конкретная точка на карточке (top/right/bottom/left), которую реально
-        // схватили/отпустили — не «ближайшая сторона», решение пользователя
-        // 07.08.2026 после ручной проверки (см. floating-edge-geometry.ts)
-        sourceHandle: event.sourceHandle ?? null,
-        targetHandle: event.targetHandle ?? null,
-        label: null,
-        // Цвет не задаём (12.9) — решается на лету от темы каждого зрителя
-        // (см. resolveEdgeColor), пока пользователь явно не выберет свой
-        style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
-      },
-    },
-  ]);
-  // Инструмент «Стрелка» (12.9) — только affordance, само создание не зависит от
-  // него (drag от хендла работает всегда), но после успешного соединения логично
-  // вернуть инструмент на «Выделение», как у стикера/фигуры
-  if (activeTool.value === 'arrow') activeTool.value = 'select';
-}
 </script>
 
 <template>
@@ -708,7 +692,7 @@ function onConnect(event: Connection): void {
       fit-view-on-init
       :delete-key-code="null"
       :elevate-nodes-on-select="false"
-      @connect="onConnect"
+      @connect="edges.onConnect"
       @pane-click="onPaneClick"
       @pane-context-menu="onPaneContextMenu"
       @move-start="onManualCameraInteraction"
@@ -719,7 +703,7 @@ function onConnect(event: Connection): void {
       @node-click="onNodeClick"
       @node-context-menu="onNodeContextMenu"
       @selection-context-menu="onSelectionContextMenu"
-      @edge-double-click="onEdgeDoubleClick"
+      @edge-double-click="edges.onEdgeDoubleClick"
       @edge-context-menu="onEdgeContextMenu"
     >
       <Background pattern-color="var(--brand-border)" :gap="22" variant="dots" />
@@ -810,8 +794,8 @@ function onConnect(event: Connection): void {
         @duplicate="duplicateSelected"
         @group="groupSelection"
         @ungroup="ungroupSelection"
-        @add-text="addTextToSelectedEdge"
-        @delete="contextMenu.target === 'item' ? deleteSelected() : deleteSelectedEdges()"
+        @add-text="edges.addTextToSelectedEdge"
+        @delete="contextMenu.target === 'item' ? deleteSelected() : edges.deleteSelectedEdges()"
         @close="closeContextMenu"
       />
 
