@@ -493,6 +493,13 @@ onMounted(() => {
   viewportControl.attach();
   document.addEventListener('paste', onPaste);
   document.addEventListener('copy', onCopyListener);
+  // Vue Flow renders `.vue-flow__pane` and `.vue-flow__viewport` internally —
+  // we can't attach attrs from the template, so set data-testid imperatively
+  // for e2e selectors.
+  const pane = rootEl.value?.querySelector('.vue-flow__pane');
+  if (pane) pane.setAttribute('data-testid', 'board-pane');
+  const viewportEl = rootEl.value?.querySelector('.vue-flow__viewport');
+  if (viewportEl) viewportEl.setAttribute('data-testid', 'board-viewport');
 });
 onBeforeUnmount(() => {
   viewportControl.dispose();
@@ -665,6 +672,7 @@ useBoardHotkeys({
 <template>
   <div
     ref="root"
+    data-testid="board-canvas"
     class="board-canvas-root h-full w-full bg-[var(--ui-bg)]"
     :class="{
       'board-canvas-tool-armed': activeTool !== 'select',
@@ -675,6 +683,7 @@ useBoardHotkeys({
     @dragover="onPaneDragOver"
   >
     <VueFlow
+      data-testid="board-flow"
       :node-types="nodeTypes"
       :edge-types="edgeTypes"
       :nodes-draggable="canEdit"
@@ -847,6 +856,7 @@ useBoardHotkeys({
            референсе), аватарки — прямо на белой карточке, без своей. -->
       <Panel v-if="boardSession.presence.length > 1" position="top-right">
         <div
+          data-testid="board-presence"
           class="board-presence surface-card flex items-center"
           :aria-label="t('board.presence')"
         >
@@ -861,6 +871,11 @@ useBoardHotkeys({
             <div
               v-for="(entry, index) in boardSession.presence"
               :key="entry.participantId"
+              data-testid="board-presence-avatar"
+              :data-self="entry.participantId === boardSession.participantId ? 'true' : 'false'"
+              :data-following="
+                entry.participantId === boardSession.followedParticipantId ? 'true' : 'false'
+              "
               role="button"
               :tabindex="entry.participantId === boardSession.participantId ? -1 : 0"
               :aria-pressed="entry.participantId === boardSession.followedParticipantId"
@@ -899,7 +914,7 @@ useBoardHotkeys({
       </Panel>
 
       <Panel v-if="followedName" position="top-center">
-        <div class="board-following surface-card flex items-center">
+        <div data-testid="board-following" class="board-following surface-card flex items-center">
           <span class="board-following-label">
             {{ t('board.followingPrefix') }}
             <span class="board-following-name">{{ followedName }}</span>

@@ -48,7 +48,7 @@ function isActive(value: BoardTool): boolean {
 </script>
 
 <template>
-  <div class="board-toolbar" @click.stop>
+  <div data-testid="board-toolbar" class="board-toolbar" @click.stop>
     <button
       type="button"
       class="board-toolbar-btn"

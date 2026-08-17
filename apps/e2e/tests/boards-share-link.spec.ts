@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { boardLocators } from '../src/board-locators';
 import { expect, test } from '../src/fixtures';
 
 /**
@@ -45,7 +46,8 @@ test.describe('доски по ссылке (14.4)', () => {
 
     // Гость видит доску, но не может редактировать
     await expect(guestPage).toHaveURL(/\/boards\/[0-9a-f-]{36}/);
-    await expect(guestPage.locator('.board-canvas')).toBeVisible();
+    const board = boardLocators(guestPage);
+    await expect(board.canvas).toBeVisible();
     // Нет кнопки редактирования для гостя (view-роль)
     await expect(guestPage.locator('button').filter({ hasText: /стикер/i })).toBeHidden();
   });
@@ -83,7 +85,7 @@ test.describe('доски по ссылке (14.4)', () => {
     await guestPage.goto(boardUrl);
 
     // Гость может использовать инструменты (edit-роль)
-    await expect(guestPage.locator('.board-canvas')).toBeVisible();
+    await expect(boardLocators(guestPage).canvas).toBeVisible();
     await expect(guestPage.locator('button').filter({ hasText: /стикер/i })).toBeVisible();
   });
 

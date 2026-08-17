@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import type { Locator, Page } from '@playwright/test';
 
+import { boardLocators } from '../src/board-locators';
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
 
 /**
@@ -35,36 +36,34 @@ test.describe('Доски: стикер-паки', () => {
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
-    await expect(page.locator('.vue-flow__pane')).toBeVisible();
+    const board = boardLocators(page);
+    await expect(board.pane).toBeVisible();
 
     function stickerInPack(root: Page | Locator, packLabel: string): Locator {
       return root
-        .locator('.board-sticker-picker-section', { hasText: packLabel })
-        .locator('.board-sticker-picker-item')
+        .locator('[data-testid="board-sticker-picker-section"]', { hasText: packLabel })
+        .locator('[data-testid="board-sticker-picker-item"]')
         .first();
     }
 
     // Клик по инструменту сразу открывает пикер — без клика по холсту
-    await page.locator('.board-toolbar button[aria-label="Стикер-паки"]').click();
-    await expect(page.locator('.board-sticker-picker')).toBeVisible();
+    await board.toolbarButton('Стикер-паки').click();
+    await expect(board.stickerPicker).toBeVisible();
     await stickerInPack(page, 'Жизнерадостная утя').click();
 
-    const stickerNode = page.locator('.vue-flow__node-sticker').first();
+    const stickerNode = board.stickerNodes.first();
     await expect(stickerNode).toBeVisible();
     const firstSrc = await stickerNode.locator('img').getAttribute('src');
     expect(firstSrc).toBeTruthy();
 
     // Переживает перезагрузку — сохранилось на сервере
     await page.reload();
-    await expect(page.locator('.vue-flow__node-sticker')).toHaveCount(1);
-    await expect(page.locator('.vue-flow__node-sticker').first().locator('img')).toHaveAttribute(
-      'src',
-      firstSrc!,
-    );
+    await expect(board.stickerNodes).toHaveCount(1);
+    await expect(board.stickerNodes.first().locator('img')).toHaveAttribute('src', firstSrc!);
 
     // Тулбар выделения — только замена стикера + дублировать + удалить
-    await page.locator('.vue-flow__node-sticker').click();
-    const toolbar = page.locator('.board-selection-toolbar');
+    await board.stickerNodes.click();
+    const toolbar = board.selectionToolbar;
     await expect(toolbar).toBeVisible();
     await expect(toolbar.getByLabel('Заменить стикер')).toBeVisible();
     await expect(toolbar.getByLabel('Тип элемента')).toHaveCount(0);
@@ -79,24 +78,20 @@ test.describe('Доски: стикер-паки', () => {
 
     // Замена стикера через тулбар выделения — другой пак (через таб сверху), другая картинка
     await toolbar.getByLabel('Заменить стикер').click();
-    const replacePopover = page.locator('.board-sticker-picker').last();
+    const replacePopover = board.stickerPicker.last();
     await replacePopover.getByRole('button', { name: 'Вечная классика' }).click();
     await stickerInPack(replacePopover, 'Вечная классика').click();
 
-    await expect(page.locator('.vue-flow__node-sticker')).toHaveCount(1);
-    const secondSrc = await page
-      .locator('.vue-flow__node-sticker')
-      .first()
-      .locator('img')
-      .getAttribute('src');
+    await expect(board.stickerNodes).toHaveCount(1);
+    const secondSrc = await board.stickerNodes.first().locator('img').getAttribute('src');
     expect(secondSrc).toBeTruthy();
     expect(secondSrc).not.toBe(firstSrc);
 
     // Раздел «Недавние» появляется после того, как хотя бы один стикер был выбран
-    await page.locator('.vue-flow__node-sticker').click();
+    await board.stickerNodes.click();
     await toolbar.getByLabel('Заменить стикер').click();
     await expect(
-      page.locator('.board-sticker-picker').last().locator('.board-sticker-picker-section', {
+      board.stickerPicker.last().locator('[data-testid="board-sticker-picker-section"]', {
         hasText: 'Недавние',
       }),
     ).toBeVisible();

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { boardLocators } from '../src/board-locators';
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
 
 /**
@@ -41,27 +42,27 @@ test('после обрыва сети участник догоняет про�
   await pageA.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
   await pageA.locator('form').getByRole('button', { name: 'Создать доску' }).click();
   await pageA.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+  const boardA = boardLocators(pageA);
   const boardUrl = pageA.url();
-  await expect(pageA.locator('.vue-flow__pane')).toBeVisible();
+  await expect(boardA.pane).toBeVisible();
 
   const contextB = await newContext(browser);
   await loginAs(contextB, owner);
   const pageB = await contextB.newPage();
   await pageB.goto(boardUrl);
-  await expect(pageB.locator('.vue-flow__pane')).toBeVisible();
+  const boardB = boardLocators(pageB);
+  await expect(boardB.pane).toBeVisible();
 
   // Стикер до обрыва — доказывает, что realtime вообще работает, до перехода к офлайну
-  await pageA.locator('.vue-flow__pane').dblclick({ position: { x: 150, y: 150 } });
-  await expect(pageA.locator('.vue-flow__node-sticky')).toHaveCount(1);
-  const beforeId = await pageA.locator('.vue-flow__node-sticky').getAttribute('data-id');
-  const textareaBefore = pageA.locator(
-    `.vue-flow__node[data-id="${beforeId}"] [contenteditable="true"]`,
-  );
+  await boardA.pane.dblclick({ position: { x: 150, y: 150 } });
+  await expect(boardA.stickyNodes).toHaveCount(1);
+  const beforeId = await boardA.stickyNodes.getAttribute('data-node-id');
+  const textareaBefore = pageA.locator(`[data-node-id="${beforeId}"] [contenteditable="true"]`);
   await textareaBefore.click();
   await textareaBefore.fill('До обрыва');
-  await pageA.locator('.vue-flow__pane').click({ position: { x: 550, y: 600 } });
+  await boardA.pane.click({ position: { x: 550, y: 600 } });
 
-  const nodeBLocator = pageB.locator(`.vue-flow__node[data-id="${beforeId}"]`);
+  const nodeBLocator = pageB.locator(`[data-node-id="${beforeId}"]`);
   await expect(nodeBLocator).toContainText('До обрыва');
   const initialBoxB = await nodeBLocator.boundingBox();
   expect(initialBoxB).not.toBeNull();
@@ -70,7 +71,7 @@ test('после обрыва сети участник догоняет про�
   await contextB.setOffline(true);
 
   // Пока B офлайн: A двигает существующую карточку и создаёт новую
-  const nodeA = pageA.locator(`.vue-flow__node[data-id="${beforeId}"]`);
+  const nodeA = pageA.locator(`[data-node-id="${beforeId}"]`);
   const boxBefore = await nodeA.boundingBox();
   expect(boxBefore).not.toBeNull();
   await pageA.mouse.move(boxBefore!.x + boxBefore!.width / 2, boxBefore!.y + boxBefore!.height / 2);
@@ -83,32 +84,28 @@ test('после обрыва сети участник догоняет про�
   // промежуточный троттленный патч драга, а не финальный
   await pageA.waitForTimeout(300);
 
-  await pageA.locator('.vue-flow__pane').dblclick({ position: { x: 950, y: 150 } });
-  await expect(pageA.locator('.vue-flow__node-sticky')).toHaveCount(2);
-  const afterId = await pageA
-    .locator(`.vue-flow__node-sticky:not([data-id="${beforeId}"])`)
-    .getAttribute('data-id');
-  const textareaAfter = pageA.locator(
-    `.vue-flow__node[data-id="${afterId}"] [contenteditable="true"]`,
-  );
+  await boardA.pane.dblclick({ position: { x: 950, y: 150 } });
+  await expect(boardA.stickyNodes).toHaveCount(2);
+  const afterId = await boardA.stickyNodes
+    .locator(`:scope:not([data-node-id="${beforeId}"])`)
+    .getAttribute('data-node-id');
+  const textareaAfter = pageA.locator(`[data-node-id="${afterId}"] [contenteditable="true"]`);
   await textareaAfter.click();
   await textareaAfter.fill('После обрыва');
-  await pageA.locator('.vue-flow__pane').click({ position: { x: 550, y: 600 } });
+  await boardA.pane.click({ position: { x: 550, y: 600 } });
 
   // Ни одно из офлайн-изменений пока не долетело до B
-  await expect(pageB.locator('.vue-flow__node-sticky')).toHaveCount(1);
+  await expect(boardB.stickyNodes).toHaveCount(1);
 
   // --- Сеть у B восстанавливается — ждём переподключения и догона ---
   await contextB.setOffline(false);
 
-  await expect(pageB.locator(`.vue-flow__node[data-id="${afterId}"]`)).toBeVisible({
+  await expect(pageB.locator(`[data-node-id="${afterId}"]`)).toBeVisible({
     timeout: 20_000,
   });
-  await expect(pageB.locator(`.vue-flow__node[data-id="${afterId}"]`)).toContainText(
-    'После обрыва',
-  );
+  await expect(pageB.locator(`[data-node-id="${afterId}"]`)).toContainText('После обрыва');
   // Ни дублей, ни потерь — ровно те же две карточки, что и у A
-  await expect(pageB.locator('.vue-flow__node-sticky')).toHaveCount(2);
+  await expect(boardB.stickyNodes).toHaveCount(2);
 
   await expect
     .poll(async () => {

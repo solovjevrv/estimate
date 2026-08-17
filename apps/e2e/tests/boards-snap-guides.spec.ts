@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { boardLocators } from '../src/board-locators';
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
 
 /**
@@ -30,6 +31,8 @@ test.describe('Доски: snap-направляющие при перетаск
     await loginAs(context, owner);
     const page = await context.newPage();
 
+    const board = boardLocators(page);
+
     await page.goto('/boards');
     await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
     await page
@@ -37,28 +40,28 @@ test.describe('Доски: snap-направляющие при перетаск
       .fill(`${E2E_ROOM_PREFIX}Snap ${randomUUID().slice(0, 8)}`);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
-    await expect(page.locator('.vue-flow__pane')).toBeVisible();
-    await page.locator('.vue-flow__pane').click();
+    await expect(board.pane).toBeVisible();
+    await board.pane.click();
     await page.keyboard.press('ControlOrMeta+0');
     await page.waitForTimeout(200);
 
     // Два стикера на одной горизонтали:
     // A: центр в (400, 300) → x=310, y=210 (центр стикера при двойном клике)
     // B: центр в (600, 300) → x=510, y=210
-    await page.locator('.vue-flow__pane').dblclick({ position: { x: 400, y: 300 } });
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(1);
+    await board.pane.dblclick({ position: { x: 400, y: 300 } });
+    await expect(board.stickyNodes).toHaveCount(1);
     await page.keyboard.press('Escape');
 
-    await page.locator('.vue-flow__pane').dblclick({ position: { x: 600, y: 300 } });
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(2);
+    await board.pane.dblclick({ position: { x: 600, y: 300 } });
+    await expect(board.stickyNodes).toHaveCount(2);
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
 
     await page.keyboard.press('ControlOrMeta+0');
     await page.waitForTimeout(200);
 
-    const leftSticky = page.locator('.vue-flow__node-sticky').first();
-    const rightSticky = page.locator('.vue-flow__node-sticky').last();
+    const leftSticky = board.stickyNodes.first();
+    const rightSticky = board.stickyNodes.last();
 
     const leftBox = await leftSticky.boundingBox();
     expect(leftBox).not.toBeNull();
@@ -86,13 +89,13 @@ test.describe('Доски: snap-направляющие при перетаск
     );
 
     // Во время drag появляются snap-гиды (только визуально, позиция не меняется)
-    await expect(page.locator('.board-snap-guides')).toBeVisible();
-    await expect(page.locator('.board-snap-guide')).toHaveCount(1);
+    await expect(board.snapGuides).toBeVisible();
+    await expect(board.snapGuide).toHaveCount(1);
 
     // Отпускаем — snap позиция применяется, гиды исчезают
     await page.mouse.up();
     await page.waitForTimeout(200);
-    await expect(page.locator('.board-snap-guides')).toHaveCount(0);
+    await expect(board.snapGuides).toHaveCount(0);
 
     // Правый стикер притянулся к левому — оба имеют одинаковый левый край
     const snappedRightBox = await rightSticky.boundingBox();

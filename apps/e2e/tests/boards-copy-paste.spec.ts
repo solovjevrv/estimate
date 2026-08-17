@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import sharp from 'sharp';
 
+import { boardLocators } from '../src/board-locators';
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
 
 /**
@@ -66,25 +67,28 @@ test.describe('Доски: копирование/вставка', () => {
       await page.getByPlaceholder('Например, Ретро спринта 24').fill(name);
       await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
       await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
-      await expect(page.locator('.vue-flow__pane')).toBeVisible();
-      await page.locator('.vue-flow__pane').click(); // фокус на холст перед хоткеем
+      const board = boardLocators(page);
+      await expect(board.pane).toBeVisible();
+      await board.pane.click(); // фокус на холст перед хоткеем
       await page.keyboard.press('ControlOrMeta+0');
-      // `.vue-flow__pane` появляется сразу, а WS-`join()` доски (`BoardPage.vue`)
-      // не await-ится перед этим — на второй доске в тесте (сразу после leave/join
-      // предыдущей на том же сокете) вставка сразу после навигации может улететь
-      // раньше, чем join долетит до сервера; даём небольшой запас
+      // `[data-testid="board-pane"]` появляется сразу, а WS-`join()` доски
+      // (`BoardPage.vue`) не await-ится перед этим — на второй доске в тесте
+      // (сразу после leave/join предыдущей на том же сокете) вставка сразу
+      // после навигации может улететь раньше, чем join долетит до сервера;
+      // даём небольшой запас
       await page.waitForTimeout(300);
     }
 
     // --- Доска A: два стикера в разных углах, выделяем оба, копируем и вставляем ---
+    const board = boardLocators(page);
     await createBoard(`${E2E_ROOM_PREFIX}Copy A ${randomUUID().slice(0, 8)}`);
 
-    await page.locator('.vue-flow__pane').dblclick({ position: { x: 300, y: 150 } });
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(1);
+    await board.pane.dblclick({ position: { x: 300, y: 150 } });
+    await expect(board.stickyNodes).toHaveCount(1);
     await page.keyboard.press('Escape'); // выйти из режима правки
 
-    await page.locator('.vue-flow__pane').dblclick({ position: { x: 950, y: 150 } });
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(2);
+    await board.pane.dblclick({ position: { x: 950, y: 150 } });
+    await expect(board.stickyNodes).toHaveCount(2);
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape'); // второй раз — снять выделение со второго стикера
 
@@ -101,9 +105,9 @@ test.describe('Доски: копирование/вставка', () => {
     // этой версии Vue Flow и был no-op). Прямоугольник считаем от реальных
     // экранных rect'ов узлов (не от координат клика создания) — они зависят
     // от текущего зума/пана
-    const stickyBoxes = await page
-      .locator('.vue-flow__node-sticky')
-      .evaluateAll((els) => els.map((el) => el.getBoundingClientRect()));
+    const stickyBoxes = await board.stickyNodes.evaluateAll((els) =>
+      els.map((el) => el.getBoundingClientRect()),
+    );
     const margin = 40;
     const dragStart = {
       x: Math.min(...stickyBoxes.map((b) => b.x)) - margin,
@@ -117,28 +121,28 @@ test.describe('Доски: копирование/вставка', () => {
     await page.mouse.down();
     await page.mouse.move(dragEnd.x, dragEnd.y, { steps: 10 });
     await page.mouse.up();
-    await expect(page.locator('.vue-flow__node.selected')).toHaveCount(2);
-    await expect(page.locator('.board-selection-toolbar')).toBeVisible();
+    await expect(board.selectedNodes).toHaveCount(2);
+    await expect(board.selectionToolbar).toBeVisible();
 
     await copyAndWaitForClipboard('');
     await page.keyboard.press('Escape'); // снять выделение
     await page.keyboard.press('ControlOrMeta+v');
 
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(4);
+    await expect(board.stickyNodes).toHaveCount(4);
 
     // Вставленные элементы сразу остаются выделенными (как в Miro) — можно
     // сразу перетащить их на нужное место без повторного выделения
-    await expect(page.locator('.vue-flow__node.selected')).toHaveCount(2);
+    await expect(board.selectedNodes).toHaveCount(2);
 
     // Вставка создала НОВЫЕ элементы, а не патчнула старые
-    const stickyIds = await page
-      .locator('.vue-flow__node-sticky')
-      .evaluateAll((els) => els.map((el) => el.getAttribute('data-id')));
+    const stickyIds = await board.stickyNodes.evaluateAll((els) =>
+      els.map((el) => el.getAttribute('data-node-id')),
+    );
     expect(new Set(stickyIds).size).toBe(4);
 
     // Переживает перезагрузку — реально ушло на сервер, а не только в локальный стор
     await page.reload();
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(4);
+    await expect(board.stickyNodes).toHaveCount(4);
     await page.keyboard.press('ControlOrMeta+0');
     await page.waitForTimeout(200);
 
@@ -148,19 +152,19 @@ test.describe('Доски: копирование/вставка', () => {
     })
       .jpeg()
       .toBuffer();
-    await page.locator('.board-toolbar button[aria-label="Картинка"]').click();
+    await board.toolbarButton('Картинка').click();
     const fileChooserPromise = page.waitForEvent('filechooser');
-    await page.locator('.vue-flow__pane').click({ position: { x: 950, y: 450 } });
+    await board.pane.click({ position: { x: 950, y: 450 } });
     const fileChooser = await fileChooserPromise;
     await fileChooser.setFiles({ name: 'photo.jpg', mimeType: 'image/jpeg', buffer: imageBuffer });
-    await expect(page.locator('.vue-flow__node-image')).toHaveCount(1, { timeout: 15_000 });
+    await expect(board.imageNodes).toHaveCount(1, { timeout: 15_000 });
 
-    const originalSrc = await page.locator('.vue-flow__node-image img').getAttribute('src');
+    const originalSrc = await board.imageNodes.locator('img').getAttribute('src');
     expect(originalSrc).toMatch(/^\/api\/boards\/[0-9a-f-]{36}\/assets\/[a-f0-9]{32}\.webp$/);
     const boardAId = originalSrc!.split('/')[3];
 
-    await page.locator('.vue-flow__node-image').click();
-    await expect(page.locator('.board-selection-toolbar')).toBeVisible();
+    await board.imageNodes.click();
+    await expect(board.selectionToolbar).toBeVisible();
     const clipboardBeforeImageCopy = await page.evaluate(() => navigator.clipboard.readText());
     await copyAndWaitForClipboard(clipboardBeforeImageCopy);
 
@@ -168,8 +172,9 @@ test.describe('Доски: копирование/вставка', () => {
     await createBoard(`${E2E_ROOM_PREFIX}Copy B ${randomUUID().slice(0, 8)}`);
     await page.keyboard.press('ControlOrMeta+v');
 
-    await expect(page.locator('.vue-flow__node-image')).toHaveCount(1, { timeout: 15_000 });
-    const pastedSrc = await page.locator('.vue-flow__node-image img').getAttribute('src');
+    const boardB = boardLocators(page);
+    await expect(boardB.imageNodes).toHaveCount(1, { timeout: 15_000 });
+    const pastedSrc = await boardB.imageNodes.locator('img').getAttribute('src');
     expect(pastedSrc).toMatch(/^\/api\/boards\/[0-9a-f-]{36}\/assets\/[a-f0-9]{32}\.webp$/);
     expect(pastedSrc!.split('/')[3]).not.toBe(boardAId); // новый ассет на доске B, не ссылка на A
 
@@ -199,22 +204,23 @@ test.describe('Доски: копирование/вставка', () => {
       .fill(`${E2E_ROOM_PREFIX}CopyEdges ${randomUUID().slice(0, 8)}`);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
-    await expect(page.locator('.vue-flow__pane')).toBeVisible();
-    await page.locator('.vue-flow__pane').click(); // фокус на холст перед хоткеем
+    const board = boardLocators(page);
+    await expect(board.pane).toBeVisible();
+    await board.pane.click(); // фокус на холст перед хоткеем
     await page.keyboard.press('ControlOrMeta+0');
     await page.waitForTimeout(300);
 
     // --- Два стикера в разных углах ---
-    await page.locator('.vue-flow__pane').dblclick({ position: { x: 300, y: 300 } });
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(1);
-    const firstId = await page.locator('.vue-flow__node-sticky').getAttribute('data-id');
+    await board.pane.dblclick({ position: { x: 300, y: 300 } });
+    await expect(board.stickyNodes).toHaveCount(1);
+    const firstId = await board.stickyNodes.getAttribute('data-node-id');
     await page.keyboard.press('Escape');
 
-    await page.locator('.vue-flow__pane').dblclick({ position: { x: 950, y: 300 } });
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(2);
-    const secondId = await page
-      .locator(`.vue-flow__node-sticky:not([data-id="${firstId}"])`)
-      .getAttribute('data-id');
+    await board.pane.dblclick({ position: { x: 950, y: 300 } });
+    await expect(board.stickyNodes).toHaveCount(2);
+    const secondId = await board.stickyNodes
+      .locator(`:scope:not([data-node-id="${firstId}"])`)
+      .getAttribute('data-node-id');
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape'); // снять выделение со второго стикера
 
@@ -223,10 +229,10 @@ test.describe('Доски: копирование/вставка', () => {
 
     // --- Соединяем стрелкой (drag от хендла первого к хендлу второго) ---
     const sourceHandle = page.locator(
-      `.vue-flow__handle[data-nodeid="${firstId}"][data-handleid="right"]`,
+      `[data-testid="board-handle"][data-nodeid="${firstId}"][data-handleid="right"]`,
     );
     const targetHandle = page.locator(
-      `.vue-flow__handle[data-nodeid="${secondId}"][data-handleid="left"]`,
+      `[data-testid="board-handle"][data-nodeid="${secondId}"][data-handleid="left"]`,
     );
     const sourceBox = await sourceHandle.boundingBox();
     const targetBox = await targetHandle.boundingBox();
@@ -244,12 +250,12 @@ test.describe('Доски: копирование/вставка', () => {
     );
     await page.mouse.up();
 
-    await expect(page.locator('.vue-flow__edge')).toHaveCount(1);
+    await expect(board.edges).toHaveCount(1);
 
     // --- Выделяем оба стикера (shift-click) ---
-    await page.locator(`.vue-flow__node[data-id="${firstId}"]`).click();
-    await page.locator(`.vue-flow__node[data-id="${secondId}"]`).click({ modifiers: ['Shift'] });
-    await expect(page.locator('.vue-flow__node.selected')).toHaveCount(2);
+    await page.locator(`[data-node-id="${firstId}"]`).click();
+    await page.locator(`[data-node-id="${secondId}"]`).click({ modifiers: ['Shift'] });
+    await expect(board.selectedNodes).toHaveCount(2);
 
     // --- Копируем и вставляем (Ctrl/Cmd+C / Ctrl/Cmd+V) ---
     const clipboardBeforeCopy = await page.evaluate(() => navigator.clipboard.readText());
@@ -263,19 +269,19 @@ test.describe('Доски: копирование/вставка', () => {
     await page.keyboard.press('ControlOrMeta+v');
 
     // 2 оригинала + 2 вставленные копии; у каждой пары — своё ребро
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(4);
-    await expect(page.locator('.vue-flow__edge')).toHaveCount(2);
-    await expect(page.locator('.vue-flow__node.selected')).toHaveCount(2);
+    await expect(board.stickyNodes).toHaveCount(4);
+    await expect(board.edges).toHaveCount(2);
+    await expect(board.selectedNodes).toHaveCount(2);
 
     // --- Дублируем вставленные копии (Ctrl/Cmd+D) — должно перенести и рёбро ---
     await page.keyboard.press('ControlOrMeta+d');
 
     // 2 оригинала + 2 вставленные + 2 дубликата
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(6);
+    await expect(board.stickyNodes).toHaveCount(6);
     // оригинальное ребро + для вставленной и дублированной пар
-    await expect(page.locator('.vue-flow__edge')).toHaveCount(3);
+    await expect(board.edges).toHaveCount(3);
 
     // Дублирование не меняет выделение вставленной пары.
-    await expect(page.locator('.vue-flow__node.selected')).toHaveCount(2);
+    await expect(board.selectedNodes).toHaveCount(2);
   });
 });

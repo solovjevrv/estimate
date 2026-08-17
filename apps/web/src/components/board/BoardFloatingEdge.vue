@@ -135,33 +135,38 @@ const inputWidthCh = computed(() => Math.max(2, draftText.value.length));
 </script>
 
 <template>
-  <BaseEdge
-    :id="id"
-    :path="path"
-    :marker-start="markerStart"
-    :marker-end="markerEnd"
-    :style="style"
-  />
-  <!-- 'dot' — не встроенный тип маркера Vue Flow (умеет рисовать только arrow/arrowclosed),
-       рисуем сами поверх пути -->
-  <circle
-    v-if="data.style.markerStart === 'dot'"
-    :cx="params.sx"
-    :cy="params.sy"
-    r="4"
-    :fill="dotColor"
-  />
-  <circle
-    v-if="data.style.markerEnd === 'dot'"
-    :cx="params.tx"
-    :cy="params.ty"
-    r="4"
-    :fill="dotColor"
-  />
+  <!-- BaseEdge не пробрасывает произвольные attrs в SVG path; testid ставим на
+       реальный SVG-контейнер, не меняя геометрию или bubbling событий Vue Flow. -->
+  <g data-testid="board-edge">
+    <BaseEdge
+      :id="id"
+      :path="path"
+      :marker-start="markerStart"
+      :marker-end="markerEnd"
+      :style="style"
+    />
+    <!-- 'dot' — не встроенный тип маркера Vue Flow (умеет рисовать только arrow/arrowclosed),
+         рисуем сами поверх пути -->
+    <circle
+      v-if="data.style.markerStart === 'dot'"
+      :cx="params.sx"
+      :cy="params.sy"
+      r="4"
+      :fill="dotColor"
+    />
+    <circle
+      v-if="data.style.markerEnd === 'dot'"
+      :cx="params.tx"
+      :cy="params.ty"
+      r="4"
+      :fill="dotColor"
+    />
+  </g>
 
   <EdgeLabelRenderer>
     <div
       v-if="editing || data.label"
+      data-testid="board-edge-label"
       class="board-edge-label nodrag nopan"
       :style="{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }"
       @dblclick.stop="startEditing"
@@ -173,13 +178,16 @@ const inputWidthCh = computed(() => Math.max(2, draftText.value.length));
         v-model="draftText"
         :maxlength="BOARD_EDGE_LABEL_MAX_LENGTH"
         type="text"
+        data-testid="board-edge-label-input"
         class="board-edge-label-input"
         :size="inputWidthCh"
         @keydown.esc.stop.prevent="cancelEditing"
         @keydown.enter.stop.prevent="($event.target as HTMLInputElement).blur()"
         @blur="commitEditing"
       />
-      <span v-else class="board-edge-label-text">{{ data.label }}</span>
+      <span v-else data-testid="board-edge-label-text" class="board-edge-label-text">{{
+        data.label
+      }}</span>
     </div>
   </EdgeLabelRenderer>
 </template>

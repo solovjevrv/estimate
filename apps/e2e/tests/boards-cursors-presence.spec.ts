@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { boardLocators } from '../src/board-locators';
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
 
 /**
@@ -50,15 +51,16 @@ test('курсоры участников и список «кто на доск
   await pageA.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
   await pageA.locator('form').getByRole('button', { name: 'Создать доску' }).click();
   await pageA.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+  const boardA = boardLocators(pageA);
   const boardUrl = pageA.url();
-  await expect(pageA.locator('.vue-flow__pane')).toBeVisible();
+  await expect(boardA.pane).toBeVisible();
 
   // --- Владелец открывает ту же доску во второй независимой вкладке ---
   const contextB = await newContext(browser);
   await loginAs(contextB, owner);
   const pageB = await contextB.newPage();
   await pageB.goto(boardUrl);
-  await expect(pageB.locator('.vue-flow__pane')).toBeVisible();
+  await expect(boardLocators(pageB).pane).toBeVisible();
 
   // Панель presence: один пользователь в двух вкладках — presence
   // deduplication по userId (см. BoardPresence.list) даст одну запись,
@@ -68,17 +70,18 @@ test('курсоры участников и список «кто на доск
   const contextC = await newContext(browser);
   await loginAs(contextC, second);
   const pageC = await contextC.newPage();
+  const boardC = boardLocators(pageC);
   await pageC.goto(new URL(inviteUrl).pathname);
   await pageC.getByRole('button', { name: 'Вступить' }).click();
   await pageC.waitForURL(/\/teams\/[0-9a-f-]{36}/);
   await pageC.goto(boardUrl);
-  await expect(pageC.locator('.vue-flow__pane')).toBeVisible();
+  await expect(boardC.pane).toBeVisible();
 
   // Панель «кто на доске» появляется, когда >1 уникального участника
-  await expect(pageA.locator('.board-presence')).toBeVisible();
-  await expect(pageA.locator('.board-presence-avatar')).toHaveCount(2);
+  await expect(boardA.presence).toBeVisible();
+  await expect(boardA.presenceAvatars).toHaveCount(2);
   // Себя выделяем
-  await expect(pageA.locator('.board-presence-avatar--self')).toHaveCount(1);
+  await expect(boardA.selfAvatar).toHaveCount(1);
 
   // Awareness тоже держит одну запись на userId (см. `awarenessByUser` в
   // board-session.ts) — курсор из A не виден в B, это тот же пользователь,
@@ -89,33 +92,31 @@ test('курсоры участников и список «кто на доск
   // 1. Движение мыши в A — чужой курсор появляется у C
   await pageA.mouse.move(400, 300);
 
-  // `.board-cursor` сам по себе схлопывается в 0×0 (оба потомка — position:
+  // `[data-testid="board-cursor"]` сам по себе схлопывается в 0×0 (оба потомка — position:
   // absolute, растягивать родителя нечему), рисуется он всё равно нормально
   // (потомки красятся по своим смещениям независимо от размера родителя), но
-  // строгая проверка видимости Playwright по самому враппера с нулевой
-  // площадью не проходит — проверяем по `.board-cursor-name` (реальный бокс
+  // строгая проверка видимости Playwright по самому враптера с нулевой
+  // площадью не проходит — проверяем по `[data-testid="board-cursor-name"]` (реальный бокс
   // с паддингом), заодно уже сверяем и текст.
-  await expect(pageC.locator('.board-cursor-name')).toHaveText(owner.name);
+  await expect(boardC.cursorName).toHaveText(owner.name);
 
   // 2. Движение мыши в C — курсор появляется в A
   await pageC.mouse.move(600, 400);
-  await expect(pageA.locator('.board-cursor-name')).toHaveText(second.name);
+  await expect(boardA.cursorName).toHaveText(second.name);
 
   // 3. Курсор не должен замирать во время драга элемента: `onNodeDrag` шлёт
   // awareness наравне с обычным mousemove по пейну (баг найден при ручной
   // проверке — драг перехватывает указатель, и обычный mousemove-хендлер
   // на пейне для этих кадров не отрабатывает).
-  await pageA.locator('.vue-flow__pane').dblclick({ position: { x: 300, y: 300 } });
-  await expect(pageA.locator('.vue-flow__node-sticky')).toHaveCount(1);
-  const stickyId = await pageA.locator('.vue-flow__node-sticky').getAttribute('data-id');
-  const textareaA = pageA.locator(
-    `.vue-flow__node[data-id="${stickyId}"] [contenteditable="true"]`,
-  );
+  await boardA.pane.dblclick({ position: { x: 300, y: 300 } });
+  await expect(boardA.stickyNodes).toHaveCount(1);
+  const stickyId = await boardA.stickyNodes.getAttribute('data-node-id');
+  const textareaA = pageA.locator(`[data-node-id="${stickyId}"] [contenteditable="true"]`);
   await textareaA.click();
   await textareaA.fill('Драг-тест курсора');
-  await pageA.locator('.vue-flow__pane').click({ position: { x: 950, y: 450 } });
+  await boardA.pane.click({ position: { x: 950, y: 450 } });
 
-  const nodeA = pageA.locator(`.vue-flow__node[data-id="${stickyId}"]`);
+  const nodeA = pageA.locator(`[data-node-id="${stickyId}"]`);
   const box = await nodeA.boundingBox();
   expect(box).not.toBeNull();
   const startX = box!.x + box!.width / 2;
@@ -124,15 +125,13 @@ test('курсоры участников и список «кто на доск
   await pageA.mouse.move(startX, startY);
   await pageA.mouse.down();
   await pageA.mouse.move(startX + 40, startY + 40, { steps: 5 });
-  await expect(pageC.locator('.board-cursor-name')).toHaveText(owner.name);
-  const styleDuringDrag = await pageC.locator('.board-cursor').getAttribute('style');
+  await expect(boardC.cursorName).toHaveText(owner.name);
+  const styleDuringDrag = await boardC.cursor.getAttribute('style');
 
   // Ещё один рывок мышью, пока кнопка всё ещё зажата — позиция курсора у C
   // обязана сдвинуться вместе с ним, а не остаться там же, где была
   await pageA.mouse.move(startX + 140, startY + 140, { steps: 5 });
-  await expect
-    .poll(() => pageC.locator('.board-cursor').getAttribute('style'))
-    .not.toBe(styleDuringDrag);
+  await expect.poll(() => boardC.cursor.getAttribute('style')).not.toBe(styleDuringDrag);
 
   await pageA.mouse.up();
 });

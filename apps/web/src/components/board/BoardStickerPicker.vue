@@ -63,7 +63,7 @@ function pick(pack: string, id: string): void {
 </script>
 
 <template>
-  <div class="board-sticker-picker">
+  <div data-testid="board-sticker-picker" class="board-sticker-picker">
     <div class="board-sticker-picker-tabs">
       <button
         v-if="recentItems.length > 0"
@@ -92,6 +92,7 @@ function pick(pack: string, id: string): void {
       <section
         v-if="recentItems.length > 0"
         :ref="(el) => setSectionRef('recent', el as Element | null)"
+        data-testid="board-sticker-picker-section"
         class="board-sticker-picker-section"
       >
         <h4 class="board-sticker-picker-heading">{{ t('board.stickerRecentLabel') }}</h4>
@@ -100,6 +101,7 @@ function pick(pack: string, id: string): void {
             v-for="item in recentItems"
             :key="`recent-${item.pack}-${item.id}`"
             type="button"
+            data-testid="board-sticker-picker-item"
             class="board-sticker-picker-item"
             :aria-label="item.emoji"
             @click="pick(item.pack, item.id)"
@@ -113,6 +115,7 @@ function pick(pack: string, id: string): void {
         v-for="pack in STICKER_PACKS"
         :key="pack.id"
         :ref="(el) => setSectionRef(pack.id, el as Element | null)"
+        data-testid="board-sticker-picker-section"
         class="board-sticker-picker-section"
       >
         <h4 class="board-sticker-picker-heading">{{ pack.label }}</h4>
@@ -121,6 +124,7 @@ function pick(pack: string, id: string): void {
             v-for="item in pack.items"
             :key="item.id"
             type="button"
+            data-testid="board-sticker-picker-item"
             class="board-sticker-picker-item"
             :aria-label="item.emoji"
             @click="pick(pack.id, item.id)"

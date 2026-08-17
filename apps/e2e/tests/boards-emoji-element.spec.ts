@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { boardLocators } from '../src/board-locators';
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
 
 /**
@@ -26,25 +27,26 @@ test.describe('Доски: эмодзи', () => {
     const boardName = `${E2E_ROOM_PREFIX}Emoji ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
-    await expect(page.locator('.vue-flow__pane')).toBeVisible();
+    await expect(board.pane).toBeVisible();
 
     // Клик по инструменту сразу открывает список — без клика по холсту
-    await page.locator('.board-toolbar button[aria-label="Эмодзи"]').click();
+    await board.toolbarButton('Эмодзи').click();
     await page.getByRole('button', { name: '🔥', exact: true }).click();
 
-    const emojiNode = page.locator('.vue-flow__node-emoji').first();
+    const emojiNode = board.emojiNodes.first();
     await expect(emojiNode).toBeVisible();
     await expect(emojiNode).toContainText('🔥');
 
     // Переживает перезагрузку — сохранилось на сервере
     await page.reload();
-    await expect(page.locator('.vue-flow__node-emoji')).toHaveCount(1);
-    await expect(page.locator('.vue-flow__node-emoji').first()).toContainText('🔥');
+    await expect(board.emojiNodes).toHaveCount(1);
+    await expect(board.emojiNodes.first()).toContainText('🔥');
 
     // Тулбар выделения — только замена эмодзи + дублировать + удалить
-    await page.locator('.vue-flow__node-emoji').click();
-    const toolbar = page.locator('.board-selection-toolbar');
+    await board.emojiNodes.click();
+    const toolbar = board.selectionToolbar;
     await expect(toolbar).toBeVisible();
     await expect(toolbar.getByLabel('Заменить эмодзи')).toBeVisible();
     await expect(toolbar.getByLabel('Тип элемента')).toHaveCount(0);
@@ -60,7 +62,7 @@ test.describe('Доски: эмодзи', () => {
     // Замена эмодзи через тулбар выделения
     await toolbar.getByLabel('Заменить эмодзи').click();
     await page.getByRole('button', { name: '🚀', exact: true }).click();
-    await expect(page.locator('.vue-flow__node-emoji').first()).toContainText('🚀');
-    await expect(page.locator('.vue-flow__node-emoji')).toHaveCount(1);
+    await expect(board.emojiNodes.first()).toContainText('🚀');
+    await expect(board.emojiNodes).toHaveCount(1);
   });
 });

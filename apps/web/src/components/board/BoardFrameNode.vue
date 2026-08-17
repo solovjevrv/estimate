@@ -116,6 +116,9 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
   <div
     class="board-frame-node relative h-full w-full"
     :class="{ 'board-frame-node--group': isGroup }"
+    :data-testid="isGroup ? 'board-node-group' : 'board-node-frame'"
+    :data-node-id="props.id"
+    :data-selected="props.selected ? 'true' : 'false'"
   >
     <!--
       NodeResizer — только для видимых фреймов (группы — невидимы, но

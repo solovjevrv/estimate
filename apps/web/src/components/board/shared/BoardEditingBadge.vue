@@ -15,7 +15,7 @@ const { t } = useI18n();
 </script>
 
 <template>
-  <div class="board-editing-badge">
+  <div data-testid="board-editing-badge" class="board-editing-badge">
     {{ t('board.editingBy', { name }) }}
   </div>
 </template>

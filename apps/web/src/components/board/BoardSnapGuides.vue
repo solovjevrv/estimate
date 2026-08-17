@@ -66,10 +66,11 @@ const items = computed(() =>
 </script>
 
 <template>
-  <div v-if="items.length" class="board-snap-guides">
+  <div v-if="items.length" data-testid="board-snap-guides" class="board-snap-guides">
     <div
       v-for="item in items"
       :key="item.key"
+      data-testid="board-snap-guide"
       class="board-snap-guide"
       :class="`board-snap-guide--${item.orientation}`"
       :style="item.style"

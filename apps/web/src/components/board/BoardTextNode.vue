@@ -122,8 +122,13 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 </script>
 
 <template>
-  <div class="board-node-resizer-gap relative h-full w-full">
-    <BoardEditingBadge v-if="lockedBy" :name="lockedBy.name" />
+  <div
+    class="board-node-resizer-gap relative h-full w-full"
+    data-testid="board-node-text"
+    :data-node-id="props.id"
+    :data-selected="props.selected ? 'true' : 'false'"
+  >
+    <BoardEditingBadge v-if="lockedBy" :name="lockedBy.name" data-testid="board-editing-badge" />
     <NodeResizer
       :is-visible="props.selected && !editing && canEdit && !lockedBy"
       :min-width="TEXT_MIN_WIDTH"
@@ -134,6 +139,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
     />
     <div
       ref="contentBox"
+      data-testid="board-node-content"
       class="board-text-content flex h-full w-full items-center overflow-hidden p-4"
       @dblclick.stop="startEditing"
     >
@@ -181,10 +187,34 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       предсказуемая, просто следует за карточкой при её переносе.
     -->
     <template v-if="canEdit">
-      <Handle id="top" type="source" :position="Position.Top" class="board-connect-handle" />
-      <Handle id="right" type="source" :position="Position.Right" class="board-connect-handle" />
-      <Handle id="bottom" type="source" :position="Position.Bottom" class="board-connect-handle" />
-      <Handle id="left" type="source" :position="Position.Left" class="board-connect-handle" />
+      <Handle
+        id="top"
+        type="source"
+        :position="Position.Top"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
+      <Handle
+        id="right"
+        type="source"
+        :position="Position.Right"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
+      <Handle
+        id="bottom"
+        type="source"
+        :position="Position.Bottom"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
+      <Handle
+        id="left"
+        type="source"
+        :position="Position.Left"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
     </template>
   </div>
 </template>
