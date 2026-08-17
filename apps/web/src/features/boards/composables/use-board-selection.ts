@@ -1,6 +1,5 @@
 import type {
   BoardColorHex,
-  BoardEdge,
   BoardItem,
   BoardItemContent,
   BoardItemPatchOp,
@@ -50,8 +49,6 @@ export interface BoardSelectionOptions {
   pickImageFile: () => Promise<File | null>;
   uploadImage: (file: File) => Promise<{ url: string; width: number; height: number } | null>;
   activeTool: () => string;
-  /** Открывает редактор подписи для связи с данным id. */
-  setPendingEdgeEditId: (id: string | null) => void;
   breakFollowOnEdit: () => void;
   /** Размеры по умолчанию для текста/стикера/фигуры — вынесены в Canvas, чтобы
    * composable не зависел от board-item-defaults (см. комментарий ниже). */
@@ -63,8 +60,6 @@ export interface BoardSelectionOptions {
   defaultItemColor: BoardColorHex;
   /** Автоподбор контрастного цвета текста под заливку текущей темы. */
   resolveTextColor: (itemColor: BoardColorHex) => BoardColorHex;
-  /** Автоподбор цвета связи под текущую тему. */
-  resolveEdgeColor: (color: BoardColorHex | undefined) => BoardColorHex;
 }
 
 export interface Viewport {
@@ -127,7 +122,6 @@ export function useBoardSelection(options: BoardSelectionOptions) {
    */
   let colorPreviewIds: string[] | null = null;
   let textColorPreviewIds: string[] | null = null;
-  let edgeColorPreviewIds: string[] | null = null;
 
   function previewSelectedColor(color: BoardColorHex): void {
     colorPreviewIds ??= selectedNodes.value.map((node) => node.id);
@@ -177,104 +171,6 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     void options.applyOps(ops);
   }
 
-  function previewEdgeColor(color: BoardColorHex): void {
-    edgeColorPreviewIds ??= selectedEdges.value.map((edge) => edge.id);
-    const ops: BoardOp[] = [];
-    for (const id of edgeColorPreviewIds) {
-      const edge = options.getEdges().find((candidate) => candidate.id === id);
-      if (!edge) continue;
-      ops.push({
-        type: 'edge.patch',
-        clientOpId: uuid(),
-        id,
-        patch: { style: { ...edge.data.style, color } },
-      });
-    }
-    if (ops.length) void options.applyOps(ops);
-  }
-
-  function cancelEdgeColorPreview(originalColor: BoardColorHex): void {
-    const ids = edgeColorPreviewIds;
-    edgeColorPreviewIds = null;
-    if (!ids?.length) return;
-    const ops: BoardOp[] = [];
-    for (const id of ids) {
-      const edge = options.getEdges().find((candidate) => candidate.id === id);
-      if (!edge) continue;
-      ops.push({
-        type: 'edge.patch',
-        clientOpId: uuid(),
-        id,
-        patch: { style: { ...edge.data.style, color: originalColor } },
-      });
-    }
-    if (ops.length) void options.applyOps(ops);
-  }
-
-  /* ------------------- Операции над выделенными связями ------------------- */
-
-  function patchEdgeLine(line: BoardEdge['style']['line']): void {
-    patchSelectedEdge((edge) => {
-      const data = edge.data;
-      return {
-        type: 'edge.patch',
-        clientOpId: uuid(),
-        id: edge.id,
-        patch: { style: { ...data.style, line } },
-      };
-    });
-  }
-
-  function patchEdgeMarkerStart(marker: BoardEdge['style']['markerStart']): void {
-    patchSelectedEdge((edge) => {
-      const data = edge.data;
-      return {
-        type: 'edge.patch',
-        clientOpId: uuid(),
-        id: edge.id,
-        patch: { style: { ...data.style, markerStart: marker } },
-      };
-    });
-  }
-
-  function patchEdgeMarkerEnd(marker: BoardEdge['style']['markerEnd']): void {
-    patchSelectedEdge((edge) => {
-      const data = edge.data;
-      return {
-        type: 'edge.patch',
-        clientOpId: uuid(),
-        id: edge.id,
-        patch: { style: { ...data.style, markerEnd: marker } },
-      };
-    });
-  }
-
-  function patchEdgeColor(color: BoardColorHex): void {
-    edgeColorPreviewIds = null;
-    patchSelectedEdge((edge) => {
-      const data = edge.data;
-      return {
-        type: 'edge.patch',
-        clientOpId: uuid(),
-        id: edge.id,
-        patch: { style: { ...data.style, color } },
-      };
-    });
-  }
-
-  function addTextToSelectedEdge(): void {
-    const edge = selectedEdges.value[0];
-    if (edge) options.setPendingEdgeEditId(edge.id);
-  }
-
-  function deleteSelectedEdges(): void {
-    patchSelectedEdge((edge) => ({
-      type: 'edge.delete',
-      clientOpId: uuid(),
-      id: edge.id,
-    }));
-  }
-
   /* ----------------------- Позиции тулбаров ----------------------- */
 
   /** Плавающий тулбар над выделением узлов (12.6). */
@@ -290,24 +186,6 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     return {
       left: viewport.x + ((left + right) / 2) * viewport.zoom,
       top: viewport.y + top * viewport.zoom,
-    };
-  });
-
-  /** Плавающий тулбар над выделенной связью (12.9). */
-  const edgeToolbarPosition = computed(() => {
-    const selected = selectedEdges.value;
-    if (!options.canEdit() || selected.length === 0) return null;
-    const nodeMap = new Map(options.getNodes().map((node) => [node.id, node]));
-    const edge = selected[0]!;
-    const sourceNode = nodeMap.get(edge.source);
-    const targetNode = nodeMap.get(edge.target);
-    if (!sourceNode || !targetNode) return null;
-    const x = (sourceNode.position.x + targetNode.position.x) / 2;
-    const y = (sourceNode.position.y + targetNode.position.y) / 2;
-    const viewport = options.getViewport();
-    return {
-      left: viewport.x + x * viewport.zoom,
-      top: viewport.y + y * viewport.zoom,
     };
   });
 
@@ -329,18 +207,6 @@ export function useBoardSelection(options: BoardSelectionOptions) {
   /** Цвет первого выделенного элемента — для кружка-триггера в тулбаре выделения (12.7) */
   const selectedColor = computed<BoardColorHex>(
     () => selectedNodes.value[0]?.data.style.color ?? options.defaultItemColor,
-  );
-
-  /** Стиль (линия/маркеры) первой выделенной связи — для BoardEdgeToolbar (12.9) */
-  const selectedEdgeStyle = computed<BoardEdge['style']>(() => {
-    const style = selectedEdges.value[0]?.data?.style;
-    if (style) return style;
-    return { line: 'curved', markerStart: 'none', markerEnd: 'arrow' };
-  });
-
-  /** Кружок-триггер в тулбаре связи всегда нужен литеральным цветом (12.9) — резолвим авто */
-  const selectedEdgeColor = computed<BoardColorHex>(() =>
-    options.resolveEdgeColor(selectedEdgeStyle.value.color),
   );
 
   /* ----------------------- Runtime-size registry ----------------------- */
@@ -890,11 +756,8 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     selectedNodes,
     selectedEdges,
     selectionToolbarPosition,
-    edgeToolbarPosition,
     selectedForm,
     selectedColor,
-    selectedEdgeStyle,
-    selectedEdgeColor,
     selectedFontSize,
     canIncreaseSelectedFontSize,
     canDecreaseSelectedFontSize,
@@ -929,17 +792,9 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     bringSelectedToFront,
     sendSelectedToBack,
     deleteSelected,
-    deleteSelectedEdges,
-    addTextToSelectedEdge,
-    patchEdgeLine,
-    patchEdgeMarkerStart,
-    patchEdgeMarkerEnd,
-    patchEdgeColor,
     previewSelectedColor,
     cancelSelectedColorPreview,
     previewSelectedTextColor,
     cancelSelectedTextColorPreview,
-    previewEdgeColor,
-    cancelEdgeColorPreview,
   };
 }
