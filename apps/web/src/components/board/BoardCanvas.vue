@@ -32,13 +32,10 @@
  */
 import {
   BOARD_OPS_BATCH_MAX,
-  isBoardContainer,
   type Board,
   type BoardEdge,
   type BoardItem,
   type BoardItemContent,
-  type BoardItemPatchOp,
-  type BoardOp,
   type BoardPresenceEntry,
 } from '@poker/shared';
 import type { DropdownMenuItem } from '@nuxt/ui';
@@ -91,24 +88,22 @@ import {
 import { readableTextColor } from '../../lib/board/board-colors';
 import type { BoardTextEditorHandle } from '../../lib/board/board-rich-text';
 import { useBoardHotkeys } from '../../lib/board/use-board-hotkeys';
-import type { BoardSelectionEdge, BoardSelectionNode } from '../../lib/board/vue-flow-adapter';
+import type {
+  BoardFlowNode,
+  BoardSelectionEdge,
+  BoardSelectionNode,
+} from '../../lib/board/vue-flow-adapter';
 import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
 import { throttle } from '../../lib/throttle';
 import { uuid } from '../../lib/board/uuid';
 import {
   BOARD_CAMERA_THROTTLE_MS,
-  BOARD_DRAG_THROTTLE_MS,
   BOARD_CURSOR_THROTTLE_MS,
 } from '../../lib/board/board-constants';
-import {
-  computeSnapGuides,
-  SNAP_THRESHOLD_PX,
-  type SnapGuide,
-  type SnapRect,
-} from '../../lib/board/board-snap';
 import { useBoardSessionStore } from '../../stores/board-session';
 import { useBoardClipboard } from '../../features/boards/composables/use-board-clipboard';
 import { useBoardCreation } from '../../features/boards/composables/use-board-creation';
+import { useBoardDragAndSnap } from '../../features/boards/composables/use-board-drag-and-snap';
 import { useBoardSelection } from '../../features/boards/composables/use-board-selection';
 import BoardSelectionToolbar from './BoardSelectionToolbar.vue';
 import BoardContextMenu from './BoardContextMenu.vue';
@@ -262,20 +257,34 @@ const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
  * `flowNodes` пересчитывается и этот watcher применяет `setNodes(next)` для
  * ВСЕХ узлов сразу — для остальных, ещё не долетевших до стора, это откатывало
  * бы их позицию к додраговой поверх текущего живого перетаскивания. Пока
- * `dragStartPositions` не пуст — сам пользователь тащит группу локально,
- * пропускаем применение снимка; на `dragStop` карта синхронно пустеет, и
- * следующий реактивный проход применяется как обычно с согласованными
+ * `dragIsDragging` — `true`, сам пользователь тащит группу локально,
+ * пропускаем применение снимка; на `dragStop` ref синхронно сбрасывается в
+ * `false`, и следующий реактивный проход применяется как обычно с согласованными
  * позициями. Другие участники, кто-то другой двигает карточку параллельно —
  * тот кейс уже отдельно проверен (см. абзац выше), это не задевается.
+ *
+ * Состояние drag/snap (стартовые позиции, throttlers, направляющие) вынесено в
+ * `useBoardDragAndSnap` (19.30) — Canvas лишь читает `isDragging` чтобы не
+ * наложить `setNodes(flowNodes)` поверх локального drag.
  */
-const dragStartPositions = new Map<string, { x: number; y: number }>();
-/** Активные snap-направляющие для отрисовки во время drag (13.6) */
-const activeSnapGuides = ref<SnapGuide[]>([]);
+const dragAndSnap = useBoardDragAndSnap({
+  canEdit: () => props.canEdit,
+  getItems: () => props.items,
+  getNodes: () => getNodes.value as BoardFlowNode[],
+  getZoom: () => viewport.value.zoom,
+  applyOps: (ops, options) => void boardSession.applyOps(ops, options),
+  breakFollowOnEdit,
+  findFrameAt: containerAt,
+});
+
+// Деструктурируем ref-ы на верхний уровень: Vue 3 автораспаковывает ref,
+// объявленный как top-level const в <script setup>, в шаблоне без .value.
+const { activeSnapGuides, isDragging: dragIsDragging } = dragAndSnap;
 
 watch(
   flowNodes,
   (next) => {
-    if (dragStartPositions.size > 0) return;
+    if (dragIsDragging.value) return;
     setNodes(next);
   },
   { immediate: true },
@@ -529,21 +538,19 @@ onBeforeUnmount(() => {
   document.removeEventListener('fullscreenchange', onFullscreenChange);
   document.removeEventListener('paste', onPaste);
   document.removeEventListener('copy', onCopyListener);
-  dragThrottlers.clear();
-  dragStartPositions.clear();
+  dragAndSnap.reset();
 });
 
 /**
- * `dragThrottlers`/`dragStartPositions` копятся по `node.id` (17.9) —
  * `BoardPage.vue` переиспользует один и тот же `BoardCanvas` при смене доски
  * (меняет пропы, не размонтирует компонент), так что без явной очистки записи
- * от уже покинутой доски продолжали бы висеть в памяти всю сессию страницы.
+ * от уже покинутой доски (в т.ч. trailing throttles) продолжали бы висеть в
+ * памяти всю сессию страницы. Состояние — в composable, а не в локальном Map.
  */
 watch(
   () => props.board.id,
   () => {
-    dragThrottlers.clear();
-    dragStartPositions.clear();
+    dragAndSnap.reset();
   },
 );
 
@@ -648,369 +655,19 @@ function onPaneDragOver(event: DragEvent): void {
   // Визуальная индикация (опционально) — можно добавить класс на rootEl
 }
 
-// --- Перетаскивание: локально холст двигает сам Vue Flow, по сети —
-// throttled-патчи на каждый кадр драга плюс гарантированный финальный на
-// dragstop (12.6). Троттлер свой на элемент — иначе при мультивыборе только
+// --- Перетаскивание элементов, cascade frame/group, snap-направляющие (12.6, 13.6, 14.3) ---
+// Вся drag-логика вынесена в composable: локально холст двигает сам Vue Flow,
+// по сети — throttled-патчи на каждый кадр драга плюс гарантированный финальный
+// на dragstop. Троттлер свой на элемент — иначе при мультивыборе только
 // последний по порядку элемент кадра реально долетал бы до сети.
-const dragThrottlers = new Map<string, (node: GraphNode<BoardItem>) => void>();
-
-function childrenOf(containerId: string): BoardItem[] {
-  return props.items.filter((candidate) => candidate.parentId === containerId);
-}
-
-/** Конвертирует узел Vue Flow в SnapRect для вычисления snap guide */
-function nodeToSnapRect(node: GraphNode<BoardItem>): SnapRect {
-  return {
-    id: node.id,
-    x: node.computedPosition.x,
-    y: node.computedPosition.y,
-    width: node.dimensions.width,
-    height: node.dimensions.height,
-  };
-}
-
 /**
- * Патчи-сдвиги для детей контейнера при его перетаскивании (14.3). Домен
- * хранит `x`/`y` детей АБСОЛЮТНЫМИ (см. vue-flow-adapter.ts) — Vue Flow сам
- * визуально двигает их вместе с родителем во время живого драга (это его
- * внутренний рендер поверх `parentNode`), но это НЕ то же самое, что реально
- * записать их новый `x`/`y` в стор. Без этого при следующем же обновлении
- * `flowNodes` (из стора — а `event.nodes` для драга РОДИТЕЛЯ в Vue Flow не
- * включает потомков, только сам перетаскиваемый узел) относительная позиция
- * ребёнка (child.x - parent.x) пересчиталась бы от НЕизменившегося child.x и
- * уже сдвинутого parent.x — то есть съехала бы на дельту в другую сторону,
- * ребёнок дёргался бы туда-сюда при каждом сетевом эхе (найдено вручную:
- * непредсказуемый "прыгающий" драг фрейма с содержимым). Каждый ребёнок
- * двигается на ТУ ЖЕ дельту, что и контейнер, от его собственной стартовой
- * позиции (`dragStartPositions`, засеяна в onNodeDragStart) — не от текущей
- * позиции в сторе, чтобы дельты не накапливались по кадрам троттлинга.
+ * Локальный wrapper над composable onNodeDrag: во время драга узла реальный
+ * mousemove на пейне не долетает до cursorThrottler (указатель перехвачен
+ * драгом Vue Flow), поэтому прокидываем событие вручную.
  */
-/** Сдвиг {id → {x,y}} на дельту от собственного старта, каждого по СВОЕЙ стартовой позиции */
-function shiftOps(
-  mates: readonly BoardItem[],
-  dx: number,
-  dy: number,
-): { ops: BoardOp[]; inverse: BoardOp[] } {
-  const ops: BoardOp[] = [];
-  const inverse: BoardOp[] = [];
-  for (const mate of mates) {
-    const start = dragStartPositions.get(mate.id) ?? { x: mate.x, y: mate.y };
-    ops.push({
-      type: 'item.patch',
-      clientOpId: uuid(),
-      id: mate.id,
-      patch: { x: start.x + dx, y: start.y + dy },
-    });
-    inverse.push({
-      type: 'item.patch',
-      clientOpId: uuid(),
-      id: mate.id,
-      patch: { x: start.x, y: start.y },
-    });
-  }
-  return { ops, inverse };
-}
-
-/**
- * Патчи-спутники драга ОДНОГО узла (14.3) — то, что должно сдвинуться на ту
- * же дельту, что и сам перетаскиваемый узел, но не входит в `event.nodes`
- * (Vue Flow не включает туда ни детей контейнера, ни соседей по группе).
- * Патч самого `node` строит отдельно `sendPositionPatch`.
- *
- * Два принципиально разных случая:
- * - `node` — КОНТЕЙНЕР (frame/group): тащим за собой всех его детей — дельта
- *   считается от старта самого контейнера. Домен хранит `x`/`y` детей
- *   АБСОЛЮТНЫМИ (см. vue-flow-adapter.ts) — без явной записи их нового
- *   абсолютного `x`/`y` в стор при следующем обновлении `flowNodes`
- *   относительная позиция ребёнка (child.x - parent.x) пересчиталась бы от
- *   НЕизменившегося child.x и уже сдвинутого parent.x, т.е. съехала бы в
- *   другую сторону — ребёнок дёргался бы туда-сюда при каждом сетевом эхе
- *   (найдено вручную: непредсказуемый "прыгающий" драг фрейма с содержимым).
- * - `node` — участник ГРУППЫ (не фрейма): группа — жёсткий пучок, а не
- *   контейнер-холст, как фрейм. Драг ЛЮБОГО её участника двигает саму
- *   группу-контейнер и ВСЕХ остальных участников тоже (не только контейнер
- *   двигает участников, но и наоборот) — иначе перетаскивание за один из
- *   членов группы отрывало бы его от остальных (найдено вручную).
- */
-function dragCascadeOps(node: {
-  id: string;
-  data: BoardItem;
-  computedPosition: { x: number; y: number };
-}): { ops: BoardOp[]; inverse: BoardOp[] } {
-  const start = dragStartPositions.get(node.id);
-  if (!start) return { ops: [], inverse: [] };
-  const dx = node.computedPosition.x - start.x;
-  const dy = node.computedPosition.y - start.y;
-  if (isBoardContainer(node.data.content.type)) {
-    return shiftOps(childrenOf(node.id), dx, dy);
-  }
-  if (node.data.parentId !== null) {
-    const parent = props.items.find((candidate) => candidate.id === node.data.parentId);
-    if (parent?.content.type === 'group') {
-      const mates = [parent, ...childrenOf(parent.id).filter((mate) => mate.id !== node.id)];
-      return shiftOps(mates, dx, dy);
-    }
-  }
-  return { ops: [], inverse: [] };
-}
-
-function sendPositionPatch(
-  node: GraphNode<BoardItem>,
-  opts: { record?: boolean; inverse?: BoardOp[] } = {},
-  /** Задан — узел на dragStop сменил родителя (drag-in/out фрейма, 14.3), см. onNodeDragStop */
-  parentId?: string | null,
-): void {
-  const patch: BoardItemPatchOp['patch'] = {
-    x: node.computedPosition.x,
-    y: node.computedPosition.y,
-  };
-  if (parentId !== undefined) patch.parentId = parentId;
-  const ops: BoardOp[] = [
-    { type: 'item.patch', clientOpId: uuid(), id: node.id, patch },
-    ...dragCascadeOps(node).ops,
-  ];
-  void boardSession.applyOps(ops, opts);
-}
-
-/**
- * Родитель, которого должен получить перетаскиваемый узел на dragStop (14.3).
- * Контейнеры (frame/group) сами никогда не вкладываются — вложенность
- * запрещена сервером.
- *
- * Участник ГРУППЫ — членство жёсткое, меняется только явным «Разгруппировать»,
- * не геометрией драга (группа невидима, у нее нет заметных пользователю
- * границ, чтобы целиться, и авто-переприклеивание по bounding box было бы
- * непредсказуемым — найдено вручную).
- *
- * Верхнеуровневый элемент или участник ФРЕЙМА — родитель пересчитывается от
- * ТЕКУЩЕЙ позиции всегда, а не сохраняется навсегда после первого попадания:
- * это единственный способ узнать, что элемент вытащили ЗА пределы фрейма
- * (иначе элемент, однажды помещённый во фрейм, продолжал бы считаться его
- * ребёнком и ездить вместе с ним, даже оказавшись визуально далеко снаружи —
- * баг, найденный вручную). Если новая точка — внутри ДРУГОГО фрейма, элемент
- * перепривязывается сразу к нему, без промежуточного "открепления".
- */
-function resolveDragParent(node: GraphNode<BoardItem>): string | null {
-  if (isBoardContainer(node.data.content.type)) return null;
-  const parent =
-    node.data.parentId !== null
-      ? props.items.find((candidate) => candidate.id === node.data.parentId)
-      : undefined;
-  if (parent?.content.type === 'group') return node.data.parentId;
-  const center = {
-    x: node.computedPosition.x + node.dimensions.width / 2,
-    y: node.computedPosition.y + node.dimensions.height / 2,
-  };
-  return containerAt(center, node.id)?.id ?? null;
-}
-
-/**
- * Shift+drag — ограничение перетаскивания по одной оси (12.9), как в Miro.
- * Стартовая позиция каждого узла драга запоминается на `node-drag-start`
- * (в `dragStartPositions`, объявлена выше вместе с watcher'ом `flowNodes` —
- * 13.5); дальше на каждом кадре, пока зажат Shift, "недоминирующая" ось (та,
- * где смещение от старта меньше) принудительно возвращается к стартовому
- * значению — Vue Flow обновляет `computedPosition` синхронно ДО эмита
- * `node-drag`, так что наша правка успевает попасть в кадр до отрисовки.
- * Ось перевычисляется на каждом кадре (не фиксируется на первом сдвиге) —
- * упрощение, для мелкого дрожания курсора у диагонали не критично.
- */
-
-/** Все узлы, чью стартовую позицию нужно засеять вместе с самим `node` (14.3, см. dragCascadeOps) */
-function dragFamilyOf(node: BoardItem): BoardItem[] {
-  if (isBoardContainer(node.content.type)) return childrenOf(node.id);
-  if (node.parentId !== null) {
-    const parent = props.items.find((candidate) => candidate.id === node.parentId);
-    if (parent?.content.type === 'group') {
-      return [parent, ...childrenOf(parent.id).filter((mate) => mate.id !== node.id)];
-    }
-  }
-  return [];
-}
-
-function onNodeDragStart({ nodes: dragged }: NodeDragEvent): void {
-  breakFollowOnEdit();
-  for (const node of dragged as GraphNode<BoardItem>[]) {
-    dragStartPositions.set(node.id, { x: node.computedPosition.x, y: node.computedPosition.y });
-    // Спутники драга (дети контейнера ИЛИ соседи по группе, 14.3) не входят в
-    // event.nodes — засеваем их стартовые позиции здесь же, иначе дельту
-    // сдвига не от чего было бы посчитать на драге/dragStop (см. dragCascadeOps)
-    for (const mate of dragFamilyOf(node.data)) {
-      dragStartPositions.set(mate.id, { x: mate.x, y: mate.y });
-    }
-  }
-}
-
-/**
- * Сравнение по значениям (id таргетов + позиция + диапазон линии), не только
- * по длине — используется в `updateSnapGuides`, чтобы не писать в
- * `activeSnapGuides` (и не гонять лишний ре-рендер `BoardSnapGuides`) на
- * кадрах драга, где набор гидов не изменился относительно предыдущего кадра.
- * Чаще всего оба массива пустые (курсор далеко от порога притяжения) — в этом
- * случае сравнение почти бесплатное (обе длины 0).
- */
-function guidesEqual(a: SnapGuide[], b: SnapGuide[]): boolean {
-  if (a.length !== b.length) return false;
-  for (let i = 0; i < a.length; i++) {
-    const g1 = a[i]!;
-    const g2 = b[i]!;
-    if (
-      g1.orientation !== g2.orientation ||
-      g1.position !== g2.position ||
-      g1.from !== g2.from ||
-      g1.to !== g2.to ||
-      g1.targetIds.length !== g2.targetIds.length ||
-      g1.targetIds.some((id, idx) => id !== g2.targetIds[idx])
-    ) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/**
- * Snap-направляющие при перетаскивании (13.6): вычисляем притягивание к
- * краям/центрам статичных элементов и сохраняем активные гиды для визуального
- * отображения в `BoardSnapGuides`. Только отображение — позиция узлов НЕ
- * меняется (иначе Vue Flow «залипает»: он использует изменённую `position` как
- * новую базовую для следующего кадра drag). Снап позиции применяется
- * отдельной функцией `applySnapPosition` только на dragStop.
- * Порог переводится из скриншотных пикселей в canvas-координаты через viewport.zoom.
- *
- * Расчёт (`computeSnapGuides`) не троттлится — он должен реагировать на каждый
- * кадр, чтобы направляющая появлялась/исчезала без задержки. Троттлится (через
- * `guidesEqual`) только реактивная запись: пропускаем её, если новый набор
- * гидов совпадает с уже отображаемым — иначе на каждом кадре драга без снапа
- * (частый случай) `activeSnapGuides.value = []` всё равно создавала бы новый
- * массив и триггерила реактивность/ре-рендер `BoardSnapGuides` впустую.
- */
-function updateSnapGuides(event: NodeDragEvent): void {
-  const dragged = event.nodes as GraphNode<BoardItem>[];
-  if (dragged.length === 0) {
-    if (activeSnapGuides.value.length > 0) activeSnapGuides.value = [];
-    return;
-  }
-  const draggedIds = new Set(dragged.map((n) => n.id));
-  const staticRects = getNodes.value.filter((n) => !draggedIds.has(n.id)).map(nodeToSnapRect);
-  const draggedRects = dragged.map(nodeToSnapRect);
-  const threshold = SNAP_THRESHOLD_PX / Math.max(viewport.value.zoom, 0.1);
-  const result = computeSnapGuides(draggedRects, staticRects, threshold);
-  if (!guidesEqual(result.guides, activeSnapGuides.value)) {
-    activeSnapGuides.value = result.guides;
-  }
-}
-
-/**
- * Применяет snap-позицию к узлам — только на dragStop, чтобы не ломать
- * Vue Flow-драг (см. updateSnapGuides). Если узел близок к выравниванию,
- * его позиция округляется до неё.
- */
-function applySnapPosition(event: NodeDragEvent): void {
-  const dragged = event.nodes as GraphNode<BoardItem>[];
-  if (dragged.length === 0) return;
-  const draggedIds = new Set(dragged.map((n) => n.id));
-  const staticRects = getNodes.value.filter((n) => !draggedIds.has(n.id)).map(nodeToSnapRect);
-  const draggedRects = dragged.map(nodeToSnapRect);
-  const threshold = SNAP_THRESHOLD_PX / Math.max(viewport.value.zoom, 0.1);
-  const result = computeSnapGuides(draggedRects, staticRects, threshold);
-
-  for (const node of dragged) {
-    const snapped = result.positions.get(node.id);
-    if (snapped) {
-      node.computedPosition.x = snapped.x;
-      node.computedPosition.y = snapped.y;
-      node.position.x = snapped.x;
-      node.position.y = snapped.y;
-    }
-  }
-}
-
-function applyAxisLock(event: NodeDragEvent): void {
-  if (!(event.event instanceof MouseEvent) || !event.event.shiftKey) return;
-  for (const node of event.nodes as GraphNode<BoardItem>[]) {
-    const start = dragStartPositions.get(node.id);
-    if (!start) continue;
-    const dx = node.computedPosition.x - start.x;
-    const dy = node.computedPosition.y - start.y;
-    if (Math.abs(dx) >= Math.abs(dy)) {
-      node.computedPosition.y = start.y;
-      node.position.y = start.y;
-    } else {
-      node.computedPosition.x = start.x;
-      node.position.x = start.x;
-    }
-  }
-}
-
 function onNodeDrag(event: NodeDragEvent): void {
-  applyAxisLock(event);
-  updateSnapGuides(event);
-  // Во время драга узла реальный mousemove на пейне не долетает до
-  // cursorThrottler (указатель перехвачен драгом Vue Flow) — без этого чужой
-  // курсор замирал бы, пока сам элемент продолжает двигаться под ним.
+  dragAndSnap.onNodeDrag(event);
   if (event.event instanceof MouseEvent) cursorThrottler(event.event);
-  for (const node of event.nodes as GraphNode<BoardItem>[]) {
-    let send = dragThrottlers.get(node.id);
-    if (!send) {
-      // record: false — промежуточные тики жеста не попадают в историю undo/redo
-      // (12.10), иначе одна отмена откатывала бы только последние ~80мс драга,
-      // а не перенос целиком. Единственная запись истории — на dragstop ниже.
-      send = throttle(
-        (n: GraphNode<BoardItem>) => sendPositionPatch(n, { record: false }),
-        BOARD_DRAG_THROTTLE_MS,
-      );
-      dragThrottlers.set(node.id, send);
-    }
-    send(node);
-  }
-}
-
-function onNodeDragStop(event: NodeDragEvent): void {
-  applyAxisLock(event);
-  applySnapPosition(event);
-  activeSnapGuides.value = [];
-  for (const node of event.nodes as GraphNode<BoardItem>[]) {
-    const start = dragStartPositions.get(node.id);
-    const moved =
-      !start || start.x !== node.computedPosition.x || start.y !== node.computedPosition.y;
-    // Отпустили верхнеуровневый элемент внутри границ фрейма/группы — «приклеиваем»
-    // его к ней (Miro-семантика, 14.3), см. resolveDragParent
-    const nextParentId = resolveDragParent(node);
-    const parentChanged = nextParentId !== node.data.parentId;
-    // Инверсия — стартовая позиция ВСЕГО жеста (12.10), не позиция перед этим
-    // конкретным финальным патчем (та уже почти совпадает с текущей из-за
-    // троттлед-тиков выше — откат по ней был бы почти незаметен). Клик без
-    // реального сдвига (start === финал) вообще не пишем в историю — иначе
-    // случайный микро-жест засорял бы стек no-op записью. Если сменился и
-    // родитель — откатываем и его тоже, иначе Ctrl+Z вернул бы позицию, но
-    // оставил элемент приклеенным к фрейму. Спутники драга (14.3 — дети
-    // контейнера или соседи по группе) откатываются к СВОИМ стартовым позициям
-    // тем же undo-шагом — иначе после отмены перетаскивания фрейма/группы он
-    // вернулся бы на место, а его содержимое/остальные участники — нет.
-    const mateInverse = dragCascadeOps(node).inverse;
-    const inverse: BoardOp[] | undefined = start
-      ? [
-          {
-            type: 'item.patch',
-            clientOpId: uuid(),
-            id: node.id,
-            patch: {
-              x: start.x,
-              y: start.y,
-              ...(parentChanged ? { parentId: node.data.parentId } : {}),
-            },
-          },
-          ...mateInverse,
-        ]
-      : undefined;
-    sendPositionPatch(
-      node,
-      { record: moved || parentChanged, inverse },
-      parentChanged ? nextParentId : undefined,
-    );
-    dragStartPositions.delete(node.id);
-    for (const mate of dragFamilyOf(node.data)) dragStartPositions.delete(mate.id);
-  }
 }
 
 function onEdgeDoubleClick({ edge }: EdgeMouseEvent): void {
@@ -1124,9 +781,9 @@ function onConnect(event: Connection): void {
       @pane-context-menu="onPaneContextMenu"
       @move-start="onManualCameraInteraction"
       @mousemove="cursorThrottler"
-      @node-drag-start="onNodeDragStart"
+      @node-drag-start="dragAndSnap.onNodeDragStart"
       @node-drag="onNodeDrag"
-      @node-drag-stop="onNodeDragStop"
+      @node-drag-stop="dragAndSnap.onNodeDragStop"
       @node-click="onNodeClick"
       @node-context-menu="onNodeContextMenu"
       @selection-context-menu="onSelectionContextMenu"

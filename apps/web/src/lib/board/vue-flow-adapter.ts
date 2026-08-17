@@ -24,8 +24,18 @@ import { resolveEdgeColor } from './board-item-defaults';
  * требуются selectable-логике и live-превью. `GraphNode.data` требательнее `Node.data?`:
  * обязательный `data: BoardItem`, поэтому в composable не нужно ни о чём гадать.
  */
-export type BoardSelectionNode = GraphNode<BoardItem>;
-export type BoardSelectionEdge = GraphEdge<BoardEdge>;
+export type BoardFlowNode = GraphNode<BoardItem>;
+export type BoardFlowEdge = GraphEdge<BoardEdge>;
+
+// Совместимость с уже влитым 19.29: BoardSelection переименован в BoardFlow,
+// но использование в composable selection сохранено — alias не меняет сигнатуру.
+export type BoardSelectionNode = BoardFlowNode;
+export type BoardSelectionEdge = BoardFlowEdge;
+
+/** Нейтральные aliases для использования в composable use-board-drag-and-snap
+ * (выделены от Vue Flow, чтобы слой не зависел от @vue-flow/core напрямую). */
+export type BoardDragNode = BoardFlowNode;
+export type BoardDragEdge = BoardFlowEdge;
 
 /**
  * `parent` — родительский `BoardItem` (frame/group), если у `item` задан
