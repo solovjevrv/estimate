@@ -70,6 +70,8 @@ import {
 import { useI18n } from 'vue-i18n';
 
 import {
+  maxZIndex,
+  minZIndex,
   resolveEdgeColor,
   SHAPE_DEFAULT_HEIGHT,
   SHAPE_DEFAULT_WIDTH,
@@ -315,7 +317,7 @@ const {
   canEdit: () => props.canEdit,
   getItems: () => props.items,
   getEdges: () => props.edges,
-  getSelectedNodes: () => selection.selectedNodes.value,
+  getSelectedNodes: () => getSelectedNodes.value,
   getCanvasRect: () => rootEl.value?.getBoundingClientRect(),
   project,
   findContainerAt: (point) => containerAt(point),
@@ -352,18 +354,10 @@ const selection = useBoardSelection({
   },
   breakFollowOnEdit,
   textDefaultDimensions,
-  getBoardZIndex: () => {
-    let max = Number.NEGATIVE_INFINITY;
-    let min = Number.POSITIVE_INFINITY;
-    for (const item of props.items) {
-      if (item.zIndex > max) max = item.zIndex;
-      if (item.zIndex < min) min = item.zIndex;
-    }
-    return {
-      max: max === Number.NEGATIVE_INFINITY ? 0 : max,
-      min: min === Number.POSITIVE_INFINITY ? 0 : min,
-    };
-  },
+  // Сохраняем прежнюю baseline-семантику: максимум не ниже 0, минимум не выше 0.
+  // Иначе при доске только с отрицательными (или положительными) z-index действие
+  // «на передний/задний план» меняло бы поведение после выноса в composable.
+  getBoardZIndex: () => ({ max: maxZIndex(props.items), min: minZIndex(props.items) }),
   defaultItemColor: STICKY_DEFAULT_COLOR,
   resolveTextColor: readableTextColor,
   resolveEdgeColor,

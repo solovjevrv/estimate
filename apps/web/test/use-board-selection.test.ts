@@ -1,13 +1,10 @@
-import type { BoardEdge, BoardItem, BoardOp } from '@poker/shared';
+import type { BoardEdge, BoardEdgeStyle, BoardItem, BoardOp, BoardItemStyle } from '@poker/shared';
 import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@poker/shared';
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 
 import { FIT_FONT_MAX } from '../src/lib/board/use-fit-font-size';
-import {
-  useBoardSelection,
-  type BoardSelectionOptions,
-} from '../src/features/boards/composables/use-board-selection';
+import { useBoardSelection } from '../src/features/boards/composables/use-board-selection';
 import type { BoardSelectionEdge, BoardSelectionNode } from '../src/lib/board/vue-flow-adapter';
 
 // Тестовые заглушки — плоские (shallow), а не deep GraphNode, чтобы не взрывать типы vue-flow
@@ -161,10 +158,20 @@ function makeSelection(opts: MakeOptions = {}) {
   };
 }
 
-// Идиома репо: `applyOps.mock.calls[0][0]` — массив операций в слабо типизированном виде,
-// поэтому доступ к `.type/.item/.patch/.id` не требует ручного сужения union BoardOp.
-function lastOps(applyOps: ReturnType<typeof vi.fn>): any[] {
-  return applyOps.mock.calls[applyOps.mock.calls.length - 1]?.[0] ?? [];
+/**
+ * Представление операций в assertions. Каждый тест обращается только к полям
+ * подходящей операции; Vitest не сохраняет параметр `vi.fn` в типе mock.calls,
+ * поэтому изолируем это сужение здесь, а не допускаем `any` в callback-ах тестов.
+ */
+type InspectedBoardOp = {
+  type: BoardOp['type'];
+  id: string;
+  item: Pick<BoardItem, 'id' | 'content' | 'style' | 'zIndex'>;
+  patch: Partial<BoardItem> & { style: BoardItemStyle & BoardEdgeStyle };
+};
+
+function lastOps(applyOps: ReturnType<typeof vi.fn>): InspectedBoardOp[] {
+  return (applyOps.mock.calls[applyOps.mock.calls.length - 1]?.[0] ?? []) as InspectedBoardOp[];
 }
 
 // Плоские MockNode/MockEdge не структурно совместимы с deep GraphNode/GraphEdge,
@@ -277,6 +284,7 @@ describe('useBoardSelection — groupSelection', () => {
     const ops = lastOps(applyOps);
     const create = ops.find((op) => op.type === 'item.create');
     expect(create).toBeDefined();
+    if (!create) throw new Error('Expected item.create operation');
     expect(create.item.content).toEqual({ type: 'group' });
     expect(create.item.zIndex).toBe(6);
     expect(create.item.style).toEqual({ color: '#ABCABC' });
@@ -346,7 +354,7 @@ describe('useBoardSelection — setSelectedForm', () => {
       selectedNodes: [flowNode(item('a', { content: { type: 'sticky', text: 'hello' } }))],
     });
     api.setSelectedForm('text');
-    const op = lastOps(applyOps)[0];
+    const op = lastOps(applyOps)[0]!;
     expect(op.type).toBe('item.patch');
     expect(op.patch.content).toEqual({ type: 'text', text: 'hello' });
   });
@@ -356,7 +364,7 @@ describe('useBoardSelection — setSelectedForm', () => {
       selectedNodes: [flowNode(item('a', { content: { type: 'sticky', text: 'hello' } }))],
     });
     api.setSelectedForm('rectangle');
-    const op = lastOps(applyOps)[0];
+    const op = lastOps(applyOps)[0]!;
     expect(op.patch.content).toEqual({ type: 'shape', shape: 'rectangle', text: 'hello' });
   });
 
@@ -368,7 +376,7 @@ describe('useBoardSelection — setSelectedForm', () => {
     );
     const { api, applyOps } = makeSelection({ selectedNodes: [a] });
     api.setSelectedForm('sticky');
-    const op = lastOps(applyOps)[0];
+    const op = lastOps(applyOps)[0]!;
     const side = 100;
     expect(op.patch).toMatchObject({
       x: 10 + (200 - side) / 2,
@@ -419,7 +427,7 @@ describe('useBoardSelection — color preview session (the bug fix)', () => {
     expect(applyOps).toHaveBeenCalledTimes(2);
     const cancelOps = lastOps(applyOps);
     // ids are frozen at session start, so 'a' is reverted even though selection is empty
-    expect(cancelOps.map((op: any) => op.id)).toEqual(['a']);
+    expect(cancelOps.map((op) => op.id)).toEqual(['a']);
     expect(cancelOps[0]!.patch.style.color).toBe('#CCCCCC');
   });
 
@@ -470,7 +478,7 @@ describe('useBoardSelection — font size clamping', () => {
     );
     const { api, applyOps } = makeSelection({ selectedNodes: [a] });
     api.setSelectedFontSize(BOARD_ITEM_FONT_SIZE_MAX + 100);
-    const op = lastOps(applyOps)[0];
+    const op = lastOps(applyOps)[0]!;
     expect(op.patch.style.fontSize).toBe(BOARD_ITEM_FONT_SIZE_MAX);
   });
 
@@ -552,9 +560,7 @@ describe('useBoardSelection — layer ops', () => {
     });
     api.bringSelectedToFront();
     const ops = lastOps(applyOps);
-    expect(ops.map((op: any) => op.patch.zIndex).sort((x: number, y: number) => x - y)).toEqual([
-      11, 12,
-    ]);
+    expect(ops.map((op) => op.patch.zIndex ?? 0).sort((x, y) => x - y)).toEqual([11, 12]);
   });
 
   it('sendSelectedToBack stacks below current min', () => {
@@ -566,9 +572,7 @@ describe('useBoardSelection — layer ops', () => {
     });
     api.sendSelectedToBack();
     const ops = lastOps(applyOps);
-    expect(ops.map((op: any) => op.patch.zIndex).sort((x: number, y: number) => x - y)).toEqual([
-      -2, -1,
-    ]);
+    expect(ops.map((op) => op.patch.zIndex ?? 0).sort((x, y) => x - y)).toEqual([-2, -1]);
   });
 });
 
@@ -579,8 +583,8 @@ describe('useBoardSelection — delete ops', () => {
     });
     api.deleteSelected();
     const ops = lastOps(applyOps);
-    expect(ops.map((op: any) => op.type)).toEqual(['item.delete', 'item.delete']);
-    expect(ops.map((op: any) => op.id).sort()).toEqual(['a', 'b']);
+    expect(ops.map((op) => op.type)).toEqual(['item.delete', 'item.delete']);
+    expect(ops.map((op) => op.id).sort()).toEqual(['a', 'b']);
   });
 
   it('deleteSelectedEdges emits edge.delete for each selected edge', () => {
@@ -589,7 +593,7 @@ describe('useBoardSelection — delete ops', () => {
     });
     api.deleteSelectedEdges();
     const ops = lastOps(applyOps);
-    expect(ops.map((op: any) => op.type)).toEqual(['edge.delete', 'edge.delete']);
+    expect(ops.map((op) => op.type)).toEqual(['edge.delete', 'edge.delete']);
   });
 });
 
@@ -763,7 +767,7 @@ describe('useBoardSelection — edge style ops', () => {
     const e = flowEdge(boardEdge('e'));
     const { api, applyOps } = makeSelection({ selectedEdges: [e] });
     api.patchEdgeLine('orthogonal');
-    const op = lastOps(applyOps)[0];
+    const op = lastOps(applyOps)[0]!;
     expect(op.type).toBe('edge.patch');
     expect(op.patch.style.line).toBe('orthogonal');
   });
