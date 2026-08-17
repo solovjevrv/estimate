@@ -216,7 +216,7 @@ test.describe('Доски: копирование/вставка', () => {
     const firstId = await board.stickyNodes.getAttribute('data-node-id');
     await page.keyboard.press('Escape');
 
-    await board.pane.dblclick({ position: { x: 950, y: 300 } });
+    await board.pane.dblclick({ position: { x: 1000, y: 600 } });
     await expect(board.stickyNodes).toHaveCount(2);
     const secondId = await board.stickyNodes
       .locator(`:scope:not([data-node-id="${firstId}"])`)
@@ -252,9 +252,22 @@ test.describe('Доски: копирование/вставка', () => {
 
     await expect(board.edges).toHaveCount(1);
 
-    // --- Выделяем оба стикера (shift-click) ---
-    await page.locator(`[data-node-id="${firstId}"]`).click();
-    await page.locator(`[data-node-id="${secondId}"]`).click({ modifiers: ['Shift'] });
+    // --- Выделяем оба стикера рамкой — без platform-specific modifier key ---
+    const edgeStickyBoxes = await board.stickyNodes.evaluateAll((els) =>
+      els.map((el) => el.getBoundingClientRect()),
+    );
+    const selectionMargin = 40;
+    await page.mouse.move(
+      Math.min(...edgeStickyBoxes.map((box) => box.x)) - selectionMargin,
+      Math.min(...edgeStickyBoxes.map((box) => box.y)) - selectionMargin,
+    );
+    await page.mouse.down();
+    await page.mouse.move(
+      Math.max(...edgeStickyBoxes.map((box) => box.x + box.width)) + selectionMargin,
+      Math.max(...edgeStickyBoxes.map((box) => box.y + box.height)) + selectionMargin,
+      { steps: 10 },
+    );
+    await page.mouse.up();
     await expect(board.selectedNodes).toHaveCount(2);
 
     // --- Копируем и вставляем (Ctrl/Cmd+C / Ctrl/Cmd+V) ---
