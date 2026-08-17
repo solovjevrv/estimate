@@ -16,7 +16,9 @@
 import { onBeforeUnmount, onMounted, useTemplateRef } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-export type BoardContextMenuTarget = 'item' | 'edge';
+import type { BoardContextMenuTarget } from '../../features/boards/board-context-menu';
+
+export type { BoardContextMenuTarget };
 
 const props = defineProps<{
   left: number;
