@@ -1,12 +1,13 @@
 import { randomUUID } from 'node:crypto';
 
+import { boardLocators } from '../src/board-locators';
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
 
 /**
  * Форматирование текста стикера/фигуры по выделению (12.13) — начертание
  * (жирный/курсив), маркер и ссылка через тулбар выделения, плюс регрессия,
  * найденная ревью (не живой проверкой): более ранняя версия защиты фокуса
- * ошибочно матчила ВЕСЬ `.board-selection-toolbar`, из-за чего клик
+ * ошибочно матчила ВЕСЬ `[data-testid="board-selection-toolbar"]`, из-за чего клик
  * «Дублировать» посреди набора текста переставал коммитить черновик — тест
  * «регрессия: Дублировать» ниже целится ровно в этот сценарий.
  *
@@ -34,19 +35,20 @@ test.describe('Доски: форматирование текста', () => {
     const boardName = `${E2E_ROOM_PREFIX}Format ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
-    await expect(page.locator('.vue-flow__pane')).toBeVisible();
+    await expect(board.pane).toBeVisible();
 
-    await page.locator('.vue-flow__pane').dblclick({ position: { x: 400, y: 300 } });
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(1);
-    const editable = page.locator('.vue-flow__node-sticky [contenteditable="true"]');
+    await board.pane.dblclick({ position: { x: 400, y: 300 } });
+    await expect(board.stickyNodes).toHaveCount(1);
+    const editable = board.stickyNodes.locator('[contenteditable="true"]');
     await editable.click();
     await editable.fill('Hello world');
 
     async function selectWord(): Promise<void> {
       await page.evaluate(() => {
         const el = document.querySelector(
-          '.vue-flow__node-sticky [contenteditable="true"]',
+          '[data-testid="board-node-sticky"] [contenteditable="true"]',
         ) as HTMLElement;
         function locate(node: Node, pos: number): { node: Node; offset: number } | null {
           if (node.nodeType === Node.TEXT_NODE) {
@@ -77,7 +79,7 @@ test.describe('Доски: форматирование текста', () => {
     }
 
     await selectWord();
-    const toolbar = page.locator('.board-selection-toolbar');
+    const toolbar = board.selectionToolbar;
     await expect(toolbar).toBeVisible();
 
     // Начертание — жирный + курсив одним и тем же выделением, без повторного
@@ -90,18 +92,17 @@ test.describe('Доски: форматирование текста', () => {
 
     // Маркер — та же самая закэшированная область выделения
     await toolbar.locator('button[aria-label="Маркер"]').click();
-    await page.locator('button.board-highlight-swatch').first().click();
+    await board.highlightSwatch.first().click();
 
     // Ссылка — единственный переход, где фокус реально уходит в поле URL
     await toolbar.locator('button[aria-label="Ссылка"]').click();
-    const linkInput = page.locator('input.board-link-input');
-    await expect(linkInput).toBeVisible();
-    await linkInput.fill('https://example.com');
-    await page.locator('button.board-link-apply-btn').click();
+    await expect(board.linkInput).toBeVisible();
+    await board.linkInput.fill('https://example.com');
+    await board.linkApplyBtn.click();
 
-    await page.locator('.vue-flow__pane').click({ position: { x: 900, y: 500 } });
+    await board.pane.click({ position: { x: 900, y: 500 } });
 
-    const viewLink = page.locator('.vue-flow__node-sticky a[href="https://example.com"]');
+    const viewLink = board.stickyNodes.locator('a[href="https://example.com"]');
     await expect(viewLink).toBeVisible();
     await expect(viewLink).toHaveText('Hello');
     await expect(viewLink).toHaveCSS('font-weight', '800');
@@ -109,8 +110,8 @@ test.describe('Доски: форматирование текста', () => {
 
     // Переживает перезагрузку — реально ушло на сервер, не только в локальный DOM
     await page.reload();
-    await expect(page.locator('.vue-flow__node-sticky')).toBeVisible();
-    const reloadedLink = page.locator('.vue-flow__node-sticky a[href="https://example.com"]');
+    await expect(board.stickyNodes).toBeVisible();
+    const reloadedLink = board.stickyNodes.locator('a[href="https://example.com"]');
     await expect(reloadedLink).toBeVisible();
     await expect(reloadedLink).toHaveText('Hello');
   });
@@ -131,24 +132,25 @@ test.describe('Доски: форматирование текста', () => {
     const boardName = `${E2E_ROOM_PREFIX}FormatDup ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
-    await expect(page.locator('.vue-flow__pane')).toBeVisible();
+    await expect(board.pane).toBeVisible();
 
-    await page.locator('.vue-flow__pane').dblclick({ position: { x: 400, y: 300 } });
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(1);
-    const editable = page.locator('.vue-flow__node-sticky [contenteditable="true"]');
+    await board.pane.dblclick({ position: { x: 400, y: 300 } });
+    await expect(board.stickyNodes).toHaveCount(1);
+    const editable = board.stickyNodes.locator('[contenteditable="true"]');
     await editable.click();
     await editable.fill('Черновик');
 
     // Не блюримся явно — сразу кликаем «Дублировать», всё ещё в режиме
     // редактирования. Кнопка не гасит mousedown (ей не нужен editableEl,
     // клик должен обычным образом закоммитить черновик перед копированием)
-    await page.locator('.board-selection-toolbar button[aria-label="Дублировать"]').click();
+    await board.selectionToolbarButton('Дублировать').click();
 
-    await expect(page.locator('.vue-flow__node-sticky')).toHaveCount(2);
+    await expect(board.stickyNodes).toHaveCount(2);
     // toContainText сама повторяет попытки (WS round-trip дубликата не мгновенен) —
     // однократный allInnerTexts() снимал бы кадр до того, как текст успел долететь
-    const stickies = page.locator('.vue-flow__node-sticky');
+    const stickies = board.stickyNodes;
     await expect(stickies.nth(0)).toContainText('Черновик');
     await expect(stickies.nth(1)).toContainText('Черновик');
   });

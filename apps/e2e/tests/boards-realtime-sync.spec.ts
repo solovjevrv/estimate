@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { boardLocators } from '../src/board-locators';
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
 
 /**
@@ -9,7 +10,7 @@ import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
  * цикл op-протокола (12.4-12.10) сквозь настоящие WS-соединения: создание стикера
  * долетает до второго участника, перенос, соединение стрелкой, каскадное удаление.
  *
- * `.vue-flow__pane` перед первым действием — без видимого индикатора "WS
+ * `[data-testid="board-pane"]` перед первым действием — без видимого индикатора "WS
  * подключен" (его в UI нет, presence/awareness пока не рендерятся) это
  * единственный практичный сигнал, что `BoardCanvas` смонтирован, а вместе с ним —
  * что `boardSession.join()` уже вызван (см. `BoardPage.vue`: `board.value`
@@ -46,33 +47,34 @@ test('два браузера на одной доске: создание, пе
   const boardName = `${E2E_ROOM_PREFIX}Sync ${randomUUID().slice(0, 8)}`;
   await pageA.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
   await pageA.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+  const boardA = boardLocators(pageA);
+
   await pageA.waitForURL(/\/boards\/[0-9a-f-]{36}/);
   const boardUrl = pageA.url();
-  await expect(pageA.locator('.vue-flow__pane')).toBeVisible();
+  await expect(boardA.pane).toBeVisible();
 
   const contextB = await newContext(browser);
   await loginAs(contextB, owner);
   const pageB = await contextB.newPage();
   await pageB.goto(boardUrl);
-  await expect(pageB.locator('.vue-flow__pane')).toBeVisible();
+  const boardB = boardLocators(pageB);
+  await expect(boardB.pane).toBeVisible();
 
   // --- Создание стикера видно у второго участника ---
-  await pageA.locator('.vue-flow__pane').dblclick({ position: { x: 300, y: 300 } });
-  await expect(pageA.locator('.vue-flow__node-sticky')).toHaveCount(1);
-  const stickyId = await pageA.locator('.vue-flow__node-sticky').getAttribute('data-id');
+  await boardA.pane.dblclick({ position: { x: 300, y: 300 } });
+  await expect(boardA.stickyNodes).toHaveCount(1);
+  const stickyId = await boardA.stickyNodes.getAttribute('data-node-id');
 
   // Гоча Vue Flow #7: headless Chromium не всегда честно фокусирует
   // contenteditable через программный .focus() при автовходе в
   // редактирование — кликаем сами. С 12.13 текст — не textarea, а
   // contenteditable-div (форматирование по выделению).
-  const textareaA = pageA.locator(
-    `.vue-flow__node[data-id="${stickyId}"] [contenteditable="true"]`,
-  );
+  const textareaA = pageA.locator(`[data-node-id="${stickyId}"] [contenteditable="true"]`);
   await textareaA.click();
   await textareaA.fill('Первый стикер');
-  await pageA.locator('.vue-flow__pane').click({ position: { x: 950, y: 450 } });
+  await boardA.pane.click({ position: { x: 950, y: 450 } });
 
-  const nodeBLocator = pageB.locator(`.vue-flow__node[data-id="${stickyId}"]`);
+  const nodeBLocator = pageB.locator(`[data-node-id="${stickyId}"]`);
   await expect(nodeBLocator).toBeVisible();
   await expect(nodeBLocator).toContainText('Первый стикер');
 
@@ -80,7 +82,7 @@ test('два браузера на одной доске: создание, пе
   const initialBoxB = await nodeBLocator.boundingBox();
   expect(initialBoxB).not.toBeNull();
 
-  const nodeALocator = pageA.locator(`.vue-flow__node[data-id="${stickyId}"]`);
+  const nodeALocator = pageA.locator(`[data-node-id="${stickyId}"]`);
   const boxA = await nodeALocator.boundingBox();
   expect(boxA).not.toBeNull();
   const startX = boxA!.x + boxA!.width / 2;
@@ -103,22 +105,20 @@ test('два браузера на одной доске: создание, пе
   await pageA.keyboard.press('Escape');
 
   // --- Второй стикер + соединение стрелкой ---
-  await pageA.locator('.vue-flow__pane').dblclick({ position: { x: 750, y: 300 } });
-  await expect(pageA.locator('.vue-flow__node-sticky')).toHaveCount(2);
-  const secondId = await pageA
-    .locator(`.vue-flow__node-sticky:not([data-id="${stickyId}"])`)
-    .getAttribute('data-id');
-  const textareaA2 = pageA.locator(
-    `.vue-flow__node[data-id="${secondId}"] [contenteditable="true"]`,
-  );
+  await boardA.pane.dblclick({ position: { x: 750, y: 300 } });
+  await expect(boardA.stickyNodes).toHaveCount(2);
+  const secondId = await boardA.stickyNodes
+    .locator(`:scope:not([data-node-id="${stickyId}"])`)
+    .getAttribute('data-node-id');
+  const textareaA2 = pageA.locator(`[data-node-id="${secondId}"] [contenteditable="true"]`);
   await textareaA2.click();
-  await pageA.locator('.vue-flow__pane').click({ position: { x: 950, y: 450 } });
+  await boardA.pane.click({ position: { x: 950, y: 450 } });
 
   const sourceHandle = pageA.locator(
-    `.vue-flow__handle[data-nodeid="${stickyId}"][data-handleid="right"]`,
+    `[data-testid="board-handle"][data-nodeid="${stickyId}"][data-handleid="right"]`,
   );
   const targetHandle = pageA.locator(
-    `.vue-flow__handle[data-nodeid="${secondId}"][data-handleid="left"]`,
+    `[data-testid="board-handle"][data-nodeid="${secondId}"][data-handleid="left"]`,
   );
   const sourceBox = await sourceHandle.boundingBox();
   const targetBox = await targetHandle.boundingBox();
@@ -135,14 +135,14 @@ test('два браузера на одной доске: создание, пе
   );
   await pageA.mouse.up();
 
-  await expect(pageA.locator('.vue-flow__edge')).toHaveCount(1);
-  await expect(pageB.locator('.vue-flow__edge')).toHaveCount(1);
+  await expect(boardA.edges).toHaveCount(1);
+  await expect(boardB.edges).toHaveCount(1);
 
   // --- Удаление карточки каскадно убирает и связь у второго участника ---
-  await pageA.locator(`.vue-flow__node[data-id="${stickyId}"]`).click();
+  await pageA.locator(`[data-node-id="${stickyId}"]`).click();
   await pageA.keyboard.press('Delete');
 
-  await expect(pageB.locator(`.vue-flow__node[data-id="${stickyId}"]`)).toHaveCount(0);
-  await expect(pageB.locator('.vue-flow__edge')).toHaveCount(0);
-  await expect(pageB.locator('.vue-flow__node-sticky')).toHaveCount(1);
+  await expect(pageB.locator(`[data-node-id="${stickyId}"]`)).toHaveCount(0);
+  await expect(boardB.edges).toHaveCount(0);
+  await expect(boardB.stickyNodes).toHaveCount(1);
 });

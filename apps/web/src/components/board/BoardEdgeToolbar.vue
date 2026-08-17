@@ -87,6 +87,7 @@ function cancelColor(hex: BoardColorHex): void {
 
 <template>
   <div
+    data-testid="board-edge-toolbar"
     class="board-edge-toolbar board-toolbar-base"
     :style="{ left: `${left}px`, top: `${top}px` }"
     @click.stop

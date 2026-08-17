@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { boardLocators } from '../src/board-locators';
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
 
 /**
@@ -42,7 +43,7 @@ test('мягкая блокировка текстового редактиро�
   await pageA.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
   await pageA.locator('form').getByRole('button', { name: 'Создать доску' }).click();
   await pageA.waitForURL(/\/boards\/[0-9a-f-]{36}/);
-  await expect(pageA.locator('.vue-flow__pane')).toBeVisible();
+  const boardA = boardLocators(pageA);
   const boardUrl = pageA.url();
 
   // Второй уникальный участник — приглашённый в команду
@@ -54,24 +55,25 @@ test('мягкая блокировка текстового редактиро�
   await pageC.getByRole('button', { name: 'Вступить' }).click();
   await pageC.waitForURL(/\/teams\/[0-9a-f-]{36}/);
   await pageC.goto(boardUrl);
-  await expect(pageC.locator('.vue-flow__pane')).toBeVisible();
+  const boardC = boardLocators(pageC);
+  await expect(boardC.pane).toBeVisible();
 
   // --- Создаём стикер на доске через A ---
-  await pageA.locator('.vue-flow__pane').dblclick({ position: { x: 300, y: 300 } });
-  await expect(pageA.locator('.vue-flow__node-sticky')).toHaveCount(1);
-  const stickyId = await pageA.locator('.vue-flow__node-sticky').getAttribute('data-id');
+  await boardA.pane.dblclick({ position: { x: 300, y: 300 } });
+  await expect(boardA.stickyNodes).toHaveCount(1);
+  const stickyId = await boardA.stickyNodes.getAttribute('data-node-id');
   expect(stickyId).not.toBeNull();
 
   // Ждём репликацию стикера на страницу C
-  await expect(pageC.locator('.vue-flow__node-sticky')).toHaveCount(1);
+  await expect(boardC.stickyNodes).toHaveCount(1);
 
-  const nodeA = `.vue-flow__node[data-id="${stickyId}"]`;
-  const nodeC = `.vue-flow__node[data-id="${stickyId}"]`;
-  const badgeSelector = `${nodeA} .board-editing-badge`;
-  const badgeSelectorC = `${nodeC} .board-editing-badge`;
-  const contentBoxA = `${nodeA} .board-sticky-content`;
-  const contentBoxC = `${nodeC} .board-sticky-content`;
-  const contenteditableA = `${nodeA} [contenteditable="true"]`;
+  const nodeA = `[data-node-id="${stickyId}"]`;
+  const nodeC = `[data-node-id="${stickyId}"]`;
+  const badgeSelector = `${nodeA} [data-testid="board-editing-badge"]`;
+  const badgeSelectorC = `${nodeC} [data-testid="board-editing-badge"]`;
+  const contentBoxA = `${nodeA} [data-testid="board-sticky-content"]`;
+  const contentBoxC = `${nodeC} [data-testid="board-sticky-content"]`;
+  const contenteditableA = `[data-node-id="${stickyId}"] [contenteditable="true"]`;
 
   // --- 1. A входит в редактирование ---
   await pageA.locator(contentBoxA).dblclick();
@@ -96,7 +98,7 @@ test('мягкая блокировка текстового редактиро�
   await expect(pageA.locator(contenteditableA)).toHaveText('Текст от A');
 
   // --- 4. A снимает выделение → блокировка снимается ---
-  await pageA.locator('.vue-flow__pane').click({ position: { x: 950, y: 50 } });
+  await pageA.locator('[data-testid="board-pane"]').click({ position: { x: 950, y: 50 } });
   await expect(pageC.locator(badgeSelectorC)).toBeHidden();
 
   // --- 5. C теперь может редактировать ---

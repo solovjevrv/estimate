@@ -284,6 +284,7 @@ function cancelTextColor(hex: BoardColorHex): void {
 
 <template>
   <div
+    data-testid="board-selection-toolbar"
     class="board-selection-toolbar board-toolbar-base"
     :style="{ left: `${left}px`, top: `${top}px` }"
     @click.stop
@@ -485,7 +486,7 @@ function cancelTextColor(hex: BoardColorHex): void {
         </button>
 
         <template #content>
-          <div class="board-form-menu">
+          <div class="board-form-menu" data-testid="board-form-menu">
             <button
               v-for="align in BOARD_TEXT_ALIGNS"
               :key="align"
@@ -578,6 +579,7 @@ function cancelTextColor(hex: BoardColorHex): void {
               :key="hl"
               type="button"
               class="board-highlight-swatch"
+              data-testid="board-highlight-swatch"
               :class="{ 'board-selection-swatch-active': hl === activeMarks?.highlight }"
               :style="{ backgroundColor: HIGHLIGHT_CSS[hl] }"
               :disabled="formattingDisabled"
@@ -638,11 +640,12 @@ function cancelTextColor(hex: BoardColorHex): void {
                 type="text"
                 inputmode="url"
                 class="board-link-input"
+                data-testid="board-link-input"
                 placeholder="https://..."
                 @input="linkError = false"
                 @keydown.esc.stop.prevent="linkPopoverOpen = false"
               />
-              <button type="submit" class="board-link-apply-btn">
+              <button type="submit" class="board-link-apply-btn" data-testid="board-link-apply-btn">
                 {{ t('board.linkApply') }}
               </button>
               <button

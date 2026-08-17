@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
+import { boardLocators } from '../src/board-locators';
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
 
 /**
@@ -32,19 +33,21 @@ for (const scenario of [
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
 
-    const pane = page.locator('.vue-flow__pane');
+    const board = boardLocators(page);
+    const pane = board.pane;
     await expect(pane).toBeVisible();
 
     if (scenario.tool) {
-      await page.locator(`.board-toolbar button[aria-label="${scenario.tool}"]`).click();
+      await board.toolbarButton(scenario.tool).click();
       await pane.click({ position: { x: 650, y: 350 } });
     } else {
       // Стикер создаётся двойным кликом, как основной пользовательский сценарий.
       await pane.dblclick({ position: { x: 350, y: 250 } });
     }
 
-    await expect(
-      page.locator(`.vue-flow__node-${scenario.node} [contenteditable="true"]`),
-    ).toHaveCSS('cursor', 'text');
+    await expect(board.nodeByType(scenario.node).locator('[contenteditable="true"]')).toHaveCSS(
+      'cursor',
+      'text',
+    );
   });
 }

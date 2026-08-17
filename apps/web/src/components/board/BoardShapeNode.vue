@@ -152,8 +152,13 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 </script>
 
 <template>
-  <div class="board-node-resizer-gap relative h-full w-full">
-    <BoardEditingBadge v-if="lockedBy" :name="lockedBy.name" />
+  <div
+    class="board-node-resizer-gap relative h-full w-full"
+    data-testid="board-node-shape"
+    :data-node-id="props.id"
+    :data-selected="props.selected ? 'true' : 'false'"
+  >
+    <BoardEditingBadge v-if="lockedBy" :name="lockedBy.name" data-testid="board-editing-badge" />
     <NodeResizer
       :is-visible="props.selected && !editing && canEdit && !lockedBy"
       :min-width="SHAPE_MIN_WIDTH"
@@ -163,6 +168,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       @resize-end="onResizeEnd"
     />
     <div
+      data-testid="board-node-content"
       class="board-node-content relative flex h-full w-full items-center justify-center overflow-hidden p-4 font-semibold"
       :class="isDiamond ? '' : ['border-2', shapeClass]"
       :style="isDiamond ? {} : { backgroundColor: bgColor, borderColor, color: textColor }"
@@ -220,10 +226,34 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
          .board-node-content, у которой overflow-hidden обрезал бы хендлы по
          краю (translate тянет их наполовину за границу бокса) -->
     <template v-if="canEdit">
-      <Handle id="top" type="source" :position="Position.Top" class="board-connect-handle" />
-      <Handle id="right" type="source" :position="Position.Right" class="board-connect-handle" />
-      <Handle id="bottom" type="source" :position="Position.Bottom" class="board-connect-handle" />
-      <Handle id="left" type="source" :position="Position.Left" class="board-connect-handle" />
+      <Handle
+        id="top"
+        type="source"
+        :position="Position.Top"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
+      <Handle
+        id="right"
+        type="source"
+        :position="Position.Right"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
+      <Handle
+        id="bottom"
+        type="source"
+        :position="Position.Bottom"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
+      <Handle
+        id="left"
+        type="source"
+        :position="Position.Left"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
     </template>
   </div>
 </template>

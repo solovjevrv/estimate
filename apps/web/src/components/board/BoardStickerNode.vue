@@ -37,7 +37,12 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 </script>
 
 <template>
-  <div class="board-node-resizer-gap relative h-full w-full">
+  <div
+    class="board-node-resizer-gap relative h-full w-full"
+    data-testid="board-node-sticker"
+    :data-node-id="props.id"
+    :data-selected="props.selected ? 'true' : 'false'"
+  >
     <NodeResizer
       :is-visible="props.selected && canEdit"
       :min-width="STICKER_MIN_WIDTH"
@@ -48,6 +53,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       @resize-end="onResizeEnd"
     />
     <div
+      data-testid="board-node-content"
       class="board-node-content relative flex h-full w-full items-center justify-center overflow-hidden"
       @dblclick.stop
     >
@@ -55,6 +61,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
         <img
           :src="imageUrl"
           :alt="altText"
+          data-testid="board-node-sticker-image"
           class="h-full w-full object-contain"
           draggable="false"
           @load.stop
@@ -78,10 +85,34 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
          (см. floating-edge-geometry.ts) — то есть точка фиксированная и
          предсказуемая, просто следует за карточкой при её переносе. -->
     <template v-if="canEdit">
-      <Handle id="top" type="source" :position="Position.Top" class="board-connect-handle" />
-      <Handle id="right" type="source" :position="Position.Right" class="board-connect-handle" />
-      <Handle id="bottom" type="source" :position="Position.Bottom" class="board-connect-handle" />
-      <Handle id="left" type="source" :position="Position.Left" class="board-connect-handle" />
+      <Handle
+        id="top"
+        type="source"
+        :position="Position.Top"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
+      <Handle
+        id="right"
+        type="source"
+        :position="Position.Right"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
+      <Handle
+        id="bottom"
+        type="source"
+        :position="Position.Bottom"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
+      <Handle
+        id="left"
+        type="source"
+        :position="Position.Left"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
     </template>
   </div>
 </template>

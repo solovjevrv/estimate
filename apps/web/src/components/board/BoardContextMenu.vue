@@ -70,6 +70,7 @@ function act(fn: () => void): void {
 <template>
   <div
     ref="root"
+    data-testid="board-context-menu"
     class="board-context-menu"
     :style="{ left: `${left}px`, top: `${top}px` }"
     @contextmenu.prevent

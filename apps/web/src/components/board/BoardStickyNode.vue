@@ -210,8 +210,13 @@ watch(
 </script>
 
 <template>
-  <div class="board-node-resizer-gap relative h-full w-full">
-    <BoardEditingBadge v-if="lockedBy" :name="lockedBy.name" />
+  <div
+    class="board-node-resizer-gap relative h-full w-full"
+    data-testid="board-node-sticky"
+    :data-node-id="props.id"
+    :data-selected="props.selected ? 'true' : 'false'"
+  >
+    <BoardEditingBadge v-if="lockedBy" :name="lockedBy.name" data-testid="board-editing-badge" />
     <NodeResizer
       :is-visible="props.selected && !editing && canEdit && !lockedBy"
       :min-width="STICKY_MIN_WIDTH"
@@ -223,6 +228,7 @@ watch(
     />
     <div
       ref="contentBox"
+      data-testid="board-sticky-content"
       class="board-sticky-content flex h-full w-full items-center justify-center overflow-hidden rounded-md p-5 text-center font-semibold"
       :style="{ backgroundColor: bgColor, color: textColor }"
       @dblclick.stop="startEditing"
@@ -271,10 +277,34 @@ watch(
       предсказуемая, просто следует за карточкой при её переносе.
     -->
     <template v-if="canEdit">
-      <Handle id="top" type="source" :position="Position.Top" class="board-connect-handle" />
-      <Handle id="right" type="source" :position="Position.Right" class="board-connect-handle" />
-      <Handle id="bottom" type="source" :position="Position.Bottom" class="board-connect-handle" />
-      <Handle id="left" type="source" :position="Position.Left" class="board-connect-handle" />
+      <Handle
+        id="top"
+        type="source"
+        :position="Position.Top"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
+      <Handle
+        id="right"
+        type="source"
+        :position="Position.Right"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
+      <Handle
+        id="bottom"
+        type="source"
+        :position="Position.Bottom"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
+      <Handle
+        id="left"
+        type="source"
+        :position="Position.Left"
+        class="board-connect-handle"
+        data-testid="board-handle"
+      />
     </template>
 
     <!--
