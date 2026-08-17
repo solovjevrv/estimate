@@ -4,9 +4,28 @@
  * (см. риски в PROGRESS.md), меняется только этот файл.
  */
 import type { BoardColorHex, BoardEdge, BoardEdgeMarker, BoardItem } from '@poker/shared';
-import { MarkerType, type Edge, type EdgeMarkerType, type Node } from '@vue-flow/core';
+import {
+  MarkerType,
+  type Edge,
+  type EdgeMarkerType,
+  type GraphEdge,
+  type GraphNode,
+  type Node,
+} from '@vue-flow/core';
 
 import { resolveEdgeColor } from './board-item-defaults';
+
+/**
+ * Типы узлов/связей Vue Flow с нашими доменными данными — единственная точка
+ * соприкосновения типов Vue Flow с доменной моделью доски (см. заголовок файла).
+ *
+ * Используем `GraphNode`/`GraphEdge` (а не базовые `Node`/`Edge`) — только у
+ * расширенных типов есть `computedPosition`/`dimensions`/`selected`, которые
+ * требуются selectable-логике и live-превью. `GraphNode.data` требательнее `Node.data?`:
+ * обязательный `data: BoardItem`, поэтому в composable не нужно ни о чём гадать.
+ */
+export type BoardSelectionNode = GraphNode<BoardItem>;
+export type BoardSelectionEdge = GraphEdge<BoardEdge>;
 
 /**
  * `parent` — родительский `BoardItem` (frame/group), если у `item` задан

@@ -31,20 +31,15 @@
  * affordance поверх уже рабочего drag-от-хендла (см. `onConnect` ниже).
  */
 import {
-  BOARD_ITEM_FONT_SIZE_MAX,
-  BOARD_ITEM_FONT_SIZE_MIN,
   BOARD_OPS_BATCH_MAX,
   isBoardContainer,
   type Board,
-  type BoardColorHex,
   type BoardEdge,
   type BoardItem,
   type BoardItemContent,
   type BoardItemPatchOp,
   type BoardOp,
   type BoardPresenceEntry,
-  type BoardTextAlign,
-  type ReactionEmoji,
 } from '@poker/shared';
 import type { DropdownMenuItem } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
@@ -57,11 +52,9 @@ import {
   useVueFlow,
   VueFlow,
   type Connection,
-  type Edge,
   type EdgeMouseEvent,
   type GraphNode,
   type NodeDragEvent,
-  type NodeMouseEvent,
 } from '@vue-flow/core';
 import {
   computed,
@@ -77,9 +70,6 @@ import {
 import { useI18n } from 'vue-i18n';
 
 import {
-  maxZIndex,
-  minZIndex,
-  nextZIndexAbove,
   resolveEdgeColor,
   SHAPE_DEFAULT_HEIGHT,
   SHAPE_DEFAULT_WIDTH,
@@ -99,11 +89,7 @@ import {
 import { readableTextColor } from '../../lib/board/board-colors';
 import type { BoardTextEditorHandle } from '../../lib/board/board-rich-text';
 import { useBoardHotkeys } from '../../lib/board/use-board-hotkeys';
-import {
-  FIT_FONT_MAX,
-  getScaledFontSize,
-  unscaleFontSizeStep,
-} from '../../lib/board/use-fit-font-size';
+import type { BoardSelectionEdge, BoardSelectionNode } from '../../lib/board/vue-flow-adapter';
 import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
 import { throttle } from '../../lib/throttle';
 import { uuid } from '../../lib/board/uuid';
@@ -121,13 +107,11 @@ import {
 import { useBoardSessionStore } from '../../stores/board-session';
 import { useBoardClipboard } from '../../features/boards/composables/use-board-clipboard';
 import { useBoardCreation } from '../../features/boards/composables/use-board-creation';
-import BoardSelectionToolbar, { type ItemFormKind } from './BoardSelectionToolbar.vue';
-import BoardContextMenu, { type BoardContextMenuTarget } from './BoardContextMenu.vue';
+import { useBoardSelection } from '../../features/boards/composables/use-board-selection';
+import BoardSelectionToolbar from './BoardSelectionToolbar.vue';
+import BoardContextMenu from './BoardContextMenu.vue';
 import BoardCursor from './BoardCursor.vue';
-import BoardEdgeToolbar, {
-  type BoardEdgeLineKindOption,
-  type BoardEdgeMarkerOption,
-} from './BoardEdgeToolbar.vue';
+import BoardEdgeToolbar from './BoardEdgeToolbar.vue';
 import BoardFloatingEdge from './BoardFloatingEdge.vue';
 import BoardImageNode from './BoardImageNode.vue';
 import BoardShapeNode from './BoardShapeNode.vue';
@@ -331,7 +315,7 @@ const {
   canEdit: () => props.canEdit,
   getItems: () => props.items,
   getEdges: () => props.edges,
-  getSelectedNodes: () => selectedNodes.value,
+  getSelectedNodes: () => selection.selectedNodes.value,
   getCanvasRect: () => rootEl.value?.getBoundingClientRect(),
   project,
   findContainerAt: (point) => containerAt(point),
@@ -344,6 +328,98 @@ const {
   clearSelection: () => removeSelectedNodes(getSelectedNodes.value),
   selectItems: (ids) => addSelectedNodes(ids.map((id) => ({ id }) as GraphNode<BoardItem>)),
 });
+
+// useBoardSelection деструктурируется сразу — шаблон обращается к полям через
+// локальные имена (selectionToolbarPosition, selectedForm, contextMenu и т.п.),
+// а события Vue Flow (node-click и т.д.) — к методам `selection.*`.
+const selection = useBoardSelection({
+  canEdit: () => props.canEdit,
+  getItems: () => props.items,
+  getEdges: () => getEdges.value as BoardSelectionEdge[],
+  getNodes: () => getNodes.value as BoardSelectionNode[],
+  getCanvasRect: () => rootEl.value?.getBoundingClientRect(),
+  getViewport: () => viewport.value,
+  getSelectedNodes: () => getSelectedNodes.value as BoardSelectionNode[],
+  getSelectedEdges: () => getSelectedEdges.value as BoardSelectionEdge[],
+  applyOps: (ops) => void boardSession.applyOps(ops),
+  canCreateItem,
+  onContainerClick: onPaneClick,
+  pickImageFile,
+  uploadImage,
+  activeTool: () => activeTool.value,
+  setPendingEdgeEditId: (id) => {
+    pendingEdgeEditId.value = id;
+  },
+  breakFollowOnEdit,
+  textDefaultDimensions,
+  getBoardZIndex: () => {
+    let max = Number.NEGATIVE_INFINITY;
+    let min = Number.POSITIVE_INFINITY;
+    for (const item of props.items) {
+      if (item.zIndex > max) max = item.zIndex;
+      if (item.zIndex < min) min = item.zIndex;
+    }
+    return {
+      max: max === Number.NEGATIVE_INFINITY ? 0 : max,
+      min: min === Number.POSITIVE_INFINITY ? 0 : min,
+    };
+  },
+  defaultItemColor: STICKY_DEFAULT_COLOR,
+  resolveTextColor: readableTextColor,
+  resolveEdgeColor,
+});
+
+// Вынесенные в composable состояние и методы, которыми пользуется шаблон.
+// Computed-свойства и методы деструктурируются как есть — Vue 3 автораспаковывает
+// ref/computed в шаблонах для top-level констант <script setup>. onEdgeDoubleClick
+// остается локальным (он про клик по связи, а не про выделение).
+const {
+  selectionToolbarPosition,
+  edgeToolbarPosition,
+  selectedForm,
+  selectedColor,
+  selectedEdgeStyle,
+  selectedEdgeColor,
+  selectedFontSize,
+  canIncreaseSelectedFontSize,
+  canDecreaseSelectedFontSize,
+  selectedTextColor,
+  selectedTextAlign,
+  canGroupSelection,
+  canUngroupSelection,
+  contextMenu,
+  onNodeClick,
+  onNodeContextMenu,
+  onSelectionContextMenu,
+  onEdgeContextMenu,
+  onPaneContextMenu,
+  closeContextMenu,
+  setSelectedColor,
+  setSelectedForm,
+  setSelectedFontSize,
+  setSelectedTextColor,
+  setSelectedTextAlign,
+  setSelectedEmoji,
+  setSelectedSticker,
+  replaceSelectedImage,
+  groupSelection,
+  ungroupSelection,
+  bringSelectedToFront,
+  sendSelectedToBack,
+  deleteSelected,
+  deleteSelectedEdges,
+  patchEdgeLine,
+  patchEdgeMarkerStart,
+  patchEdgeMarkerEnd,
+  patchEdgeColor,
+  addTextToSelectedEdge,
+  previewSelectedColor,
+  cancelSelectedColorPreview,
+  previewSelectedTextColor,
+  cancelSelectedTextColorPreview,
+  previewEdgeColor,
+  cancelEdgeColorPreview,
+} = selection;
 
 /**
  * Курсоры участников (14.1). Позиция мыши проецируется в canvas-координаты
@@ -498,24 +574,9 @@ provide(BOARD_PENDING_EDGE_EDIT_ID_KEY, pendingEdgeEditId);
 const activeTextEditor = shallowRef<BoardTextEditorHandle | null>(null);
 provide(BOARD_ACTIVE_TEXT_EDITOR_KEY, activeTextEditor);
 
-/**
- * Узлы Vue Flow измеряют свой DOM сами, а тулбар живёт уровнем выше. Передаём
- * только производный runtime-размер через registry: ни в BoardItem, ни в WS
- * op он не попадает.
- */
-const effectiveFontSizes = shallowRef<ReadonlyMap<string, number>>(new Map());
-provide(BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY, {
-  sizes: effectiveFontSizes,
-  set(itemId, fontSize) {
-    effectiveFontSizes.value = new Map(effectiveFontSizes.value).set(itemId, fontSize);
-  },
-  remove(itemId) {
-    if (!effectiveFontSizes.value.has(itemId)) return;
-    const next = new Map(effectiveFontSizes.value);
-    next.delete(itemId);
-    effectiveFontSizes.value = next;
-  },
-});
+// effectiveFontSizeRegistry принадлежит composable (жизненный цикл совпадает с
+// холстом); Canvas только пробрасывает его через provide для измерения node-ами.
+provide(BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY, selection.effectiveFontSizeRegistry);
 
 /* canCreateItems/canCreateItem вынесены в useBoardCreation. Canvas сохраняет
  * canApplyOpsCount — он про батч-лимит WS, а не про создание элемента. */
@@ -584,141 +645,6 @@ function containerAt(point: { x: number; y: number }, excludeId?: string): Board
     }
   }
   return best;
-}
-
-/**
- * Можно сгруппировать: 2+ элемента выделено и среди них НЕТ уже готового
- * контейнера (frame/group) — сервер всё равно отклонит вложенность
- * контейнера в контейнер (без вложенности, 14.3), а без этой проверки
- * оптимистичное применение на клиенте успело бы "съехать", прежде чем батч
- * целиком отклонят и откатят не будет (board-session.ts не откатывает
- * оптимистично применённое на ошибке) — см. также кнопки в BoardContextMenu.
- */
-const canGroupSelection = computed(
-  () =>
-    selectedNodes.value.length >= 2 &&
-    !selectedNodes.value.some((n) => isBoardContainer(n.data.content.type)),
-);
-/** Можно разгруппировать: хотя бы один выделенный элемент сейчас внутри контейнера */
-const canUngroupSelection = computed(() =>
-  selectedNodes.value.some((n) => n.data.parentId !== null),
-);
-
-/**
- * Группировка выделения (14.3) — создаёт невидимую группу (container) и
- * переставляет выделенных элементов `parentId` на неё. Группа позиционируется
- * по bounding box выделения. `x`/`y` элементов в домене остаются абсолютными
- * (не пересчитываются) — относительной позицию для рендера Vue Flow делает
- * `vue-flow-adapter.ts` сам, по разнице с координатами родителя.
- *
- * Это атомарный батч: создали группу + перепривязали всех детей — сервер
- * применит всё по порядку (group.create сначала, потом patches с parentId),
- * так что FK-валидация не будет ругаться на несуществующего родителя.
- */
-function groupSelection(): void {
-  if (!canGroupSelection.value || !canCreateItem()) return;
-  const selected = selectedNodes.value;
-
-  const left = Math.min(...selected.map((n) => n.computedPosition.x));
-  const top = Math.min(...selected.map((n) => n.computedPosition.y));
-  const right = Math.max(...selected.map((n) => n.computedPosition.x + n.dimensions.width));
-  const bottom = Math.max(...selected.map((n) => n.computedPosition.y + n.dimensions.height));
-
-  const groupId = uuid();
-  const ops: BoardOp[] = [
-    {
-      type: 'item.create',
-      clientOpId: uuid(),
-      item: {
-        id: groupId,
-        parentId: null,
-        x: left,
-        y: top,
-        width: right - left,
-        height: bottom - top,
-        rotation: 0,
-        zIndex: nextZIndexAbove(props.items),
-        content: { type: 'group' },
-        style: { color: STICKY_DEFAULT_COLOR },
-        reactions: [],
-      },
-    },
-    // Аннотация возврата, а не `as BoardOp`: контекстный тип массива не протекает
-    // внутрь колбэка `.map` через спред, поэтому без неё `type` расширяется до
-    // string и литерал перестаёт подходить под union. Аннотацию компилятор
-    // проверяет, в отличие от утверждения.
-    ...selected.map((node): BoardOp => ({
-      type: 'item.patch',
-      clientOpId: uuid(),
-      id: node.id,
-      patch: { parentId: groupId },
-    })),
-  ];
-  void boardSession.applyOps(ops);
-}
-
-/**
- * Разгруппировка (14.3). Группа — жёсткий пучок (не мини-холст, как фрейм):
- * разгруппировка любого её участника распускает ВСЮ группу целиком, а не
- * только выделенного (иначе часть участников осталась бы привязана к группе,
- * из которой других уже вынули — рассинхрон, которого в модели "жёсткого
- * пучка" быть не должно), и опустевшую группу сразу удаляем — иначе на доске
- * оставалась бы невидимая пустая оболочка, которую нечем выделить кроме как
- * случайно, и нечем удалить кроме явного клика точно по ней (найдено вручную).
- * Фрейм — не то же самое: он мини-холст, который пользователь мог осознанно
- * создать и хочет оставить даже пустым, так что для фрейма снимаем родителя
- * только у явно выделенного элемента, сам фрейм не трогаем.
- */
-function ungroupSelection(): void {
-  const ops: BoardOp[] = [];
-  const dissolvedGroupIds = new Set<string>();
-  for (const node of selectedNodes.value) {
-    const parentId = node.data.parentId;
-    if (parentId === null) continue;
-    const parent = props.items.find((candidate) => candidate.id === parentId);
-    if (parent?.content.type === 'group') {
-      if (dissolvedGroupIds.has(parentId)) continue;
-      dissolvedGroupIds.add(parentId);
-      for (const member of childrenOf(parentId)) {
-        ops.push({
-          type: 'item.patch',
-          clientOpId: uuid(),
-          id: member.id,
-          patch: { parentId: null },
-        });
-      }
-      ops.push({ type: 'item.delete', clientOpId: uuid(), id: parentId });
-    } else {
-      ops.push({ type: 'item.patch', clientOpId: uuid(), id: node.id, patch: { parentId: null } });
-    }
-  }
-  if (ops.length) void boardSession.applyOps(ops);
-}
-
-/**
- * Заменяет файл у уже созданных картинок в выделении (13.2, тулбар выделения) —
- * рамка/позиция на холсте не трогается, меняется только содержимое `<img>`
- * (как замена картинки в Miro). Не-картинки в смешанном выделении пропускаются.
- * pickImageFile и uploadImage — из useBoardCreation (см. выше).
- */
-async function replaceSelectedImage(): Promise<void> {
-  if (!props.canEdit) return;
-  const file = await pickImageFile();
-  if (!file) return;
-  const result = await uploadImage(file);
-  if (!result) return;
-
-  const ops: BoardOp[] = selectedNodes.value
-    .filter((node) => node.data.content.type === 'image')
-    .map((node) => ({
-      type: 'item.patch',
-      clientOpId: uuid(),
-      id: node.id,
-      patch: {
-        content: { type: 'image', url: result.url, width: result.width, height: result.height },
-      },
-    }));
-  if (ops.length) void boardSession.applyOps(ops);
 }
 
 /** Drag over — нужен, чтобы браузер разрешил drop */
@@ -1093,357 +1019,9 @@ function onNodeDragStop(event: NodeDragEvent): void {
   }
 }
 
-// --- Плавающий тулбар над выделением (12.6) ---
-
-const selectedNodes = computed(() => getSelectedNodes.value as GraphNode<BoardItem>[]);
-const selectedEdges = computed(() => getSelectedEdges.value as Edge<BoardEdge>[]);
-
-const selectionToolbarPosition = computed(() => {
-  const selected = selectedNodes.value;
-  if (!props.canEdit || selected.length === 0) return null;
-  const left = Math.min(...selected.map((node) => node.computedPosition.x));
-  const right = Math.max(
-    ...selected.map((node) => node.computedPosition.x + node.dimensions.width),
-  );
-  const top = Math.min(...selected.map((node) => node.computedPosition.y));
-  return {
-    left: viewport.value.x + ((left + right) / 2) * viewport.value.zoom,
-    top: viewport.value.y + top * viewport.value.zoom,
-  };
-});
-
-const edgeToolbarPosition = computed(() => {
-  const selected = selectedEdges.value;
-  if (!props.canEdit || selected.length === 0) return null;
-  const nodes = getNodes.value;
-  const nodeMap = new Map(nodes.map((node) => [node.id, node]));
-  const edge = selected[0]!;
-  const sourceNode = nodeMap.get(edge.source);
-  const targetNode = nodeMap.get(edge.target);
-  if (!sourceNode || !targetNode) return null;
-  const x = (sourceNode.position.x + targetNode.position.x) / 2;
-  const y = (sourceNode.position.y + targetNode.position.y) / 2;
-  return {
-    left: viewport.value.x + x * viewport.value.zoom,
-    top: viewport.value.y + y * viewport.value.zoom,
-  };
-});
-
-const selectedEdgeStyle = computed<BoardEdge['style']>(() => {
-  const style = selectedEdges.value[0]?.data?.style;
-  if (style) return style;
-  return { line: 'curved', markerStart: 'none', markerEnd: 'arrow' };
-});
-
-/** Кружок-триггер в тулбаре связи всегда нужен литеральным цветом (12.9) — резолвим авто */
-const selectedEdgeColor = computed<BoardColorHex>(() =>
-  resolveEdgeColor(selectedEdgeStyle.value.color),
-);
-
-function patchSelected(patchByNode: (node: GraphNode<BoardItem>, index: number) => BoardOp): void {
-  const ops = selectedNodes.value.map(patchByNode);
-  if (ops.length) void boardSession.applyOps(ops);
-}
-
-function patchSelectedEdge(patchByEdge: (edge: Edge<BoardEdge>) => BoardOp): void {
-  const ops = selectedEdges.value.map(patchByEdge);
-  if (ops.length) void boardSession.applyOps(ops);
-}
-
-/**
- * Сессии «превью кастомного цвета» из UColorPicker (18.4, баг с живой
- * проверки): drag красит объект live через ту же `applyOps`, что и обычный
- * коммит. Раньше отмена (BoardColorPickerMenu, попап закрыт без «Применить»)
- * шла через тот же путь, что и live-превью, и патчила ТЕКУЩЕЕ выделение
- * (`patchSelected`/`patchSelectedEdge`) — а клик мимо объекта синхронно
- * снимает выделение РАНЬШЕ, чем успевает отработать откат: к моменту, когда
- * приходит эмит отмены, выделение уже пустое, патч не бьёт никуда, откат
- * молча теряется, цвет остаётся висеть на объекте перманентно.
- *
- * Фикс — не читать выделение на каждый тик, а зафиксировать id один раз в
- * начале сессии (первый вызов preview после явного коммита/отмены) и всегда
- * использовать именно эти id, включая финальную отмену — тогда она бьёт в
- * тот же объект, что и живое превью, независимо от состояния выделения к
- * моменту закрытия попапа. Коммит (клик по свотчу/«Применить», через
- * patchSelected/patchSelectedEdge выше) ЗАВЕРШАЕТ сессию — сбрасывает id в
- * null. Отмена — это ОТДЕЛЬНОЕ, не переиспользующее preview, событие
- * (`BoardColorPickerMenu`'s `cancel`) ИМЕННО потому, что тоже обязана
- * завершить сессию: если бы отмена шла через preview, id остались бы
- * зафиксированными, и следующее открытие пикера (даже на другом объекте)
- * красило бы старый.
- */
-let colorPreviewIds: string[] | null = null;
-let textColorPreviewIds: string[] | null = null;
-let edgeColorPreviewIds: string[] | null = null;
-
-function previewSelectedColor(color: BoardColorHex): void {
-  colorPreviewIds ??= selectedNodes.value.map((node) => node.id);
-  const ops: BoardOp[] = colorPreviewIds.map((id) => ({
-    type: 'item.patch',
-    clientOpId: uuid(),
-    id,
-    patch: { style: { color } },
-  }));
-  if (ops.length) void boardSession.applyOps(ops);
-}
-
-function cancelSelectedColorPreview(originalColor: BoardColorHex): void {
-  const ids = colorPreviewIds;
-  colorPreviewIds = null;
-  if (!ids?.length) return;
-  const ops: BoardOp[] = ids.map((id) => ({
-    type: 'item.patch',
-    clientOpId: uuid(),
-    id,
-    patch: { style: { color: originalColor } },
-  }));
-  void boardSession.applyOps(ops);
-}
-
-function previewSelectedTextColor(textColor: BoardColorHex): void {
-  textColorPreviewIds ??= selectedNodes.value.map((node) => node.id);
-  const ops: BoardOp[] = textColorPreviewIds.map((id) => ({
-    type: 'item.patch',
-    clientOpId: uuid(),
-    id,
-    patch: { style: { textColor } },
-  }));
-  if (ops.length) void boardSession.applyOps(ops);
-}
-
-function cancelSelectedTextColorPreview(originalTextColor: BoardColorHex): void {
-  const ids = textColorPreviewIds;
-  textColorPreviewIds = null;
-  if (!ids?.length) return;
-  const ops: BoardOp[] = ids.map((id) => ({
-    type: 'item.patch',
-    clientOpId: uuid(),
-    id,
-    patch: { style: { textColor: originalTextColor } },
-  }));
-  void boardSession.applyOps(ops);
-}
-
-function previewEdgeColor(color: BoardColorHex): void {
-  edgeColorPreviewIds ??= selectedEdges.value.map((edge) => edge.id);
-  const ops: BoardOp[] = [];
-  for (const id of edgeColorPreviewIds) {
-    const edge = props.edges.find((candidate) => candidate.id === id);
-    if (!edge) continue;
-    ops.push({
-      type: 'edge.patch',
-      clientOpId: uuid(),
-      id,
-      patch: { style: { ...edge.style, color } },
-    });
-  }
-  if (ops.length) void boardSession.applyOps(ops);
-}
-
-function cancelEdgeColorPreview(originalColor: BoardColorHex): void {
-  const ids = edgeColorPreviewIds;
-  edgeColorPreviewIds = null;
-  if (!ids?.length) return;
-  const ops: BoardOp[] = [];
-  for (const id of ids) {
-    const edge = props.edges.find((candidate) => candidate.id === id);
-    if (!edge) continue;
-    ops.push({
-      type: 'edge.patch',
-      clientOpId: uuid(),
-      id,
-      patch: { style: { ...edge.style, color: originalColor } },
-    });
-  }
-  if (ops.length) void boardSession.applyOps(ops);
-}
-
-function patchEdgeLine(line: BoardEdgeLineKindOption): void {
-  patchSelectedEdge((edge) => {
-    const data = edge.data as BoardEdge;
-    return {
-      type: 'edge.patch',
-      clientOpId: uuid(),
-      id: edge.id,
-      patch: { style: { ...data.style, line } },
-    };
-  });
-}
-
-function patchEdgeMarkerStart(marker: BoardEdgeMarkerOption): void {
-  patchSelectedEdge((edge) => {
-    const data = edge.data as BoardEdge;
-    return {
-      type: 'edge.patch',
-      clientOpId: uuid(),
-      id: edge.id,
-      patch: { style: { ...data.style, markerStart: marker } },
-    };
-  });
-}
-
-function patchEdgeMarkerEnd(marker: BoardEdgeMarkerOption): void {
-  patchSelectedEdge((edge) => {
-    const data = edge.data as BoardEdge;
-    return {
-      type: 'edge.patch',
-      clientOpId: uuid(),
-      id: edge.id,
-      patch: { style: { ...data.style, markerEnd: marker } },
-    };
-  });
-}
-
-function patchEdgeColor(color: BoardColorHex): void {
-  edgeColorPreviewIds = null;
-  patchSelectedEdge((edge) => {
-    const data = edge.data as BoardEdge;
-    return {
-      type: 'edge.patch',
-      clientOpId: uuid(),
-      id: edge.id,
-      patch: { style: { ...data.style, color } },
-    };
-  });
-}
-
-/** Текст подписи пишется прямо на стрелке (12.8, паттерн Miro), не в тулбаре — тулбар
- * лишь открывает этот ввод, чтобы кнопка «текст» была доступна и без двойного клика */
-function addTextToSelectedEdge(): void {
-  const edge = selectedEdges.value[0];
-  if (edge) pendingEdgeEditId.value = edge.id;
-}
-
 function onEdgeDoubleClick({ edge }: EdgeMouseEvent): void {
   if (!props.canEdit) return;
   pendingEdgeEditId.value = edge.id;
-}
-
-function deleteSelectedEdges(): void {
-  patchSelectedEdge((edge) => ({
-    type: 'edge.delete',
-    clientOpId: uuid(),
-    id: edge.id,
-  }));
-}
-
-/** Форма первого выделенного элемента — для иконки триггера в тулбаре выделения (12.7) */
-const selectedForm = computed<ItemFormKind>(() => {
-  const content = selectedNodes.value[0]?.data.content;
-  if (content?.type === 'shape') return content.shape;
-  if (content?.type === 'text') return 'text';
-  if (content?.type === 'image') return 'image';
-  if (content?.type === 'emoji') return 'emoji';
-  if (content?.type === 'sticker') return 'sticker';
-  if (content?.type === 'frame') return 'frame';
-  if (content?.type === 'group') return 'group';
-  return 'sticky';
-});
-
-/** Цвет первого выделенного элемента — для кружка-триггера в тулбаре выделения (12.7) */
-const selectedColor = computed<BoardColorHex>(
-  () => selectedNodes.value[0]?.data.style.color ?? STICKY_DEFAULT_COLOR,
-);
-
-/**
- * Единый переключатель «тип элемента» (12.7) — конвертирует ЛЮБОЕ выделение
- * (стикер, фигура, текст, картинка, смешанное) в выбранный тип/форму, сохраняя текст.
- * Рендер-компонент переключится сам — маппинг в `nodeTypes` идёт по
- * `content.type`, отдельно менять его не нужно.
- *
- * Геометрия фигуры при конвертации В стикер не сохраняется как есть: стикер
- * всегда квадрат (см. `keep-aspect-ratio` в `BoardStickyNode.vue`), поэтому
- * растянутая фигура (например, широкий прямоугольник) сжимается до квадрата
- * по МЕНЬШЕЙ стороне, с центром на прежнем месте — иначе конвертация назад
- * в стикер "запоминала" бы вытянутые пропорции, которых у стикера в принципе
- * не бывает (баг, найденный пользователем при ручной проверке). В обратную
- * сторону (стикер → фигура) геометрия не трогается — фигуры не обязаны быть
- * квадратом.
- *
- * Текстовый элемент (13.1) — без фона/заливки/рамки, auto-width по содержимому
- * не работает на уровне создания (нет измерения), поэтому при конвертации в
- * текст оставляем геометрию как есть (пользователь сам ресайзит при необходимости).
- *
- * Картинка (13.2) — при конвертации В картинку нельзя просто взять текст, нужно
- * загрузить файл. Поэтому конвертация в 'image' через тулбар недоступна —
- * в `BoardSelectionToolbar.vue` 'image' есть в списке для отображения текущего
- * типа, но конвертировать в него можно только через drag&drop/paste/инструмент.
- * Конвертация ИЗ картинки в другие типы — просто заменяет content на текстовый
- * (текст картинки теряется, url/width/height отбрасываются).
- */
-function setSelectedForm(kind: ItemFormKind): void {
-  // Конвертация В картинку/эмодзи/стикер через общий пикер не поддерживается (нужен файл
-  // или конкретный выбранный символ/пак) — у всех трёх свой отдельный путь создания/замены
-  if (kind === 'image' || kind === 'emoji' || kind === 'sticker') return;
-  // Фрейм/группа (14.3) — контейнеры, конвертировать их в другие типы или наоборот
-  // через общий переключатель не поддерживается — они управляются отдельными действиями
-  if (kind === 'frame' || kind === 'group') return;
-
-  patchSelected((node) => {
-    // Форматирование (12.13) переживает конвертацию стикер↔фигура↔текст вместе с текстом
-    const content = node.data.content;
-    let newContent: BoardItemContent;
-    if (kind === 'sticky') {
-      if (content.type === 'image' || content.type === 'emoji' || content.type === 'sticker') {
-        // Конвертация из картинки/эмодзи/стикера — просто создаём пустой стикер
-        newContent = { type: 'sticky', text: '' };
-      } else if (content.type === 'frame' || content.type === 'group') {
-        newContent = { type: 'sticky', text: '' };
-      } else {
-        const { text, runs } = content;
-        newContent = { type: 'sticky', text, ...(runs?.length ? { runs } : {}) };
-      }
-    } else if (kind === 'text') {
-      if (content.type === 'image' || content.type === 'emoji' || content.type === 'sticker') {
-        // Конвертация из картинки/эмодзи/стикера — пустой текст
-        newContent = { type: 'text', text: '' };
-      } else if (content.type === 'frame' || content.type === 'group') {
-        newContent = { type: 'text', text: '' };
-      } else {
-        const { text, runs } = content;
-        newContent = { type: 'text', text, ...(runs?.length ? { runs } : {}) };
-      }
-    } else {
-      // kind is a BoardShapeKind
-      if (content.type === 'image' || content.type === 'emoji' || content.type === 'sticker') {
-        // Конвертация из картинки/эмодзи/стикера в фигуру — пустой текст
-        newContent = { type: 'shape', shape: kind, text: '' };
-      } else if (content.type === 'frame' || content.type === 'group') {
-        newContent = { type: 'shape', shape: kind, text: '' };
-      } else {
-        const { text, runs } = content;
-        newContent = { type: 'shape', shape: kind, text, ...(runs?.length ? { runs } : {}) };
-      }
-    }
-    const patch: BoardItemPatchOp['patch'] = { content: newContent };
-    if (kind === 'sticky') {
-      const { x, y } = node.computedPosition;
-      const { width, height } = node.dimensions;
-      const side = Math.min(width, height);
-      Object.assign(patch, {
-        x: x + (width - side) / 2,
-        y: y + (height - side) / 2,
-        width: side,
-        height: side,
-      });
-    }
-    return {
-      type: 'item.patch',
-      clientOpId: uuid(),
-      id: node.id,
-      patch,
-    };
-  });
-}
-
-function setSelectedColor(color: BoardColorHex): void {
-  colorPreviewIds = null;
-  patchSelected((node) => ({
-    type: 'item.patch',
-    clientOpId: uuid(),
-    id: node.id,
-    patch: { style: { color } },
-  }));
 }
 
 function textDefaultDimensions(
@@ -1461,295 +1039,19 @@ function textDefaultDimensions(
   }
 }
 
-function selectedTextScale(node: GraphNode<BoardItem>): number | null {
-  const defaults = textDefaultDimensions(node.data.content);
-  if (!defaults) return null;
-  return Math.min(node.dimensions.width / defaults.width, node.dimensions.height / defaults.height);
-}
-
-/** Сохранённый базовый размер — только для изменения +/- и его границ. */
-const selectedBaseFontSize = computed<number>(
-  () => selectedNodes.value[0]?.data.style.fontSize ?? FIT_FONT_MAX,
-);
-
-/**
- * Тулбар показывает размер, который реально нарисовал node. Пока node ещё не
- * смонтирован, fallback применяет геометрическое масштабирование; после DOM-fit
- * registry заменяет его точным значением с учётом длины и форматирования текста.
- */
-const selectedFontSize = computed<number>(() => {
-  const node = selectedNodes.value[0];
-  if (!node) return FIT_FONT_MAX;
-  const measured = effectiveFontSizes.value.get(node.id);
-  if (measured !== undefined) return measured;
-  const defaults = textDefaultDimensions(node.data.content);
-  if (!defaults) return selectedBaseFontSize.value;
-  return getScaledFontSize(
-    selectedBaseFontSize.value,
-    node.dimensions.width,
-    node.dimensions.height,
-    defaults.width,
-    defaults.height,
-  );
-});
-const canIncreaseSelectedFontSize = computed(
-  () => selectedBaseFontSize.value < BOARD_ITEM_FONT_SIZE_MAX,
-);
-const canDecreaseSelectedFontSize = computed(
-  () => selectedBaseFontSize.value > BOARD_ITEM_FONT_SIZE_MIN,
-);
-const selectedTextColor = computed<BoardColorHex>(
-  () => selectedNodes.value[0]?.data.style.textColor ?? readableTextColor(selectedColor.value),
-);
-const selectedTextAlign = computed<BoardTextAlign>(
-  () => selectedNodes.value[0]?.data.style.textAlign ?? 'center',
-);
-
-function setSelectedFontSize(fontSize: number): void {
-  const selected = selectedNodes.value[0];
-  if (!selected) return;
-  const defaults = textDefaultDimensions(selected.data.content);
-  const scale = selectedTextScale(selected);
-  const currentBase = selectedBaseFontSize.value;
-  const displayed = selectedFontSize.value;
-  const scaledBase =
-    defaults === null
-      ? currentBase
-      : getScaledFontSize(
-          currentBase,
-          selected.dimensions.width,
-          selected.dimensions.height,
-          defaults.width,
-          defaults.height,
-        );
-
-  // Длинный текст может быть ужат ниже масштабированной базы. В таком случае
-  // +/- меняет настройку пользователя на ту же дельту, а не понижает её до
-  // fit-результата, который всё равно не поместится. Берём разницу displayed
-  // с целевым fontSize (а не хардкодим шаг стэппера) — иначе значение молча
-  // разойдётся с FONT_SIZE_STEP в BoardSelectionToolbar.vue при его смене.
-  const nextBase =
-    scale === null || displayed !== scaledBase
-      ? currentBase + (fontSize - displayed)
-      : unscaleFontSizeStep(currentBase, fontSize, scale);
-  const clampedBase = Math.min(
-    BOARD_ITEM_FONT_SIZE_MAX,
-    Math.max(BOARD_ITEM_FONT_SIZE_MIN, nextBase),
-  );
-  if (clampedBase === currentBase) return;
-  patchSelected((node) => ({
-    type: 'item.patch',
-    clientOpId: uuid(),
-    id: node.id,
-    patch: { style: { fontSize: clampedBase } },
-  }));
-}
-
-function setSelectedTextColor(textColor: BoardColorHex): void {
-  textColorPreviewIds = null;
-  patchSelected((node) => ({
-    type: 'item.patch',
-    clientOpId: uuid(),
-    id: node.id,
-    patch: { style: { textColor } },
-  }));
-}
-
-function setSelectedTextAlign(textAlign: BoardTextAlign): void {
-  patchSelected((node) => ({
-    type: 'item.patch',
-    clientOpId: uuid(),
-    id: node.id,
-    patch: { style: { textAlign } },
-  }));
-}
-
-/** Смена эмодзи (13.3) — патчим content.emoji */
-/** Смена эмодзи (13.3) — как и замена картинки, не-эмодзи в смешанном выделении пропускаются */
-function setSelectedEmoji(emoji: ReactionEmoji): void {
-  const ops: BoardOp[] = selectedNodes.value
-    .filter((node) => node.data.content.type === 'emoji')
-    .map((node) => ({
-      type: 'item.patch',
-      clientOpId: uuid(),
-      id: node.id,
-      patch: { content: { type: 'emoji', emoji } },
-    }));
-  if (ops.length) void boardSession.applyOps(ops);
-}
-
-/** Смена стикера (13.4) — патчим content.pack и content.id, не-стикеры пропускаются */
-function setSelectedSticker(pack: string, id: string): void {
-  const ops: BoardOp[] = selectedNodes.value
-    .filter((node) => node.data.content.type === 'sticker')
-    .map((node) => ({
-      type: 'item.patch',
-      clientOpId: uuid(),
-      id: node.id,
-      patch: { content: { type: 'sticker', pack, id } },
-    }));
-  if (ops.length) void boardSession.applyOps(ops);
-}
-
-function bringSelectedToFront(): void {
-  const base = maxZIndex(props.items) + 1;
-  patchSelected((node, index) => ({
-    type: 'item.patch',
-    clientOpId: uuid(),
-    id: node.id,
-    patch: { zIndex: base + index },
-  }));
-}
-
-function sendSelectedToBack(): void {
-  const base = minZIndex(props.items) - selectedNodes.value.length;
-  patchSelected((node, index) => ({
-    type: 'item.patch',
-    clientOpId: uuid(),
-    id: node.id,
-    patch: { zIndex: base + index },
-  }));
-}
-
-function deleteSelected(): void {
-  patchSelected((node) => ({
-    type: 'item.delete',
-    clientOpId: uuid(),
-    id: node.id,
-  }));
-}
-
-// --- Контекстное меню по правой кнопке (12.9) ---
-
-interface ContextMenuState {
-  target: BoardContextMenuTarget;
-  left: number;
-  top: number;
-}
-
-const contextMenu = ref<ContextMenuState | null>(null);
-
-function contextMenuPositionFromEvent(event: MouseEvent | TouchEvent): {
-  left: number;
-  top: number;
-} {
-  const rect = rootEl.value?.getBoundingClientRect();
-  const point = event instanceof MouseEvent ? event : event.touches[0];
-  if (!rect || !point) return { left: 0, top: 0 };
-  return { left: point.clientX - rect.left, top: point.clientY - rect.top };
-}
-
-/**
- * Прямая мутация `.selected` на узлах/связях вместо `addSelectedNodes`/
- * `removeSelectedElements` из `useVueFlow()` (12.9) — на связке `:only-render-
- * visible-elements="true"` + собственный `setNodes`-синк (см. комментарий выше
- * про watch(flowNodes)) эти хелперы иногда уходят в ветку `multiSelectionActive`,
- * которая только эмитит событие `nodesChange`/`edgesChange`, ничего не мутируя
- * сама — и в момент вызова (например, сразу после program­матического клика в
- * тестах) реального слушателя на это событие не оказывается, снятие/установка
- * выделения молча не срабатывает. `node.selected`/`edge.selected` — обычные
- * реактивные поля тех же объектов, что рендерит Vue Flow (подтверждено по
- * исходникам библиотеки: `getNodesInside`/`nodeLookup` работают с одними и
- * теми же ссылками) — мутировать их напрямую надёжнее и не зависит от этой
- * внутренней ветки.
- */
-function selectOnlyNode(node: GraphNode<BoardItem>): void {
-  for (const n of getNodes.value) n.selected = n.id === node.id;
-  for (const e of getEdges.value) e.selected = false;
-}
-
-function selectOnlyEdge(edge: Edge<BoardEdge>): void {
-  for (const n of getNodes.value) n.selected = false;
-  for (const e of getEdges.value) e.selected = e.id === edge.id;
-}
-
-function selectAllElements(): void {
-  for (const n of getNodes.value) n.selected = true;
-  for (const e of getEdges.value) e.selected = true;
-}
-
-function clearAllSelection(): void {
-  for (const n of getNodes.value) n.selected = false;
-  for (const e of getEdges.value) e.selected = false;
-}
-
-/**
- * Клик по узлу-контейнеру (frame/group, 14.3), пока активен инструмент
- * создания элемента. Vue Flow гасит `pane-click` для клика по ЛЮБОМУ узлу
- * (иначе нельзя было бы отличить «кликнули по карточке» от «кликнули по
- * пустому месту») — фрейм визуально выглядит как пустая область мини-холста,
- * но физически это узел Vue Flow поверх пейна, так что обычный `onPaneClick`
- * никогда не сработал бы для клика ВНУТРИ уже существующего фрейма. Без этого
- * обработчика инструмент «Стикер»/«Фигура»/... молча ничего не создавал бы
- * при клике внутри фрейма — именно та точка, где элемент должен приклеиться
- * к нему автоматически (см. containerAt).
- */
-function onNodeClick({ event, node }: NodeMouseEvent): void {
-  if (activeTool.value === 'select') return;
-  if (!isBoardContainer((node as GraphNode<BoardItem>).data.content.type)) return;
-  if (!(event instanceof MouseEvent)) return;
-  onPaneClick(event);
-}
-
-function onNodeContextMenu({ event, node }: NodeMouseEvent): void {
-  if (!props.canEdit) return;
-  (event as MouseEvent).preventDefault();
-  // Правый клик по НЕвыделенной карточке заменяет выделение ей (как в Figma/Miro) —
-  // иначе меню применялось бы не к той карточке, на которую кликнули
-  if (!node.selected) selectOnlyNode(node as GraphNode<BoardItem>);
-  contextMenu.value = { target: 'item', ...contextMenuPositionFromEvent(event) };
-}
-
-/**
- * Правый клик по мульти-выделению (2+ узла) — Vue Flow поверх bounding box
- * выделения рисует служебную обёртку `.vue-flow__nodesselection-rect` (нужна
- * для группового драга/ресайза), которая физически перекрывает сами карточки.
- * Правый клик по НЕЙ не считается ни кликом по узлу, ни кликом по пейну —
- * `node-context-menu` не срабатывает вовсе, и без отдельного события браузерное
- * меню "просвечивало" вместо нашего (найдено вручную). У Vue Flow есть
- * отдельное событие именно под этот случай.
- */
-function onSelectionContextMenu({
-  event,
-}: {
-  event: MouseEvent;
-  nodes: GraphNode<BoardItem>[];
-}): void {
-  if (!props.canEdit) return;
-  event.preventDefault();
-  contextMenu.value = { target: 'item', ...contextMenuPositionFromEvent(event) };
-}
-
-function onEdgeContextMenu({ event, edge }: EdgeMouseEvent): void {
-  if (!props.canEdit) return;
-  (event as MouseEvent).preventDefault();
-  if (!edge.selected) selectOnlyEdge(edge as Edge<BoardEdge>);
-  contextMenu.value = { target: 'edge', ...contextMenuPositionFromEvent(event) };
-}
-
-/** Пустой холст — своего меню нет (см. `BoardContextMenu.vue`), но браузерное всё равно гасим */
-function onPaneContextMenu(event: MouseEvent): void {
-  event.preventDefault();
-  contextMenu.value = null;
-}
-
-function closeContextMenu(): void {
-  contextMenu.value = null;
-}
-
 // --- Хоткеи (12.9): Delete/Backspace, Ctrl(Cmd)+A/D/0/1, Escape; +Z/Shift+Z/Y (12.10) ---
 
 useBoardHotkeys({
   canEdit: computed(() => props.canEdit),
   deleteSelection: () => {
-    deleteSelected();
-    deleteSelectedEdges();
+    selection.deleteSelected();
+    selection.deleteSelectedEdges();
   },
   duplicateSelection: duplicateSelected,
-  selectAll: selectAllElements,
+  selectAll: selection.selectAllElements,
   clearSelection: () => {
-    clearAllSelection();
-    contextMenu.value = null;
+    selection.clearAllSelection();
+    selection.closeContextMenu();
   },
   resetZoom: () => {
     boardSession.stopFollowing();
