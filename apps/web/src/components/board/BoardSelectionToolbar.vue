@@ -70,25 +70,11 @@ import { useI18n } from 'vue-i18n';
 
 import { HIGHLIGHT_CSS } from '../../lib/board/board-rich-text';
 import type { FormatMarkKey } from '../../lib/board/use-rich-text-editing';
+import type { ItemFormKind } from '../../features/boards/board-item-form';
 import BoardStickerPicker from './BoardStickerPicker.vue';
 import BoardColorPickerMenu from './BoardColorPickerMenu.vue';
 
-const FORMAT_BUTTONS: readonly { key: FormatMarkKey; icon: string }[] = [
-  { key: 'bold', icon: 'i-lucide-bold' },
-  { key: 'italic', icon: 'i-lucide-italic' },
-  { key: 'underline', icon: 'i-lucide-underline' },
-  { key: 'strike', icon: 'i-lucide-strikethrough' },
-];
-
-export type ItemFormKind =
-  | 'sticky'
-  | (typeof BOARD_SHAPE_KINDS)[number]
-  | 'text'
-  | 'image'
-  | 'emoji'
-  | 'sticker'
-  | 'frame'
-  | 'group';
+export type { ItemFormKind };
 
 const FORM_OPTIONS: readonly ItemFormKind[] = [
   'sticky',
@@ -201,6 +187,13 @@ const isFrame = computed(() => props.currentForm === 'frame');
  * (ни формы, ни цвета, ни текста) — используется, чтобы не рисовать "осиротевший"
  * разделитель перед Дублировать/Удалить, когда перед ним ничего не было */
 const isGroupOnly = computed(() => props.currentForm === 'group');
+
+const FORMAT_BUTTONS: readonly { key: FormatMarkKey; icon: string }[] = [
+  { key: 'bold', icon: 'i-lucide-bold' },
+  { key: 'italic', icon: 'i-lucide-italic' },
+  { key: 'underline', icon: 'i-lucide-underline' },
+  { key: 'strike', icon: 'i-lucide-strikethrough' },
+];
 
 /** Нет активного выделения текста — кнопки начертания/маркера/ссылки недоступны (12.13) */
 const formattingDisabled = computed(() => !props.editingText || props.activeMarks === null);
