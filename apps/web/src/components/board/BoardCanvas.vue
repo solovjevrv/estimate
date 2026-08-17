@@ -36,7 +36,6 @@ import {
   type BoardEdge,
   type BoardItem,
   type BoardItemContent,
-  type BoardPresenceEntry,
 } from '@poker/shared';
 import type { DropdownMenuItem } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
@@ -94,17 +93,13 @@ import type {
   BoardSelectionNode,
 } from '../../lib/board/vue-flow-adapter';
 import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
-import { throttle } from '../../lib/throttle';
 import { uuid } from '../../lib/board/uuid';
-import {
-  BOARD_CAMERA_THROTTLE_MS,
-  BOARD_CURSOR_THROTTLE_MS,
-} from '../../lib/board/board-constants';
 import { useBoardSessionStore } from '../../stores/board-session';
 import { useBoardClipboard } from '../../features/boards/composables/use-board-clipboard';
 import { useBoardCreation } from '../../features/boards/composables/use-board-creation';
 import { useBoardDragAndSnap } from '../../features/boards/composables/use-board-drag-and-snap';
 import { useBoardSelection } from '../../features/boards/composables/use-board-selection';
+import { useBoardViewport } from '../../features/boards/composables/use-board-viewport';
 import BoardSelectionToolbar from './BoardSelectionToolbar.vue';
 import BoardContextMenu from './BoardContextMenu.vue';
 import BoardCursor from './BoardCursor.vue';
@@ -236,7 +231,47 @@ const {
   zoomTo,
   fitView,
 } = useVueFlow();
-const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
+
+const rootEl = useTemplateRef<HTMLElement>('root');
+
+/**
+ * Управление viewport, fullscreen, follow-mode и cursor/camera awareness
+ * вынесено в `useBoardViewport` (19.31). Обёртка над Vue Flow передаётся
+ * коллбэками — composable не импортирует @vue-flow/core. `boardSession`
+ * пробрасывается «наружу» через замыкания; реактивные refs follow/camera
+ * оборачиваются `computed`, т.к. Pinia auto-unwrapит состояние/геттеры в
+ * значения при доступе через прокси стора.
+ */
+const viewportControl = useBoardViewport({
+  canEdit: () => props.canEdit,
+  rootEl,
+  viewport,
+  project,
+  setViewport,
+  zoomTo,
+  fitView,
+  sendAwareness: (kind, data) => boardSession.sendAwareness(kind, data),
+  participantId: () => boardSession.participantId,
+  presence: () => boardSession.presence,
+  followedParticipantId: computed(() => boardSession.followedParticipantId),
+  cameraOfFollowed: computed(() => boardSession.cameraOfFollowed),
+  followParticipant: boardSession.followParticipant,
+  stopFollowing: boardSession.stopFollowing,
+});
+
+const {
+  zoomPercent,
+  isFullscreen,
+  followedName,
+  cursorThrottler,
+  onManualCameraInteraction,
+  onPresenceAvatarClick,
+  breakFollowOnEdit,
+  resetZoom,
+  fitViewport,
+  toggleFullscreen,
+  initials,
+} = viewportControl;
 
 /**
  * Скармливаем снимок Vue Flow императивно через `setNodes`/`setEdges`, а не
@@ -290,9 +325,6 @@ watch(
   { immediate: true },
 );
 watch(flowEdges, (next) => setEdges(next), { immediate: true });
-
-const rootEl = useTemplateRef<HTMLElement>('root');
-const isFullscreen = ref(false);
 
 const {
   activeTool,
@@ -425,101 +457,10 @@ const {
 } = selection;
 
 /**
- * Курсоры участников (14.1). Позиция мыши проецируется в canvas-координаты
- * через `project()` и уходит на сервер throttled `sendAwareness('cursor')` —
- * как в Miro: чужой курсор рисуется в world-координатах и не зависит от
- * зума/панорамирования зрителя. Видят курсоры все участники доски (и редакторы,
- * и зрители), а посылать свой может только редактор — зрительный курсор не
- * интересен, его движение ничего не меняет.
+ * Управление viewport, fullscreen, follow-mode и cursor/camera awareness
+ * вынесено в `useBoardViewport` (19.31) — Canvas лишь деструктурирует нужное
+ * из `viewportControl` и пробрасывает в шаблон (см. выше).
  */
-// self id теперь — boardSession.participantId (14.5): ключ участника на доске,
-// а не userId — гость (userId null) тоже видит себя выделенным в стеке presence
-
-/** Инициалы из имени для fallback-аватарки (14.1) */
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '';
-  if (parts.length === 1) return parts[0]![0]!.toUpperCase();
-  return (parts[0]![0]! + parts[parts.length - 1]![0]!).toUpperCase();
-}
-
-/** Клик по аватарке в стеке presence (14.5) — переключить follow-mode */
-function onPresenceAvatarClick(entry: BoardPresenceEntry): void {
-  if (entry.participantId === boardSession.participantId) return;
-  if (boardSession.followedParticipantId === entry.participantId) {
-    boardSession.stopFollowing();
-  } else {
-    boardSession.followParticipant(entry.participantId);
-  }
-}
-
-const followedName = computed(() => {
-  const id = boardSession.followedParticipantId;
-  if (!id) return null;
-  return boardSession.presence.find((p) => p.participantId === id)?.name ?? null;
-});
-
-function onPaneMouseMove(event: MouseEvent): void {
-  if (!props.canEdit) return;
-  const rect = rootEl.value?.getBoundingClientRect();
-  const point = rect
-    ? project({ x: event.clientX - rect.left, y: event.clientY - rect.top })
-    : { x: 0, y: 0 };
-  void boardSession.sendAwareness('cursor', { x: point.x, y: point.y });
-}
-
-/** Throttle-обёртка над sendAwareness, как для драга (BOARD_CURSOR_THROTTLE_MS) */
-const cursorThrottler = throttle(onPaneMouseMove, BOARD_CURSOR_THROTTLE_MS);
-
-/**
- * Собственная камера (14.5) — throttled-рассылка позиции viewport на каждый
- * изменяющийся пан/зум. Грубее курсора, чтобы не слепо перегружать сеть панорамированием.
- */
-const cameraThrottler = throttle(
-  () =>
-    boardSession.sendAwareness('camera', {
-      x: viewport.value.x,
-      y: viewport.value.y,
-      zoom: viewport.value.zoom,
-    }),
-  BOARD_CAMERA_THROTTLE_MS,
-);
-watch(
-  viewport,
-  () => {
-    // Пока сам кого-то смотрю — не транслирую свою камеру: иначе камера, которую
-    // мне же сейчас программно проставляет follow-режим, эхом улетала бы моим
-    // наблюдателям как «моя настоящая позиция» — путаница и потенциальный
-    // цикл, если двое подписаны друг на друга
-    if (boardSession.followedParticipantId) return;
-    cameraThrottler();
-  },
-  { deep: true },
-);
-
-watch(
-  () => boardSession.cameraOfFollowed,
-  (cam) => {
-    if (!cam) return;
-    void setViewport({ x: cam.x, y: cam.y, zoom: cam.zoom }, { duration: 200 });
-  },
-);
-
-function onManualCameraInteraction(): void {
-  if (boardSession.followedParticipantId) boardSession.stopFollowing();
-}
-
-function onFullscreenChange(): void {
-  isFullscreen.value = document.fullscreenElement === rootEl.value;
-}
-
-function toggleFullscreen(): void {
-  if (document.fullscreenElement) {
-    void document.exitFullscreen();
-  } else {
-    void rootEl.value?.requestFullscreen();
-  }
-}
 
 // `onCopy` асинхронная (сериализация картинок читает байты), а слушатель события
 // ждёт синхронную функцию: отданный ему промис никто не подхватывает, и отказ
@@ -530,12 +471,12 @@ const onCopyListener = (event: ClipboardEvent): void => {
 };
 
 onMounted(() => {
-  document.addEventListener('fullscreenchange', onFullscreenChange);
+  viewportControl.attach();
   document.addEventListener('paste', onPaste);
   document.addEventListener('copy', onCopyListener);
 });
 onBeforeUnmount(() => {
-  document.removeEventListener('fullscreenchange', onFullscreenChange);
+  viewportControl.dispose();
   document.removeEventListener('paste', onPaste);
   document.removeEventListener('copy', onCopyListener);
   dragAndSnap.reset();
@@ -551,6 +492,7 @@ watch(
   () => props.board.id,
   () => {
     dragAndSnap.reset();
+    viewportControl.resetAwareness();
   },
 );
 
@@ -602,13 +544,9 @@ function canApplyOpsCount(count: number): boolean {
  * любое действие по редактированию доски (создание, перемещение, ввод текста)
  * должно снять режим слежения — иначе объект будет «улетать» за чужой viewport.
  * Действие возможно только при canEdit — у read-only гостя слежение не
- * нарушается (он не может вмешаться).
+ * нарушается (он не может вмешаться). Логика вынесена в
+ * `useBoardViewport#breakFollowOnEdit` (19.31).
  */
-function breakFollowOnEdit(): void {
-  if (props.canEdit && boardSession.followedParticipantId) {
-    boardSession.stopFollowing();
-  }
-}
 
 /**
  * ФРЕЙМ (не группа!), в чьи границы попадает точка — фрейм задуман как
@@ -704,14 +642,8 @@ useBoardHotkeys({
     selection.clearAllSelection();
     selection.closeContextMenu();
   },
-  resetZoom: () => {
-    boardSession.stopFollowing();
-    void zoomTo(1);
-  },
-  fitView: () => {
-    boardSession.stopFollowing();
-    void fitView();
-  },
+  resetZoom: resetZoom,
+  fitView: fitViewport,
   undo: () => void boardSession.undo(),
   redo: () => void boardSession.redo(),
 });
