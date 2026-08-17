@@ -124,15 +124,18 @@ describe('useBoardDragAndSnap — onNodeDragStart', () => {
   it('не начинает drag, если canEdit возвращает false', () => {
     const nodeItem = item('node-1');
     const node = flowNode(nodeItem);
-    const { api, breakFollowOnEdit } = makeDrag({
+    const { api, applyOps, breakFollowOnEdit } = makeDrag({
       items: [nodeItem],
       flowNodes: [node],
       canEdit: () => false,
     });
 
     api.onNodeDragStart(nodeEvent([node]));
+    api.onNodeDrag(nodeEvent([node]));
+    api.onNodeDragStop(nodeEvent([node]));
     expect(api.isDragging.value).toBe(false);
     expect(breakFollowOnEdit).not.toHaveBeenCalled();
+    expect(applyOps).not.toHaveBeenCalled();
   });
 });
 
@@ -233,22 +236,27 @@ describe('useBoardDragAndSnap — onNodeDrag (throttled патчи)', () => {
   });
 
   it('throttle: intermediate ticks deduplicated within wait window', () => {
+    vi.useFakeTimers();
     const nodeItem = item('node-1');
     const node = flowNode(nodeItem, { x: 0, y: 0 });
     const { api, applyOps } = makeDrag({ items: [nodeItem], flowNodes: [node] });
 
-    api.onNodeDragStart(nodeEvent([node]));
+    try {
+      api.onNodeDragStart(nodeEvent([node]));
 
-    node.computedPosition.x = 10;
-    node.position.x = 10;
-    api.onNodeDrag(nodeEvent([node]));
+      node.computedPosition.x = 10;
+      node.position.x = 10;
+      api.onNodeDrag(nodeEvent([node]));
 
-    node.computedPosition.x = 20;
-    node.position.x = 20;
-    api.onNodeDrag(nodeEvent([node]));
+      node.computedPosition.x = 20;
+      node.position.x = 20;
+      api.onNodeDrag(nodeEvent([node]));
 
-    // Второй вызов в пределах throttle window должен привести к одному ops batch
-    expect(applyOps).toHaveBeenCalledTimes(1);
+      // Второй вызов в пределах throttle window должен привести к одному ops batch.
+      expect(applyOps).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
@@ -455,6 +463,30 @@ describe('useBoardDragAndSnap — onNodeDragStop (snap + parent reassignment)', 
     expect(api.isDragging.value).toBe(false);
   });
 
+  it('отменяет pending промежуточный throttle после финального patch', () => {
+    vi.useFakeTimers();
+    const nodeItem = item('node-1');
+    const node = flowNode(nodeItem, { x: 0, y: 0 });
+    const { api, applyOps } = makeDrag({ items: [nodeItem], flowNodes: [node] });
+
+    try {
+      api.onNodeDragStart(nodeEvent([node]));
+      node.computedPosition.x = 10;
+      node.position.x = 10;
+      api.onNodeDrag(nodeEvent([node]));
+      node.computedPosition.x = 20;
+      node.position.x = 20;
+      api.onNodeDrag(nodeEvent([node]));
+      api.onNodeDragStop(nodeEvent([node]));
+
+      expect(applyOps).toHaveBeenCalledTimes(2);
+      vi.advanceTimersByTime(1000);
+      expect(applyOps).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('очищает snap guides после dragStop', () => {
     const staticItem = item('static-1', { x: 200, y: 0 });
     const draggedItem = item('dragged-1', { x: 195, y: 0 });
@@ -480,7 +512,7 @@ describe('useBoardDragAndSnap — onNodeDragStop (snap + parent reassignment)', 
     const nodeItem = item('node-1');
     const node = flowNode(nodeItem, { x: 0, y: 0 });
 
-    const { api, applyOps } = makeDrag({ items: [nodeItem], flowNodes: [node] });
+    const { api } = makeDrag({ items: [nodeItem], flowNodes: [node] });
 
     api.onNodeDragStart(nodeEvent([node]));
     node.computedPosition.x = 10;
@@ -494,19 +526,29 @@ describe('useBoardDragAndSnap — onNodeDragStop (snap + parent reassignment)', 
 
 describe('useBoardDragAndSnap — reset', () => {
   it('очищает все throttlers через cancel()', () => {
+    vi.useFakeTimers();
     const nodeItem = item('node-1');
     const node = flowNode(nodeItem, { x: 0, y: 0 });
-    const { api } = makeDrag({ items: [nodeItem], flowNodes: [node] });
+    const { api, applyOps } = makeDrag({ items: [nodeItem], flowNodes: [node] });
 
-    api.onNodeDragStart(nodeEvent([node]));
-    node.computedPosition.x = 10;
-    node.position.x = 10;
-    api.onNodeDrag(nodeEvent([node]));
+    try {
+      api.onNodeDragStart(nodeEvent([node]));
+      node.computedPosition.x = 10;
+      node.position.x = 10;
+      api.onNodeDrag(nodeEvent([node]));
+      node.computedPosition.x = 20;
+      node.position.x = 20;
+      api.onNodeDrag(nodeEvent([node]));
 
-    api.reset();
+      api.reset();
+      vi.advanceTimersByTime(1000);
 
-    expect(api.isDragging.value).toBe(false);
-    expect(api.activeSnapGuides.value).toEqual([]);
+      expect(applyOps).toHaveBeenCalledTimes(1);
+      expect(api.isDragging.value).toBe(false);
+      expect(api.activeSnapGuides.value).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('идемпотентен — вызов reset на чистом состоянии не падает', () => {

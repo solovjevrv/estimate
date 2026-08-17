@@ -267,6 +267,20 @@ const zoomPercent = computed(() => Math.round(viewport.value.zoom * 100));
  * `useBoardDragAndSnap` (19.30) — Canvas лишь читает `isDragging` чтобы не
  * наложить `setNodes(flowNodes)` поверх локального drag.
  */
+const dragAndSnap = useBoardDragAndSnap({
+  canEdit: () => props.canEdit,
+  getItems: () => props.items,
+  getNodes: () => getNodes.value as BoardFlowNode[],
+  getZoom: () => viewport.value.zoom,
+  applyOps: (ops, options) => void boardSession.applyOps(ops, options),
+  breakFollowOnEdit,
+  findFrameAt: containerAt,
+});
+
+// Деструктурируем ref-ы на верхний уровень: Vue 3 автораспаковывает ref,
+// объявленный как top-level const в <script setup>, в шаблоне без .value.
+const { activeSnapGuides, isDragging: dragIsDragging } = dragAndSnap;
+
 watch(
   flowNodes,
   (next) => {
@@ -646,20 +660,6 @@ function onPaneDragOver(event: DragEvent): void {
 // по сети — throttled-патчи на каждый кадр драга плюс гарантированный финальный
 // на dragstop. Троттлер свой на элемент — иначе при мультивыборе только
 // последний по порядку элемент кадра реально долетал бы до сети.
-const dragAndSnap = useBoardDragAndSnap({
-  canEdit: () => props.canEdit,
-  getItems: () => props.items,
-  getNodes: () => getNodes.value as BoardFlowNode[],
-  getZoom: () => viewport.value.zoom,
-  applyOps: (ops, options) => void boardSession.applyOps(ops, options),
-  breakFollowOnEdit,
-  findFrameAt: containerAt,
-});
-
-// Деструктурируем ref-ы на верхний уровень: Vue 3 автораспаковывает ref,
-// объявленный как top-level const в <script setup>, в шаблоне без .value.
-const { activeSnapGuides, isDragging: dragIsDragging } = dragAndSnap;
-
 /**
  * Локальный wrapper над composable onNodeDrag: во время драга узла реальный
  * mousemove на пейне не долетает до cursorThrottler (указатель перехвачен

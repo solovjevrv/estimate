@@ -358,6 +358,7 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
   }
 
   function onNodeDragStop(event: NodeDragEvent): void {
+    if (!canEdit()) return;
     applyAxisLock(event);
     applySnapPosition(event);
     activeSnapGuides.value = [];
@@ -393,6 +394,11 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
         { record: moved || parentChanged, inverse },
         parentChanged ? nextParentId : undefined,
       );
+      // Финальная позиция уже отправлена напрямую выше; trailing промежуточного
+      // throttle после неё был бы лишним batch без history и мог бы прийти в
+      // сокет позже финальной undo-записи.
+      dragThrottlers.get(node.id)?.cancel();
+      dragThrottlers.delete(node.id);
       dragStartPositions.delete(node.id);
       for (const mate of dragFamilyOf(node.data)) dragStartPositions.delete(mate.id);
     }
