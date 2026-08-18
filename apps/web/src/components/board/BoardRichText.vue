@@ -9,7 +9,7 @@
  */
 import type { BoardTextRun } from '@poker/shared';
 
-import { markCssProperties } from '../../lib/board/board-rich-text';
+import { markCssProperties } from '../../features/boards/rich-text/board-rich-text';
 
 defineProps<{ runs: BoardTextRun[] }>();
 </script>

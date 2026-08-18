@@ -23,7 +23,7 @@
  *    `commitEditing()` — точечная проверка `relatedTarget`: если фокус ушёл
  *    именно в тулбар (`BOARD_TEXT_TOOLBAR_SELECTOR`), коммит откладывается, а не
  *    срывается — иначе `editableEl` размонтировался бы раньше, чем придёт
- *    `setLink(url)`. Финальный коммит всё равно гарантированно случится по
+ *    `setLink(url)`. Финальный коммит всё равно гарантировано случится по
  *    `watch(isSelected)`, когда пользователь реально кликнет мимо (снятие
  *    выделения в Vue Flow не зависит от DOM-фокуса).
  * 3. **`Selection.addRange()` сам неявно фокусирует contenteditable в
@@ -55,6 +55,14 @@
  *    Найдено ревью, не живой проверкой. `applyRangePatch` теперь зовёт
  *    `selectRange` всегда — фикс бага 3 (`onFocusOutside`) как раз и позволяет
  *    это делать, не закрывая попап.
+ *
+ * 6. **Форматирование без выделения (18.7).** После клика внутри текста без
+ *    drag selection схлопывается (cursor без выделения) — `hasTextSelection`
+ *    становится `false`, но `activeMarks` вычисляются по всему непустому тексту,
+ *    и начертание/маркер применяются к нему. Ссылка же требует ЯВНОГО выделения:
+ *    `setLink` использует только сохранённый `lastOffsets` и не получает
+ *    fallback «весь текст», иначе пользователь случайно превратил бы всю
+ *    подпись в ссылку при вводе URL.
  */
 import {
   BOARD_ITEM_TEXT_MAX_LENGTH,
@@ -78,7 +86,7 @@ import {
 import { useToast } from '@nuxt/ui/composables';
 import { useI18n } from 'vue-i18n';
 
-import { BOARD_ACTIVE_TEXT_EDITOR_KEY, BOARD_PENDING_EDIT_ID_KEY } from './board-canvas-keys';
+import { BOARD_ACTIVE_TEXT_EDITOR_KEY, BOARD_PENDING_EDIT_ID_KEY } from '../board-canvas-keys';
 import {
   applyMarkToRange,
   BOARD_TEXT_TOOLBAR_SELECTOR,
@@ -92,8 +100,8 @@ import {
   serializeRuns,
   truncateRuns,
   type BoardTextEditorHandle,
-} from './board-rich-text';
-import { useBoardSessionStore } from '../../stores/board-session';
+} from '../rich-text/board-rich-text';
+import { useBoardSessionStore } from '../../../stores/board-session';
 
 export type FormatMarkKey = 'bold' | 'italic' | 'underline' | 'strike';
 
@@ -139,28 +147,54 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
 
   /** Пресс-стейт кнопок форматирования — пересчитывается по изменению выделения */
   const activeMarksRef = ref<BoardTextMark | null>(null);
+  /** `true` только при фактическом непустом DOM-выделении. Различает два режима (18.7):
+   *  - выделение есть → ссылка доступна;
+   *  - выделения нет (cursor), но текст непуст → начертание/маркер применяются ко всему тексту. */
+  const hasTextSelection = ref(false);
   /** Последний непустой диапазон выделения — кнопки тулбара мышью его не теряют
    *  (mousedown.prevent), а вводу ссылки нужен снимок ДО того, как фокус уйдёт в поле URL */
   let lastOffsets: { start: number; end: number } | null = null;
   /** Растёт при каждом применении начертания/маркера/ссылки — компонент узла
-   *  подмешивает его в зависимости `useFitFontSize`, см. `applyRangePatch` */
+   *  подмшивает его в зависимости `useFitFontSize`, см. `applyRangePatch` */
   const formatTick = ref(0);
+
+  /**
+   * Целевой диапазон для начертания/маркера (18.7):
+   * 1. текущее непустое выделение, если оно есть (`lastOffsets`, когда
+   *    `hasTextSelection === true`);
+   * 2. иначе весь непустой текст `[0, text.length)`.
+   * Возвращает `null` для пустого текста — его не форматировать и не создавать
+   * пустых `runs`.
+   */
+  function resolveFormatRange(runs: BoardTextRun[]): { start: number; end: number } | null {
+    if (hasTextSelection.value && lastOffsets) return lastOffsets;
+    const len = runsPlainText(runs).length;
+    if (len > 0) return { start: 0, end: len };
+    return null;
+  }
 
   function refreshActiveMarks(): void {
     const el = editableEl.value;
     if (!el) {
       activeMarksRef.value = null;
+      hasTextSelection.value = false;
       return;
     }
     const offsets = getSelectionOffsets(el);
-    if (offsets) lastOffsets = offsets;
-    activeMarksRef.value = offsets
-      ? getActiveMarks(serializeRuns(el), offsets.start, offsets.end)
-      : null;
+    if (offsets) {
+      lastOffsets = offsets;
+      hasTextSelection.value = true;
+      activeMarksRef.value = getActiveMarks(serializeRuns(el), offsets.start, offsets.end);
+    } else {
+      hasTextSelection.value = false;
+      const runs = serializeRuns(el);
+      const textLen = runsPlainText(runs).length;
+      activeMarksRef.value = textLen > 0 ? getActiveMarks(runs, 0, textLen) : null;
+    }
   }
 
   /**
-   * Применяет патч к `[lastOffsets.start, lastOffsets.end)` и обновляет
+   * Применяет патч к целевому диапазону (см. `resolveFormatRange`) и обновляет
    * пресс-стейт кнопок БЕЗ обращения к `window.getSelection()` — важно: в
    * Chromium `Selection.addRange()` внутри contenteditable сама неявно
    * фокусирует его, даже без явного `.focus()` (проверено на живой доске).
@@ -174,14 +208,16 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
    */
   function applyRangePatch(patch: (marks: BoardTextMark) => BoardTextMark): void {
     const el = editableEl.value;
-    const offsets = lastOffsets;
-    if (!el || !offsets) return;
-    const next = applyMarkToRange(serializeRuns(el), offsets.start, offsets.end, patch);
+    if (!el) return;
+    const runs = serializeRuns(el);
+    const offsets = resolveFormatRange(runs);
+    if (!offsets) return;
+    const next = applyMarkToRange(runs, offsets.start, offsets.end, patch);
     renderRunsInto(el, next);
     // Диапазон обязательно восстанавливаем: `renderRunsInto` пересобирает DOM
     // (`el.textContent = ''` + заново), а когда узел-граница Range удаляется,
     // спецификация переносит границу к родителю на позицию 0 — без этого курсор
-    // молча улетал бы в начало текста, и следующий набранный символ вставлялся
+    // молча улетел бы в начало текста, и следующий набранный символ вставлялся
     // бы не туда (ловилось не вручную, а самим ревью). `selectRange` неявно
     // фокусирует contenteditable в Chromium — Reka закрыла бы попап тулбара по
     // `focus-outside`, поэтому у попапов начертания/маркера в
@@ -206,8 +242,28 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
     applyRangePatch((marks) => ({ ...marks, highlight: color ?? undefined }));
   }
 
+  /**
+   * Ссылка работает ТОЛЬКО с сохранённым непустым выделением (`lastOffsets`),
+   * не получая fallback «весь текст» (18.7) — иначе пользователь случайно
+   * превратил бы всю подпись в ссылку, когда поставил cursor в текст и кликнул
+   * иконку ссылки.
+   */
   function setLink(url: string | null): void {
-    applyRangePatch((marks) => ({ ...marks, link: url ?? undefined }));
+    const el = editableEl.value;
+    const offsets = lastOffsets;
+    // Ссылка требует фактического непустого выделения — без него (схлопнутый cursor)
+    // не применяем fallback «весь текст» (18.7), даже если lastOffsets сохранился
+    // от предыдущего выделения (например, авто-выделения при входе в редактирование).
+    if (!el || !offsets || !hasTextSelection.value) return;
+    const runs = serializeRuns(el);
+    const next = applyMarkToRange(runs, offsets.start, offsets.end, (marks) => ({
+      ...marks,
+      link: url ?? undefined,
+    }));
+    renderRunsInto(el, next);
+    selectRange(el, offsets.start, offsets.end);
+    activeMarksRef.value = getActiveMarks(next, offsets.start, offsets.end);
+    formatTick.value += 1;
   }
 
   function releaseActiveEditor(): void {
@@ -244,6 +300,7 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
     activeTextEditor.value = {
       itemId,
       activeMarks: activeMarksRef,
+      hasTextSelection,
       toggle: toggleMark,
       setHighlight,
       setLink,

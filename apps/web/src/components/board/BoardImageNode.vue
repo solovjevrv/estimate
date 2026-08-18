@@ -4,7 +4,7 @@ import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, ref } from 'vue';
 
-import { BOARD_CAN_EDIT_KEY } from '../../lib/board/board-canvas-keys';
+import { BOARD_CAN_EDIT_KEY } from '../../features/boards/board-canvas-keys';
 import {
   IMAGE_MAX_HEIGHT,
   IMAGE_MAX_WIDTH,

@@ -31,7 +31,7 @@
  */
 import { onBeforeUnmount, onMounted, type Ref } from 'vue';
 
-import { BOARD_TEXT_TOOLBAR_SELECTOR } from './board-rich-text';
+import { BOARD_TEXT_TOOLBAR_SELECTOR } from '../../features/boards/rich-text/board-rich-text';
 
 export interface BoardHotkeyActions {
   canEdit: Ref<boolean>;

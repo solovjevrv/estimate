@@ -80,9 +80,9 @@ import {
   BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
   BOARD_PENDING_EDGE_EDIT_ID_KEY,
   BOARD_PENDING_EDIT_ID_KEY,
-} from '../../lib/board/board-canvas-keys';
+} from '../../features/boards/board-canvas-keys';
 import { readableTextColor } from '../../lib/board/board-colors';
-import type { BoardTextEditorHandle } from '../../lib/board/board-rich-text';
+import type { BoardTextEditorHandle } from '../../features/boards/rich-text/board-rich-text';
 import { useBoardHotkeys } from '../../lib/board/use-board-hotkeys';
 import type {
   BoardDragEvent,
@@ -785,6 +785,7 @@ useBoardHotkeys({
         :current-text-align="selectedTextAlign"
         :editing-text="!!activeTextEditor"
         :active-marks="activeTextEditor?.activeMarks.value ?? null"
+        :has-text-selection="activeTextEditor?.hasTextSelection.value ?? false"
         @color="setSelectedColor"
         @color-preview="previewSelectedColor"
         @color-cancel="cancelSelectedColorPreview"

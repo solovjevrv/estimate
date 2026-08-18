@@ -15,7 +15,7 @@ import {
   serializeRuns,
   toggleBoolMark,
   truncateRuns,
-} from '../src/lib/board/board-rich-text';
+} from '../src/features/boards/rich-text/board-rich-text';
 
 describe('runsFromContent', () => {
   it('возвращает runs как есть, если они заданы', () => {

@@ -116,6 +116,99 @@ test.describe('Доски: форматирование текста', () => {
     await expect(reloadedLink).toHaveText('Hello');
   });
 
+  test('форматирование без выделения (18.7): bold и маркер применяются ко всему тексту, ссылка — только подсказка', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+    const owner = await createUser('text-format-focus');
+    const context = await newContext(browser);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}FormatFocus ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    const board = boardLocators(page);
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(board.pane).toBeVisible();
+
+    await board.pane.dblclick({ position: { x: 400, y: 300 } });
+    await expect(board.stickyNodes).toHaveCount(1);
+    const editable = board.stickyNodes.locator('[contenteditable="true"]');
+    await editable.click();
+    await editable.fill('Hello world');
+
+    // Поставим cursor внутрь текста без выделения (схлопнутая selection)
+    await page.evaluate(() => {
+      const el = document.querySelector(
+        '[data-testid="board-node-sticky"] [contenteditable="true"]',
+      ) as HTMLElement;
+      function locate(node: Node, pos: number): { node: Node; offset: number } | null {
+        if (node.nodeType === Node.TEXT_NODE) {
+          const len = (node.textContent ?? '').length;
+          return pos <= len ? { node, offset: pos } : null;
+        }
+        let acc = pos;
+        for (const child of Array.from(node.childNodes)) {
+          const len = (child.textContent ?? '').length;
+          if (acc <= len) {
+            const found = locate(child, acc);
+            if (found) return found;
+          }
+          acc -= len;
+        }
+        return null;
+      }
+      const loc = locate(el, 5)!; // cursor в середине "Hello world"
+      const range = document.createRange();
+      range.setStart(loc.node, loc.offset);
+      range.collapse(true);
+      const sel = window.getSelection()!;
+      sel.removeAllRanges();
+      sel.addRange(range);
+      el.dispatchEvent(new Event('mouseup', { bubbles: true }));
+    });
+
+    const toolbar = board.selectionToolbar;
+    await expect(toolbar).toBeVisible();
+
+    // Жирность — применяется ко всему тексту при схлопнутом cursor (18.7)
+    await toolbar.locator('button[aria-label="Начертание"]').click();
+    const boldBtn = page.locator('button[aria-label="Жирный"]');
+    await expect(boldBtn).toBeEnabled();
+    await boldBtn.click();
+
+    // Маркер — та же логика, применяется ко всему тексту
+    await toolbar.locator('button[aria-label="Маркер"]').click();
+    await board.highlightSwatch.first().click();
+
+    // Ссылка без выделения — подсказка, а не форма (18.7)
+    await toolbar.locator('button[aria-label="Ссылка"]').click();
+    await expect(page.locator('.board-link-hint')).toBeVisible();
+    await expect(page.locator('.board-link-form')).toHaveCount(0);
+
+    // Фиксируем изменения — клик вне текста
+    await board.pane.click({ position: { x: 900, y: 500 } });
+
+    // Текст целиком стал жирным — BoardRichText рендерит <span style="font-weight: 800">
+    // внутри wrapper-<span>, поэтому таргетим span с font-weight в inline style
+    const boldSpan = board.stickyNodes.nth(0).locator('span[style*="font-weight"]');
+    await expect(boldSpan).toHaveCSS('font-weight', '800');
+    await expect(boldSpan).toHaveText('Hello world');
+
+    // Переживает перезагрузку — реально ушло на сервер, не только в локальный DOM
+    await page.reload();
+    await expect(board.stickyNodes).toBeVisible();
+    const reloadedSpan = board.stickyNodes.nth(0).locator('span[style*="font-weight"]');
+    await expect(reloadedSpan).toHaveCSS('font-weight', '800');
+    await expect(reloadedSpan).toHaveText('Hello world');
+  });
+
   test('регрессия: клик «Дублировать» посреди набора текста коммитит черновик, а не теряет его', async ({
     browser,
     createUser,

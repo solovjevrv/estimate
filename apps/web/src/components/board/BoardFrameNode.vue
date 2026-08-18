@@ -20,7 +20,7 @@ import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { BOARD_CAN_EDIT_KEY } from '../../lib/board/board-canvas-keys';
+import { BOARD_CAN_EDIT_KEY } from '../../features/boards/board-canvas-keys';
 import { darkenHex } from '../../lib/board/board-colors';
 import {
   FRAME_MAX_HEIGHT,
