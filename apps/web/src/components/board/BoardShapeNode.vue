@@ -7,7 +7,7 @@ import { computed, inject, onBeforeUnmount, ref, toRef, useTemplateRef, watch } 
 import {
   BOARD_CAN_EDIT_KEY,
   BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
-} from '../../lib/board/board-canvas-keys';
+} from '../../features/boards/board-canvas-keys';
 import { darkenHex, readableTextColor } from '../../lib/board/board-colors';
 import {
   boardFontFamilyCss,
@@ -19,7 +19,7 @@ import {
   SHAPE_MIN_WIDTH,
 } from '../../lib/board/board-item-defaults';
 import { FIT_FONT_MAX, useFitFontSize } from '../../lib/board/use-fit-font-size';
-import { useRichTextEditing } from '../../lib/board/use-rich-text-editing';
+import { useRichTextEditing } from '../../features/boards/composables/use-rich-text-editing';
 import { useBoardSessionStore } from '../../stores/board-session';
 import BoardEditingBadge from './shared/BoardEditingBadge.vue';
 import BoardRichText from './BoardRichText.vue';

@@ -29,10 +29,17 @@
  * только начертания (B/I/U/S). «Aa» теперь отвечает только за размер шрифта
  * и цвет текста (те же два ползунка, что раньше, просто без гарнитуры).
  *
- * Начертание/маркер/ссылка (12.13) применяются не ко всему блоку текста, а к
- * выделению ВНУТРИ редактируемого текста — активны только пока идёт
- * редактирование (`editingText`) и есть невырожденное выделение
- * (`activeMarks !== null`). Только эти три попапа несут
+ * Начертание/маркер (12.13) применяются к целевому диапазону внутри редактируемого
+ * текста — активны пока идёт редактирование (`editingText`) и есть непустой текст
+ * (`activeMarks !== null`). При схлопнутом курсоре без выделения (18.7) цель —
+ * весь непустой текст, поэтому кнопки работают и без явного выделения.
+ *
+ * Ссылка (12.13) по‑прежнему требует ЯВНОГО непустого выделения (`hasTextSelection`):
+ * без него в попапе показывается подсказка `linkSelectTextHint` вместо формы URL —
+ * иначе пользователь случайно превратил бы всю подпись в ссылку, поставив cursor
+ * в текст и кликнув иконку ссылки.
+ *
+ * Только эти три попапа несут
  * `data-board-text-toolbar` (`BOARD_TEXT_TOOLBAR_SELECTOR` в
  * `board-rich-text.ts`) на содержимом: Reka сама переносит фокус ВНУТРЬ
  * содержимого попапа при открытии (не только по клику конкретной кнопки), и
@@ -68,8 +75,8 @@ import {
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { HIGHLIGHT_CSS } from '../../lib/board/board-rich-text';
-import type { FormatMarkKey } from '../../lib/board/use-rich-text-editing';
+import { HIGHLIGHT_CSS } from '../../features/boards/rich-text/board-rich-text';
+import type { FormatMarkKey } from '../../features/boards/composables/use-rich-text-editing';
 import type { ItemFormKind } from '../../features/boards/board-item-form';
 import BoardStickerPicker from './BoardStickerPicker.vue';
 import BoardColorPickerMenu from './BoardColorPickerMenu.vue';
@@ -124,8 +131,11 @@ const props = withDefaults(
     currentTextAlign: BoardTextAlign;
     /** Идёт редактирование текста этого элемента (12.13) — вне этого режима начертания недоступны */
     editingText: boolean;
-    /** Метки, единые для текущего выделения текста; `null` — нет выделения (кнопки неактивны) */
+    /** Метки текущей цели форматирования (не только реального выделения): при
+     *  схлопнутом курсоре и непустом тексте — метки всего текста; `null` — нет текста */
     activeMarks: BoardTextMark | null;
+    /** Только фактическое непустое DOM-выделение (18.7) — ссылка требует явного выбора фрагмента */
+    hasTextSelection: boolean;
   }>(),
   // Явный default: undefined — без него Vue кастит отсутствующий boolean-проп в false
   // (а не оставляет undefined), из-за чего фолбэк `?? currentFontSize <= MIN` ниже по
@@ -195,8 +205,12 @@ const FORMAT_BUTTONS: readonly { key: FormatMarkKey; icon: string }[] = [
   { key: 'strike', icon: 'i-lucide-strikethrough' },
 ];
 
-/** Нет активного выделения текста — кнопки начертания/маркера/ссылки недоступны (12.13) */
+/** Начертание/маркер доступны при редактировании и непустом тексте (18.7): при
+ *  схлопнутом курсоре `activeMarks` вычисляются по всему тексту, и кнопки
+ *  применяют действие к нему */
 const formattingDisabled = computed(() => !props.editingText || props.activeMarks === null);
+/** Ссылка требует ЯВНОГО выделения (18.7): без него показываем подсказку, а не форму URL */
+const linkUnavailable = computed(() => !props.editingText || !props.hasTextSelection);
 const anyFormatActive = computed(
   () => !!props.activeMarks && FORMAT_BUTTONS.some((format) => !!props.activeMarks?.[format.key]),
 );
@@ -208,7 +222,9 @@ const linkInputEl = useTemplateRef<HTMLInputElement>('linkInput');
 
 // Закрываем попап ссылки, только когда редактирование текста реально закончилось —
 // временно пустое выделение (клик внутри текста без drag) не должно захлопывать
-// уже открытый попап, пользователь может просто выделить текст, не переоткрывая его
+// уже открытый попап, пользователь может просто выделить текст, не переоткрывая его.
+// Ссылка требует явного выделения (18.7): без него попап открывается с подсказкой,
+// а не с формой ввода URL — `linkUnavailable` глушит фокус на input в этом случае.
 watch(
   () => props.editingText,
   (editing) => {
@@ -216,8 +232,8 @@ watch(
   },
 );
 
-watch([linkPopoverOpen, formattingDisabled], async ([open, disabled]) => {
-  if (!open || disabled) return;
+watch([linkPopoverOpen, linkUnavailable], async ([open, unavailable]) => {
+  if (!open || unavailable) return;
   linkDraft.value = props.activeMarks?.link ?? '';
   linkError.value = false;
   await nextTick();
@@ -506,15 +522,16 @@ function cancelTextColor(hex: BoardColorHex): void {
       <div class="board-selection-divider" />
 
       <!--
-      Начертание (12.13) — по выделению внутри редактируемого текста, не на
-      весь блок. `@mousedown.prevent` — на триггере И на каждой кнопке внутри
-      попапа: без него фокус ушёл бы с contenteditable уже при открытии
-      попапа (клик по триггеру), а не только при клике по конкретной кнопке
-      форматирования — см. пояснение в шапке файла. `onFocusOutside` отключает
-      автозакрытие попапа именно по уходу фокуса (его вызывает восстановление
-      выделения в `applyRangePatch` после каждого клика) — обычное «кликнули
-      мимо» (`pointerDownOutside`) не тронуто, попап всё ещё закрывается им.
-    -->
+       Начертание (12.13) — к целевому диапазону внутри редактируемого текста: при
+       схлопнутом курсоре (18.7) — ко всему непустому тексту. `@mousedown.prevent` —
+       на триггере И на каждой кнопке внутри попапа: без него фокус ушёл бы с
+       contenteditable уже при открытии попапа (клик по триггеру), а не только при
+       клике по конкретной кнопке форматирования — см. пояснение в шапке файла.
+       `onFocusOutside` отключает автозакрытие попапа именно по уходу фокуса (его
+       вызывает восстановление выделения в `applyRangePatch` после каждого клика) —
+       обычное «кликнули мимо» (`pointerDownOutside`) не тронуто, попап всё ещё
+       закрывается им.
+      -->
       <UPopover
         :content="{
           side: 'top',
@@ -554,7 +571,8 @@ function cancelTextColor(hex: BoardColorHex): void {
 
       <div class="board-selection-divider" />
 
-      <!-- Маркер (12.13) — та же логика mousedown.prevent/onFocusOutside, что и у начертания -->
+      <!-- Маркер (12.13) — та же логика mousedown.prevent/onFocusOutside, что и у начертания.
+           Целевой диапазон — либо выделение, либо весь непустой текст при схлопнутом курсоре (18.7) -->
       <UPopover
         :content="{
           side: 'top',
@@ -628,9 +646,9 @@ function cancelTextColor(hex: BoardColorHex): void {
         <template #content>
           <div class="board-link-menu" data-board-text-toolbar>
             <!-- Кнопка-триггер активна уже в момент редактирования (иначе клик по ней
-               без предварительного выделения молча ничего не делал бы) — подсказка
-               вместо формы, пока реально нечего форматировать -->
-            <span v-if="formattingDisabled" class="board-link-hint">
+                без предварительного выделения молча ничего не делал бы) — подсказка
+                вместо формы, пока нет ЯВНОГО выделения (ссылка требует выбора фрагмента, 18.7) -->
+            <span v-if="linkUnavailable" class="board-link-hint">
               {{ t('board.linkSelectTextHint') }}
             </span>
             <form v-else class="board-link-form" @submit.prevent="submitLink">

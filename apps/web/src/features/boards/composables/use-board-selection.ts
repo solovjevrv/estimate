@@ -16,7 +16,7 @@ import {
 import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@poker/shared';
 import { computed, ref, shallowRef } from 'vue';
 
-import type { BoardEffectiveFontSizeRegistry } from '../../../lib/board/board-canvas-keys';
+import type { BoardEffectiveFontSizeRegistry } from '../board-canvas-keys';
 import type { ItemFormKind } from '../board-item-form';
 import type { BoardContextMenuTarget } from '../board-context-menu';
 import {

@@ -6,7 +6,7 @@
  */
 import type { InjectionKey, Ref } from 'vue';
 
-import type { BoardTextEditorHandle } from './board-rich-text';
+import type { BoardTextEditorHandle } from './rich-text/board-rich-text';
 
 export const BOARD_CAN_EDIT_KEY: InjectionKey<Ref<boolean>> = Symbol('boardCanEdit');
 export const BOARD_PENDING_EDIT_ID_KEY: InjectionKey<Ref<string | null>> =

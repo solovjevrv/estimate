@@ -8,8 +8,10 @@ import { defineComponent, nextTick, provide, ref, shallowRef } from 'vue';
 import { createAppI18n } from '../src/i18n';
 import { useBoardSessionStore } from '../src/stores/board-session';
 import { useSessionStore } from '../src/stores/session';
-import { useRichTextEditing } from '../src/lib/board/use-rich-text-editing';
-import { BOARD_ACTIVE_TEXT_EDITOR_KEY } from '../src/lib/board/board-canvas-keys';
+import { useRichTextEditing } from '../src/features/boards/composables/use-rich-text-editing';
+import { BOARD_ACTIVE_TEXT_EDITOR_KEY } from '../src/features/boards/board-canvas-keys';
+import type { BoardTextEditorHandle } from '../src/features/boards/rich-text/board-rich-text';
+import { serializeRuns, selectRange } from '../src/features/boards/rich-text/board-rich-text';
 
 /* --- Hoisted mocks (vi.mock runs above imports — переменные через vi.hoisted) --- */
 const { toastAdd, socket } = vi.hoisted(() => {
@@ -283,6 +285,189 @@ describe('useRichTextEditing — мягкая блокировка (14.2)', () =
     expect(first.vm.editing).toBe(false);
     expect(second.vm.editing).toBe(true);
     expect(wrapper.findAll('[contenteditable="true"]')).toHaveLength(1);
+
+    wrapper.unmount();
+  });
+});
+
+describe('useRichTextEditing — форматирование без выделения (18.7)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    socket.reset();
+    toastAdd.mockClear();
+
+    const session = useSessionStore();
+    session.setUser({
+      id: 'me',
+      provider: 'google',
+      email: 'me@example.com',
+      name: 'Я',
+      jobTitle: null,
+      avatarUrl: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function joinBoard() {
+    const boardSession = useBoardSessionStore();
+    socket.next = snapshotResult(1);
+    await boardSession.join('board1');
+    return boardSession;
+  }
+
+  /** Монтирует composable с предоставленным BOARD_ACTIVE_TEXT_EDITOR_KEY и возвращает ref на хэндл */
+  function mountWithEditor(text: string) {
+    const activeTextEditor = shallowRef<BoardTextEditorHandle | null>(null);
+    const TestWrapper = defineComponent({
+      setup() {
+        const canEdit = ref(true);
+        const isSelected = ref(true);
+        const content = ref<BoardStickyContent>({ type: 'sticky', text });
+        const result = useRichTextEditing({
+          itemId: 'item-1',
+          canEdit,
+          isSelected,
+          content,
+          buildContent: (text, runs) =>
+            ({ type: 'sticky', text, ...(runs ? { runs } : {}) }) as BoardStickyContent,
+        });
+        return result;
+      },
+      template: '<div><div ref="editable" contenteditable="true"></div></div>',
+    });
+    const wrapper = mount(TestWrapper, {
+      global: {
+        plugins: [createAppI18n('ru')],
+        provide: {
+          [BOARD_ACTIVE_TEXT_EDITOR_KEY]: activeTextEditor,
+        } as Record<symbol, unknown>,
+      },
+    });
+    return { wrapper, activeTextEditor };
+  }
+
+  /** Вход в редактирование + доступ к DOM-элементу */
+  async function setupEditor(text: string) {
+    await joinBoard();
+    const { wrapper, activeTextEditor } = mountWithEditor(text);
+    await wrapper.vm.startEditing();
+    await nextTick();
+    const el = wrapper.find('[contenteditable="true"]').element as HTMLElement;
+    return { wrapper, activeTextEditor, el };
+  }
+
+  it('непустой текст, cursor без выделения → toggle("bold") форматирует весь текст', async () => {
+    const { wrapper, activeTextEditor, el } = await setupEditor('Hello world');
+
+    // Схлопываем selection в cursor (без выделения)
+    selectRange(el, 5, 5);
+    wrapper.vm.refreshActiveMarks();
+
+    expect(activeTextEditor.value?.hasTextSelection.value).toBe(false);
+    expect(activeTextEditor.value?.activeMarks.value).not.toBeNull();
+
+    activeTextEditor.value?.toggle('bold');
+
+    const runs = serializeRuns(el);
+    expect(runs).toEqual([{ text: 'Hello world', marks: { bold: true } }]);
+
+    wrapper.unmount();
+  });
+
+  it('непустой текст, cursor без выделения → setHighlight() форматирует весь текст', async () => {
+    const { wrapper, activeTextEditor, el } = await setupEditor('Hello world');
+
+    selectRange(el, 5, 5);
+    wrapper.vm.refreshActiveMarks();
+
+    expect(activeTextEditor.value?.hasTextSelection.value).toBe(false);
+
+    activeTextEditor.value?.setHighlight('yellow');
+
+    const runs = serializeRuns(el);
+    expect(runs).toEqual([{ text: 'Hello world', marks: { highlight: 'yellow' } }]);
+
+    wrapper.unmount();
+  });
+
+  it('при выделении части текста форматируется только эта часть', async () => {
+    const { wrapper, activeTextEditor, el } = await setupEditor('Hello world');
+
+    // Выделяем "Hello" (0..5). jsdom не поддерживает Selection.addRange на
+    // contenteditable внутри Vue Test Utils — mock getSelection, чтобы
+    // refreshActiveMarks увидел непустое выделение
+    const textNode = el.childNodes[0]!;
+    const range = document.createRange();
+    range.setStart(textNode, 0);
+    range.setEnd(textNode, 5);
+    const mockSelection = {
+      rangeCount: 1,
+      isCollapsed: false,
+      getRangeAt: () => range,
+      removeAllRanges: () => {},
+      addRange: () => {},
+    };
+    const spy = vi
+      .spyOn(window, 'getSelection')
+      .mockReturnValue(mockSelection as unknown as Selection);
+
+    selectRange(el, 0, 5);
+    wrapper.vm.refreshActiveMarks();
+
+    expect(activeTextEditor.value?.hasTextSelection.value).toBe(true);
+
+    activeTextEditor.value?.toggle('bold');
+
+    spy.mockRestore();
+
+    const runs = serializeRuns(el);
+    expect(runs).toEqual([{ text: 'Hello', marks: { bold: true } }, { text: ' world' }]);
+
+    wrapper.unmount();
+  });
+
+  it('пустой текст не получает форматирования', async () => {
+    const { wrapper, activeTextEditor, el } = await setupEditor('');
+
+    await nextTick();
+    // При пустом тексте DOM пуст — симулируем курсор
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    range.collapse(true);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    wrapper.vm.refreshActiveMarks();
+
+    expect(activeTextEditor.value?.hasTextSelection.value).toBe(false);
+    expect(activeTextEditor.value?.activeMarks.value).toBeNull();
+
+    activeTextEditor.value?.toggle('bold');
+
+    const runs = serializeRuns(el);
+    expect(runs).toEqual([]);
+
+    wrapper.unmount();
+  });
+
+  it('ссылка при схлопнутом cursor не получает fallback-диапазон', async () => {
+    const { wrapper, activeTextEditor, el } = await setupEditor('Hello world');
+
+    // Схлопываем selection (cursor без выделения)
+    selectRange(el, 5, 5);
+    wrapper.vm.refreshActiveMarks();
+
+    expect(activeTextEditor.value?.hasTextSelection.value).toBe(false);
+
+    activeTextEditor.value?.setLink('https://example.com');
+
+    // Ссылка не должна примениться — нет выделения
+    const runs = serializeRuns(el);
+    expect(runs).toEqual([{ text: 'Hello world' }]);
 
     wrapper.unmount();
   });

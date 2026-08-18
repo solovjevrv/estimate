@@ -42,6 +42,7 @@ function mountToolbar(props: Record<string, unknown> = {}) {
       currentTextAlign: 'left',
       editingText: true,
       activeMarks: null,
+      hasTextSelection: false,
       ...props,
     },
   });
@@ -266,6 +267,83 @@ describe('BoardSelectionToolbar — стэппер размера шрифта (
 
     expect(wrapper.emitted('fontSize')?.[0]?.[0]).toBe(22);
     expect(wrapper.emitted('fontSize')?.[1]?.[0]).toBe(18);
+    wrapper.unmount();
+  });
+});
+
+describe('BoardSelectionToolbar — форматирование без выделения (18.7)', () => {
+  /** Открывает попап начертания и возвращает кнопку Жирный из телепортированного контента */
+  async function getBoldButton(
+    wrapper: ReturnType<typeof mountToolbar>,
+  ): Promise<HTMLButtonElement> {
+    await wrapper.find('[aria-label="Начертание"]').trigger('click');
+    await nextTick();
+    return document.querySelector<HTMLButtonElement>('[aria-label="Жирный"]')!;
+  }
+
+  /** Открывает попап маркера и возвращает первую свточку из телепортированного контента */
+  async function getFirstHighlightSwatch(
+    wrapper: ReturnType<typeof mountToolbar>,
+  ): Promise<HTMLButtonElement> {
+    await wrapper.find('[aria-label="Маркер"]').trigger('click');
+    await nextTick();
+    return document.querySelector<HTMLButtonElement>('[data-testid="board-highlight-swatch"]')!;
+  }
+
+  /** Открывает попап ссылки */
+  async function openLinkPopover(wrapper: ReturnType<typeof mountToolbar>): Promise<void> {
+    await wrapper.find('[aria-label="Ссылка"]').trigger('click');
+    await nextTick();
+  }
+
+  it('начертание и маркер активны при editingText=true, activeMarks задан и hasTextSelection=false', async () => {
+    const wrapper = mountToolbar({
+      editingText: true,
+      activeMarks: { bold: true },
+      hasTextSelection: false,
+    });
+
+    const boldBtn = await getBoldButton(wrapper);
+    expect(boldBtn.disabled).toBe(false);
+
+    const swatch = await getFirstHighlightSwatch(wrapper);
+    expect(swatch.disabled).toBe(false);
+
+    // При активном bold кнопка должна быть в активном состоянии
+    expect(boldBtn.classList.contains('board-form-menu-item-active')).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it('для ссылки при hasTextSelection=false остаётся подсказка, не форма', async () => {
+    const wrapper = mountToolbar({
+      editingText: true,
+      activeMarks: { bold: true },
+      hasTextSelection: false,
+    });
+
+    await openLinkPopover(wrapper);
+
+    expect(document.querySelector('.board-link-hint')).not.toBeNull();
+    expect(document.querySelector('.board-link-form')).toBeNull();
+    expect(document.querySelector('[data-testid="board-link-input"]')).toBeNull();
+
+    wrapper.unmount();
+  });
+
+  it('при hasTextSelection=true ссылка показывает форму, а не подсказку', async () => {
+    const wrapper = mountToolbar({
+      editingText: true,
+      activeMarks: { link: 'https://example.com' },
+      hasTextSelection: true,
+    });
+
+    await openLinkPopover(wrapper);
+
+    expect(document.querySelector('.board-link-hint')).toBeNull();
+    expect(document.querySelector('.board-link-form')).not.toBeNull();
+    expect(document.querySelector('[data-testid="board-link-input"]')).not.toBeNull();
+
     wrapper.unmount();
   });
 });
