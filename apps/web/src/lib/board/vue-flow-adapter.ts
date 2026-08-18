@@ -1,7 +1,11 @@
 /**
- * Единственное место, где домен доски (`BoardItem`/`BoardEdge`) встречается
- * с типами Vue Flow (`Node`/`Edge`) — если холст когда-нибудь сменится
- * (см. риски в PROGRESS.md), меняется только этот файл.
+ * Адаптер — единственная граница между персистентной доменной моделью
+ * `BoardItem`/`BoardEdge` и runtime-моделью Vue Flow (`Node`/`Edge`). Если холст
+ * когда-нибудь сменится (см. риски в PROGRESS.md), меняются только `boardItemToNode`/
+ * `boardEdgeToFlowEdge`/`toFlowNodes`/`toFlowEdges`. Renderer-компоненты
+ * (`BoardCanvas.vue`, node-компоненты, `BoardFloatingEdge.vue`) законно используют
+ * Vue Flow API напрямую — для них адаптер избавиться неоткуда, а Vue Flow остаётся
+ * реализацией рендерера, а не доменной моделью.
  */
 import type { BoardColorHex, BoardEdge, BoardEdgeMarker, BoardItem } from '@poker/shared';
 import {
@@ -32,9 +36,27 @@ export type BoardFlowEdge = GraphEdge<BoardEdge>;
 export type BoardSelectionNode = BoardFlowNode;
 export type BoardSelectionEdge = BoardFlowEdge;
 
-/** Нейтральные aliases для использования в composable use-board-drag-and-snap
- * (выделены от Vue Flow, чтобы слой не зависел от @vue-flow/core напрямую). */
-export type BoardDragNode = BoardFlowNode;
+/**
+ * Нейтральные структурные типы для слоя drag/snap (composable
+ * `use-board-drag-and-snap` + граница `BoardCanvas.vue`). `BoardDragNode`
+ * намеренно не импортирует типы Vue Flow: он должен быть структурно совместим
+ * с `GraphNode<BoardItem>` (а `BoardCanvas.vue` адаптирует реальный
+ * `NodeDragEvent` в `BoardDragEvent`), но не зависеть от неё — чтобы можно было
+ * перестроить тесты и логику, не поднимая Vue Flow.
+ */
+export interface BoardDragNode {
+  id: string;
+  data: BoardItem;
+  position: { x: number; y: number };
+  computedPosition: { x: number; y: number };
+  dimensions: { width: number; height: number };
+}
+
+export interface BoardDragEvent {
+  event: Event;
+  nodes: BoardDragNode[];
+}
+
 export type BoardDragEdge = BoardFlowEdge;
 
 /**

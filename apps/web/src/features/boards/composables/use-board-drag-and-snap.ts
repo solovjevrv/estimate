@@ -15,7 +15,6 @@
  */
 import type { BoardItem, BoardItemPatchOp, BoardOp } from '@poker/shared';
 import { isBoardContainer } from '@poker/shared';
-import type { NodeDragEvent } from '@vue-flow/core';
 import { ref, type Ref } from 'vue';
 
 import { BOARD_DRAG_THROTTLE_MS } from '../../../lib/board/board-constants';
@@ -25,7 +24,7 @@ import {
   type SnapGuide,
   type SnapRect,
 } from '../../../lib/board/board-snap';
-import type { BoardFlowNode } from '../../../lib/board/vue-flow-adapter';
+import type { BoardDragEvent, BoardDragNode } from '../../../lib/board/vue-flow-adapter';
 import { throttle } from '../../../lib/throttle';
 import { uuid } from '../../../lib/board/uuid';
 
@@ -39,8 +38,8 @@ export interface BoardDragAndSnapOptions {
 
   /** Авторитетный плоский snapshot элементов доски. */
   getItems: () => BoardItem[];
-  /** Живые GraphNode Vue Flow. */
-  getNodes: () => BoardFlowNode[];
+  /** Живые узлы, структурно совместимые с Vue Flow `GraphNode` через `BoardDragNode`. */
+  getNodes: () => BoardDragNode[];
   /** Текущий zoom нужен только для перевода snap threshold в координаты доски. */
   getZoom: () => number;
 
@@ -64,16 +63,16 @@ export interface BoardDragAndSnap {
   activeSnapGuides: Ref<SnapGuide[]>;
   isDragging: Ref<boolean>;
 
-  onNodeDragStart: (event: NodeDragEvent) => void;
-  onNodeDrag: (event: NodeDragEvent) => void;
-  onNodeDragStop: (event: NodeDragEvent) => void;
+  onNodeDragStart: (event: BoardDragEvent) => void;
+  onNodeDrag: (event: BoardDragEvent) => void;
+  onNodeDragStop: (event: BoardDragEvent) => void;
 
   /** Отменяет trailing throttles и очищает все drag/snap-состояния. Идемпотентен. */
   reset: () => void;
 }
 
 // Доменные типы BoardItem/BoardOp не должны получать полей Vue Flow: все
-// преобразования — через BoardFlowNode из vue-flow-adapter.ts.
+// преобразования — через BoardDragNode из vue-flow-adapter.ts.
 
 export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDragAndSnap {
   const { canEdit, getItems, getNodes, getZoom, applyOps, breakFollowOnEdit, findFrameAt } =
@@ -89,7 +88,7 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
   const isDragging = ref(false);
 
   /** Per-node throttle-обёртки для позиционных тиков drag */
-  const dragThrottlers = new Map<string, ReturnType<typeof throttle<[BoardFlowNode]>>>();
+  const dragThrottlers = new Map<string, ReturnType<typeof throttle<[BoardDragNode]>>>();
 
   // --- Чистые вспомогательные функции (без сайд-эффектов) ---
 
@@ -98,8 +97,8 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     return getItems().filter((candidate) => candidate.parentId === containerId);
   }
 
-  /** Конвертирует узел Vue Flow в SnapRect для вычисления snap guide */
-  function nodeToSnapRect(node: BoardFlowNode): SnapRect {
+  /** Конвертирует узел в SnapRect для вычисления snap guide */
+  function nodeToSnapRect(node: BoardDragNode): SnapRect {
     return {
       id: node.id,
       x: node.computedPosition.x,
@@ -145,7 +144,7 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
    * - участник группы: группа — жёсткий пучок, драг любого участника двигает
    *   саму группу-контейнер и всех остальных участников.
    */
-  function dragCascadeOps(node: BoardFlowNode): { ops: BoardOp[]; inverse: BoardOp[] } {
+  function dragCascadeOps(node: BoardDragNode): { ops: BoardOp[]; inverse: BoardOp[] } {
     const start = dragStartPositions.get(node.id);
     if (!start) return { ops: [], inverse: [] };
     const dx = node.computedPosition.x - start.x;
@@ -170,7 +169,7 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
    * Верхнеуровневый элемент или участник фрейма — родитель пересчитывается от
    * текущей позиции всегда, чтобы узнать, что элемент вытащили за пределы фрейма.
    */
-  function resolveDragParent(node: BoardFlowNode): string | null {
+  function resolveDragParent(node: BoardDragNode): string | null {
     if (isBoardContainer(node.data.content.type)) return null;
     const parent =
       node.data.parentId !== null
@@ -221,8 +220,8 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
 
   // --- Snap и axis-lock ---
 
-  function updateSnapGuides(event: NodeDragEvent): void {
-    const dragged = event.nodes as BoardFlowNode[];
+  function updateSnapGuides(event: BoardDragEvent): void {
+    const dragged = event.nodes;
     if (dragged.length === 0) {
       if (activeSnapGuides.value.length > 0) activeSnapGuides.value = [];
       return;
@@ -239,8 +238,8 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     }
   }
 
-  function applySnapPosition(event: NodeDragEvent): void {
-    const dragged = event.nodes as BoardFlowNode[];
+  function applySnapPosition(event: BoardDragEvent): void {
+    const dragged = event.nodes;
     if (dragged.length === 0) return;
     const draggedIds = new Set(dragged.map((n) => n.id));
     const staticRects = getNodes()
@@ -262,9 +261,9 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
   }
 
   /** Shift+drag — ограничение перетаскивания по одной оси */
-  function applyAxisLock(event: NodeDragEvent): void {
+  function applyAxisLock(event: BoardDragEvent): void {
     if (!(event.event instanceof MouseEvent) || !event.event.shiftKey) return;
-    for (const node of event.nodes as BoardFlowNode[]) {
+    for (const node of event.nodes) {
       const start = dragStartPositions.get(node.id);
       if (!start) continue;
       const dx = node.computedPosition.x - start.x;
@@ -301,7 +300,7 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
    * применяется локально Vue Flow.
    */
   function sendPositionPatch(
-    node: BoardFlowNode,
+    node: BoardDragNode,
     opts: BoardApplyOptions = {},
     /** Задан — узел на dragStop сменил родителя (drag-in/out фрейма, 14.3) */
     parentId?: string | null,
@@ -320,10 +319,10 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
 
   // --- Обработчики Vue Flow ---
 
-  function onNodeDragStart({ nodes: dragged }: NodeDragEvent): void {
+  function onNodeDragStart({ nodes: dragged }: BoardDragEvent): void {
     if (!canEdit()) return;
     breakFollowOnEdit();
-    for (const node of dragged as BoardFlowNode[]) {
+    for (const node of dragged) {
       dragStartPositions.set(node.id, { x: node.computedPosition.x, y: node.computedPosition.y });
       // Спутники драга (дети контейнера ИЛИ соседи по группе, 14.3) не входят в
       // event.nodes — засеваем их стартовые позиции здесь же, иначе дельту
@@ -335,20 +334,20 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     isDragging.value = true;
   }
 
-  function onNodeDrag(event: NodeDragEvent): void {
+  function onNodeDrag(event: BoardDragEvent): void {
     if (!canEdit()) return;
     applyAxisLock(event);
     updateSnapGuides(event);
     // Во время драга узла реальный mousemove на пейне не долетает до cursorThrottler
     // (указатель перехвачен драгом Vue Flow) — Canvas оборачивает onNodeDrag и
     // вызывает cursorThrottler сам, поэтому здесь этого нет.
-    for (const node of event.nodes as BoardFlowNode[]) {
+    for (const node of event.nodes) {
       let send = dragThrottlers.get(node.id);
       if (!send) {
         // record: false — промежуточные тики жеста не попадают в историю undo/redo,
         // иначе одна отмена откатывала бы только последние ~80мс драга, а не перенос целиком.
         send = throttle(
-          (n: BoardFlowNode) => sendPositionPatch(n, { record: false }),
+          (n: BoardDragNode) => sendPositionPatch(n, { record: false }),
           BOARD_DRAG_THROTTLE_MS,
         );
         dragThrottlers.set(node.id, send);
@@ -357,12 +356,12 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     }
   }
 
-  function onNodeDragStop(event: NodeDragEvent): void {
+  function onNodeDragStop(event: BoardDragEvent): void {
     if (!canEdit()) return;
     applyAxisLock(event);
     applySnapPosition(event);
     activeSnapGuides.value = [];
-    for (const node of event.nodes as BoardFlowNode[]) {
+    for (const node of event.nodes) {
       const start = dragStartPositions.get(node.id);
       const moved =
         !start || start.x !== node.computedPosition.x || start.y !== node.computedPosition.y;

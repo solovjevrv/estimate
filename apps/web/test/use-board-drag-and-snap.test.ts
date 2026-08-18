@@ -1,16 +1,15 @@
 import type { BoardItem, BoardOp } from '@poker/shared';
-import type { NodeDragEvent } from '@vue-flow/core';
 import { describe, expect, it, vi } from 'vitest';
 
 import { useBoardDragAndSnap } from '../src/features/boards/composables/use-board-drag-and-snap';
-import type { BoardFlowNode } from '../src/lib/board/vue-flow-adapter';
+import type { BoardDragEvent } from '../src/lib/board/vue-flow-adapter';
 
 type BoardItemPatchOp = Extract<BoardOp, { type: 'item.patch' }>;
 
 /**
  * Лёгкий MockNode — плоский объект с теми полями, которые composable читает.
- * Структурная совместимость с GraphNode не требуется: composable принимает
- * `BoardFlowNode` через опции, а в тестах мы приводим тип через `as unknown`.
+ * Структурно совместим с `BoardDragNode` (и тем самым с Vue Flow `GraphNode`),
+ * поэтому в payload события приведение типа не требуется.
  */
 interface MockNode {
   id: string;
@@ -54,13 +53,12 @@ function flowNode(
   };
 }
 
-function nodeEvent(nodes: MockNode[], eventInit: Partial<MouseEvent> = {}): NodeDragEvent {
+function nodeEvent(nodes: MockNode[], eventInit: Partial<MouseEvent> = {}): BoardDragEvent {
   const event = new MouseEvent('mousemove', eventInit);
   return {
     event,
-    node: nodes[0] as unknown as BoardFlowNode,
-    nodes: nodes as unknown as BoardFlowNode[],
-  } as unknown as NodeDragEvent;
+    nodes,
+  };
 }
 
 interface MakeOptions {
@@ -85,7 +83,7 @@ function makeDrag(opts: MakeOptions = {}) {
   const api = useBoardDragAndSnap({
     canEdit: opts.canEdit ?? (() => true),
     getItems: () => itemsRef,
-    getNodes: () => nodesRef as unknown as BoardFlowNode[],
+    getNodes: () => nodesRef,
     getZoom: () => zoomRef,
     applyOps,
     breakFollowOnEdit,

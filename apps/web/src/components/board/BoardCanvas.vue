@@ -85,6 +85,8 @@ import { readableTextColor } from '../../lib/board/board-colors';
 import type { BoardTextEditorHandle } from '../../lib/board/board-rich-text';
 import { useBoardHotkeys } from '../../lib/board/use-board-hotkeys';
 import type {
+  BoardDragEvent,
+  BoardDragNode,
   BoardFlowEdge,
   BoardFlowNode,
   BoardSelectionEdge,
@@ -303,7 +305,7 @@ const {
 const dragAndSnap = useBoardDragAndSnap({
   canEdit: () => props.canEdit,
   getItems: () => props.items,
-  getNodes: () => getNodes.value as BoardFlowNode[],
+  getNodes: () => getNodes.value as BoardDragNode[],
   getZoom: () => viewport.value.zoom,
   applyOps: (ops, options) => void boardSession.applyOps(ops, options),
   breakFollowOnEdit,
@@ -630,13 +632,34 @@ function onPaneDragOver(event: DragEvent): void {
 // на dragstop. Троттлер свой на элемент — иначе при мультивыборе только
 // последний по порядку элемент кадра реально долетал бы до сети.
 /**
+ * Адаптер границы: Vue Flow проталкивает реальный `NodeDragEvent` в template-
+ * обработчики Canvas, а composable `useBoardDragAndSnap` работает с абстрактным
+ * `BoardDragEvent` (без импорта `@vue-flow/core`). Здесь — единственное место,
+ * где тип Vue Flow встречается с доменной drag/snap-логикой.
+ */
+function toBoardDragEvent(event: NodeDragEvent): BoardDragEvent {
+  return {
+    event: event.event,
+    nodes: event.nodes as BoardDragNode[],
+  };
+}
+
+function onNodeDragStart(event: NodeDragEvent): void {
+  dragAndSnap.onNodeDragStart(toBoardDragEvent(event));
+}
+
+/**
  * Локальный wrapper над composable onNodeDrag: во время драга узла реальный
  * mousemove на пейне не долетает до cursorThrottler (указатель перехвачен
  * драгом Vue Flow), поэтому прокидываем событие вручную.
  */
 function onNodeDrag(event: NodeDragEvent): void {
-  dragAndSnap.onNodeDrag(event);
+  dragAndSnap.onNodeDrag(toBoardDragEvent(event));
   if (event.event instanceof MouseEvent) cursorThrottler(event.event);
+}
+
+function onNodeDragStop(event: NodeDragEvent): void {
+  dragAndSnap.onNodeDragStop(toBoardDragEvent(event));
 }
 
 function textDefaultDimensions(
@@ -714,9 +737,9 @@ useBoardHotkeys({
       @pane-context-menu="onPaneContextMenu"
       @move-start="onManualCameraInteraction"
       @mousemove="cursorThrottler"
-      @node-drag-start="dragAndSnap.onNodeDragStart"
+      @node-drag-start="onNodeDragStart"
       @node-drag="onNodeDrag"
-      @node-drag-stop="dragAndSnap.onNodeDragStop"
+      @node-drag-stop="onNodeDragStop"
       @node-click="onNodeClick"
       @node-context-menu="onNodeContextMenu"
       @selection-context-menu="onSelectionContextMenu"
