@@ -6,7 +6,10 @@ import { BOARD_COLOR_PALETTE } from '@poker/shared';
 
 import BoardColorPickerMenu from '../src/components/board/BoardColorPickerMenu.vue';
 import { createAppI18n } from '../src/i18n';
-import { addRecentColor, getRecentColors } from '../src/lib/board/recent-colors';
+import {
+  addRecentColor,
+  getRecentColors,
+} from '../src/features/boards/infrastructure/recent-colors';
 
 function mountMenu(props: Record<string, unknown> = {}) {
   return mount(BoardColorPickerMenu, {

@@ -1,7 +1,10 @@
 import type { BoardCommittedOp, BoardEdge, BoardItem } from '@poker/shared';
 import { describe, expect, it } from 'vitest';
 
-import { applyLocalBoardOp, type BoardLocalState } from '../src/lib/board/apply-local-op';
+import {
+  applyLocalBoardOp,
+  type BoardLocalState,
+} from '../src/features/boards/domain/apply-local-op';
 
 function emptyState(): BoardLocalState {
   return { items: new Map(), edges: new Map() };

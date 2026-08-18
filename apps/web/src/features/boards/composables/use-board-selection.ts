@@ -12,18 +12,18 @@ import {
   FIT_FONT_MAX,
   getScaledFontSize,
   unscaleFontSizeStep,
-} from '../../../lib/board/use-fit-font-size';
+} from '../../../features/boards/composables/use-fit-font-size';
 import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@poker/shared';
 import { computed, ref, shallowRef } from 'vue';
 
-import type { BoardEffectiveFontSizeRegistry } from '../board-canvas-keys';
+import type { BoardEffectiveFontSizeRegistry } from '../context/board-canvas-keys';
 import type { ItemFormKind } from '../board-item-form';
 import type { BoardContextMenuTarget } from '../board-context-menu';
 import {
   type BoardSelectionEdge,
   type BoardSelectionNode,
-} from '../../../lib/board/vue-flow-adapter';
-import { uuid } from '../../../lib/board/uuid';
+} from '../../../features/boards/adapters/vue-flow-adapter';
+import { uuid } from '../../../features/boards/infrastructure/uuid';
 
 export interface BoardSelectionOptions {
   canEdit: () => boolean;

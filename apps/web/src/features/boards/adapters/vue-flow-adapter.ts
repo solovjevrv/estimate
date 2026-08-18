@@ -17,7 +17,7 @@ import {
   type Node,
 } from '@vue-flow/core';
 
-import { resolveEdgeColor } from './board-item-defaults';
+import { resolveEdgeColor } from '../config/board-item-defaults';
 
 /**
  * Типы узлов/связей Vue Flow с нашими доменными данными — единственная точка

@@ -333,7 +333,7 @@ export const BOARD_EDGE_MARKER_KINDS: readonly BoardEdgeMarker[] = ['none', 'arr
 export interface BoardEdgeStyle {
   /**
    * Не задан — цвет вычисляется у каждого зрителя от ЕГО ТЕКУЩЕЙ темы (12.9,
-   * см. `resolveEdgeColor` в `lib/board/board-item-defaults.ts` на фронте):
+   * см. `resolveEdgeColor` в `features/boards/config/board-item-defaults.ts` на фронте):
    * до этой правки цвет по умолчанию фиксировался на теме АВТОРА в момент
    * создания и хранился как обычный hex — стрелка, созданная в тёмной теме,
    * оставалась белой (и невидимой) и для тех, кто смотрит доску в светлой.

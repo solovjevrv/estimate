@@ -11,7 +11,7 @@ import {
   isPlainTextField,
   parseClipboardPayload,
   serializeSelection,
-} from '../src/lib/board/board-clipboard';
+} from '../src/features/boards/domain/board-clipboard';
 
 const STYLE: BoardItemStyle = { color: '#FCEB96' };
 

@@ -7,7 +7,7 @@ import {
   boardItemToNode,
   toFlowEdges,
   toFlowNodes,
-} from '../src/lib/board/vue-flow-adapter';
+} from '../src/features/boards/adapters/vue-flow-adapter';
 import { theme } from '../src/lib/theme';
 
 const stickyItem: BoardItem = {

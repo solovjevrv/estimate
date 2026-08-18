@@ -1,8 +1,11 @@
 import type { BoardColorHex, BoardEdge, BoardEdgeStyle, BoardOp } from '@poker/shared';
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
 
-import { uuid } from '../../../lib/board/uuid';
-import type { BoardFlowEdge, BoardFlowNode } from '../../../lib/board/vue-flow-adapter';
+import { uuid } from '../../../features/boards/infrastructure/uuid';
+import type {
+  BoardFlowEdge,
+  BoardFlowNode,
+} from '../../../features/boards/adapters/vue-flow-adapter';
 
 /**
  * Минимальная структурная форма события connect из Vue Flow (12.9) — composable

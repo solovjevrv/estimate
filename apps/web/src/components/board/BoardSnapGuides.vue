@@ -13,7 +13,7 @@
  */
 import { computed } from 'vue';
 
-import type { SnapGuide } from '../../lib/board/board-snap';
+import type { SnapGuide } from '../../features/boards/domain/board-snap';
 
 const props = defineProps<{
   /** Активные направляющие для отрисовки */

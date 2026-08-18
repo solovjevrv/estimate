@@ -3,7 +3,10 @@ import { ref } from 'vue';
 import { describe, it, expect, vi } from 'vitest';
 
 import { useBoardEdges } from '../src/features/boards/composables/use-board-edges';
-import type { BoardFlowEdge, BoardFlowNode } from '../src/lib/board/vue-flow-adapter';
+import type {
+  BoardFlowEdge,
+  BoardFlowNode,
+} from '../src/features/boards/adapters/vue-flow-adapter';
 
 interface MockNode {
   id: string;

@@ -20,14 +20,14 @@ import type {
 } from '@poker/shared';
 
 import type { BoardLocalState } from './apply-local-op';
-import { uuid } from './uuid';
+import { uuid } from '../infrastructure/uuid';
 
 export interface BoardHistoryEntry {
   forward: BoardOp[];
   backward: BoardOp[];
 }
 
-export { BOARD_HISTORY_LIMIT } from './board-constants';
+export { BOARD_HISTORY_LIMIT } from '../config/board-constants';
 
 function pickKeys<T extends object, K extends keyof T>(source: T, keys: K[]): Pick<T, K> {
   const result = {} as Pick<T, K>;

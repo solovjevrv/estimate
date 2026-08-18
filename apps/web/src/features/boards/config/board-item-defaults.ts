@@ -4,7 +4,7 @@
  */
 import type { BoardColorHex, BoardFontFamily, BoardItem } from '@poker/shared';
 
-import { theme } from '../theme';
+import { theme } from '../../../lib/theme';
 
 /**
  * Токен шрифта (12.9) -> CSS-переменная, уже объявленная в `main.css`.

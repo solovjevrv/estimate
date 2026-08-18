@@ -20,15 +20,15 @@ import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { BOARD_CAN_EDIT_KEY } from '../../features/boards/board-canvas-keys';
-import { darkenHex } from '../../lib/board/board-colors';
+import { BOARD_CAN_EDIT_KEY } from '../../features/boards/context/board-canvas-keys';
+import { darkenHex } from '../../features/boards/domain/board-colors';
 import {
   FRAME_MAX_HEIGHT,
   FRAME_MAX_WIDTH,
   FRAME_MIN_HEIGHT,
   FRAME_MIN_WIDTH,
-} from '../../lib/board/board-constants';
-import { uuid } from '../../lib/board/uuid';
+} from '../../features/boards/config/board-constants';
+import { uuid } from '../../features/boards/infrastructure/uuid';
 import { useBoardSessionStore } from '../../stores/board-session';
 import type { NodeProps } from '@vue-flow/core';
 

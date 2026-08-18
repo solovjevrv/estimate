@@ -86,7 +86,10 @@ import {
 import { useToast } from '@nuxt/ui/composables';
 import { useI18n } from 'vue-i18n';
 
-import { BOARD_ACTIVE_TEXT_EDITOR_KEY, BOARD_PENDING_EDIT_ID_KEY } from '../board-canvas-keys';
+import {
+  BOARD_ACTIVE_TEXT_EDITOR_KEY,
+  BOARD_PENDING_EDIT_ID_KEY,
+} from '../context/board-canvas-keys';
 import {
   applyMarkToRange,
   BOARD_TEXT_TOOLBAR_SELECTOR,

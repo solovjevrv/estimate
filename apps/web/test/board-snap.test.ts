@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import { computeSnapGuides, SNAP_THRESHOLD_PX, type SnapRect } from '../src/lib/board/board-snap';
+import {
+  computeSnapGuides,
+  SNAP_THRESHOLD_PX,
+  type SnapRect,
+} from '../src/features/boards/domain/board-snap';
 
 function rect(id: string, x: number, y: number, width = 100, height = 100): SnapRect {
   return { id, x, y, width, height };

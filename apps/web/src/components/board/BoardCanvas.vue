@@ -73,17 +73,17 @@ import {
   STICKY_DEFAULT_WIDTH,
   TEXT_DEFAULT_HEIGHT,
   TEXT_DEFAULT_WIDTH,
-} from '../../lib/board/board-item-defaults';
+} from '../../features/boards/config/board-item-defaults';
 import {
   BOARD_ACTIVE_TEXT_EDITOR_KEY,
   BOARD_CAN_EDIT_KEY,
   BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
   BOARD_PENDING_EDGE_EDIT_ID_KEY,
   BOARD_PENDING_EDIT_ID_KEY,
-} from '../../features/boards/board-canvas-keys';
-import { readableTextColor } from '../../lib/board/board-colors';
+} from '../../features/boards/context/board-canvas-keys';
+import { readableTextColor } from '../../features/boards/domain/board-colors';
 import type { BoardTextEditorHandle } from '../../features/boards/rich-text/board-rich-text';
-import { useBoardHotkeys } from '../../lib/board/use-board-hotkeys';
+import { useBoardHotkeys } from '../../features/boards/composables/use-board-hotkeys';
 import type {
   BoardDragEvent,
   BoardDragNode,
@@ -91,8 +91,8 @@ import type {
   BoardFlowNode,
   BoardSelectionEdge,
   BoardSelectionNode,
-} from '../../lib/board/vue-flow-adapter';
-import { toFlowEdges, toFlowNodes } from '../../lib/board/vue-flow-adapter';
+} from '../../features/boards/adapters/vue-flow-adapter';
+import { toFlowEdges, toFlowNodes } from '../../features/boards/adapters/vue-flow-adapter';
 import { useBoardSessionStore } from '../../stores/board-session';
 import { useBoardClipboard } from '../../features/boards/composables/use-board-clipboard';
 import { useBoardCreation } from '../../features/boards/composables/use-board-creation';

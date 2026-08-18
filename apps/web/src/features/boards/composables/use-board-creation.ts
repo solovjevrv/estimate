@@ -20,9 +20,12 @@ import {
   STICKY_DEFAULT_WIDTH,
   TEXT_DEFAULT_HEIGHT,
   TEXT_DEFAULT_WIDTH,
-} from '../../../lib/board/board-item-defaults';
-import { FRAME_DEFAULT_HEIGHT, FRAME_DEFAULT_WIDTH } from '../../../lib/board/board-constants';
-import { uuid } from '../../../lib/board/uuid';
+} from '../../../features/boards/config/board-item-defaults';
+import {
+  FRAME_DEFAULT_HEIGHT,
+  FRAME_DEFAULT_WIDTH,
+} from '../../../features/boards/config/board-constants';
+import { uuid } from '../../../features/boards/infrastructure/uuid';
 import { uploadBoardAsset } from '../api/boards-api';
 import type { BoardTool } from '../board-tools';
 
