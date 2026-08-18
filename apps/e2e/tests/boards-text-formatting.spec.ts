@@ -258,4 +258,69 @@ test.describe('Доски: форматирование текста', () => {
     await expect(stickies.nth(0)).toContainText('Черновик');
     await expect(stickies.nth(1)).toContainText('Черновик');
   });
+
+  test('быстрый clickaway после создания отменяет автопереход в редактирование', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    const owner = await createUser('clickaway');
+    const context = await newContext(browser);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}Clickaway ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    const board = boardLocators(page);
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(board.pane).toBeVisible();
+
+    // Выбираем инструмент «Стикер»
+    await board.toolbarButton('Стикер').click();
+    await expect(board.toolbarButton('Стикер')).toHaveAttribute('aria-pressed', 'true');
+
+    // Синхронно отправляем два клика на панель: первый создаёт стикер
+    // (выставляет pendingEditId), второй — clickaway до Vue mount/microtask,
+    // воспроизводя гонку 12.26, при которной onMounted ранний startEditing.
+    // page.mouse.click ждёт завершения каждого клика, из-за чего onMounted
+    // первого узла уже отработал — нужно послать оба клика синхронно.
+    // Vue Flow pane onClick эмулирует через pointerdown→pointerup→click,
+    // поэтому эмулируем через PointerEvent с моком setPointerCapture
+    // (иначе бросается DOMException для non-trusted событий).
+    await page.evaluate(() => {
+      const pane = document.querySelector('[data-testid="board-pane"]') as HTMLElement;
+      // Мокаем setPointerCapture/releasePointerCapture — Vue Flow вызывает их
+      // на target, но synthetic PointerEvent не проходит проверку trusted
+      pane.setPointerCapture = () => {};
+      pane.releasePointerCapture = () => {};
+      const opts = (x: number, y: number) => ({
+        clientX: x,
+        clientY: y,
+        bubbles: true,
+        cancelable: true,
+      });
+      // Первый клик — создаёт стикер
+      pane.dispatchEvent(new PointerEvent('pointerdown', opts(300, 200)));
+      pane.dispatchEvent(new PointerEvent('pointerup', opts(300, 200)));
+      pane.dispatchEvent(new MouseEvent('click', opts(300, 200)));
+      // Второй клик — clickaway, синхронно, до Vue mount/microtask
+      pane.dispatchEvent(new PointerEvent('pointerdown', opts(600, 400)));
+      pane.dispatchEvent(new PointerEvent('pointerup', opts(600, 400)));
+      pane.dispatchEvent(new MouseEvent('click', opts(600, 400)));
+    });
+
+    // Дожидаемся одного стикера
+    await expect(board.stickyNodes).toHaveCount(1);
+
+    // Автопереход в редактирование отменён — contenteditable не появляется
+    await expect(board.stickyNodes.locator('[contenteditable="true"]')).toHaveCount(0);
+
+    // Ручной dblclick по содержимому стикера открывает редактор — узел не «залип»
+    await board.stickyNodes.locator('[data-testid="board-sticky-content"]').first().dblclick();
+    await expect(board.stickyNodes.locator('[contenteditable="true"]')).toHaveCount(1);
+  });
 });

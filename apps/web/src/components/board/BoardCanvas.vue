@@ -49,6 +49,7 @@ import {
   VueFlow,
   type GraphNode,
   type NodeDragEvent,
+  type NodeMouseEvent,
 } from '@vue-flow/core';
 import {
   computed,
@@ -336,6 +337,7 @@ const {
   createImage,
   createEmojiAtCenter,
   createStickerAtCenter,
+  cancelPendingEdit,
   onPaneClick: onPaneClickForCreation,
   onPaneDoubleClick,
   onPaneDrop,
@@ -417,7 +419,6 @@ const {
   canGroupSelection,
   canUngroupSelection,
   contextMenu,
-  onNodeClick,
   onNodeContextMenu,
   onSelectionContextMenu,
   onEdgeContextMenu,
@@ -546,8 +547,15 @@ provide(BOARD_ACTIVE_TEXT_EDITOR_KEY, activeTextEditor);
 
 /** Клик по пустому холсту завершает ввод текста до обработки выбранного инструмента. */
 function onPaneClick(event: MouseEvent): void {
+  cancelPendingEdit();
   activeTextEditor.value?.commit();
   onPaneClickForCreation(event);
+}
+
+/** Клик по существующему узлу отменяет не потреблённый автопереход перед передачей в selection. */
+function onNodeClick(event: NodeMouseEvent): void {
+  cancelPendingEdit();
+  selection.onNodeClick(event);
 }
 
 // effectiveFontSizeRegistry принадлежит composable (жизненный цикл совпадает с

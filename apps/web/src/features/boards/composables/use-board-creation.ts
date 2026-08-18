@@ -71,6 +71,8 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
   createEmojiAtCenter: (emoji: ReactionEmoji) => void;
   createStickerAtCenter: (pack: string, id: string) => void;
 
+  cancelPendingEdit: () => void;
+
   onPaneClick: (event: MouseEvent) => void;
   onPaneDoubleClick: (event: MouseEvent) => void;
   onPaneDrop: (event: DragEvent) => void;
@@ -335,6 +337,10 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
     ]);
   }
 
+  function cancelPendingEdit(): void {
+    pendingEditId.value = null;
+  }
+
   function onPaneClick(event: MouseEvent): void {
     // Клик пустым инструментом (select/arrow) ничего не создаёт и не редактирует —
     // follow-mode рвать незачем, иначе обычный клик для снятия выделения во время
@@ -398,6 +404,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
     createImage,
     createEmojiAtCenter,
     createStickerAtCenter,
+    cancelPendingEdit,
     onPaneClick,
     onPaneDoubleClick,
     onPaneDrop,
