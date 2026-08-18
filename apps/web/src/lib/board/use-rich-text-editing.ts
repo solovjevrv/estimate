@@ -216,6 +216,10 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
 
   async function startEditing(): Promise<void> {
     if (editing.value || !canEdit.value) return;
+    // На доске должен быть только один активный contenteditable. Иначе быстрое
+    // создание или двойной клик по разным элементам оставляет несколько
+    // редакторов, а drag по ним больше не доходит до Vue Flow.
+    activeTextEditor.value?.commit();
     // Вмешательство в работу другого участника — снимаем follow-mode (14.5)
     if (boardSession.followedParticipantId) {
       boardSession.stopFollowing();
@@ -232,7 +236,21 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
     const c = content.value as { type: string; text?: string; runs?: BoardTextRun[] };
     if (c.type === 'image') return;
     liveText.value = c.text ?? '';
+    // Регистрируемся ДО await nextTick(): два dblclick подряд могут запустить
+    // startEditing() у разных нод в одном тике. Без ранней регистрации второй
+    // вызов ещё не видит первого редактора и оба contenteditable остаются
+    // активными. commit() у первого ниже сбросит editing, а guard после
+    // nextTick не даст ему поздно перехватить фокус обратно.
+    activeTextEditor.value = {
+      itemId,
+      activeMarks: activeMarksRef,
+      toggle: toggleMark,
+      setHighlight,
+      setLink,
+      commit: commitEditing,
+    } satisfies BoardTextEditorHandle;
     await nextTick();
+    if (!editing.value || activeTextEditor.value?.itemId !== itemId) return;
     const el = editableEl.value;
     if (el) {
       renderRunsInto(el, runsFromContent(content.value));
@@ -247,13 +265,6 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
       // бы патч к диапазону, оставшемуся от прошлого раза, а не к «выделить всё»
       refreshActiveMarks();
     }
-    activeTextEditor.value = {
-      itemId,
-      activeMarks: activeMarksRef,
-      toggle: toggleMark,
-      setHighlight,
-      setLink,
-    } satisfies BoardTextEditorHandle;
   }
 
   onMounted(() => {

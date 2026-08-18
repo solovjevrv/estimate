@@ -50,6 +50,7 @@ test.describe('follow-mode камеры (14.5)', () => {
     const boardA = boardLocators(pageA);
     const boardUrl = pageA.url();
     await expect(boardA.pane).toBeVisible();
+    await expect(boardA.viewport).toBeVisible();
 
     // Второй пользователь входит в команду по приглашению
     const ctxB = await newContext(browser);
@@ -61,6 +62,7 @@ test.describe('follow-mode камеры (14.5)', () => {
     await pageB.goto(boardUrl);
     const boardB = boardLocators(pageB);
     await expect(boardB.pane).toBeVisible();
+    await expect(boardB.viewport).toBeVisible();
 
     // Presence: оба участника на доске
     await expect(boardA.presence).toBeVisible();
@@ -74,13 +76,21 @@ test.describe('follow-mode камеры (14.5)', () => {
     expect(paneABox).not.toBeNull();
     const panStartX = paneABox!.x + paneABox!.width / 2;
     const panStartY = paneABox!.y + paneABox!.height / 2;
+    const initialCameraA = await boardA.viewport.evaluate(
+      (element) => getComputedStyle(element).transform,
+    );
     await pageA.mouse.move(panStartX, panStartY);
-    await pageA.mouse.down();
+    await pageA.mouse.down({ button: 'middle' });
     await pageA.mouse.move(panStartX + 200, panStartY + 100, { steps: 5 });
-    await pageA.mouse.up();
-
-    // Ждём, пока камера A долетит до B (throttled 150мс + небольшая мargen)
-    await pageB.waitForTimeout(300);
+    await pageA.mouse.up({ button: 'middle' });
+    // Vue Flow применяет transform на следующем рендере после mouseup.
+    // Сигнализируем по изменению реального computed transform, не по времени.
+    await expect
+      .poll(() => boardA.viewport.evaluate((element) => getComputedStyle(element).transform))
+      .not.toBe(initialCameraA);
+    const cameraA = await boardA.viewport.evaluate(
+      (element) => getComputedStyle(element).transform,
+    );
 
     // --- B кликает аватарку A (НЕ свою) → входит в follow-mode ---
     await expect(boardB.nonSelfAvatars).toHaveCount(1);
@@ -95,11 +105,12 @@ test.describe('follow-mode камеры (14.5)', () => {
     await expect(boardB.followingBadge.filter({ hasText: /Вы следите за/i })).toBeVisible();
     await expect(boardB.followingAvatar).toHaveCount(1);
 
-    // viewport B должен совпадать с позицией камеры A
-    const viewportB = await boardB.viewport.getAttribute('style');
-    // Позиция изменилась от начальной (fit-view-on-init), а не осталась в нуле
-    expect(viewportB).not.toBeNull();
-    expect(viewportB).toMatch(/translate\(\s*-?\d+/);
+    // Ждём фактическое получение camera awareness и окончания анимации
+    // setViewport, а не фиксированную паузу. Обе страницы имеют одинаковый
+    // viewport, поэтому итоговый computed transform должен совпасть.
+    await expect
+      .poll(() => boardB.viewport.evaluate((element) => getComputedStyle(element).transform))
+      .toBe(cameraA);
   });
 });
 
@@ -159,13 +170,13 @@ test('ручной пан/зум участника B во время слеже
   const paneBBox = await paneB.boundingBox();
   expect(paneBBox).not.toBeNull();
   await pageB.mouse.move(paneBBox!.x + paneBBox!.width / 2, paneBBox!.y + paneBBox!.height / 2);
-  await pageB.mouse.down();
+  await pageB.mouse.down({ button: 'middle' });
   await pageB.mouse.move(
     paneBBox!.x + paneBBox!.width / 2 + 100,
     paneBBox!.y + paneBBox!.height / 2 + 50,
     { steps: 3 },
   );
-  await pageB.mouse.up();
+  await pageB.mouse.up({ button: 'middle' });
 
   // follow-mode разорван: обводка --following исчезла, чип исчез
   await expect(boardB.followingAvatar).toHaveCount(0);
@@ -226,8 +237,9 @@ test('уход A с доски снимает слежение у B', async ({
   // A закрывает вкладку → покидает доску → presence перестраивается без A
   await ctxA.close();
 
-  // B автоматически снимает слежение — A исчез из presence
-  await expect(boardB.presenceAvatars).toHaveCount(1);
+  // B автоматически снимает слежение — когда остаётся один участник,
+  // presence-панель целиком скрывается (а не показывает единственную аватарку).
+  await expect(boardB.presence).toHaveCount(0);
   await expect(boardB.followingAvatar).toHaveCount(0);
   await expect(boardB.followingBadge.filter({ hasText: /Вы следите за/i })).toHaveCount(0);
 });

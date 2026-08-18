@@ -74,15 +74,21 @@ test('после обрыва сети участник догоняет про�
   const nodeA = pageA.locator(`[data-node-id="${beforeId}"]`);
   const boxBefore = await nodeA.boundingBox();
   expect(boxBefore).not.toBeNull();
+  // Сохраняем ревизию до начала drag — финальный drag-stop должен подтвердиться
+  // сервером, а не промежуточный троттленный патч драга
+  const revisionBeforeDrag = Number(
+    await boardA.canvasRevision.getAttribute('data-board-revision'),
+  );
   await pageA.mouse.move(boxBefore!.x + boxBefore!.width / 2, boxBefore!.y + boxBefore!.height / 2);
   await pageA.mouse.down();
   await pageA.mouse.move(boxBefore!.x + 260, boxBefore!.y + 260, { steps: 10 });
-  await pageA.waitForTimeout(150);
   await pageA.mouse.up();
-  // Даём время гарантированному финальному патчу drag-stop уйти и подтвердиться
-  // сервером до следующего действия — иначе в буфер догона мог бы попасть только
-  // промежуточный троттленный патч драга, а не финальный
-  await pageA.waitForTimeout(300);
+  // Ждём серверное подтверждение финального drag-batch по ревизии — а не
+  // произвольный таймаут, чтобы гарантировать, что догон B получит именно
+  // финальный патч, а не только промежуточный троттленный
+  await expect
+    .poll(async () => Number(await boardA.canvasRevision.getAttribute('data-board-revision')))
+    .toBeGreaterThan(revisionBeforeDrag);
 
   await boardA.pane.dblclick({ position: { x: 950, y: 150 } });
   await expect(boardA.stickyNodes).toHaveCount(2);

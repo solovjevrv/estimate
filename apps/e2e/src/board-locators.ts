@@ -9,8 +9,11 @@ import type { Locator, Page } from '@playwright/test';
  * `pane` и `viewport` — это Vue Flow internals, data-testid выставляются
  * JS-адаптером в `onMounted` BoardCanvas.
  */
-export function boardLocators(pageOrLocator: Page | Locator): {
+export interface BoardLocators {
   canvas: Locator;
+  joined: Locator;
+  canvasRevision: Locator;
+  zoom: Locator;
   pane: Locator;
   viewport: Locator;
   flow: Locator;
@@ -51,11 +54,16 @@ export function boardLocators(pageOrLocator: Page | Locator): {
   highlightSwatch: Locator;
   linkInput: Locator;
   linkApplyBtn: Locator;
-} {
+}
+
+export function boardLocators(pageOrLocator: Page | Locator): BoardLocators {
   const base = pageOrLocator.locator.bind(pageOrLocator);
 
   return {
     canvas: base('[data-testid="board-canvas"]'),
+    joined: base('[data-testid="board-canvas"][data-board-joined="true"]'),
+    canvasRevision: base('[data-testid="board-canvas"]'),
+    zoom: base('[data-testid="board-zoom"]'),
     pane: base('[data-testid="board-pane"]'),
     viewport: base('[data-testid="board-viewport"]'),
     flow: base('[data-testid="board-flow"]'),
