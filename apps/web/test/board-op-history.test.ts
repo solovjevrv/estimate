@@ -1,12 +1,12 @@
 import type { BoardEdge, BoardItem, BoardOp } from '@poker/shared';
 import { describe, expect, it } from 'vitest';
 
-import type { BoardLocalState } from '../src/lib/board/apply-local-op';
+import type { BoardLocalState } from '../src/features/boards/domain/apply-local-op';
 import {
   deriveInverseOps,
   filterExistingTargets,
   regenerateClientOpIds,
-} from '../src/lib/board/board-op-history';
+} from '../src/features/boards/domain/board-op-history';
 
 function state(items: BoardItem[] = [], edges: BoardEdge[] = []): BoardLocalState {
   return {

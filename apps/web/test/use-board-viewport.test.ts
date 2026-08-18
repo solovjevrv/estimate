@@ -11,7 +11,7 @@ import type {
 import {
   BOARD_CAMERA_THROTTLE_MS,
   BOARD_CURSOR_THROTTLE_MS,
-} from '../src/lib/board/board-constants';
+} from '../src/features/boards/config/board-constants';
 
 function restoreFullscreen(): void {
   const d = document as unknown as Record<string, unknown>;

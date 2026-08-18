@@ -30,14 +30,14 @@ import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 
 import { setBoardShare } from '../features/boards/api/boards-api';
-import { applyLocalBoardOp, type BoardLocalState } from '../lib/board/apply-local-op';
+import { applyLocalBoardOp, type BoardLocalState } from '../features/boards/domain/apply-local-op';
 import {
   BOARD_HISTORY_LIMIT,
   deriveInverseOps,
   filterExistingTargets,
   regenerateClientOpIds,
   type BoardHistoryEntry,
-} from '../lib/board/board-op-history';
+} from '../features/boards/domain/board-op-history';
 import { createRealtimeConnection, GuestTokenStore, type JoinContext } from '../lib/realtime';
 import { emitWithAck, WsError, type PokerSocket } from '../lib/socket';
 import { useSessionStore } from './session';

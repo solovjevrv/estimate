@@ -5,7 +5,7 @@ import {
   getScaledFontSize,
   longestWordWidth,
   unscaleFontSizeStep,
-} from '../src/lib/board/use-fit-font-size';
+} from '../src/features/boards/composables/use-fit-font-size';
 
 describe('getScaledFontSize', () => {
   it('сохраняет базовый размер при дефолтной геометрии стикера', () => {

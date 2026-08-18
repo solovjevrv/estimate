@@ -2,7 +2,7 @@ import type { BoardItem, BoardOp } from '@poker/shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { useBoardDragAndSnap } from '../src/features/boards/composables/use-board-drag-and-snap';
-import type { BoardDragEvent } from '../src/lib/board/vue-flow-adapter';
+import type { BoardDragEvent } from '../src/features/boards/adapters/vue-flow-adapter';
 
 type BoardItemPatchOp = Extract<BoardOp, { type: 'item.patch' }>;
 

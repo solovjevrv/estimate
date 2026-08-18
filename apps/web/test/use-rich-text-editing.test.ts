@@ -9,7 +9,7 @@ import { createAppI18n } from '../src/i18n';
 import { useBoardSessionStore } from '../src/stores/board-session';
 import { useSessionStore } from '../src/stores/session';
 import { useRichTextEditing } from '../src/features/boards/composables/use-rich-text-editing';
-import { BOARD_ACTIVE_TEXT_EDITOR_KEY } from '../src/features/boards/board-canvas-keys';
+import { BOARD_ACTIVE_TEXT_EDITOR_KEY } from '../src/features/boards/context/board-canvas-keys';
 import type { BoardTextEditorHandle } from '../src/features/boards/rich-text/board-rich-text';
 import { serializeRuns, selectRange } from '../src/features/boards/rich-text/board-rich-text';
 

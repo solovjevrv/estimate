@@ -16,10 +16,13 @@ import {
   isPlainTextField,
   parseClipboardPayload,
   serializeSelection,
-} from '../../../lib/board/board-clipboard';
-import { fitImageToDefaultBox, maxZIndex } from '../../../lib/board/board-item-defaults';
-import { BOARD_DUPLICATE_OFFSET } from '../../../lib/board/board-constants';
-import { uuid } from '../../../lib/board/uuid';
+} from '../../../features/boards/domain/board-clipboard';
+import {
+  fitImageToDefaultBox,
+  maxZIndex,
+} from '../../../features/boards/config/board-item-defaults';
+import { BOARD_DUPLICATE_OFFSET } from '../../../features/boards/config/board-constants';
+import { uuid } from '../../../features/boards/infrastructure/uuid';
 
 export interface BoardClipboardNode {
   id: string;
@@ -91,7 +94,7 @@ export function expandContainerFamily(
   );
 }
 
-/** UI-адаптер системного буфера: доменный JSON остаётся в lib/board. */
+/** UI-адаптер системного буфера: доменный JSON остаётся в features/boards/domain. */
 export function useBoardClipboard(options: UseBoardClipboardOptions) {
   async function copy(event: ClipboardEvent): Promise<void> {
     if (!options.canEdit()) return;

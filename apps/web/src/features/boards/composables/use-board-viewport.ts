@@ -4,7 +4,7 @@ import { computed, ref, type Ref, watch } from 'vue';
 import {
   BOARD_CAMERA_THROTTLE_MS,
   BOARD_CURSOR_THROTTLE_MS,
-} from '../../../lib/board/board-constants';
+} from '../../../features/boards/config/board-constants';
 import { throttle } from '../../../lib/throttle';
 
 export interface BoardCamera {

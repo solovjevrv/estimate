@@ -17,16 +17,19 @@ import type { BoardItem, BoardItemPatchOp, BoardOp } from '@poker/shared';
 import { isBoardContainer } from '@poker/shared';
 import { ref, type Ref } from 'vue';
 
-import { BOARD_DRAG_THROTTLE_MS } from '../../../lib/board/board-constants';
+import { BOARD_DRAG_THROTTLE_MS } from '../../../features/boards/config/board-constants';
 import {
   computeSnapGuides,
   SNAP_THRESHOLD_PX,
   type SnapGuide,
   type SnapRect,
-} from '../../../lib/board/board-snap';
-import type { BoardDragEvent, BoardDragNode } from '../../../lib/board/vue-flow-adapter';
+} from '../../../features/boards/domain/board-snap';
+import type {
+  BoardDragEvent,
+  BoardDragNode,
+} from '../../../features/boards/adapters/vue-flow-adapter';
 import { throttle } from '../../../lib/throttle';
-import { uuid } from '../../../lib/board/uuid';
+import { uuid } from '../../../features/boards/infrastructure/uuid';
 
 export interface BoardApplyOptions {
   record?: boolean;

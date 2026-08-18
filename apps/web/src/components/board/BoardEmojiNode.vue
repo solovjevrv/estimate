@@ -4,14 +4,14 @@ import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, ref } from 'vue';
 
-import { BOARD_CAN_EDIT_KEY } from '../../features/boards/board-canvas-keys';
+import { BOARD_CAN_EDIT_KEY } from '../../features/boards/context/board-canvas-keys';
 import {
   EMOJI_FONT_SIZE_RATIO,
   EMOJI_MAX_HEIGHT,
   EMOJI_MAX_WIDTH,
   EMOJI_MIN_HEIGHT,
   EMOJI_MIN_WIDTH,
-} from '../../lib/board/board-item-defaults';
+} from '../../features/boards/config/board-item-defaults';
 import { useBoardSessionStore } from '../../stores/board-session';
 
 const props = defineProps<NodeProps<BoardItem>>();

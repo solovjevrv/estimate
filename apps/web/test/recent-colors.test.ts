@@ -1,5 +1,8 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { addRecentColor, getRecentColors } from '../src/lib/board/recent-colors';
+import {
+  addRecentColor,
+  getRecentColors,
+} from '../src/features/boards/infrastructure/recent-colors';
 
 describe('recent-colors', () => {
   beforeEach(() => localStorage.clear());

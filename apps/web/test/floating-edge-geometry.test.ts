@@ -1,7 +1,10 @@
-import type { EdgeAnchorParams, EdgeGeometryNode } from '../src/lib/board/floating-edge-geometry';
+import type {
+  EdgeAnchorParams,
+  EdgeGeometryNode,
+} from '../src/features/boards/domain/floating-edge-geometry';
 import { describe, expect, it } from 'vitest';
 
-import { getEdgeAnchorParams } from '../src/lib/board/floating-edge-geometry';
+import { getEdgeAnchorParams } from '../src/features/boards/domain/floating-edge-geometry';
 
 function node(
   position: { x: number; y: number },

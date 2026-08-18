@@ -19,12 +19,15 @@
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { addRecentSticker, getRecentStickers } from '../../lib/board/recent-stickers';
+import {
+  addRecentSticker,
+  getRecentStickers,
+} from '../../features/boards/infrastructure/recent-stickers';
 import {
   findStickerAsset,
   STICKER_PACKS,
   type StickerPackItem,
-} from '../../lib/board/sticker-packs';
+} from '../../features/boards/config/sticker-packs';
 
 const emit = defineEmits<{ select: [pack: string, id: string] }>();
 

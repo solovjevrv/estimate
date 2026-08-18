@@ -16,8 +16,11 @@ import {
   STICKY_DEFAULT_WIDTH,
   TEXT_DEFAULT_HEIGHT,
   TEXT_DEFAULT_WIDTH,
-} from '../src/lib/board/board-item-defaults';
-import { FRAME_DEFAULT_HEIGHT, FRAME_DEFAULT_WIDTH } from '../src/lib/board/board-constants';
+} from '../src/features/boards/config/board-item-defaults';
+import {
+  FRAME_DEFAULT_HEIGHT,
+  FRAME_DEFAULT_WIDTH,
+} from '../src/features/boards/config/board-constants';
 import { useBoardCreation } from '../src/features/boards/composables/use-board-creation';
 import type { UseBoardCreationOptions } from '../src/features/boards/composables/use-board-creation';
 
@@ -41,7 +44,7 @@ vi.mock('../src/features/boards/api/boards-api', () => ({
   uploadBoardAsset,
 }));
 
-vi.mock('../src/lib/board/uuid', () => ({
+vi.mock('../src/features/boards/infrastructure/uuid', () => ({
   uuid: uuidMock,
 }));
 

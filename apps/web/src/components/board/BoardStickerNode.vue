@@ -4,14 +4,14 @@ import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, ref } from 'vue';
 
-import { BOARD_CAN_EDIT_KEY } from '../../features/boards/board-canvas-keys';
+import { BOARD_CAN_EDIT_KEY } from '../../features/boards/context/board-canvas-keys';
 import {
   STICKER_MAX_HEIGHT,
   STICKER_MAX_WIDTH,
   STICKER_MIN_HEIGHT,
   STICKER_MIN_WIDTH,
-} from '../../lib/board/board-item-defaults';
-import { findStickerAsset } from '../../lib/board/sticker-packs';
+} from '../../features/boards/config/board-item-defaults';
+import { findStickerAsset } from '../../features/boards/config/sticker-packs';
 import { useBoardSessionStore } from '../../stores/board-session';
 
 const props = defineProps<NodeProps<BoardItem>>();

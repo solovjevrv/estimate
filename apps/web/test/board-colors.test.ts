@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { darkenHex, readableTextColor } from '../src/lib/board/board-colors';
+import { darkenHex, readableTextColor } from '../src/features/boards/domain/board-colors';
 
 const TEXT_COLOR_LIGHT = '#FFFFFF';
 const TEXT_COLOR_DARK = '#1A1A1A';

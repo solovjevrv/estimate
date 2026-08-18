@@ -3,9 +3,12 @@ import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@poker/share
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 
-import { FIT_FONT_MAX } from '../src/lib/board/use-fit-font-size';
+import { FIT_FONT_MAX } from '../src/features/boards/composables/use-fit-font-size';
 import { useBoardSelection } from '../src/features/boards/composables/use-board-selection';
-import type { BoardSelectionEdge, BoardSelectionNode } from '../src/lib/board/vue-flow-adapter';
+import type {
+  BoardSelectionEdge,
+  BoardSelectionNode,
+} from '../src/features/boards/adapters/vue-flow-adapter';
 
 // Тестовые заглушки — плоские (shallow), а не deep GraphNode, чтобы не взрывать типы vue-flow
 interface MockNode {

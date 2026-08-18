@@ -39,7 +39,10 @@ import { useI18n } from 'vue-i18n';
 
 import { BOARD_COLOR_PALETTE, type BoardColorHex } from '@poker/shared';
 
-import { addRecentColor, getRecentColors } from '../../lib/board/recent-colors';
+import {
+  addRecentColor,
+  getRecentColors,
+} from '../../features/boards/infrastructure/recent-colors';
 
 const props = defineProps<{
   currentColor: BoardColorHex;

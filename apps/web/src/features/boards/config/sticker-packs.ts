@@ -19,13 +19,13 @@ export interface StickerPack {
   items: StickerPackItem[];
 }
 
-const assetModules = import.meta.glob<string>('../../assets/sticker-packs/**/*.webp', {
+const assetModules = import.meta.glob<string>('../../../assets/sticker-packs/**/*.webp', {
   eager: true,
   import: 'default',
 });
 
 function urlFor(pack: string, id: string): string {
-  const path = `../../assets/sticker-packs/${pack}/${id}.webp`;
+  const path = `../../../assets/sticker-packs/${pack}/${id}.webp`;
   const url = assetModules[path];
   if (!url) throw new Error(`Sticker asset not found: ${path}`);
   return url;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { isEditableTarget } from '../src/lib/board/use-board-hotkeys';
+import { isEditableTarget } from '../src/features/boards/composables/use-board-hotkeys';
 
 describe('isEditableTarget', () => {
   it('true для textarea/input', () => {

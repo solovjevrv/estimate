@@ -188,7 +188,7 @@ export default tseslint.config(
   {
     // 19.36: Vue Flow — только в адаптере и renderer-компонентах (см. шапку
     // vue-flow-adapter.ts). В lib/board и features/boards импорт @vue-flow/**
-    // напрямую — протечля в домен/слой логики, где Vue Flow не должен жить.
+    // напрямую — протекание в домен/слой логики, где Vue Flow не должен жить.
     files: ['apps/web/src/features/boards/**/*.ts', 'apps/web/src/lib/board/**/*.ts'],
     rules: {
       'no-restricted-imports': [
@@ -198,7 +198,7 @@ export default tseslint.config(
             {
               group: ['@vue-flow/**'],
               message:
-                'Vue Flow должен использоваться только в адаптере (lib/board/vue-flow-adapter.ts) и renderer-компонентах (components/board); импорт @vue-flow прямо в lib/board или features/boards — протечение.',
+                'Vue Flow должен использоваться только в адаптере (features/boards/adapters/vue-flow-adapter.ts) и renderer-компонентах (components/board); импорт @vue-flow прямо в features/boards — протечение.',
             },
           ],
         },
@@ -207,7 +207,7 @@ export default tseslint.config(
   },
   {
     // Адаптер — разрешённая граница Vue Flow, правило для него отключено.
-    files: ['apps/web/src/lib/board/vue-flow-adapter.ts'],
+    files: ['apps/web/src/features/boards/adapters/vue-flow-adapter.ts'],
     rules: { 'no-restricted-imports': 'off' },
   },
   {

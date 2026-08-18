@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { findStickerAsset, STICKER_PACKS } from '../src/lib/board/sticker-packs';
+import { findStickerAsset, STICKER_PACKS } from '../src/features/boards/config/sticker-packs';
 
 describe('STICKER_PACKS', () => {
   it('не пустой и содержит несколько паков', () => {

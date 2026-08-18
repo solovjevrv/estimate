@@ -15,9 +15,12 @@ import { useI18n } from 'vue-i18n';
 import {
   BOARD_CAN_EDIT_KEY,
   BOARD_PENDING_EDGE_EDIT_ID_KEY,
-} from '../../features/boards/board-canvas-keys';
-import { resolveEdgeColor } from '../../lib/board/board-item-defaults';
-import { type EdgeAnchorSide, getEdgeAnchorParams } from '../../lib/board/floating-edge-geometry';
+} from '../../features/boards/context/board-canvas-keys';
+import { resolveEdgeColor } from '../../features/boards/config/board-item-defaults';
+import {
+  type EdgeAnchorSide,
+  getEdgeAnchorParams,
+} from '../../features/boards/domain/floating-edge-geometry';
 import { useBoardSessionStore } from '../../stores/board-session';
 
 const props = defineProps<EdgeProps<BoardEdge>>();
