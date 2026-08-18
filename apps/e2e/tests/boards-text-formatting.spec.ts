@@ -200,6 +200,9 @@ test.describe('Доски: форматирование текста', () => {
     const boldSpan = board.stickyNodes.nth(0).locator('span[style*="font-weight"]');
     await expect(boldSpan).toHaveCSS('font-weight', '800');
     await expect(boldSpan).toHaveText('Hello world');
+    const highlightedSpan = board.stickyNodes.nth(0).locator('span[style*="background-color"]');
+    await expect(highlightedSpan).toHaveCSS('background-color', /^(rgb|rgba)\(255, 209, 26/);
+    await expect(highlightedSpan).toHaveText('Hello world');
 
     // Переживает перезагрузку — реально ушло на сервер, не только в локальный DOM
     await page.reload();
@@ -207,6 +210,14 @@ test.describe('Доски: форматирование текста', () => {
     const reloadedSpan = board.stickyNodes.nth(0).locator('span[style*="font-weight"]');
     await expect(reloadedSpan).toHaveCSS('font-weight', '800');
     await expect(reloadedSpan).toHaveText('Hello world');
+    const reloadedHighlightedSpan = board.stickyNodes
+      .nth(0)
+      .locator('span[style*="background-color"]');
+    await expect(reloadedHighlightedSpan).toHaveCSS(
+      'background-color',
+      /^(rgb|rgba)\(255, 209, 26/,
+    );
+    await expect(reloadedHighlightedSpan).toHaveText('Hello world');
   });
 
   test('регрессия: клик «Дублировать» посреди набора текста коммитит черновик, а не теряет его', async ({
