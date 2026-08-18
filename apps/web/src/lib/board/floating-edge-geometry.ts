@@ -10,8 +10,17 @@
  * не мог управлять тем, к какой точке крепится стрелка, и точка "прыгала"
  * при перемещении карточек (решение пользователя 07.08.2026, правки после
  * ручной проверки 12.8).
+ *
+ * Чистый слой геометрии: не импортирует ни Vue, ни Vue Flow — работает с
+ * абстрактными прямоугольниками, чтобы не зависеть от рендерера (см. ТЗ 19.36).
+ * Стороны переводятся в `Position` Vue Flow только в renderer-компоненте
+ * `BoardFloatingEdge.vue` через `toVueFlowPosition`.
  */
-import { Position, type GraphNode } from '@vue-flow/core';
+
+export interface EdgeGeometryNode {
+  computedPosition: { x: number; y: number };
+  dimensions: { width: number; height: number };
+}
 
 export type EdgeAnchorSide = 'top' | 'right' | 'bottom' | 'left';
 
@@ -36,7 +45,7 @@ interface Rect {
   height: number;
 }
 
-function nodeRect(node: GraphNode): Rect {
+function nodeRect(node: EdgeGeometryNode): Rect {
   return {
     x: node.computedPosition.x,
     y: node.computedPosition.y,
@@ -58,31 +67,18 @@ function sideMidpoint(rect: Rect, side: EdgeAnchorSide): { x: number; y: number 
   }
 }
 
-function sideToPosition(side: EdgeAnchorSide): Position {
-  switch (side) {
-    case 'top':
-      return Position.Top;
-    case 'bottom':
-      return Position.Bottom;
-    case 'left':
-      return Position.Left;
-    case 'right':
-      return Position.Right;
-  }
-}
-
 export interface EdgeAnchorParams {
   sx: number;
   sy: number;
   tx: number;
   ty: number;
-  sourcePosition: Position;
-  targetPosition: Position;
+  sourceSide: EdgeAnchorSide;
+  targetSide: EdgeAnchorSide;
 }
 
 export function getEdgeAnchorParams(
-  source: GraphNode,
-  target: GraphNode,
+  source: EdgeGeometryNode,
+  target: EdgeGeometryNode,
   sourceHandle: string | null | undefined,
   targetHandle: string | null | undefined,
 ): EdgeAnchorParams {
@@ -96,7 +92,7 @@ export function getEdgeAnchorParams(
     sy: sourcePoint.y,
     tx: targetPoint.x,
     ty: targetPoint.y,
-    sourcePosition: sideToPosition(sourceSide),
-    targetPosition: sideToPosition(targetSide),
+    sourceSide,
+    targetSide,
   };
 }

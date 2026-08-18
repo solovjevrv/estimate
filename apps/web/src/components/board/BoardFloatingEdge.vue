@@ -6,6 +6,7 @@ import {
   getBezierPath,
   getSmoothStepPath,
   getStraightPath,
+  Position,
   type EdgeProps,
 } from '@vue-flow/core';
 import { computed, inject, nextTick, ref, useTemplateRef, watch } from 'vue';
@@ -16,7 +17,7 @@ import {
   BOARD_PENDING_EDGE_EDIT_ID_KEY,
 } from '../../lib/board/board-canvas-keys';
 import { resolveEdgeColor } from '../../lib/board/board-item-defaults';
-import { getEdgeAnchorParams } from '../../lib/board/floating-edge-geometry';
+import { type EdgeAnchorSide, getEdgeAnchorParams } from '../../lib/board/floating-edge-geometry';
 import { useBoardSessionStore } from '../../stores/board-session';
 
 const props = defineProps<EdgeProps<BoardEdge>>();
@@ -29,6 +30,25 @@ const pendingEdgeEditId = inject(BOARD_PENDING_EDGE_EDIT_ID_KEY, ref(null));
 /** Не задан в data.style.color (12.9) — точка 'dot' красится так же, как линия/маркер */
 const dotColor = computed(() => resolveEdgeColor(props.data.style.color));
 
+/**
+ * Перевод нашей неймпрового `EdgeAnchorSide` в `Position` Vue Flow — единственная
+ * точка, где рендерер-layer знает о типах Vue Flow. Внешний SVG-результат отличается
+ * только именованием полей в `EdgeAnchorParams` (sourceSide/targetSide вместо
+ * Position), сами пути строятся теми же вызовами `getSmoothStepPath`/`getBezierPath`.
+ */
+function toVueFlowPosition(side: EdgeAnchorSide): Position {
+  switch (side) {
+    case 'top':
+      return Position.Top;
+    case 'bottom':
+      return Position.Bottom;
+    case 'left':
+      return Position.Left;
+    case 'right':
+      return Position.Right;
+  }
+}
+
 const params = computed(() =>
   getEdgeAnchorParams(
     props.sourceNode,
@@ -39,17 +59,17 @@ const params = computed(() =>
 );
 
 const pathData = computed(() => {
-  const { sx, sy, tx, ty, sourcePosition, targetPosition } = params.value;
+  const { sx, sy, tx, ty, sourceSide, targetSide } = params.value;
   const line = props.data.style.line;
 
   if (line === 'orthogonal') {
     return getSmoothStepPath({
       sourceX: sx,
       sourceY: sy,
-      sourcePosition,
+      sourcePosition: toVueFlowPosition(sourceSide),
       targetX: tx,
       targetY: ty,
-      targetPosition,
+      targetPosition: toVueFlowPosition(targetSide),
       borderRadius: 8,
     });
   }
@@ -57,10 +77,10 @@ const pathData = computed(() => {
     return getBezierPath({
       sourceX: sx,
       sourceY: sy,
-      sourcePosition,
+      sourcePosition: toVueFlowPosition(sourceSide),
       targetX: tx,
       targetY: ty,
-      targetPosition,
+      targetPosition: toVueFlowPosition(targetSide),
     });
   }
   return getStraightPath({ sourceX: sx, sourceY: sy, targetX: tx, targetY: ty });
