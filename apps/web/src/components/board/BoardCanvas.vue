@@ -334,7 +334,7 @@ const {
   createImage,
   createEmojiAtCenter,
   createStickerAtCenter,
-  onPaneClick,
+  onPaneClick: onPaneClickForCreation,
   onPaneDoubleClick,
   onPaneDrop,
 } = useBoardCreation({
@@ -493,12 +493,12 @@ onMounted(() => {
   viewportControl.attach();
   document.addEventListener('paste', onPaste);
   document.addEventListener('copy', onCopyListener);
-  // Vue Flow renders `.vue-flow__pane` and `.vue-flow__viewport` internally —
+  // Vue Flow renders `.vue-flow__pane` and `.vue-flow__transformationpane` internally —
   // we can't attach attrs from the template, so set data-testid imperatively
   // for e2e selectors.
   const pane = rootEl.value?.querySelector('.vue-flow__pane');
   if (pane) pane.setAttribute('data-testid', 'board-pane');
-  const viewportEl = rootEl.value?.querySelector('.vue-flow__viewport');
+  const viewportEl = rootEl.value?.querySelector('.vue-flow__transformationpane');
   if (viewportEl) viewportEl.setAttribute('data-testid', 'board-viewport');
 });
 onBeforeUnmount(() => {
@@ -541,6 +541,12 @@ provide(BOARD_PENDING_EDGE_EDIT_ID_KEY, edges.pendingEdgeEditId);
  */
 const activeTextEditor = shallowRef<BoardTextEditorHandle | null>(null);
 provide(BOARD_ACTIVE_TEXT_EDITOR_KEY, activeTextEditor);
+
+/** Клик по пустому холсту завершает ввод текста до обработки выбранного инструмента. */
+function onPaneClick(event: MouseEvent): void {
+  activeTextEditor.value?.commit();
+  onPaneClickForCreation(event);
+}
 
 // effectiveFontSizeRegistry принадлежит composable (жизненный цикл совпадает с
 // холстом); Canvas только пробрасывает его через provide для измерения node-ами.
@@ -673,6 +679,8 @@ useBoardHotkeys({
   <div
     ref="root"
     data-testid="board-canvas"
+    :data-board-joined="boardSession.joined ? 'true' : 'false'"
+    :data-board-revision="boardSession.revision"
     class="board-canvas-root h-full w-full bg-[var(--ui-bg)]"
     :class="{
       'board-canvas-tool-armed': activeTool !== 'select',
@@ -872,6 +880,7 @@ useBoardHotkeys({
               v-for="(entry, index) in boardSession.presence"
               :key="entry.participantId"
               data-testid="board-presence-avatar"
+              :data-participant-id="entry.participantId"
               :data-self="entry.participantId === boardSession.participantId ? 'true' : 'false'"
               :data-following="
                 entry.participantId === boardSession.followedParticipantId ? 'true' : 'false'
@@ -888,7 +897,6 @@ useBoardHotkeys({
                 },
               ]"
               :style="{ zIndex: boardSession.presence.length - index }"
-              :data-participant-id="entry.participantId"
               :title="
                 entry.participantId === boardSession.participantId ? t('board.you') : entry.name
               "
@@ -945,7 +953,7 @@ useBoardHotkeys({
         <template #icon-fit-view>
           <UIcon name="i-lucide-maximize" />
         </template>
-        <span class="board-controls-zoom">{{ zoomPercent }}%</span>
+        <span data-testid="board-zoom" class="board-controls-zoom">{{ zoomPercent }}%</span>
         <div class="board-controls-divider" />
         <!-- Undo/redo (12.10) — только для тех, кто вообще может редактировать содержимое -->
         <template v-if="canEdit">

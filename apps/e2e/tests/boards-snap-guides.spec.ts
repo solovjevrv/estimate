@@ -30,7 +30,6 @@ test.describe('Доски: snap-направляющие при перетаск
     const context = await newContext(browser);
     await loginAs(context, owner);
     const page = await context.newPage();
-
     const board = boardLocators(page);
 
     await page.goto('/boards');
@@ -41,27 +40,43 @@ test.describe('Доски: snap-направляющие при перетаск
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
     await board.pane.click();
     await page.keyboard.press('ControlOrMeta+0');
-    await page.waitForTimeout(200);
+    await expect(board.zoom).toHaveText('100%');
 
-    // Два стикера на одной горизонтали:
-    // A: центр в (400, 300) → x=310, y=210 (центр стикера при двойном клике)
-    // B: центр в (600, 300) → x=510, y=210
-    await board.pane.dblclick({ position: { x: 400, y: 300 } });
+    // Создаём карточки разнесённо: fit-view после первого создания меняет
+    // экранные координаты, поэтому близкая вторая точка может попасть в первую.
+    // Дальше snap всё равно рассчитывается от реальных DOM rect'ов.
+    await board.pane.dblclick({ position: { x: 300, y: 300 } });
     await expect(board.stickyNodes).toHaveCount(1);
     await page.keyboard.press('Escape');
 
-    await board.pane.dblclick({ position: { x: 600, y: 300 } });
+    await board.pane.dblclick({ position: { x: 1000, y: 600 } });
     await expect(board.stickyNodes).toHaveCount(2);
     await page.keyboard.press('Escape');
     await page.keyboard.press('Escape');
 
-    await page.keyboard.press('ControlOrMeta+0');
-    await page.waitForTimeout(200);
+    // Новый элемент завершает предыдущий редактор: активным остаётся только
+    // второй стикер. Тянем первый, не редактируемый, поэтому его pointerdown
+    // доходит до Vue Flow.
+    const activeEditor = board.stickyNodes.locator('[contenteditable="true"]');
+    await expect(activeEditor).toHaveCount(1);
 
-    const leftSticky = board.stickyNodes.first();
-    const rightSticky = board.stickyNodes.last();
+    await page.keyboard.press('ControlOrMeta+0');
+    await expect(board.zoom).toHaveText('100%');
+
+    const leftSticky = board.stickyNodes.filter({ has: page.locator('[contenteditable="true"]') });
+    const rightSticky = board.stickyNodes.filter({
+      hasNot: page.locator('[contenteditable="true"]'),
+    });
+
+    // Vue Flow передаёт в drag-событие всё текущее выделение. Оставляем
+    // выбранным только переносимый узел, иначе оба стикера считаются dragged
+    // и для snap не остаётся статичного ориентира.
+    await rightSticky.click();
+    await expect(rightSticky).toHaveAttribute('data-selected', 'true');
+    await expect(leftSticky).toHaveAttribute('data-selected', 'false');
 
     const leftBox = await leftSticky.boundingBox();
     expect(leftBox).not.toBeNull();
@@ -72,34 +87,42 @@ test.describe('Доски: snap-направляющие при перетаск
     const rightBox = await rightSticky.boundingBox();
     expect(rightBox).not.toBeNull();
 
-    // Целевая позиция: левый край правого стикера почти совпадает с левым краем левого
-    // (разница ~5px < 8px порога). Для одинаковых стикеров left-left, center-center
-    // и right-right дают одинаковую snap-позицию (x = leftBox.x).
-    const targetRightX = leftBox!.x + 5; // 5px от левого края левого стикера
-    const dragDistance = rightBox!.x - targetRightX;
+    // Координаты мыши и flow-координаты слегка расходятся из-за внутреннего
+    // трансформа Vue Flow. Заканчиваем чуть дальше точки совпадения: на
+    // последнем drag-тике левый/верхний край попадает в 8px snap-порог.
+    // Для одинаковых стикеров left-left, center-center и right-right дают
+    // одинаковую итоговую позицию.
+    const targetRightX = leftBox!.x + 16;
+    const targetRightY = leftBox!.y + 15;
 
-    await page.mouse.move(rightBox!.x + rightBox!.width / 2, rightBox!.y + rightBox!.height / 2);
-    await rightSticky.click(); // выбрать одиночным кликом перед drag
-    await page.mouse.move(rightBox!.x + rightBox!.width / 2, rightBox!.y + rightBox!.height / 2);
+    const dragStartX = rightBox!.x + rightBox!.width / 2;
+    const dragStartY = rightBox!.y + rightBox!.height / 2;
+    const dragEndX = targetRightX + rightBox!.width / 2;
+    const dragEndY = targetRightY + rightBox!.height / 2;
+
+    await page.mouse.move(dragStartX, dragStartY);
     await page.mouse.down();
-    await page.mouse.move(
-      rightBox!.x + rightBox!.width / 2 - dragDistance,
-      rightBox!.y + rightBox!.height / 2,
-      { steps: 20 },
-    );
+    await page.mouse.move(dragEndX, dragEndY, { steps: 20 });
 
     // Во время drag появляются snap-гиды (только визуально, позиция не меняется)
     await expect(board.snapGuides).toBeVisible();
-    await expect(board.snapGuide).toHaveCount(1);
+    await expect.poll(() => board.snapGuide.count()).toBeGreaterThan(0);
 
     // Отпускаем — snap позиция применяется, гиды исчезают
     await page.mouse.up();
-    await page.waitForTimeout(200);
     await expect(board.snapGuides).toHaveCount(0);
 
-    // Правый стикер притянулся к левому — оба имеют одинаковый левый край
-    const snappedRightBox = await rightSticky.boundingBox();
-    expect(snappedRightBox).not.toBeNull();
-    expect(snappedRightBox!.x).toBeCloseTo(leftBox!.x, 1);
+    // Переносимый стикер притянулся к статичному — оба имеют одинаковый левый
+    // край. Сравниваем актуальные rect'ы: Vue Flow может автопанить viewport
+    // во время drag, поэтому сохранённый до жеста screen-x не является опорой.
+    await expect
+      .poll(async () => {
+        const [staticBox, draggedBox] = await Promise.all([
+          leftSticky.boundingBox(),
+          rightSticky.boundingBox(),
+        ]);
+        return staticBox && draggedBox ? Math.round(draggedBox.x - staticBox.x) : null;
+      })
+      .toBeCloseTo(0, 1);
   });
 });

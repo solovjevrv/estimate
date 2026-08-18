@@ -65,6 +65,8 @@ export interface BoardTextEditorHandle {
   toggle(key: 'bold' | 'italic' | 'underline' | 'strike'): void;
   setHighlight(color: BoardHighlightColor | null): void;
   setLink(url: string | null): void;
+  /** Завершает редактирование перед передачей фокуса другому элементу доски. */
+  commit(): void;
 }
 
 /**

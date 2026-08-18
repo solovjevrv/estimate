@@ -3,12 +3,13 @@ import { BOARD_WS_EVENTS } from '@poker/shared';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { defineComponent, nextTick, ref } from 'vue';
+import { defineComponent, nextTick, provide, ref, shallowRef } from 'vue';
 
 import { createAppI18n } from '../src/i18n';
 import { useBoardSessionStore } from '../src/stores/board-session';
 import { useSessionStore } from '../src/stores/session';
 import { useRichTextEditing } from '../src/lib/board/use-rich-text-editing';
+import { BOARD_ACTIVE_TEXT_EDITOR_KEY } from '../src/lib/board/board-canvas-keys';
 
 /* --- Hoisted mocks (vi.mock runs above imports — переменные через vi.hoisted) --- */
 const { toastAdd, socket } = vi.hoisted(() => {
@@ -107,6 +108,34 @@ function mountEditor() {
   return mount(TestWrapper, {
     global: { plugins: [createAppI18n('ru')] },
   });
+}
+
+/** Две ноды под одним canvas-provider — воспроизводит два dblclick в одном тике. */
+function mountTwoEditors() {
+  // eslint-disable-next-line vue/one-component-per-file -- локальный тестовый child
+  const Editor = defineComponent({
+    props: { itemId: { type: String, required: true } },
+    setup(props) {
+      const result = useRichTextEditing({
+        itemId: props.itemId,
+        canEdit: ref(true),
+        isSelected: ref(true),
+        content: ref<BoardStickyContent>({ type: 'sticky', text: '' }),
+        buildContent: (text, runs) => ({ type: 'sticky', text, ...(runs ? { runs } : {}) }),
+      });
+      return result;
+    },
+    template: '<div v-if="editing" ref="editable" contenteditable="true"></div>',
+  });
+  // eslint-disable-next-line vue/one-component-per-file -- локальный test host/provider
+  const TestWrapper = defineComponent({
+    components: { Editor },
+    setup() {
+      provide(BOARD_ACTIVE_TEXT_EDITOR_KEY, shallowRef(null));
+    },
+    template: '<Editor item-id="item-1" /><Editor item-id="item-2" />',
+  });
+  return { wrapper: mount(TestWrapper, { global: { plugins: [createAppI18n('ru')] } }), Editor };
 }
 
 describe('useRichTextEditing — мягкая блокировка (14.2)', () => {
@@ -237,6 +266,23 @@ describe('useRichTextEditing — мягкая блокировка (14.2)', () =
     // follow-mode снят — editing прошёл
     expect(boardSession.followedParticipantId).toBe(null);
     expect(wrapper.vm.editing).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it('два одновременных startEditing() оставляют активным только последний редактор', async () => {
+    await joinWithLock(null);
+    const { wrapper, Editor } = mountTwoEditors();
+    const editors = wrapper.findAllComponents(Editor);
+    const first = editors[0]!;
+    const second = editors[1]!;
+
+    await Promise.all([first.vm.startEditing(), second.vm.startEditing()]);
+    await nextTick();
+
+    expect(first.vm.editing).toBe(false);
+    expect(second.vm.editing).toBe(true);
+    expect(wrapper.findAll('[contenteditable="true"]')).toHaveLength(1);
 
     wrapper.unmount();
   });

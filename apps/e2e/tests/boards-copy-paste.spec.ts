@@ -75,8 +75,9 @@ test.describe('Доски: копирование/вставка', () => {
       // (`BoardPage.vue`) не await-ится перед этим — на второй доске в тесте
       // (сразу после leave/join предыдущей на том же сокете) вставка сразу
       // после навигации может улететь раньше, чем join долетит до сервера;
-      // даём небольшой запас
-      await page.waitForTimeout(300);
+      // ждём реальное состояние сессии вместо фиксированной паузы
+      await expect(board.joined).toBeVisible();
+      await expect(board.zoom).toHaveText('100%');
     }
 
     // --- Доска A: два стикера в разных углах, выделяем оба, копируем и вставляем ---
@@ -97,7 +98,7 @@ test.describe('Доски: копирование/вставка', () => {
     // сбрасываем зум ЕЩЁ РАЗ уже после создания обеих карточек, иначе более
     // ранний Ctrl+0 (в `createBoard`) перетирается этим авто-фитом до 200%
     await page.keyboard.press('ControlOrMeta+0');
-    await page.waitForTimeout(200);
+    await expect(board.zoom).toHaveText('100%');
 
     // Мульти-выбор — рамкой (drag-select), безусловно, без модификатора
     // (`:selection-key-code="true"` на `<VueFlow>` — заменил мёртвый атрибут
@@ -144,7 +145,7 @@ test.describe('Доски: копирование/вставка', () => {
     await page.reload();
     await expect(board.stickyNodes).toHaveCount(4);
     await page.keyboard.press('ControlOrMeta+0');
-    await page.waitForTimeout(200);
+    await expect(board.zoom).toHaveText('100%');
 
     // --- Картинка на доске A — копируем именно её ---
     const imageBuffer = await sharp({
@@ -170,9 +171,11 @@ test.describe('Доски: копирование/вставка', () => {
 
     // --- Доска B: вставляем скопированную картинку ---
     await createBoard(`${E2E_ROOM_PREFIX}Copy B ${randomUUID().slice(0, 8)}`);
-    await page.keyboard.press('ControlOrMeta+v');
-
     const boardB = boardLocators(page);
+    // На доске B join доски должен долететь до вставки — иначе паста может
+    // улететь раньше, чем сервер зарегистрирует участника в сессии
+    await expect(boardB.joined).toBeVisible();
+    await page.keyboard.press('ControlOrMeta+v');
     await expect(boardB.imageNodes).toHaveCount(1, { timeout: 15_000 });
     const pastedSrc = await boardB.imageNodes.locator('img').getAttribute('src');
     expect(pastedSrc).toMatch(/^\/api\/boards\/[0-9a-f-]{36}\/assets\/[a-f0-9]{32}\.webp$/);
@@ -208,7 +211,7 @@ test.describe('Доски: копирование/вставка', () => {
     await expect(board.pane).toBeVisible();
     await board.pane.click(); // фокус на холст перед хоткеем
     await page.keyboard.press('ControlOrMeta+0');
-    await page.waitForTimeout(300);
+    await expect(board.zoom).toHaveText('100%');
 
     // --- Два стикера в разных углах ---
     await board.pane.dblclick({ position: { x: 300, y: 300 } });
@@ -225,7 +228,7 @@ test.describe('Доски: копирование/вставка', () => {
     await page.keyboard.press('Escape'); // снять выделение со второго стикера
 
     await page.keyboard.press('ControlOrMeta+0');
-    await page.waitForTimeout(200);
+    await expect(board.zoom).toHaveText('100%');
 
     // --- Соединяем стрелкой (drag от хендла первого к хендлу второго) ---
     const sourceHandle = page.locator(
