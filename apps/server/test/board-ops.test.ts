@@ -1077,6 +1077,26 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
     expect((state.edges.get(edgeId) as BoardEdge).label).toBe('зависит от');
   });
 
+  it('принимает многострочную подпись связи', () => {
+    const { state, a, b } = withTwoItems();
+    const edgeId = randomUUID();
+    applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+    applyBoardOp(
+      state,
+      {
+        type: 'edge.patch',
+        clientOpId: randomUUID(),
+        id: edgeId,
+        patch: { label: 'Первая строка\nВторая строка' },
+      },
+      BOARD_ID,
+      ACTOR,
+    );
+
+    expect((state.edges.get(edgeId) as BoardEdge).label).toBe('Первая строка\nВторая строка');
+  });
+
   it('отклоняет слишком длинную подпись связи', () => {
     const { state, a, b } = withTwoItems();
     const edgeId = randomUUID();

@@ -31,6 +31,8 @@ export interface BoardLocators {
   nodeNotById: (type: string, id: string) => Locator;
   handle: (nodeId: string, handleId: string) => Locator;
   edges: Locator;
+  edgeLabelInput: Locator;
+  edgeLabelText: Locator;
   snapGuides: Locator;
   snapGuide: Locator;
   editingBadge: Locator;
@@ -87,6 +89,8 @@ export function boardLocators(pageOrLocator: Page | Locator): BoardLocators {
       base(`[data-testid="board-handle"][data-nodeid="${nodeId}"][data-handleid="${handleId}"]`),
 
     edges: base('[data-testid="board-edge"]'),
+    edgeLabelInput: base('[data-testid="board-edge-label-input"]'),
+    edgeLabelText: base('[data-testid="board-edge-label-text"]'),
 
     snapGuides: base('[data-testid="board-snap-guides"]'),
     snapGuide: base('[data-testid="board-snap-guide"]'),
