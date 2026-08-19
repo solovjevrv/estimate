@@ -125,7 +125,10 @@ test.describe('Доски: многострочные подписи связе�
     const targetBox = await targetHandle.boundingBox();
     expect(sourceBox).not.toBeNull();
     expect(targetBox).not.toBeNull();
-    await pageA.mouse.move(sourceBox!.x + sourceBox!.width / 2, sourceBox!.y + sourceBox!.height / 2);
+    await pageA.mouse.move(
+      sourceBox!.x + sourceBox!.width / 2,
+      sourceBox!.y + sourceBox!.height / 2,
+    );
     await pageA.mouse.down();
     await pageA.mouse.move(
       targetBox!.x + targetBox!.width / 2,
@@ -152,10 +155,7 @@ test.describe('Доски: многострочные подписи связе�
     // visible и отказывается. Кликаем координатами page.mouse — попадаем ровно в центр
     // пути, который (благодаря раскладке в ширину) находится в свободном зазоре.
     await pageA.keyboard.press('Escape');
-    await pageA.mouse.dblclick(
-      pathBox!.x + pathBox!.width / 2,
-      pathBox!.y + pathBox!.height / 2,
-    );
+    await pageA.mouse.dblclick(pathBox!.x + pathBox!.width / 2, pathBox!.y + pathBox!.height / 2);
     await expect(boardA.edgeLabelInput).toBeVisible();
     expect(await boardA.edgeLabelInput.evaluate((el) => el.tagName)).toBe('TEXTAREA');
 
@@ -179,9 +179,7 @@ test.describe('Доски: многострочные подписи связе�
     const readOnlyText = boardA.edgeLabelText;
     expect(await readOnlyText.evaluate((el) => getComputedStyle(el).whiteSpace)).toBe('pre-wrap');
     const box = await readOnlyText.boundingBox();
-    const fontSize = parseFloat(
-      await readOnlyText.evaluate((el) => getComputedStyle(el).fontSize),
-    );
+    const fontSize = parseFloat(await readOnlyText.evaluate((el) => getComputedStyle(el).fontSize));
     expect(box).not.toBeNull();
     expect(box!.height).toBeGreaterThan(fontSize * 2);
 
