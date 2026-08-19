@@ -565,6 +565,149 @@ describe('parseClipboardPayload — валидация формата', () => {
     expect(payload?.edges).toHaveLength(0);
   });
 
+  it('принимает payload без ключей labelFontSize/labelTextAlign/labelTextColor (старый буфер обмена)', () => {
+    const payload = parseClipboardPayload(
+      JSON.stringify({
+        source: BOARD_CLIPBOARD_SOURCE,
+        version: BOARD_CLIPBOARD_VERSION,
+        items: [{ content: { type: 'sticky', text: 'A' } }],
+        edges: [
+          {
+            sourceIndex: 0,
+            targetIndex: 0,
+            sourceHandle: null,
+            targetHandle: null,
+            label: null,
+            style: {
+              line: 'curved',
+              dash: 'solid',
+              markerStart: 'none',
+              markerEnd: 'none',
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(payload?.edges).toHaveLength(1);
+  });
+
+  it('принимает валидные labelFontSize/labelTextAlign/labelTextColor', () => {
+    const payload = parseClipboardPayload(
+      JSON.stringify({
+        source: BOARD_CLIPBOARD_SOURCE,
+        version: BOARD_CLIPBOARD_VERSION,
+        items: [{ content: { type: 'sticky', text: 'A' } }],
+        edges: [
+          {
+            sourceIndex: 0,
+            targetIndex: 0,
+            sourceHandle: null,
+            targetHandle: null,
+            label: null,
+            style: {
+              line: 'curved',
+              dash: 'solid',
+              markerStart: 'none',
+              markerEnd: 'none',
+              labelFontSize: 18,
+              labelTextAlign: 'right',
+              labelTextColor: '#ABCDEF',
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(payload?.edges[0]!.style.labelFontSize).toBe(18);
+    expect(payload?.edges[0]!.style.labelTextAlign).toBe('right');
+    expect(payload?.edges[0]!.style.labelTextColor).toBe('#ABCDEF');
+  });
+
+  it('отклоняет labelTextAlign вне списка допустимых значений', () => {
+    const payload = parseClipboardPayload(
+      JSON.stringify({
+        source: BOARD_CLIPBOARD_SOURCE,
+        version: BOARD_CLIPBOARD_VERSION,
+        items: [{ content: { type: 'sticky', text: 'A' } }],
+        edges: [
+          {
+            sourceIndex: 0,
+            targetIndex: 0,
+            sourceHandle: null,
+            targetHandle: null,
+            label: null,
+            style: {
+              line: 'curved',
+              dash: 'solid',
+              markerStart: 'none',
+              markerEnd: 'none',
+              labelTextAlign: 'justify',
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(payload?.edges).toHaveLength(0);
+  });
+
+  it('принимает валидный labelBold', () => {
+    const payload = parseClipboardPayload(
+      JSON.stringify({
+        source: BOARD_CLIPBOARD_SOURCE,
+        version: BOARD_CLIPBOARD_VERSION,
+        items: [{ content: { type: 'sticky', text: 'A' } }],
+        edges: [
+          {
+            sourceIndex: 0,
+            targetIndex: 0,
+            sourceHandle: null,
+            targetHandle: null,
+            label: null,
+            style: {
+              line: 'curved',
+              dash: 'solid',
+              markerStart: 'none',
+              markerEnd: 'none',
+              labelBold: true,
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(payload?.edges[0]!.style.labelBold).toBe(true);
+  });
+
+  it('отклоняет labelBold не булевого типа', () => {
+    const payload = parseClipboardPayload(
+      JSON.stringify({
+        source: BOARD_CLIPBOARD_SOURCE,
+        version: BOARD_CLIPBOARD_VERSION,
+        items: [{ content: { type: 'sticky', text: 'A' } }],
+        edges: [
+          {
+            sourceIndex: 0,
+            targetIndex: 0,
+            sourceHandle: null,
+            targetHandle: null,
+            label: null,
+            style: {
+              line: 'curved',
+              dash: 'solid',
+              markerStart: 'none',
+              markerEnd: 'none',
+              labelBold: 'yes',
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(payload?.edges).toHaveLength(0);
+  });
+
   it('битый JSON — null, не бросает исключение', () => {
     expect(() => parseClipboardPayload('{ not valid json')).not.toThrow();
     expect(parseClipboardPayload('{ not valid json')).toBeNull();

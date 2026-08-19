@@ -319,7 +319,15 @@ export function parseClipboardPayload(text: string): BoardClipboardPayload | nul
         (typeof styleRecord.labelOffset === 'object' &&
           styleRecord.labelOffset !== null &&
           typeof (styleRecord.labelOffset as { t?: unknown }).t === 'number' &&
-          typeof (styleRecord.labelOffset as { distance?: unknown }).distance === 'number'))
+          typeof (styleRecord.labelOffset as { distance?: unknown }).distance === 'number')) &&
+      (styleRecord.labelFontSize === undefined || typeof styleRecord.labelFontSize === 'number') &&
+      (styleRecord.labelTextAlign === undefined ||
+        styleRecord.labelTextAlign === 'left' ||
+        styleRecord.labelTextAlign === 'center' ||
+        styleRecord.labelTextAlign === 'right') &&
+      (styleRecord.labelTextColor === undefined ||
+        typeof styleRecord.labelTextColor === 'string') &&
+      (styleRecord.labelBold === undefined || typeof styleRecord.labelBold === 'boolean')
     );
   });
 

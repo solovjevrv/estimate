@@ -710,33 +710,6 @@ function cancelTextColor(hex: BoardColorHex): void {
 <style scoped>
 @import './shared/board-toolbar.css';
 
-.board-text-options-btn {
-  width: auto;
-  min-width: 28px;
-  padding: 0 6px;
-  font-size: 13px;
-  font-weight: 800;
-}
-
-.board-text-menu {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  padding: 10px;
-}
-
-.board-text-menu-row {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.board-text-menu-label {
-  color: var(--brand-ink2);
-  font-size: 11px;
-  font-weight: 700;
-}
-
 .board-text-menu-swatches {
   display: flex;
   flex-wrap: wrap;
@@ -745,42 +718,6 @@ function cancelTextColor(hex: BoardColorHex): void {
 
 .board-inline-menu {
   padding: 6px;
-}
-
-.board-stepper {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.board-stepper-btn {
-  display: flex;
-  width: 24px;
-  height: 24px;
-  align-items: center;
-  justify-content: center;
-  color: var(--brand-ink);
-  cursor: pointer;
-  background: var(--ui-bg-elevated);
-  border: none;
-  border-radius: 6px;
-}
-
-.board-stepper-btn:hover:not(:disabled) {
-  background: color-mix(in oklch, var(--ui-primary) 14%, var(--ui-bg-elevated));
-}
-
-.board-stepper-btn:disabled {
-  cursor: default;
-  opacity: 0.4;
-}
-
-.board-stepper-value {
-  min-width: 26px;
-  color: var(--brand-ink);
-  font-size: 12.5px;
-  font-weight: 700;
-  text-align: center;
 }
 
 .board-highlight-swatch {

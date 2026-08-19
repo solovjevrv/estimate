@@ -468,6 +468,10 @@ const {
   edgeToolbarPosition,
   selectedEdgeStyle,
   selectedEdgeColor,
+  selectedEdgeLabelFontSize,
+  selectedEdgeLabelTextAlign,
+  selectedEdgeLabelTextColor,
+  selectedEdgeLabelBold,
   addTextToSelectedEdge,
   deleteSelectedEdges,
   patchEdgeLine,
@@ -477,6 +481,10 @@ const {
   patchEdgeColor,
   previewEdgeColor,
   cancelEdgeColorPreview,
+  patchEdgeLabelFontSize,
+  patchEdgeLabelTextAlign,
+  patchEdgeLabelTextColor,
+  patchEdgeLabelBold,
 } = edges;
 
 /**
@@ -823,6 +831,10 @@ useBoardHotkeys({
         :current-marker-start="selectedEdgeStyle.markerStart"
         :current-marker-end="selectedEdgeStyle.markerEnd"
         :current-color="selectedEdgeColor"
+        :current-label-font-size="selectedEdgeLabelFontSize"
+        :current-label-text-align="selectedEdgeLabelTextAlign"
+        :current-label-text-color="selectedEdgeLabelTextColor"
+        :current-label-bold="selectedEdgeLabelBold"
         @line="patchEdgeLine"
         @dash="patchEdgeDash"
         @marker-start="patchEdgeMarkerStart"
@@ -830,6 +842,10 @@ useBoardHotkeys({
         @color="patchEdgeColor"
         @color-preview="previewEdgeColor"
         @color-cancel="cancelEdgeColorPreview"
+        @label-font-size="patchEdgeLabelFontSize"
+        @label-text-align="patchEdgeLabelTextAlign"
+        @label-bold="patchEdgeLabelBold"
+        @label-text-color="patchEdgeLabelTextColor"
         @add-text="addTextToSelectedEdge"
         @delete="deleteSelectedEdges"
       />

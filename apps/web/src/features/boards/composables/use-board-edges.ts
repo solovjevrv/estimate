@@ -1,4 +1,10 @@
-import type { BoardColorHex, BoardEdge, BoardEdgeStyle, BoardOp } from '@poker/shared';
+import type {
+  BoardColorHex,
+  BoardEdge,
+  BoardEdgeStyle,
+  BoardOp,
+  BoardTextAlign,
+} from '@poker/shared';
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
 
 import { uuid } from '../../../features/boards/infrastructure/uuid';
@@ -49,6 +55,10 @@ export interface UseBoardEdgesResult {
   edgeToolbarPosition: ComputedRef<{ left: number; top: number } | null>;
   selectedEdgeStyle: ComputedRef<BoardEdgeStyle>;
   selectedEdgeColor: ComputedRef<BoardColorHex>;
+  selectedEdgeLabelFontSize: ComputedRef<number>;
+  selectedEdgeLabelTextAlign: ComputedRef<BoardTextAlign>;
+  selectedEdgeLabelTextColor: ComputedRef<BoardColorHex>;
+  selectedEdgeLabelBold: ComputedRef<boolean>;
 
   onConnect: (connection: BoardEdgeConnection) => void;
   onEdgeDoubleClick: (event: BoardEdgeDoubleClickEvent) => void;
@@ -62,6 +72,10 @@ export interface UseBoardEdgesResult {
   patchEdgeColor: (color: BoardColorHex) => void;
   previewEdgeColor: (color: BoardColorHex) => void;
   cancelEdgeColorPreview: (originalColor: BoardColorHex) => void;
+  patchEdgeLabelFontSize: (size: number) => void;
+  patchEdgeLabelTextAlign: (align: BoardTextAlign) => void;
+  patchEdgeLabelTextColor: (color: BoardColorHex) => void;
+  patchEdgeLabelBold: (bold: boolean) => void;
 }
 
 /**
@@ -120,6 +134,18 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
   const selectedEdgeColor = computed<BoardColorHex>(() =>
     options.resolveEdgeColor(selectedEdgeStyle.value.color),
   );
+
+  /** Резолвнутые значения стиля текста подписи (12.18) — те же дефолты, что в BoardFloatingEdge.vue */
+  const selectedEdgeLabelFontSize = computed<number>(
+    () => selectedEdgeStyle.value.labelFontSize ?? 13,
+  );
+  const selectedEdgeLabelTextAlign = computed<BoardTextAlign>(
+    () => selectedEdgeStyle.value.labelTextAlign ?? 'center',
+  );
+  const selectedEdgeLabelTextColor = computed<BoardColorHex>(() =>
+    options.resolveEdgeColor(selectedEdgeStyle.value.labelTextColor),
+  );
+  const selectedEdgeLabelBold = computed<boolean>(() => !!selectedEdgeStyle.value.labelBold);
 
   /* ----------------------- Live-preview цвета ----------------------- */
 
@@ -241,6 +267,44 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     }));
   }
 
+  /* --------------------- Стиль текста подписи (12.18) --------------------- */
+
+  function patchEdgeLabelFontSize(size: number): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelFontSize: size } },
+    }));
+  }
+
+  function patchEdgeLabelTextAlign(align: BoardTextAlign): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelTextAlign: align } },
+    }));
+  }
+
+  function patchEdgeLabelTextColor(color: BoardColorHex): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelTextColor: color } },
+    }));
+  }
+
+  function patchEdgeLabelBold(bold: boolean): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelBold: bold } },
+    }));
+  }
+
   /* ----------------------- Создание / подпись ----------------------- */
 
   /**
@@ -301,6 +365,10 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     edgeToolbarPosition,
     selectedEdgeStyle,
     selectedEdgeColor,
+    selectedEdgeLabelFontSize,
+    selectedEdgeLabelTextAlign,
+    selectedEdgeLabelTextColor,
+    selectedEdgeLabelBold,
     onConnect,
     onEdgeDoubleClick,
     addTextToSelectedEdge,
@@ -312,5 +380,9 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     patchEdgeColor,
     previewEdgeColor,
     cancelEdgeColorPreview,
+    patchEdgeLabelFontSize,
+    patchEdgeLabelTextAlign,
+    patchEdgeLabelTextColor,
+    patchEdgeLabelBold,
   };
 }

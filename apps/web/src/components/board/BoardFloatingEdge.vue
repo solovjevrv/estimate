@@ -201,6 +201,20 @@ const labelInputStyle = computed(() => {
   return { width: `${cols}ch` } as const;
 });
 
+/**
+ * Стили текста подписи (12.18) — размер/выравнивание/цвет/жирность, по
+ * образцу аналогичных полей `BoardItemStyle` у стикеров/фигур. Не заданы —
+ * прежнее поведение (13px, center, авто-цвет от темы через
+ * `resolveEdgeColor`, вес 600 — тот же приём/значения, что были жёстко
+ * зашиты в CSS до этой фичи).
+ */
+const labelTextStyle = computed(() => ({
+  fontSize: `${props.data.style.labelFontSize ?? 13}px`,
+  textAlign: props.data.style.labelTextAlign ?? 'center',
+  color: resolveEdgeColor(props.data.style.labelTextColor),
+  fontWeight: props.data.style.labelBold ? 700 : 600,
+}));
+
 /** Обнуляем inline-height: иначе `scrollHeight` отражает прежний (больший) размер,
  *  и textarea не схлопнется при удалении строк — классический трюк для автороста. */
 function resizeLabelInput(): void {
@@ -627,13 +641,17 @@ onUnmounted(() => {
         spellcheck="false"
         data-testid="board-edge-label-input"
         class="board-edge-label-input"
-        :style="labelInputStyle"
+        :style="[labelInputStyle, labelTextStyle]"
         @keydown.stop="onLabelKeydown"
         @blur="commitEditing"
       />
-      <span v-else data-testid="board-edge-label-text" class="board-edge-label-text">{{
-        data.label
-      }}</span>
+      <span
+        v-else
+        data-testid="board-edge-label-text"
+        class="board-edge-label-text"
+        :style="labelTextStyle"
+        >{{ data.label }}</span
+      >
     </div>
   </EdgeLabelRenderer>
 </template>
@@ -673,12 +691,9 @@ g:hover .board-edge-curve-handle {
 
 /* Без подложки (12.18, Miro-паттерн) — читаемость над линией даёт разрыв
    самой стрелки (SVG-маска у BaseEdge, см. labelGapRect в <script>), а не
-   фон/гало позади текста */
-.board-edge-label-text,
-.board-edge-label-input {
-  color: var(--brand-ink);
-}
-
+   фон/гало позади текста. font-size/text-align/color задаются inline через
+   labelTextStyle (12.18) — управляются тулбаром, здесь только дефолты для
+   остальных свойств. */
 .board-edge-label--draggable {
   cursor: grab;
 }
@@ -688,8 +703,6 @@ g:hover .board-edge-curve-handle {
 
 .board-edge-label-text {
   display: inline-block;
-  font-size: 13px;
-  font-weight: 600;
   line-height: 1.4;
   /* 28ch — жёсткий лимит ширины подписи, согласован с EDGE_LABEL_MAX_WIDTH_CH */
   max-inline-size: 28ch;
@@ -704,10 +717,7 @@ g:hover .board-edge-curve-handle {
   /* min-height ровно на одну строку — line-height × font-size */
   min-height: 1.4em;
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
   line-height: 1.4;
-  text-align: center;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   resize: none;
