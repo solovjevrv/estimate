@@ -9,7 +9,10 @@ import { createAppI18n } from '../src/i18n';
 import { useBoardSessionStore } from '../src/stores/board-session';
 import { useSessionStore } from '../src/stores/session';
 import { useRichTextEditing } from '../src/features/boards/composables/use-rich-text-editing';
-import { BOARD_ACTIVE_TEXT_EDITOR_KEY } from '../src/features/boards/context/board-canvas-keys';
+import {
+  BOARD_ACTIVE_TEXT_EDITOR_KEY,
+  BOARD_PENDING_EDIT_ID_KEY,
+} from '../src/features/boards/context/board-canvas-keys';
 import type { BoardTextEditorHandle } from '../src/features/boards/rich-text/board-rich-text';
 import { serializeRuns, selectRange } from '../src/features/boards/rich-text/board-rich-text';
 
@@ -468,6 +471,102 @@ describe('useRichTextEditing — форматирование без выдел�
     // Ссылка не должна примениться — нет выделения
     const runs = serializeRuns(el);
     expect(runs).toEqual([{ text: 'Hello world' }]);
+
+    wrapper.unmount();
+  });
+});
+
+describe('useRichTextEditing — автопереход по pendingEditId при mount (12.26)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    socket.reset();
+    toastAdd.mockClear();
+
+    const session = useSessionStore();
+    session.setUser({
+      id: 'me',
+      provider: 'google',
+      email: 'me@example.com',
+      name: 'Я',
+      jobTitle: null,
+      avatarUrl: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function joinBoard() {
+    const boardSession = useBoardSessionStore();
+    socket.next = snapshotResult(1);
+    await boardSession.join('board1');
+    return boardSession;
+  }
+
+  /** Монтирует composable с предоставленным BOARD_PENDING_EDIT_ID_KEY и условным рендером editor-узла */
+  function mountWithPendingEditId(pendingEditIdValue: string | null) {
+    const activeTextEditor = shallowRef<BoardTextEditorHandle | null>(null);
+    const pendingEditId = ref(pendingEditIdValue);
+    // eslint-disable-next-line vue/one-component-per-file -- локальный test host для pendingEditId
+    const TestWrapper = defineComponent({
+      setup() {
+        const canEdit = ref(true);
+        const isSelected = ref(true);
+        const content = ref<BoardStickyContent>({ type: 'sticky', text: '' });
+        const result = useRichTextEditing({
+          itemId: 'item-1',
+          canEdit,
+          isSelected,
+          content,
+          buildContent: (text, runs) =>
+            ({ type: 'sticky', text, ...(runs ? { runs } : {}) }) as BoardStickyContent,
+        });
+        return result;
+      },
+      template: '<div><div v-if="editing" ref="editable" contenteditable="true"></div></div>',
+    });
+    const wrapper = mount(TestWrapper, {
+      global: {
+        plugins: [createAppI18n('ru')],
+        provide: {
+          [BOARD_ACTIVE_TEXT_EDITOR_KEY]: activeTextEditor,
+          [BOARD_PENDING_EDIT_ID_KEY]: pendingEditId,
+        } as Record<symbol, unknown>,
+      },
+    });
+    return { wrapper, activeTextEditor, pendingEditId };
+  }
+
+  it('pendingEditId === itemId при mount автоматически открывает редактор — baseline не сломан', async () => {
+    await joinBoard();
+    const { wrapper, activeTextEditor } = mountWithPendingEditId('item-1');
+
+    await nextTick();
+
+    expect(wrapper.vm.editing).toBe(true);
+    expect(wrapper.findAll('[contenteditable="true"]')).toHaveLength(1);
+    expect(activeTextEditor.value).not.toBe(null);
+
+    wrapper.unmount();
+  });
+
+  it('token очищен до mount — editor остаётся с editing === false, contenteditable не появляется, awareness editing: true не отправляется', async () => {
+    await joinBoard();
+    const { wrapper, pendingEditId } = mountWithPendingEditId(null);
+
+    await nextTick();
+
+    expect(pendingEditId.value).toBe(null);
+    expect(wrapper.vm.editing).toBe(false);
+    expect(wrapper.findAll('[contenteditable="true"]')).toHaveLength(0);
+    // awareness editing: true не отправляется — onMounted не вызвал startEditing()
+    expect(socket.sent).not.toContainEqual(
+      expect.objectContaining({
+        event: BOARD_WS_EVENTS.AWARENESS,
+        payload: { kind: 'editing', data: { itemId: 'item-1', active: true } },
+      }),
+    );
 
     wrapper.unmount();
   });

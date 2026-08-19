@@ -128,6 +128,26 @@ describe('useBoardCreation', () => {
     });
   });
 
+  describe('cancelPendingEdit', () => {
+    it('отменяет ещё не смонтированный автопереход без побочных эффектов', () => {
+      const options = makeOptions();
+      const api = useBoardCreation(options);
+
+      api.createSticky({ x: 100, y: 50 });
+      expect(api.pendingEditId.value).toBe('test-uuid-0');
+      expect(options.applyOps).toHaveBeenCalledTimes(1);
+
+      const activeToolBefore = api.activeTool.value;
+
+      api.cancelPendingEdit();
+
+      expect(api.pendingEditId.value).toBe(null);
+      // cancelPendingEdit не должен вызывать applyOps или менять activeTool
+      expect(options.applyOps).toHaveBeenCalledTimes(1);
+      expect(api.activeTool.value).toBe(activeToolBefore);
+    });
+  });
+
   describe('лимит элементов', () => {
     it('canCreateItem() возвращает false при BOARD_MAX_ITEMS, не вызывает applyOps и показывает toast', () => {
       const items: BoardItem[] = [];
