@@ -307,7 +307,13 @@ export function parseClipboardPayload(text: string): BoardClipboardPayload | nul
         styleRecord.dash === null ||
         styleRecord.dash === 'solid' ||
         styleRecord.dash === 'dashed' ||
-        styleRecord.dash === 'dotted')
+        styleRecord.dash === 'dotted') &&
+      (styleRecord.curveOffset === undefined ||
+        styleRecord.curveOffset === null ||
+        (typeof styleRecord.curveOffset === 'object' &&
+          styleRecord.curveOffset !== null &&
+          typeof (styleRecord.curveOffset as { x?: unknown }).x === 'number' &&
+          typeof (styleRecord.curveOffset as { y?: unknown }).y === 'number'))
     );
   });
 

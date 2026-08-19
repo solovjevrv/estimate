@@ -4,7 +4,10 @@ import type {
 } from '../src/features/boards/domain/floating-edge-geometry';
 import { describe, expect, it } from 'vitest';
 
-import { getEdgeAnchorParams } from '../src/features/boards/domain/floating-edge-geometry';
+import {
+  getEdgeAnchorParams,
+  getOffsetCurvePath,
+} from '../src/features/boards/domain/floating-edge-geometry';
 
 function node(
   position: { x: number; y: number },
@@ -110,5 +113,25 @@ describe('getEdgeAnchorParams — чистота границы', () => {
       'left',
     );
     expect(params).toMatchObject({ sx: 10, sy: 5, tx: 100, ty: 5 });
+  });
+});
+
+describe('getOffsetCurvePath', () => {
+  it('apex-точка на кривой совпадает с straightMid + offset', () => {
+    const [, labelX, labelY] = getOffsetCurvePath(0, 0, 100, 0, { x: 10, y: -20 });
+    expect(labelX).toBe(60); // midX=50 + offset.x=10
+    expect(labelY).toBe(-20); // midY=0 + offset.y=-20
+  });
+
+  it('control point в SVG-пути смещён вдвое относительно apex', () => {
+    const [path] = getOffsetCurvePath(0, 0, 100, 0, { x: 10, y: -20 });
+    expect(path).toBe('M0,0 Q70,-40 100,0'); // controlX=50+20=70, controlY=0-40=-40
+  });
+
+  it('нулевое смещение даёт путь через геометрическую середину', () => {
+    const [path, labelX, labelY] = getOffsetCurvePath(0, 0, 100, 0, { x: 0, y: 0 });
+    expect(path).toBe('M0,0 Q50,0 100,0');
+    expect(labelX).toBe(50);
+    expect(labelY).toBe(0);
   });
 });

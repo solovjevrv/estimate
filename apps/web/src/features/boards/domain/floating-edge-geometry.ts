@@ -96,3 +96,25 @@ export function getEdgeAnchorParams(
     targetSide,
   };
 }
+
+/**
+ * Кривая связь (line: 'curved') с пользовательским смещением изгиба (12.17).
+ * `curveOffset` — смещение апекса (видимой точки изгиба) от геометрической
+ * середины прямой между точками крепления. Чтобы точка на квадратичной
+ * Безье при t=0.5 физически совпала с apex, control-point смещён вдвое.
+ */
+export function getOffsetCurvePath(
+  sx: number,
+  sy: number,
+  tx: number,
+  ty: number,
+  offset: { x: number; y: number },
+): [path: string, labelX: number, labelY: number] {
+  const midX = (sx + tx) / 2;
+  const midY = (sy + ty) / 2;
+  const controlX = midX + offset.x * 2;
+  const controlY = midY + offset.y * 2;
+  const apexX = midX + offset.x;
+  const apexY = midY + offset.y;
+  return [`M${sx},${sy} Q${controlX},${controlY} ${tx},${ty}`, apexX, apexY];
+}

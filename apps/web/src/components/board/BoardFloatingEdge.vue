@@ -7,9 +7,10 @@ import {
   getSmoothStepPath,
   getStraightPath,
   Position,
+  useVueFlow,
   type EdgeProps,
 } from '@vue-flow/core';
-import { computed, inject, nextTick, ref, useTemplateRef, watch } from 'vue';
+import { computed, inject, nextTick, onUnmounted, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import {
@@ -20,6 +21,7 @@ import { resolveEdgeColor } from '../../features/boards/config/board-item-defaul
 import {
   type EdgeAnchorSide,
   getEdgeAnchorParams,
+  getOffsetCurvePath,
 } from '../../features/boards/domain/floating-edge-geometry';
 import { useBoardSessionStore } from '../../stores/board-session';
 
@@ -29,6 +31,7 @@ const { t } = useI18n();
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 const pendingEdgeEditId = inject(BOARD_PENDING_EDGE_EDIT_ID_KEY, ref(null));
+const { project, vueFlowRef } = useVueFlow();
 
 /** Не задан в data.style.color (12.9) — точка 'dot' красится так же, как линия/маркер */
 const dotColor = computed(() => resolveEdgeColor(props.data.style.color));
@@ -61,6 +64,13 @@ const params = computed(() =>
   ),
 );
 
+const straightMid = computed(() => ({
+  x: (params.value.sx + params.value.tx) / 2,
+  y: (params.value.sy + params.value.ty) / 2,
+}));
+
+const dragOffsetPreview = ref<{ x: number; y: number } | null>(null);
+
 const pathData = computed(() => {
   const { sx, sy, tx, ty, sourceSide, targetSide } = params.value;
   const line = props.data.style.line;
@@ -77,6 +87,10 @@ const pathData = computed(() => {
     });
   }
   if (line === 'curved') {
+    const activeOffset = dragOffsetPreview.value ?? props.data.style.curveOffset ?? null;
+    if (activeOffset) {
+      return getOffsetCurvePath(sx, sy, tx, ty, activeOffset);
+    }
     return getBezierPath({
       sourceX: sx,
       sourceY: sy,
@@ -92,6 +106,20 @@ const pathData = computed(() => {
 const path = computed(() => pathData.value[0]);
 const labelX = computed(() => pathData.value[1]);
 const labelY = computed(() => pathData.value[2]);
+
+const curveHandlePosition = computed(() => {
+  if (dragOffsetPreview.value) {
+    return {
+      x: straightMid.value.x + dragOffsetPreview.value.x,
+      y: straightMid.value.y + dragOffsetPreview.value.y,
+    };
+  }
+  const stored = props.data.style.curveOffset;
+  if (stored) {
+    return { x: straightMid.value.x + stored.x, y: straightMid.value.y + stored.y };
+  }
+  return { x: labelX.value, y: labelY.value };
+});
 
 /**
  * Подпись пишется прямо на стрелке (Miro-паттерн, решение пользователя
@@ -199,6 +227,81 @@ function onLabelKeydown(e: KeyboardEvent): void {
     inputEl.value?.blur();
   }
 }
+
+/**
+ * Ручка изгиба связи (12.17) — перетаскивание локального смещения апекса
+ * кривой. Коммит одним edge.patch на pointerup, как NodeResizer/@resize-end.
+ */
+const CURVE_OFFSET_RESET_EPSILON = 4;
+
+function toWorldPoint(event: PointerEvent): { x: number; y: number } {
+  const rect = vueFlowRef.value?.getBoundingClientRect();
+  if (!rect) return straightMid.value;
+  return project({ x: event.clientX - rect.left, y: event.clientY - rect.top });
+}
+
+function onCurveHandlePointerDown(event: PointerEvent): void {
+  if (!canEdit.value) return;
+  (event.currentTarget as Element).setPointerCapture(event.pointerId);
+  const start = toWorldPoint(event);
+  dragOffsetPreview.value = {
+    x: start.x - straightMid.value.x,
+    y: start.y - straightMid.value.y,
+  };
+  window.addEventListener('keydown', onCurveDragKeydown);
+}
+
+function onCurveHandlePointerMove(event: PointerEvent): void {
+  if (!dragOffsetPreview.value) return;
+  const point = toWorldPoint(event);
+  dragOffsetPreview.value = {
+    x: point.x - straightMid.value.x,
+    y: point.y - straightMid.value.y,
+  };
+}
+
+function onCurveHandlePointerUp(): void {
+  if (!dragOffsetPreview.value) return;
+  const offset = dragOffsetPreview.value;
+  dragOffsetPreview.value = null;
+  window.removeEventListener('keydown', onCurveDragKeydown);
+  const magnitude = Math.hypot(offset.x, offset.y);
+  commitCurveOffset(magnitude < CURVE_OFFSET_RESET_EPSILON ? null : offset);
+}
+
+function onCurveDragKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Escape') return;
+  dragOffsetPreview.value = null;
+  window.removeEventListener('keydown', onCurveDragKeydown);
+}
+
+function resetCurveOffset(): void {
+  if (!canEdit.value) return;
+  commitCurveOffset(null);
+}
+
+/**
+ * Драг прерывается без pointerup, если компонент размонтируется раньше
+ * (другой участник удалил связь, undo/redo, виртуализация Vue Flow при
+ * скролле) — браузер сам снимает pointer capture с удалённого узла, поэтому
+ * наш pointerup никогда не придёт. Без этого слушатель Escape навсегда
+ * оставался бы висеть на window.
+ */
+onUnmounted(() => {
+  window.removeEventListener('keydown', onCurveDragKeydown);
+});
+
+function commitCurveOffset(offset: { x: number; y: number } | null): void {
+  if (offset === (props.data.style.curveOffset ?? null)) return;
+  void boardSession.applyOps([
+    {
+      type: 'edge.patch',
+      clientOpId: globalThis.crypto.randomUUID(),
+      id: props.id,
+      patch: { style: { ...props.data.style, curveOffset: offset } },
+    },
+  ]);
+}
 </script>
 
 <template>
@@ -227,6 +330,18 @@ function onLabelKeydown(e: KeyboardEvent): void {
       :cy="params.ty"
       r="4"
       :fill="dotColor"
+    />
+    <circle
+      v-if="canEdit && data.style.line === 'curved' && selected"
+      data-testid="board-edge-curve-handle"
+      class="board-edge-curve-handle nodrag nopan"
+      :cx="curveHandlePosition.x"
+      :cy="curveHandlePosition.y"
+      r="5"
+      @pointerdown.stop="onCurveHandlePointerDown"
+      @pointermove.stop="onCurveHandlePointerMove"
+      @pointerup.stop="onCurveHandlePointerUp"
+      @dblclick.stop="resetCurveOffset"
     />
   </g>
 
@@ -263,6 +378,24 @@ function onLabelKeydown(e: KeyboardEvent): void {
 .board-edge-label {
   position: absolute;
   pointer-events: all;
+}
+
+.board-edge-curve-handle {
+  fill: var(--ui-color-primary-500);
+  stroke: var(--brand-surface, #fff);
+  stroke-width: 1.5px;
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  /* .vue-flow__edge (обёртка Vue Flow вокруг этого компонента) задаёт
+     pointer-events: visibleStroke — попадание указателя только по контуру,
+     не по заливке. Без явного override клик/драг по видимому кружку не
+     долетает вообще (та же ловушка, что уже обошли для .board-edge-label). */
+  pointer-events: all;
+}
+.board-edge-curve-handle:hover,
+g:hover .board-edge-curve-handle {
+  opacity: 1;
 }
 
 /* Никакой подложки (просьба пользователя) — просто текст поверх холста, с лёгким

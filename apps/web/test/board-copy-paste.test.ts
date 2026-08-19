@@ -347,6 +347,113 @@ describe('parseClipboardPayload — валидация формата', () => {
     });
   });
 
+  it('ребро без curveOffset в style (payload до фичи, 12.17) парсится без ошибки', () => {
+    const payload = parseClipboardPayload(
+      JSON.stringify({
+        source: BOARD_CLIPBOARD_SOURCE,
+        version: BOARD_CLIPBOARD_VERSION,
+        items: [{ content: { type: 'sticky', text: 'A' } }],
+        edges: [
+          {
+            sourceIndex: 0,
+            targetIndex: 0,
+            sourceHandle: null,
+            targetHandle: null,
+            label: null,
+            style: { line: 'curved', dash: 'solid', markerStart: 'none', markerEnd: 'none' },
+          },
+        ],
+      }),
+    );
+
+    expect(payload?.edges).toHaveLength(1);
+    expect(payload?.edges[0]!.style.curveOffset).toBeUndefined();
+  });
+
+  it('ребро с корректным curveOffset в style парсится', () => {
+    const payload = parseClipboardPayload(
+      JSON.stringify({
+        source: BOARD_CLIPBOARD_SOURCE,
+        version: BOARD_CLIPBOARD_VERSION,
+        items: [{ content: { type: 'sticky', text: 'A' } }],
+        edges: [
+          {
+            sourceIndex: 0,
+            targetIndex: 0,
+            sourceHandle: null,
+            targetHandle: null,
+            label: null,
+            style: {
+              line: 'curved',
+              dash: 'solid',
+              markerStart: 'none',
+              markerEnd: 'none',
+              curveOffset: { x: 10, y: -20 },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(payload?.edges[0]!.style.curveOffset).toEqual({ x: 10, y: -20 });
+  });
+
+  it('ребро с curveOffset: null (сброшенное смещение) парсится', () => {
+    const payload = parseClipboardPayload(
+      JSON.stringify({
+        source: BOARD_CLIPBOARD_SOURCE,
+        version: BOARD_CLIPBOARD_VERSION,
+        items: [{ content: { type: 'sticky', text: 'A' } }],
+        edges: [
+          {
+            sourceIndex: 0,
+            targetIndex: 0,
+            sourceHandle: null,
+            targetHandle: null,
+            label: null,
+            style: {
+              line: 'curved',
+              dash: 'solid',
+              markerStart: 'none',
+              markerEnd: 'none',
+              curveOffset: null,
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(payload?.edges[0]!.style.curveOffset).toBeNull();
+  });
+
+  it('ребро с нечисловым curveOffset отбрасывается', () => {
+    const payload = parseClipboardPayload(
+      JSON.stringify({
+        source: BOARD_CLIPBOARD_SOURCE,
+        version: BOARD_CLIPBOARD_VERSION,
+        items: [{ content: { type: 'sticky', text: 'A' } }],
+        edges: [
+          {
+            sourceIndex: 0,
+            targetIndex: 0,
+            sourceHandle: null,
+            targetHandle: null,
+            label: null,
+            style: {
+              line: 'curved',
+              dash: 'solid',
+              markerStart: 'none',
+              markerEnd: 'none',
+              curveOffset: { x: 'oops', y: 20 },
+            },
+          },
+        ],
+      }),
+    );
+
+    expect(payload?.edges).toHaveLength(0);
+  });
+
   it('битый JSON — null, не бросает исключение', () => {
     expect(() => parseClipboardPayload('{ not valid json')).not.toThrow();
     expect(parseClipboardPayload('{ not valid json')).toBeNull();
