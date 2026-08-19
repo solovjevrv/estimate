@@ -5,6 +5,7 @@ import type {
 import { describe, expect, it } from 'vitest';
 
 import {
+  clampLabelOffset,
   getEdgeAnchorParams,
   getOffsetCurvePath,
 } from '../src/features/boards/domain/floating-edge-geometry';
@@ -133,5 +134,42 @@ describe('getOffsetCurvePath', () => {
     expect(path).toBe('M0,0 Q50,0 100,0');
     expect(labelX).toBe(50);
     expect(labelY).toBe(0);
+  });
+});
+
+/** Горизонтальная линия крепления (0,0)-(100,0): tangent=(1,0), normal=(0,1), halfLength=50 */
+describe('clampLabelOffset', () => {
+  it('смещение в пределах обоих лимитов проходит без изменений', () => {
+    const result = clampLabelOffset(0, 0, 100, 0, { x: 30, y: 10 }, 32);
+    expect(result).toEqual({ x: 30, y: 10 });
+  });
+
+  it('вдоль линии клэмпится до половины расстояния между точками крепления', () => {
+    // tangential=80 > halfLength=50 → клэмп до 50
+    const result = clampLabelOffset(0, 0, 100, 0, { x: 80, y: 0 }, 32);
+    expect(result).toEqual({ x: 50, y: 0 });
+  });
+
+  it('поперёк линии клэмпится до perpendicularMax', () => {
+    // normal=50 > perpendicularMax=32 → клэмп до 32
+    const result = clampLabelOffset(0, 0, 100, 0, { x: 0, y: 50 }, 32);
+    expect(result).toEqual({ x: 0, y: 32 });
+  });
+
+  it('комбинированное смещение клэмпится по обеим осям независимо', () => {
+    const result = clampLabelOffset(0, 0, 100, 0, { x: 80, y: 50 }, 32);
+    expect(result).toEqual({ x: 50, y: 32 });
+  });
+
+  it('вырожденная связь (совпадающие точки крепления) — клэмп по модулю', () => {
+    // magnitude = hypot(40,30) = 50 > perpendicularMax=32 → масштаб 32/50 = 0.64
+    const result = clampLabelOffset(10, 10, 10, 10, { x: 40, y: 30 }, 32);
+    expect(result.x).toBeCloseTo(25.6);
+    expect(result.y).toBeCloseTo(19.2);
+  });
+
+  it('вырожденная связь в пределах лимита — без изменений', () => {
+    const result = clampLabelOffset(10, 10, 10, 10, { x: 5, y: 5 }, 32);
+    expect(result).toEqual({ x: 5, y: 5 });
   });
 });

@@ -19,6 +19,7 @@ import {
 } from '../../features/boards/context/board-canvas-keys';
 import { resolveEdgeColor } from '../../features/boards/config/board-item-defaults';
 import {
+  clampLabelOffset,
   type EdgeAnchorSide,
   getEdgeAnchorParams,
   getOffsetCurvePath,
@@ -235,6 +236,8 @@ function onLabelKeydown(e: KeyboardEvent): void {
 const CURVE_OFFSET_RESET_EPSILON = 4;
 const LABEL_OFFSET_RESET_EPSILON = 4; // px, как у CURVE_OFFSET_RESET_EPSILON
 const LABEL_DRAG_THRESHOLD = 3; // px — ниже порога это клик/dblclick, не драг
+/** Miro-подобное ограничение (12.18): вдоль линии — почти свободно, поперёк — только небольшой отступ */
+const LABEL_PERPENDICULAR_MAX = 32;
 
 const dragLabelOffsetPreview = ref<{ x: number; y: number } | null>(null);
 
@@ -343,10 +346,12 @@ function onLabelPointerMove(event: PointerEvent): void {
   const dx = point.x - labelDragStart.value.x;
   const dy = point.y - labelDragStart.value.y;
   if (!dragLabelOffsetPreview.value && Math.hypot(dx, dy) < LABEL_DRAG_THRESHOLD) return;
-  dragLabelOffsetPreview.value = {
+  const raw = {
     x: labelDragBaseOffset.value.x + dx,
     y: labelDragBaseOffset.value.y + dy,
   };
+  const { sx, sy, tx, ty } = params.value;
+  dragLabelOffsetPreview.value = clampLabelOffset(sx, sy, tx, ty, raw, LABEL_PERPENDICULAR_MAX);
 }
 
 function onLabelPointerUp(): void {

@@ -118,3 +118,54 @@ export function getOffsetCurvePath(
   const apexY = midY + offset.y;
   return [`M${sx},${sy} Q${controlX},${controlY} ${tx},${ty}`, apexX, apexY];
 }
+
+/**
+ * Ограничение свободного смещения подписи связи (12.18) до Miro-подобного
+ * поведения: вдоль линии крепления — почти свободно (не дальше самих точек
+ * крепления от базовой точки), поперёк — только небольшой отступ. Без этого
+ * ограничения пользователь может утащить подпись сколь угодно далеко от
+ * стрелки, что и было найдено при ручной проверке после первой реализации.
+ *
+ * Раскладывает сырое смещение (курсор минус базовая точка) на
+ * тангенциальную/нормальную составляющие относительно прямой между точками
+ * крепления (sx,sy)-(tx,ty) — не относительно фактической кривой пути, это
+ * достаточное приближение для небольших смещений подписи у середины связи —
+ * и клэмпит каждую составляющую отдельно.
+ */
+export function clampLabelOffset(
+  sx: number,
+  sy: number,
+  tx: number,
+  ty: number,
+  raw: { x: number; y: number },
+  perpendicularMax: number,
+): { x: number; y: number } {
+  const dx = tx - sx;
+  const dy = ty - sy;
+  const length = Math.hypot(dx, dy);
+  if (length < 1e-6) {
+    // Самопетля/вырожденная связь (совпадающие точки крепления) — нет
+    // осмысленного направления вдоль линии, клэмпим по модулю во все стороны.
+    const magnitude = Math.hypot(raw.x, raw.y);
+    if (magnitude <= perpendicularMax) return raw;
+    const scale = perpendicularMax / magnitude;
+    return { x: raw.x * scale, y: raw.y * scale };
+  }
+
+  const tangentX = dx / length;
+  const tangentY = dy / length;
+  const normalX = -tangentY;
+  const normalY = tangentX;
+  const halfLength = length / 2;
+
+  const tangential = raw.x * tangentX + raw.y * tangentY;
+  const normal = raw.x * normalX + raw.y * normalY;
+
+  const clampedTangential = Math.max(-halfLength, Math.min(halfLength, tangential));
+  const clampedNormal = Math.max(-perpendicularMax, Math.min(perpendicularMax, normal));
+
+  return {
+    x: tangentX * clampedTangential + normalX * clampedNormal,
+    y: tangentY * clampedTangential + normalY * clampedNormal,
+  };
+}

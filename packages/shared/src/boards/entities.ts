@@ -371,6 +371,11 @@ export interface BoardEdgeStyle {
    * null/undefined — подпись сидит ровно в базовой точке (поведение до
    * этой фичи). {x:0,y:0} — КОНКРЕТНОЕ пользовательское смещение (тоже
    * в базовой точке), а не «не задано».
+   * Клиент при драге ограничивает офсет Miro-подобно (`clampLabelOffset` в
+   * `floating-edge-geometry.ts`): вдоль линии — почти свободно, поперёк —
+   * небольшой отступ. Это UX-поведение, не инвариант протокола — сервер
+   * (`validateLabelOffset`) проверяет только числовой диапазон
+   * `BOARD_EDGE_LABEL_OFFSET_MAX`, как и у `curveOffset`.
    */
   labelOffset?: { x: number; y: number } | null;
 }
