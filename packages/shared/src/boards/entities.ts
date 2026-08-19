@@ -327,6 +327,9 @@ export const BOARD_EDGE_LINE_KINDS: readonly BoardEdgeLineKind[] = [
   'curved',
 ];
 
+export type BoardEdgeDash = 'solid' | 'dashed' | 'dotted';
+export const BOARD_EDGE_DASH_KINDS: readonly BoardEdgeDash[] = ['solid', 'dashed', 'dotted'];
+
 export type BoardEdgeMarker = 'none' | 'arrow' | 'dot';
 export const BOARD_EDGE_MARKER_KINDS: readonly BoardEdgeMarker[] = ['none', 'arrow', 'dot'];
 
@@ -343,6 +346,7 @@ export interface BoardEdgeStyle {
    */
   color?: BoardColorHex;
   line: BoardEdgeLineKind;
+  dash: BoardEdgeDash;
   markerStart: BoardEdgeMarker;
   markerEnd: BoardEdgeMarker;
 }

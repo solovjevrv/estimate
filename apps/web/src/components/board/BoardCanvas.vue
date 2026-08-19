@@ -471,6 +471,7 @@ const {
   addTextToSelectedEdge,
   deleteSelectedEdges,
   patchEdgeLine,
+  patchEdgeDash,
   patchEdgeMarkerStart,
   patchEdgeMarkerEnd,
   patchEdgeColor,
@@ -818,10 +819,12 @@ useBoardHotkeys({
         :left="edgeToolbarPosition.left"
         :top="edgeToolbarPosition.top"
         :current-line="selectedEdgeStyle.line"
+        :current-dash="selectedEdgeStyle.dash"
         :current-marker-start="selectedEdgeStyle.markerStart"
         :current-marker-end="selectedEdgeStyle.markerEnd"
         :current-color="selectedEdgeColor"
         @line="patchEdgeLine"
+        @dash="patchEdgeDash"
         @marker-start="patchEdgeMarkerStart"
         @marker-end="patchEdgeMarkerEnd"
         @color="patchEdgeColor"

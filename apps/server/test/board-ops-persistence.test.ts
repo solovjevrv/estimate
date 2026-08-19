@@ -30,7 +30,7 @@ const EDGE: BoardEdge = {
   sourceHandle: null,
   targetHandle: null,
   label: 'Связь',
-  style: { line: 'straight', markerStart: 'none', markerEnd: 'arrow' },
+  style: { line: 'straight', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
 };
 
 function repository(): {

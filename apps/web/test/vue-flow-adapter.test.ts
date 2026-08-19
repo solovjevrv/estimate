@@ -42,7 +42,13 @@ const straightEdge: BoardEdge = {
   sourceHandle: null,
   targetHandle: null,
   label: null,
-  style: { color: '#7DA9F6', line: 'straight', markerStart: 'none', markerEnd: 'none' },
+  style: {
+    color: '#7DA9F6',
+    line: 'straight',
+    dash: 'solid',
+    markerStart: 'none',
+    markerEnd: 'none',
+  },
 };
 
 const frameItem: BoardItem = {
@@ -83,7 +89,13 @@ const curvedEdge: BoardEdge = {
   ...straightEdge,
   id: 'e2',
   label: 'зависит от',
-  style: { color: '#FFB8E8', line: 'curved', markerStart: 'none', markerEnd: 'none' },
+  style: {
+    color: '#FFB8E8',
+    line: 'curved',
+    dash: 'solid',
+    markerStart: 'none',
+    markerEnd: 'none',
+  },
 };
 
 describe('boardItemToNode', () => {

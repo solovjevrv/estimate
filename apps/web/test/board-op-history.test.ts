@@ -44,7 +44,7 @@ function edge(over: Partial<BoardEdge> = {}): BoardEdge {
     sourceHandle: null,
     targetHandle: null,
     label: null,
-    style: { color: '#A8CAFF', line: 'straight', markerStart: 'none', markerEnd: 'none' },
+    style: { color: '#A8CAFF', line: 'straight', dash: 'solid', markerStart: 'none', markerEnd: 'none' },
     ...over,
   };
 }
@@ -178,7 +178,7 @@ describe('deriveInverseOps', () => {
   it('edge.patch → инверс-патч только по тронутым полям, включая вложенный style', () => {
     const existing = edge({
       label: 'было',
-      style: { line: 'straight', markerStart: 'none', markerEnd: 'arrow' },
+      style: { line: 'straight', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
     });
     const op: BoardOp = {
       type: 'edge.patch',

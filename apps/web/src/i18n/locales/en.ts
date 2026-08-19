@@ -455,6 +455,8 @@ export default {
       arrow: 'Arrow',
       dot: 'Dot',
     },
+    edgeDashLabel: 'Stroke style',
+    edgeDashes: { solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted' },
     you: 'You',
     presence: 'On the board',
     presenceCount: '{count} on the board',
