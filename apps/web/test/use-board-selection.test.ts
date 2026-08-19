@@ -72,7 +72,7 @@ function boardEdge(id: string, overrides: Partial<BoardEdge> = {}): BoardEdge {
     sourceHandle: null,
     targetHandle: null,
     label: null,
-    style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
+    style: { line: 'curved', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
     ...overrides,
   };
 }

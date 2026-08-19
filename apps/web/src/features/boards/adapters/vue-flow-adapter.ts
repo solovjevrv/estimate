@@ -7,7 +7,13 @@
  * Vue Flow API напрямую — для них адаптер избавиться неоткуда, а Vue Flow остаётся
  * реализацией рендерера, а не доменной моделью.
  */
-import type { BoardColorHex, BoardEdge, BoardEdgeMarker, BoardItem } from '@poker/shared';
+import type {
+  BoardColorHex,
+  BoardEdge,
+  BoardEdgeDash,
+  BoardEdgeMarker,
+  BoardItem,
+} from '@poker/shared';
 import {
   MarkerType,
   type Edge,
@@ -158,6 +164,19 @@ function toFlowMarkerType(
   return marker === 'arrow' ? { type: MarkerType.ArrowClosed, color } : undefined;
 }
 
+const BOARD_EDGE_DASH_ARRAYS: Record<BoardEdgeDash, string | undefined> = {
+  solid: undefined,
+  dashed: '10 6',
+  dotted: '1 6',
+};
+
+function resolveEdgeDashStyle(dash: BoardEdgeDash | undefined): Record<string, string> {
+  const kind = dash ?? 'solid';
+  const strokeDasharray = BOARD_EDGE_DASH_ARRAYS[kind];
+  if (!strokeDasharray) return {};
+  return kind === 'dotted' ? { strokeDasharray, strokeLinecap: 'round' } : { strokeDasharray };
+}
+
 export function boardEdgeToFlowEdge(edge: BoardEdge): Edge<BoardEdge> {
   // Не задан явно (12.9) — резолвится от текущей темы ЭТОГО зрителя, а не
   // хранится (см. resolveEdgeColor) — читает реактивный theme, поэтому
@@ -174,7 +193,7 @@ export function boardEdgeToFlowEdge(edge: BoardEdge): Edge<BoardEdge> {
     // всегда один кастомный тип (12.8)
     type: 'floating',
     label: edge.label ?? undefined,
-    style: { stroke: color, strokeWidth: 2 },
+    style: { stroke: color, strokeWidth: 2, ...resolveEdgeDashStyle(edge.style.dash) },
     markerStart: toFlowMarkerType(edge.style.markerStart, color),
     markerEnd: toFlowMarkerType(edge.style.markerEnd, color),
     data: edge,

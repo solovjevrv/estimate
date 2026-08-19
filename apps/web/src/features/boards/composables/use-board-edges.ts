@@ -56,6 +56,7 @@ export interface UseBoardEdgesResult {
   deleteSelectedEdges: () => void;
 
   patchEdgeLine: (line: BoardEdge['style']['line']) => void;
+  patchEdgeDash: (dash: BoardEdge['style']['dash']) => void;
   patchEdgeMarkerStart: (marker: BoardEdge['style']['markerStart']) => void;
   patchEdgeMarkerEnd: (marker: BoardEdge['style']['markerEnd']) => void;
   patchEdgeColor: (color: BoardColorHex) => void;
@@ -112,7 +113,7 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
   const selectedEdgeStyle = computed<BoardEdgeStyle>(() => {
     const style = selectedEdges.value[0]?.data?.style;
     if (style) return style;
-    return { line: 'curved', markerStart: 'none', markerEnd: 'arrow' };
+    return { line: 'curved', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' };
   });
 
   /** Цвет кружка-триггера тулбара всегда литералом — резолвим автоот темы. */
@@ -213,6 +214,15 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     }));
   }
 
+  function patchEdgeDash(dash: BoardEdge['style']['dash']): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, dash } },
+    }));
+  }
+
   function patchEdgeMarkerStart(marker: BoardEdge['style']['markerStart']): void {
     patchSelectedEdge((edge) => ({
       type: 'edge.patch',
@@ -255,7 +265,7 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
           sourceHandle: connection.sourceHandle ?? null,
           targetHandle: connection.targetHandle ?? null,
           label: null,
-          style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
+          style: { line: 'curved', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
         },
       },
     ]);
@@ -296,6 +306,7 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     addTextToSelectedEdge,
     deleteSelectedEdges,
     patchEdgeLine,
+    patchEdgeDash,
     patchEdgeMarkerStart,
     patchEdgeMarkerEnd,
     patchEdgeColor,

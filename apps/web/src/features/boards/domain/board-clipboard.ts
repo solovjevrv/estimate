@@ -302,7 +302,12 @@ export function parseClipboardPayload(text: string): BoardClipboardPayload | nul
         styleRecord.markerStart === 'dot') &&
       (styleRecord.markerEnd === 'none' ||
         styleRecord.markerEnd === 'arrow' ||
-        styleRecord.markerEnd === 'dot')
+        styleRecord.markerEnd === 'dot') &&
+      (styleRecord.dash === undefined ||
+        styleRecord.dash === null ||
+        styleRecord.dash === 'solid' ||
+        styleRecord.dash === 'dashed' ||
+        styleRecord.dash === 'dotted')
     );
   });
 

@@ -783,7 +783,13 @@ describe('applyBoardOp — item.delete', () => {
           sourceHandle: null,
           targetHandle: null,
           label: null,
-          style: { color: '#A8CAFF', line: 'straight', markerStart: 'none', markerEnd: 'none' },
+          style: {
+            color: '#A8CAFF',
+            line: 'straight',
+            dash: 'solid',
+            markerStart: 'none',
+            markerEnd: 'none',
+          },
         },
       },
       BOARD_ID,
@@ -954,7 +960,13 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
         sourceHandle: null,
         targetHandle: null,
         label: null,
-        style: { color: '#A8CAFF', line: 'straight', markerStart: 'none', markerEnd: 'none' },
+        style: {
+          color: '#A8CAFF',
+          line: 'straight',
+          dash: 'solid',
+          markerStart: 'none',
+          markerEnd: 'none',
+        },
       },
     };
   }
@@ -1015,6 +1027,57 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
     );
 
     expect((state.edges.get(edgeId) as BoardEdge).style.line).toBe('orthogonal');
+  });
+
+  it('отклоняет недопустимый стиль обводки связи', () => {
+    const { state, a, b } = withTwoItems();
+    const op = edgeCreateOp(randomUUID(), a, b);
+    (op as { edge: { style: unknown } }).edge.style = {
+      color: '#A8CAFF',
+      line: 'straight',
+      dash: 'zigzag',
+      markerStart: 'none',
+      markerEnd: 'none',
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('принимает штриховую обводку связи', () => {
+    const { state, a, b } = withTwoItems();
+    const edgeId = randomUUID();
+    applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+    applyBoardOp(
+      state,
+      {
+        type: 'edge.patch',
+        clientOpId: randomUUID(),
+        id: edgeId,
+        patch: { style: { dash: 'dashed' } },
+      },
+      BOARD_ID,
+      ACTOR,
+    );
+
+    expect((state.edges.get(edgeId) as BoardEdge).style.dash).toBe('dashed');
+  });
+
+  it('связь без явного dash в style получает дефолт solid', () => {
+    const { state, a, b } = withTwoItems();
+    const edgeId = randomUUID();
+    const op = edgeCreateOp(edgeId, a, b);
+    // имитируем данные, созданные до появления фичи: ключ dash отсутствует вовсе
+    (op as { edge: { style: unknown } }).edge.style = {
+      color: '#A8CAFF',
+      line: 'straight',
+      markerStart: 'none',
+      markerEnd: 'none',
+    };
+
+    applyBoardOp(state, op, BOARD_ID, ACTOR);
+
+    expect((state.edges.get(edgeId) as BoardEdge).style.dash).toBe('solid');
   });
 
   it('создаёт связь без явного цвета (12.9) — резолвится на фронте от темы зрителя', () => {

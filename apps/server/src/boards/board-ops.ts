@@ -9,6 +9,7 @@
 import {
   BOARD_COLOR_HEX_PATTERN,
   BOARD_EDGE_LABEL_MAX_LENGTH,
+  BOARD_EDGE_DASH_KINDS,
   BOARD_EDGE_LINE_KINDS,
   BOARD_EDGE_MARKER_KINDS,
   BOARD_FONT_FAMILIES,
@@ -28,6 +29,7 @@ import {
   REACTION_EMOJIS,
   toggleItemReaction,
   isBoardContainer,
+  type BoardEdgeDash,
   type BoardEdge,
   type BoardItem,
   type BoardItemContent,
@@ -128,11 +130,12 @@ function validateEdgeStyle(style: unknown): BoardEdge['style'] {
   if (typeof style !== 'object' || style === null) {
     throw new ValidationError('Не указан стиль связи');
   }
-  const { color, line, markerStart, markerEnd } = style as {
+  const { color, line, markerStart, markerEnd, dash } = style as {
     color?: unknown;
     line?: unknown;
     markerStart?: unknown;
     markerEnd?: unknown;
+    dash?: unknown;
   };
   // Не задан — цвет решается на фронте от темы зрителя (12.9), не хранится
   const validColor =
@@ -140,6 +143,14 @@ function validateEdgeStyle(style: unknown): BoardEdge['style'] {
   if (!(BOARD_EDGE_LINE_KINDS as readonly unknown[]).includes(line)) {
     throw new ValidationError('Недопустимый тип линии связи');
   }
+  const validDash =
+    dash === undefined || dash === null
+      ? 'solid'
+      : (BOARD_EDGE_DASH_KINDS as readonly unknown[]).includes(dash)
+        ? (dash as BoardEdgeDash)
+        : (() => {
+            throw new ValidationError('Недопустимый стиль обводки связи');
+          })();
   const validMarkerStart =
     markerStart === undefined || markerStart === null
       ? 'none'
@@ -161,6 +172,7 @@ function validateEdgeStyle(style: unknown): BoardEdge['style'] {
   return {
     color: validColor,
     line: line as BoardEdge['style']['line'],
+    dash: validDash,
     markerStart: validMarkerStart,
     markerEnd: validMarkerEnd,
   };

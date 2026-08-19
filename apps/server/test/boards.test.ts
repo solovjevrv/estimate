@@ -475,7 +475,7 @@ describeDb('API досок', () => {
         boardId,
         sourceItemId: itemA!.id,
         targetItemId: itemB!.id,
-        style: { color: '#7DA9F6', line: 'straight', markerStart: 'none', markerEnd: 'none' },
+        style: { color: '#7DA9F6', line: 'straight', dash: 'solid', markerStart: 'none', markerEnd: 'none' },
       });
 
       await app.inject({

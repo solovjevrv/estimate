@@ -195,7 +195,7 @@ describe('serializeSelection / parseClipboardPayload — round-trip', () => {
           sourceHandle: 'right',
           targetHandle: 'left',
           label: null,
-          style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
+          style: { line: 'curved', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
         },
       ],
     );
@@ -207,7 +207,7 @@ describe('serializeSelection / parseClipboardPayload — round-trip', () => {
         sourceHandle: 'right',
         targetHandle: 'left',
         label: null,
-        style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
+        style: { line: 'curved', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
       },
     ]);
   });
@@ -224,7 +224,7 @@ describe('serializeSelection / parseClipboardPayload — round-trip', () => {
           sourceHandle: null,
           targetHandle: null,
           label: null,
-          style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
+          style: { line: 'curved', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
         },
       ],
     );
@@ -245,7 +245,7 @@ describe('serializeSelection / parseClipboardPayload — round-trip', () => {
           sourceHandle: null,
           targetHandle: null,
           label: null,
-          style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
+          style: { line: 'curved', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
         },
       ],
       failingFetch as unknown as typeof fetch,
@@ -317,6 +317,34 @@ describe('parseClipboardPayload — валидация формата', () => {
     );
 
     expect(payload?.edges).toHaveLength(1);
+  });
+
+  it('ребро без dash в style (payload до фичи) парсится — не отбрасывается, dash по умолчанию solid', () => {
+    const payload = parseClipboardPayload(
+      JSON.stringify({
+        source: BOARD_CLIPBOARD_SOURCE,
+        version: BOARD_CLIPBOARD_VERSION,
+        items: [{ content: { type: 'sticky', text: 'A' } }],
+        edges: [
+          {
+            sourceIndex: 0,
+            targetIndex: 0,
+            sourceHandle: null,
+            targetHandle: null,
+            label: null,
+            style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
+          },
+        ],
+      }),
+    );
+
+    expect(payload?.edges).toHaveLength(1);
+    // dash отсутствует в старом payload — резолвится в 'solid' сервером/адаптером
+    expect(payload?.edges[0]!.style).toEqual({
+      line: 'curved',
+      markerStart: 'none',
+      markerEnd: 'arrow',
+    });
   });
 
   it('битый JSON — null, не бросает исключение', () => {

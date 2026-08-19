@@ -17,9 +17,11 @@ import { useI18n } from 'vue-i18n';
 import BoardColorPickerMenu from './BoardColorPickerMenu.vue';
 
 export type BoardEdgeLineKindOption = 'straight' | 'orthogonal' | 'curved';
+export type BoardEdgeDashOption = 'solid' | 'dashed' | 'dotted';
 export type BoardEdgeMarkerOption = 'none' | 'arrow' | 'dot';
 
 const LINE_OPTIONS: readonly BoardEdgeLineKindOption[] = ['straight', 'orthogonal', 'curved'];
+const DASH_OPTIONS: readonly BoardEdgeDashOption[] = ['solid', 'dashed', 'dotted'];
 const MARKER_OPTIONS: readonly BoardEdgeMarkerOption[] = ['none', 'arrow', 'dot'];
 
 const LINE_ICONS: Record<BoardEdgeLineKindOption, string> = {
@@ -45,6 +47,7 @@ const props = defineProps<{
   left: number;
   top: number;
   currentLine: BoardEdgeLineKindOption;
+  currentDash: BoardEdgeDashOption;
   currentMarkerStart: BoardEdgeMarkerOption;
   currentMarkerEnd: BoardEdgeMarkerOption;
   currentColor: BoardColorHex;
@@ -52,6 +55,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   line: [kind: BoardEdgeLineKindOption];
+  dash: [kind: BoardEdgeDashOption];
   markerStart: [kind: BoardEdgeMarkerOption];
   markerEnd: [kind: BoardEdgeMarkerOption];
   color: [hex: BoardColorHex];
@@ -111,6 +115,37 @@ function cancelColor(hex: BoardColorHex): void {
             @click="emit('line', kind)"
           >
             <UIcon :name="LINE_ICONS[kind]" class="size-4" />
+          </button>
+        </div>
+      </template>
+    </UPopover>
+
+    <UPopover :content="{ side: 'top', sideOffset: 20 }">
+      <button
+        type="button"
+        class="board-selection-icon-btn"
+        :aria-label="t('board.edgeDashLabel')"
+        :title="t('board.edgeDashLabel')"
+      >
+        <span
+          class="board-edge-dash-preview"
+          :class="`board-edge-dash-preview--${props.currentDash}`"
+        />
+      </button>
+
+      <template #content>
+        <div class="board-form-menu">
+          <button
+            v-for="kind in DASH_OPTIONS"
+            :key="kind"
+            type="button"
+            class="board-form-menu-item"
+            :class="{ 'board-form-menu-item-active': kind === props.currentDash }"
+            :aria-label="t(`board.edgeDashes.${kind}`)"
+            :title="t(`board.edgeDashes.${kind}`)"
+            @click="emit('dash', kind)"
+          >
+            <span class="board-edge-dash-preview" :class="`board-edge-dash-preview--${kind}`" />
           </button>
         </div>
       </template>
@@ -218,4 +253,20 @@ function cancelColor(hex: BoardColorHex): void {
 
 <style scoped>
 @import './shared/board-toolbar.css';
+
+.board-edge-dash-preview {
+  display: inline-block;
+  width: 18px;
+  border-top-width: 2px;
+  border-top-color: currentColor;
+}
+.board-edge-dash-preview--solid {
+  border-top-style: solid;
+}
+.board-edge-dash-preview--dashed {
+  border-top-style: dashed;
+}
+.board-edge-dash-preview--dotted {
+  border-top-style: dotted;
+}
 </style>

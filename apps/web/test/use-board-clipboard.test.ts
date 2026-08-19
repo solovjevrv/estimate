@@ -101,7 +101,7 @@ describe('useBoardClipboard duplicateSelection', () => {
       sourceHandle: null,
       targetHandle: null,
       label: null,
-      style: { line: 'straight', markerStart: 'none', markerEnd: 'arrow' },
+      style: { line: 'straight', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
     };
     const { api, applyOps } = clipboard([frame, child], [node(frame)], [edge]);
 

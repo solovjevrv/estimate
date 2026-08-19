@@ -35,7 +35,7 @@ function boardEdge(id: string, overrides: Partial<BoardEdge> = {}): BoardEdge {
     sourceHandle: null,
     targetHandle: null,
     label: null,
-    style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow' },
+    style: { line: 'curved', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
     ...overrides,
   };
 }
@@ -149,6 +149,7 @@ describe('useBoardEdges — onConnect', () => {
     expect(ops[0]!.edge.targetHandle).toBe('left');
     expect(ops[0]!.edge.style).toEqual({
       line: 'curved',
+      dash: 'solid',
       markerStart: 'none',
       markerEnd: 'arrow',
     });
@@ -293,6 +294,7 @@ describe('useBoardEdges — selectedEdgeStyle/Color', () => {
     setSelected([]);
     expect(edges.selectedEdgeStyle.value).toEqual({
       line: 'curved',
+      dash: 'solid',
       markerStart: 'none',
       markerEnd: 'arrow',
     });
@@ -301,7 +303,13 @@ describe('useBoardEdges — selectedEdgeStyle/Color', () => {
   it('reads style from the first selected edge and resolves its color', () => {
     const e = flowEdge(
       boardEdge('e', {
-        style: { line: 'straight', markerStart: 'dot', markerEnd: 'arrow', color: '#FF0000' },
+        style: {
+          line: 'straight',
+          dash: 'solid',
+          markerStart: 'dot',
+          markerEnd: 'arrow',
+          color: '#FF0000',
+        },
       }),
     );
     const { edges } = makeEdges({
@@ -332,6 +340,15 @@ describe('useBoardEdges — edge style patch ops', () => {
     expect(op.patch.style.line).toBe('orthogonal');
   });
 
+  it('patchEdgeDash emits edge.patch with the new dash kind', () => {
+    const e = flowEdge(boardEdge('e'));
+    const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
+    edges.patchEdgeDash('dashed');
+    const op = lastOps(applyOps)[0]!;
+    expect(op.type).toBe('edge.patch');
+    expect(op.patch.style.dash).toBe('dashed');
+  });
+
   it('patchEdgeMarkerStart emits edge.patch with the new marker', () => {
     const e = flowEdge(boardEdge('e'));
     const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
@@ -349,7 +366,13 @@ describe('useBoardEdges — edge style patch ops', () => {
   it('patchEdgeColor emits edge.patch with the new color and ends preview session', () => {
     const e = flowEdge(
       boardEdge('e', {
-        style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow', color: '#orig' },
+        style: {
+          line: 'curved',
+          dash: 'solid',
+          markerStart: 'none',
+          markerEnd: 'arrow',
+          color: '#orig',
+        },
       }),
     );
     const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
@@ -361,7 +384,13 @@ describe('useBoardEdges — edge style patch ops', () => {
   it('previewEdgeColor overrides only the color, preserving the rest of the style', () => {
     const e = flowEdge(
       boardEdge('e', {
-        style: { line: 'curved', markerStart: 'dot', markerEnd: 'arrow', color: '#orig' },
+        style: {
+          line: 'curved',
+          dash: 'solid',
+          markerStart: 'dot',
+          markerEnd: 'arrow',
+          color: '#orig',
+        },
       }),
     );
     const { edges, applyOps, setSelected, setFlowEdges } = makeEdges();
@@ -371,6 +400,7 @@ describe('useBoardEdges — edge style patch ops', () => {
     edges.previewEdgeColor('#new');
     expect(lastOps(applyOps)[0]!.patch.style).toEqual({
       line: 'curved',
+      dash: 'solid',
       markerStart: 'dot',
       markerEnd: 'arrow',
       color: '#new',
@@ -380,7 +410,13 @@ describe('useBoardEdges — edge style patch ops', () => {
   it('second preview without a commit does not re-freeze ids', () => {
     const e = flowEdge(
       boardEdge('e', {
-        style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow', color: '#orig' },
+        style: {
+          line: 'curved',
+          dash: 'solid',
+          markerStart: 'none',
+          markerEnd: 'arrow',
+          color: '#orig',
+        },
       }),
     );
     const { edges, applyOps, setSelected, setFlowEdges } = makeEdges();
@@ -397,7 +433,13 @@ describe('useBoardEdges — edge style patch ops', () => {
   it('cancelEdgeColorPreview reverts the previewed edge ids to the picker original color', () => {
     const e = flowEdge(
       boardEdge('e', {
-        style: { line: 'curved', markerStart: 'none', markerEnd: 'arrow', color: '#orig' },
+        style: {
+          line: 'curved',
+          dash: 'solid',
+          markerStart: 'none',
+          markerEnd: 'arrow',
+          color: '#orig',
+        },
       }),
     );
     const { edges, applyOps, setSelected, setFlowEdges } = makeEdges();

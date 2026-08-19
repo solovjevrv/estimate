@@ -36,6 +36,7 @@ function mountToolbar(props: Record<string, unknown> = {}) {
       left: 100,
       top: 200,
       currentLine: 'straight',
+      currentDash: 'solid',
       currentMarkerStart: 'arrow',
       currentMarkerEnd: 'arrow',
       currentColor: '#FF0000',
@@ -166,6 +167,88 @@ describe('BoardEdgeToolbar — цвет стрелки через UColorPicker',
     await nextTick();
 
     expect(wrapper.emitted('colorPreview')).toBeFalsy();
+    wrapper.unmount();
+  });
+});
+
+async function openDashPopover(wrapper: ReturnType<typeof mountToolbar>) {
+  const trigger = wrapper.find('button[aria-label="Стиль обводки"]');
+  await trigger.trigger('click');
+  await nextTick();
+  return trigger;
+}
+
+/** aria-label пункта меню рассчитывается из board.edgeDashes.<kind> */
+function dashItemAriaLabel(kind: 'solid' | 'dashed' | 'dotted'): string {
+  const labels: Record<'solid' | 'dashed' | 'dotted', string> = {
+    solid: 'Сплощная',
+    dashed: 'Штриховая',
+    dotted: 'Пунктирная',
+  };
+  return labels[kind];
+}
+
+describe('BoardEdgeToolbar — стиль обводки связи', () => {
+  it('попап со стилями обводки открывается по клику на триггер', async () => {
+    const wrapper = mountToolbar();
+    expect(wrapper.find('button[aria-label="Стиль обводки"]').exists()).toBe(true);
+    // в закрытом состоянии только триггерный превью-спан
+    expect(document.querySelectorAll('.board-edge-dash-preview')).toHaveLength(1);
+    expect(document.querySelectorAll('.board-form-menu-item')).toHaveLength(0);
+
+    const trigger = await openDashPopover(wrapper);
+    expect(trigger.attributes('data-state')).toBe('open');
+
+    const items = document.querySelectorAll<HTMLButtonElement>('.board-form-menu-item');
+    expect(items).toHaveLength(3);
+    wrapper.unmount();
+  });
+
+  it('клик по пункту "solid" эмиттит dash="solid"', async () => {
+    const wrapper = mountToolbar({ currentDash: 'dashed' });
+    await openDashPopover(wrapper);
+    const item = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.board-form-menu-item'),
+    ).find((btn) => btn.getAttribute('aria-label') === dashItemAriaLabel('solid'))!;
+    item.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('dash')?.[0]?.[0]).toBe('solid');
+    wrapper.unmount();
+  });
+
+  it('клик по пункту "dashed" эмиттит dash="dashed"', async () => {
+    const wrapper = mountToolbar({ currentDash: 'solid' });
+    await openDashPopover(wrapper);
+    const item = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.board-form-menu-item'),
+    ).find((btn) => btn.getAttribute('aria-label') === dashItemAriaLabel('dashed'))!;
+    item.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('dash')?.[0]?.[0]).toBe('dashed');
+    wrapper.unmount();
+  });
+
+  it('клик по пункту "dotted" эмиттит dash="dotted"', async () => {
+    const wrapper = mountToolbar({ currentDash: 'solid' });
+    await openDashPopover(wrapper);
+    const item = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.board-form-menu-item'),
+    ).find((btn) => btn.getAttribute('aria-label') === dashItemAriaLabel('dotted'))!;
+    item.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('dash')?.[0]?.[0]).toBe('dotted');
+    wrapper.unmount();
+  });
+
+  it('пункт, соответствующий currentDash, помечен активным классом', async () => {
+    const wrapper = mountToolbar({ currentDash: 'dotted' });
+    await openDashPopover(wrapper);
+
+    const items = document.querySelectorAll<HTMLButtonElement>('.board-form-menu-item');
+    const dashItem = Array.from(items).find(
+      (btn) => btn.getAttribute('aria-label') === dashItemAriaLabel('dotted'),
+    )!;
+    expect(dashItem.classList.contains('board-form-menu-item-active')).toBe(true);
     wrapper.unmount();
   });
 });

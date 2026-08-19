@@ -455,6 +455,8 @@ export default {
       arrow: 'Стрелка',
       dot: 'Точка',
     },
+    edgeDashLabel: 'Стиль обводки',
+    edgeDashes: { solid: 'Сплощная', dashed: 'Штриховая', dotted: 'Пунктирная' },
     you: 'Вы',
     presence: 'На доске',
     presenceCount: '{count} человек на доске',
