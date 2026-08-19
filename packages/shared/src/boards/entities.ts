@@ -67,6 +67,8 @@ export const BOARD_TITLE_MAX_LENGTH = 120;
 export const BOARD_ITEM_TEXT_MAX_LENGTH = 2000;
 /** Подпись связи (12.8) — короткая аннотация на стрелке, не текст целого стикера */
 export const BOARD_EDGE_LABEL_MAX_LENGTH = 200;
+/** Максимальное смещение точки изгиба связи (12.17) — мировые px канваса, защита от мусорных значений */
+export const BOARD_EDGE_CURVE_OFFSET_MAX = 4000;
 /** Заголовок фрейма/группы (14.3) — короткая метка контейнера */
 export const BOARD_FRAME_TITLE_MAX_LENGTH = 200;
 /** Потолок элементов на доску — защита от неограниченно растущего снимка (12.1) */
@@ -349,6 +351,14 @@ export interface BoardEdgeStyle {
   dash: BoardEdgeDash;
   markerStart: BoardEdgeMarker;
   markerEnd: BoardEdgeMarker;
+  /**
+   * Смещение видимой точки изгиба (апекса) кривой связи от геометрической
+   * середины прямой между точками крепления (12.17) — в мировых px канваса.
+   * null/undefined — изгиб строится автоматически библиотечной getBezierPath
+   * (поведение до этой фичи). {x:0,y:0} — КОНКРЕТНОЕ пользовательское смещение
+   * (изгиб проходит через середину), а не «авто-кривая».
+   */
+  curveOffset?: { x: number; y: number } | null;
 }
 
 export interface BoardEdge {

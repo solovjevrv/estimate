@@ -9,6 +9,7 @@
 import {
   BOARD_COLOR_HEX_PATTERN,
   BOARD_EDGE_LABEL_MAX_LENGTH,
+  BOARD_EDGE_CURVE_OFFSET_MAX,
   BOARD_EDGE_DASH_KINDS,
   BOARD_EDGE_LINE_KINDS,
   BOARD_EDGE_MARKER_KINDS,
@@ -126,16 +127,29 @@ function validateStyle(style: unknown): BoardItemStyle {
   return { color, fontSize, fontFamily, textColor, textAlign };
 }
 
+function validateCurveOffset(value: unknown): { x: number; y: number } | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'object') {
+    throw new ValidationError('Некорректное смещение изгиба связи');
+  }
+  const { x, y } = value as { x?: unknown; y?: unknown };
+  return {
+    x: requireFinite(x, 'curveOffset.x', -BOARD_EDGE_CURVE_OFFSET_MAX, BOARD_EDGE_CURVE_OFFSET_MAX),
+    y: requireFinite(y, 'curveOffset.y', -BOARD_EDGE_CURVE_OFFSET_MAX, BOARD_EDGE_CURVE_OFFSET_MAX),
+  };
+}
+
 function validateEdgeStyle(style: unknown): BoardEdge['style'] {
   if (typeof style !== 'object' || style === null) {
     throw new ValidationError('Не указан стиль связи');
   }
-  const { color, line, markerStart, markerEnd, dash } = style as {
+  const { color, line, markerStart, markerEnd, dash, curveOffset } = style as {
     color?: unknown;
     line?: unknown;
     markerStart?: unknown;
     markerEnd?: unknown;
     dash?: unknown;
+    curveOffset?: unknown;
   };
   // Не задан — цвет решается на фронте от темы зрителя (12.9), не хранится
   const validColor =
@@ -175,6 +189,7 @@ function validateEdgeStyle(style: unknown): BoardEdge['style'] {
     dash: validDash,
     markerStart: validMarkerStart,
     markerEnd: validMarkerEnd,
+    curveOffset: validateCurveOffset(curveOffset),
   };
 }
 

@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   BOARD_EDGE_LABEL_MAX_LENGTH,
+  BOARD_EDGE_CURVE_OFFSET_MAX,
   REACTION_EMOJIS,
   type BoardEdge,
   type BoardItem,
@@ -1202,6 +1203,111 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
         ACTOR,
       ),
     ).toThrow(ValidationError);
+  });
+
+  it('принимает смещение изгиба кривой', () => {
+    const { state, a, b } = withTwoItems();
+    const edgeId = randomUUID();
+    applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+    applyBoardOp(
+      state,
+      {
+        type: 'edge.patch',
+        clientOpId: randomUUID(),
+        id: edgeId,
+        patch: { style: { curveOffset: { x: 30, y: -15 } } },
+      },
+      BOARD_ID,
+      ACTOR,
+    );
+
+    expect((state.edges.get(edgeId) as BoardEdge).style.curveOffset).toEqual({ x: 30, y: -15 });
+  });
+
+  it('связь без curveOffset в style получает null (обратная совместимость)', () => {
+    const { state, a, b } = withTwoItems();
+    const edgeId = randomUUID();
+    const op = edgeCreateOp(edgeId, a, b);
+    (op as { edge: { style: unknown } }).edge.style = {
+      color: '#A8CAFF',
+      line: 'curved',
+      dash: 'solid',
+      markerStart: 'none',
+      markerEnd: 'none',
+    };
+
+    applyBoardOp(state, op, BOARD_ID, ACTOR);
+
+    expect((state.edges.get(edgeId) as BoardEdge).style.curveOffset).toBeNull();
+  });
+
+  it('отклоняет нечисловое смещение изгиба', () => {
+    const { state, a, b } = withTwoItems();
+    const edgeId = randomUUID();
+    applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+    const op = {
+      type: 'edge.patch' as const,
+      clientOpId: randomUUID(),
+      id: edgeId,
+      patch: { style: { curveOffset: { x: 'oops', y: 1 } } },
+    } as unknown as BoardOp;
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('отклоняет смещение изгиба за пределами лимита', () => {
+    const { state, a, b } = withTwoItems();
+    const edgeId = randomUUID();
+    applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+    expect(() =>
+      applyBoardOp(
+        state,
+        {
+          type: 'edge.patch',
+          clientOpId: randomUUID(),
+          id: edgeId,
+          patch: { style: { curveOffset: { x: BOARD_EDGE_CURVE_OFFSET_MAX + 1, y: 0 } } },
+        },
+        BOARD_ID,
+        ACTOR,
+      ),
+    ).toThrow(ValidationError);
+  });
+
+  it('явный null сбрасывает смещение изгиба', () => {
+    const { state, a, b } = withTwoItems();
+    const edgeId = randomUUID();
+    applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+    applyBoardOp(
+      state,
+      {
+        type: 'edge.patch',
+        clientOpId: randomUUID(),
+        id: edgeId,
+        patch: { style: { curveOffset: { x: 50, y: 50 } } },
+      },
+      BOARD_ID,
+      ACTOR,
+    );
+    expect((state.edges.get(edgeId) as BoardEdge).style.curveOffset).toEqual({ x: 50, y: 50 });
+
+    applyBoardOp(
+      state,
+      {
+        type: 'edge.patch',
+        clientOpId: randomUUID(),
+        id: edgeId,
+        patch: { style: { curveOffset: null } },
+      },
+      BOARD_ID,
+      ACTOR,
+    );
+
+    expect((state.edges.get(edgeId) as BoardEdge).style.curveOffset).toBeNull();
   });
 });
 
