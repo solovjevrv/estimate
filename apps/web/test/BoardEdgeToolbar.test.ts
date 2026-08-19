@@ -181,7 +181,7 @@ async function openDashPopover(wrapper: ReturnType<typeof mountToolbar>) {
 /** aria-label пункта меню рассчитывается из board.edgeDashes.<kind> */
 function dashItemAriaLabel(kind: 'solid' | 'dashed' | 'dotted'): string {
   const labels: Record<'solid' | 'dashed' | 'dotted', string> = {
-    solid: 'Сплощная',
+    solid: 'Сплошная',
     dashed: 'Штриховая',
     dotted: 'Пунктирная',
   };
