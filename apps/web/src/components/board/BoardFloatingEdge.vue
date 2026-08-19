@@ -108,9 +108,11 @@ const labelY = computed(() => pathData.value[2]);
  * Miro) — видно, что сюда можно печатать, и первый же символ перезаписывает
  * её целиком. Если уйти не напечатав ничего, заглушка не сохраняется.
  */
+const EDGE_LABEL_MAX_WIDTH_CH = 28;
+
 const editing = ref(false);
 const draftText = ref('');
-const inputEl = useTemplateRef<HTMLInputElement>('labelInput');
+const inputEl = useTemplateRef<HTMLTextAreaElement>('labelInput');
 
 function placeholderWord(): string {
   return t('board.edgeLabelPlaceholder');
@@ -121,6 +123,7 @@ async function startEditing(): Promise<void> {
   draftText.value = props.data.label ?? placeholderWord();
   editing.value = true;
   await nextTick();
+  resizeLabelInput();
   inputEl.value?.focus();
   inputEl.value?.select();
 }
@@ -153,8 +156,49 @@ function cancelEditing(): void {
   editing.value = false;
 }
 
-/** Грубая, но достаточная имитация auto-width (аналог field-sizing без Safari-проблем) */
-const inputWidthCh = computed(() => Math.max(2, draftText.value.length));
+/**
+ * Авторазмер textarea (аналог `field-sizing` без Safari-проблем): ширина — по
+ * самой длинной строке `draftText.split('\n')` в диапазоне `2..EDGE_LABEL_MAX_WIDTH_CH`
+ * ch, высота — по `scrollHeight`, чтобы расти по числу строк без вертикального скролла.
+ * Длинные слова переносятся CSS (`overflow-wrap: anywhere`), а ширина жёстко ограничена
+ * 28ch, поэтому подпись не выходит за пределы даже без пробелов.
+ */
+const labelInputStyle = computed(() => {
+  const longest = draftText.value.split('\n').reduce((max, line) => Math.max(max, line.length), 0);
+  const cols = Math.min(EDGE_LABEL_MAX_WIDTH_CH, Math.max(2, longest + 1));
+  return { width: `${cols}ch` } as const;
+});
+
+/** Обнуляем inline-height: иначе `scrollHeight` отражает прежний (больший) размер,
+ *  и textarea не схлопнется при удалении строк — классический трюк для автороста. */
+function resizeLabelInput(): void {
+  const el = inputEl.value;
+  if (!el) return;
+  el.style.height = '0';
+  el.style.height = `${el.scrollHeight}px`;
+}
+
+watch(draftText, async () => {
+  await nextTick();
+  resizeLabelInput();
+});
+
+/**
+ * Любой keydown внутри textarea останавливает всплытие в Vue Flow / глобальные
+ * hotkeys (`.stop`). Обычный Enter НЕ prevent-им — он вставляет `\n` и не завершает
+ * редактирование; Ctrl+Enter / Cmd+Enter завершают через blur → commitEditing.
+ */
+function onLabelKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    cancelEditing();
+    return;
+  }
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+    e.preventDefault();
+    inputEl.value?.blur();
+  }
+}
 </script>
 
 <template>
@@ -195,17 +239,17 @@ const inputWidthCh = computed(() => Math.max(2, draftText.value.length));
       @dblclick.stop="startEditing"
       @pointerdown.stop
     >
-      <input
+      <textarea
         v-if="editing"
         ref="labelInput"
         v-model="draftText"
         :maxlength="BOARD_EDGE_LABEL_MAX_LENGTH"
-        type="text"
+        rows="1"
+        spellcheck="false"
         data-testid="board-edge-label-input"
         class="board-edge-label-input"
-        :size="inputWidthCh"
-        @keydown.esc.stop.prevent="cancelEditing"
-        @keydown.enter.stop.prevent="($event.target as HTMLInputElement).blur()"
+        :style="labelInputStyle"
+        @keydown.stop="onLabelKeydown"
         @blur="commitEditing"
       />
       <span v-else data-testid="board-edge-label-text" class="board-edge-label-text">{{
@@ -238,15 +282,29 @@ const inputWidthCh = computed(() => Math.max(2, draftText.value.length));
   display: inline-block;
   font-size: 13px;
   font-weight: 600;
-  white-space: nowrap;
+  line-height: 1.4;
+  /* 28ch — жёсткий лимит ширины подписи, согласован с EDGE_LABEL_MAX_WIDTH_CH */
+  max-inline-size: 28ch;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   cursor: text;
 }
 
 .board-edge-label-input {
+  display: block;
+  box-sizing: border-box;
+  /* min-height ровно на одну строку — line-height × font-size */
+  min-height: 1.4em;
   padding: 0;
+  font-family: inherit;
   font-size: 13px;
   font-weight: 600;
+  line-height: 1.4;
   text-align: center;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  resize: none;
+  overflow: hidden;
   background: transparent;
   border: none;
   outline: none;
