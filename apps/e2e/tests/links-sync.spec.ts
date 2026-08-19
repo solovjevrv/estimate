@@ -44,6 +44,22 @@ test('ссылки синхронизируются между участник�
     'https://jira.example.com/OWNER-1',
   );
 
+  /**
+   * Независимый наблюдатель — барьер для второй owner-правки ниже. Нельзя
+   * использовать `ownerSaveButton.toBeEnabled()`: кнопка уже enabled до того,
+   * как async-save успеет стартовать, поэтому guest-запрос иногда попадал на
+   * сервер первым и честно не получал конфликт. Наблюдатель не имеет черновика,
+   * следовательно его форма обновится только после коммита и WS-рассылки.
+   */
+  const observerContext = await newContext(browser);
+  const observerPage = await observerContext.newPage();
+  await observerPage.goto(roomUrl);
+  await observerPage.getByPlaceholder('Например, Мария').fill('Наблюдатель ссылок');
+  await observerPage.getByRole('button', { name: 'Войти в комнату' }).click();
+  await expect(observerPage.getByPlaceholder(JIRA_PLACEHOLDER)).toHaveValue(
+    'https://jira.example.com/OWNER-1',
+  );
+
   // Гость начинает править Confluence-ссылку (черновик), но ещё не сохранил —
   // тем временем владелец успевает сохранить свою правку первым
   await guestPage
@@ -52,18 +68,16 @@ test('ссылки синхронизируются между участник�
   await ownerPage.getByPlaceholder(JIRA_PLACEHOLDER).fill('https://jira.example.com/OWNER-2');
   const ownerSaveButton = ownerPage.getByRole('button', { name: 'Сохранить' });
   await ownerSaveButton.click();
-  // Успешное сохранение никак не отображается (тост есть только у ошибки), но кнопка
-  // disabled, пока идёт запрос (`:loading`) — ждём её разблокировки как сигнал, что
-  // версия на сервере уже сдвинулась, вместо гонки с ack владельца по таймауту
-  await expect(ownerSaveButton).toBeEnabled();
+  await expect(observerPage.getByPlaceholder(JIRA_PLACEHOLDER)).toHaveValue(
+    'https://jira.example.com/OWNER-2',
+  );
 
   // Черновик гостя основан на устаревшей версии — сохранение отклоняется конфликтом,
   // а не тихо перезаписывает то, что уже сохранил владелец
   await guestPage.getByRole('button', { name: 'Сохранить' }).click();
   // Текст тоста задублирован скрытым aria-live регионом для скринридеров — уточняем видимую зону.
-  // Таймаут увеличен: под нагрузкой параллельного прогона весь путь клик → WS round-trip →
-  // рендер тоста иногда не укладывается в дефолтные 5с, хотя логика конфликта отрабатывает верно
-  // (проверено отдельно по трафику WS — сервер стабильно отвечает конфликтом каждый раз).
+  // Барьер через observer выше гарантирует, что stale-version уже есть на сервере;
+  // увеличенный timeout оставляем только на транспорт + рендер самого тоста под нагрузкой.
   await expect(
     guestPage
       .getByRole('region', { name: /Notifications/ })
