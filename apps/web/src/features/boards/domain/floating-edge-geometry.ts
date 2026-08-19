@@ -120,52 +120,67 @@ export function getOffsetCurvePath(
 }
 
 /**
- * Ограничение свободного смещения подписи связи (12.18) до Miro-подобного
- * поведения: вдоль линии крепления — почти свободно (не дальше самих точек
- * крепления от базовой точки), поперёк — только небольшой отступ. Без этого
- * ограничения пользователь может утащить подпись сколь угодно далеко от
- * стрелки, что и было найдено при ручной проверке после первой реализации.
- *
- * Раскладывает сырое смещение (курсор минус базовая точка) на
- * тангенциальную/нормальную составляющие относительно прямой между точками
- * крепления (sx,sy)-(tx,ty) — не относительно фактической кривой пути, это
- * достаточное приближение для небольших смещений подписи у середины связи —
- * и клэмпит каждую составляющую отдельно.
+ * Точка дискретной выборки отрисованного пути связи (12.18) — мировые px
+ * канваса, та же система координат, что у sx/sy/tx/ty.
  */
-export function clampLabelOffset(
-  sx: number,
-  sy: number,
-  tx: number,
-  ty: number,
-  raw: { x: number; y: number },
-  perpendicularMax: number,
-): { x: number; y: number } {
-  const dx = tx - sx;
-  const dy = ty - sy;
-  const length = Math.hypot(dx, dy);
-  if (length < 1e-6) {
-    // Самопетля/вырожденная связь (совпадающие точки крепления) — нет
-    // осмысленного направления вдоль линии, клэмпим по модулю во все стороны.
-    const magnitude = Math.hypot(raw.x, raw.y);
-    if (magnitude <= perpendicularMax) return raw;
-    const scale = perpendicularMax / magnitude;
-    return { x: raw.x * scale, y: raw.y * scale };
+export interface PathSample {
+  x: number;
+  y: number;
+}
+
+/**
+ * Ближайшая к целевой точке точка на предвычисленной выборке пути — линейный
+ * проход без интерполяции между соседними сэмплами (плотности выборки,
+ * задаваемой вызывающим кодом — см. `LABEL_PATH_SAMPLE_COUNT` в
+ * `BoardFloatingEdge.vue` — достаточно для интерактивного драга). Возвращает
+ * индекс, а не саму точку, чтобы вызывающий код мог сразу получить
+ * касательную через `tangentAtSample` тем же индексом.
+ *
+ * Используется для перетаскивания подписи связи «магнитом» к РЕАЛЬНОЙ
+ * отрисованной кривой (12.18) — раньше смещение считалось относительно
+ * прямой между точками крепления, что заметно расходилось с видимой формой
+ * у сильно изогнутых связей (найдено пользователем при ручной проверке).
+ */
+export function closestSampleIndex(samples: readonly PathSample[], target: PathSample): number {
+  let bestIndex = 0;
+  let bestDistSq = Infinity;
+  for (let i = 0; i < samples.length; i++) {
+    const sample = samples[i]!;
+    const dx = sample.x - target.x;
+    const dy = sample.y - target.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < bestDistSq) {
+      bestDistSq = distSq;
+      bestIndex = i;
+    }
   }
+  return bestIndex;
+}
 
-  const tangentX = dx / length;
-  const tangentY = dy / length;
-  const normalX = -tangentY;
-  const normalY = tangentX;
-  const halfLength = length / 2;
+/**
+ * Единичный касательный вектор пути в точке выборки с данным индексом — по
+ * соседним сэмплам (центральная разность, где есть оба соседа; иначе
+ * односторонняя на границах выборки).
+ */
+export function tangentAtSample(samples: readonly PathSample[], index: number): PathSample {
+  const prev = samples[Math.max(0, index - 1)]!;
+  const next = samples[Math.min(samples.length - 1, index + 1)]!;
+  const dx = next.x - prev.x;
+  const dy = next.y - prev.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 1e-6) return { x: 1, y: 0 };
+  return { x: dx / length, y: dy / length };
+}
 
-  const tangential = raw.x * tangentX + raw.y * tangentY;
-  const normal = raw.x * normalX + raw.y * normalY;
-
-  const clampedTangential = Math.max(-halfLength, Math.min(halfLength, tangential));
-  const clampedNormal = Math.max(-perpendicularMax, Math.min(perpendicularMax, normal));
-
-  return {
-    x: tangentX * clampedTangential + normalX * clampedNormal,
-    y: tangentY * clampedTangential + normalY * clampedNormal,
-  };
+/**
+ * Точка, сдвинутая от `point` вдоль нормали к `tangent` на `distance` px.
+ * Нормаль — поворот касательной на 90° (`-tangent.y, tangent.x`), тот же
+ * знак/ориентация, что и в остальной геометрии связей в этом файле.
+ */
+export function offsetAlongNormal(
+  point: PathSample,
+  tangent: PathSample,
+  distance: number,
+): PathSample {
+  return { x: point.x - tangent.y * distance, y: point.y + tangent.x * distance };
 }

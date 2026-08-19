@@ -5,9 +5,11 @@ import type {
 import { describe, expect, it } from 'vitest';
 
 import {
-  clampLabelOffset,
+  closestSampleIndex,
   getEdgeAnchorParams,
   getOffsetCurvePath,
+  offsetAlongNormal,
+  tangentAtSample,
 } from '../src/features/boards/domain/floating-edge-geometry';
 
 function node(
@@ -137,39 +139,76 @@ describe('getOffsetCurvePath', () => {
   });
 });
 
-/** Горизонтальная линия крепления (0,0)-(100,0): tangent=(1,0), normal=(0,1), halfLength=50 */
-describe('clampLabelOffset', () => {
-  it('смещение в пределах обоих лимитов проходит без изменений', () => {
-    const result = clampLabelOffset(0, 0, 100, 0, { x: 30, y: 10 }, 32);
-    expect(result).toEqual({ x: 30, y: 10 });
+/** Горизонтальная выборка (0,0)→(100,0) с шагом 25 — прямая линия, 5 точек */
+const horizontalSamples = [
+  { x: 0, y: 0 },
+  { x: 25, y: 0 },
+  { x: 50, y: 0 },
+  { x: 75, y: 0 },
+  { x: 100, y: 0 },
+];
+
+describe('closestSampleIndex', () => {
+  it('находит индекс ближайшего сэмпла к целевой точке', () => {
+    // расстояния до (60,10)²: 3700, 1325, 200, 325, 1700 → минимум у индекса 2 (x=50)
+    expect(closestSampleIndex(horizontalSamples, { x: 60, y: 10 })).toBe(2);
   });
 
-  it('вдоль линии клэмпится до половины расстояния между точками крепления', () => {
-    // tangential=80 > halfLength=50 → клэмп до 50
-    const result = clampLabelOffset(0, 0, 100, 0, { x: 80, y: 0 }, 32);
-    expect(result).toEqual({ x: 50, y: 0 });
+  it('точное совпадение с сэмплом даёт его индекс', () => {
+    expect(closestSampleIndex(horizontalSamples, { x: 100, y: 0 })).toBe(4);
+  });
+});
+
+describe('tangentAtSample', () => {
+  it('касательная в средней точке горизонтальной прямой — (1,0)', () => {
+    expect(tangentAtSample(horizontalSamples, 2)).toEqual({ x: 1, y: 0 });
   });
 
-  it('поперёк линии клэмпится до perpendicularMax', () => {
-    // normal=50 > perpendicularMax=32 → клэмп до 32
-    const result = clampLabelOffset(0, 0, 100, 0, { x: 0, y: 50 }, 32);
-    expect(result).toEqual({ x: 0, y: 32 });
+  it('на границе выборки берёт одностороннюю разность', () => {
+    expect(tangentAtSample(horizontalSamples, 0)).toEqual({ x: 1, y: 0 });
+    expect(tangentAtSample(horizontalSamples, 4)).toEqual({ x: 1, y: 0 });
   });
 
-  it('комбинированное смещение клэмпится по обеим осям независимо', () => {
-    const result = clampLabelOffset(0, 0, 100, 0, { x: 80, y: 50 }, 32);
-    expect(result).toEqual({ x: 50, y: 32 });
+  it('диагональная выборка даёт нормализованный диагональный вектор', () => {
+    const diagonal = [
+      { x: 0, y: 0 },
+      { x: 10, y: 10 },
+      { x: 20, y: 20 },
+    ];
+    const result = tangentAtSample(diagonal, 1);
+    expect(result.x).toBeCloseTo(Math.SQRT1_2);
+    expect(result.y).toBeCloseTo(Math.SQRT1_2);
   });
 
-  it('вырожденная связь (совпадающие точки крепления) — клэмп по модулю', () => {
-    // magnitude = hypot(40,30) = 50 > perpendicularMax=32 → масштаб 32/50 = 0.64
-    const result = clampLabelOffset(10, 10, 10, 10, { x: 40, y: 30 }, 32);
-    expect(result.x).toBeCloseTo(25.6);
-    expect(result.y).toBeCloseTo(19.2);
+  it('вырожденная выборка (совпадающие соседи) — фолбэк (1,0)', () => {
+    const degenerate = [
+      { x: 5, y: 5 },
+      { x: 5, y: 5 },
+    ];
+    expect(tangentAtSample(degenerate, 0)).toEqual({ x: 1, y: 0 });
+  });
+});
+
+describe('offsetAlongNormal', () => {
+  it('смещает точку вдоль нормали к горизонтальной касательной', () => {
+    // tangent=(1,0) → normal=(0,1)
+    const result = offsetAlongNormal({ x: 10, y: 0 }, { x: 1, y: 0 }, 5);
+    expect(result).toEqual({ x: 10, y: 5 });
   });
 
-  it('вырожденная связь в пределах лимита — без изменений', () => {
-    const result = clampLabelOffset(10, 10, 10, 10, { x: 5, y: 5 }, 32);
-    expect(result).toEqual({ x: 5, y: 5 });
+  it('отрицательная дистанция смещает в противоположную сторону', () => {
+    const result = offsetAlongNormal({ x: 10, y: 0 }, { x: 1, y: 0 }, -5);
+    expect(result).toEqual({ x: 10, y: -5 });
+  });
+
+  it('смещает точку вдоль нормали к вертикальной касательной', () => {
+    // tangent=(0,1) → normal=(-1,0)
+    const result = offsetAlongNormal({ x: 0, y: 0 }, { x: 0, y: 1 }, 4);
+    expect(result).toEqual({ x: -4, y: 0 });
+  });
+
+  it('нулевая дистанция не меняет точку', () => {
+    const result = offsetAlongNormal({ x: 3, y: 7 }, { x: 1, y: 0 }, 0);
+    expect(result).toEqual({ x: 3, y: 7 });
   });
 });

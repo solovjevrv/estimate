@@ -140,15 +140,20 @@ function validateCurveOffset(value: unknown): { x: number; y: number } | null {
   };
 }
 
-function validateLabelOffset(value: unknown): { x: number; y: number } | null {
+function validateLabelOffset(value: unknown): { t: number; distance: number } | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== 'object') {
-    throw new ValidationError('Некорректное смещение подписи связи');
+    throw new ValidationError('Некорректное позиционирование подписи связи');
   }
-  const { x, y } = value as { x?: unknown; y?: unknown };
+  const { t, distance } = value as { t?: unknown; distance?: unknown };
   return {
-    x: requireFinite(x, 'labelOffset.x', -BOARD_EDGE_LABEL_OFFSET_MAX, BOARD_EDGE_LABEL_OFFSET_MAX),
-    y: requireFinite(y, 'labelOffset.y', -BOARD_EDGE_LABEL_OFFSET_MAX, BOARD_EDGE_LABEL_OFFSET_MAX),
+    t: requireFinite(t, 'labelOffset.t', 0, 1),
+    distance: requireFinite(
+      distance,
+      'labelOffset.distance',
+      -BOARD_EDGE_LABEL_OFFSET_MAX,
+      BOARD_EDGE_LABEL_OFFSET_MAX,
+    ),
   };
 }
 

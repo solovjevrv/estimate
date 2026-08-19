@@ -509,7 +509,7 @@ describe('parseClipboardPayload — валидация формата', () => {
     expect(payload?.edges[0]!.style.labelOffset).toBeNull();
   });
 
-  it('принимает валидный labelOffset {x,y}', () => {
+  it('принимает валидный labelOffset {t,distance}', () => {
     const payload = parseClipboardPayload(
       JSON.stringify({
         source: BOARD_CLIPBOARD_SOURCE,
@@ -527,17 +527,17 @@ describe('parseClipboardPayload — валидация формата', () => {
               dash: 'solid',
               markerStart: 'none',
               markerEnd: 'none',
-              labelOffset: { x: 10, y: -20 },
+              labelOffset: { t: 0.3, distance: -20 },
             },
           },
         ],
       }),
     );
 
-    expect(payload?.edges[0]!.style.labelOffset).toEqual({ x: 10, y: -20 });
+    expect(payload?.edges[0]!.style.labelOffset).toEqual({ t: 0.3, distance: -20 });
   });
 
-  it('отклоняет labelOffset с нечисловым x', () => {
+  it('отклоняет labelOffset с нечисловым t', () => {
     const payload = parseClipboardPayload(
       JSON.stringify({
         source: BOARD_CLIPBOARD_SOURCE,
@@ -555,7 +555,7 @@ describe('parseClipboardPayload — валидация формата', () => {
               dash: 'solid',
               markerStart: 'none',
               markerEnd: 'none',
-              labelOffset: { x: 'oops', y: 20 },
+              labelOffset: { t: 'oops', distance: 20 },
             },
           },
         ],

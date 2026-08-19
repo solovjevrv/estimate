@@ -1323,13 +1323,16 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
           type: 'edge.patch',
           clientOpId: randomUUID(),
           id: edgeId,
-          patch: { style: { labelOffset: { x: 30, y: -15 } } },
+          patch: { style: { labelOffset: { t: 0.3, distance: -15 } } },
         },
         BOARD_ID,
         ACTOR,
       );
 
-      expect((state.edges.get(edgeId) as BoardEdge).style.labelOffset).toEqual({ x: 30, y: -15 });
+      expect((state.edges.get(edgeId) as BoardEdge).style.labelOffset).toEqual({
+        t: 0.3,
+        distance: -15,
+      });
     });
 
     it('labelOffset по умолчанию null, если ключ отсутствует в патче', () => {
@@ -1352,7 +1355,7 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
       expect((state.edges.get(edgeId) as BoardEdge).style.labelOffset).toBeNull();
     });
 
-    it('отклоняет нечисловые x/y в labelOffset', () => {
+    it('отклоняет нечисловые t/distance в labelOffset', () => {
       const { state, a, b } = withTwoItems();
       const edgeId = randomUUID();
       applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
@@ -1361,13 +1364,13 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
         type: 'edge.patch' as const,
         clientOpId: randomUUID(),
         id: edgeId,
-        patch: { style: { labelOffset: { x: 'oops', y: 1 } } },
+        patch: { style: { labelOffset: { t: 'oops', distance: 1 } } },
       } as unknown as BoardOp;
 
       expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
     });
 
-    it('отклоняет labelOffset за пределами BOARD_EDGE_LABEL_OFFSET_MAX', () => {
+    it('отклоняет t за пределами диапазона 0..1', () => {
       const { state, a, b } = withTwoItems();
       const edgeId = randomUUID();
       applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
@@ -1379,7 +1382,29 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
             type: 'edge.patch',
             clientOpId: randomUUID(),
             id: edgeId,
-            patch: { style: { labelOffset: { x: BOARD_EDGE_LABEL_OFFSET_MAX + 1, y: 0 } } },
+            patch: { style: { labelOffset: { t: 1.5, distance: 0 } } },
+          },
+          BOARD_ID,
+          ACTOR,
+        ),
+      ).toThrow(ValidationError);
+    });
+
+    it('отклоняет distance за пределами BOARD_EDGE_LABEL_OFFSET_MAX', () => {
+      const { state, a, b } = withTwoItems();
+      const edgeId = randomUUID();
+      applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+      expect(() =>
+        applyBoardOp(
+          state,
+          {
+            type: 'edge.patch',
+            clientOpId: randomUUID(),
+            id: edgeId,
+            patch: {
+              style: { labelOffset: { t: 0.5, distance: BOARD_EDGE_LABEL_OFFSET_MAX + 1 } },
+            },
           },
           BOARD_ID,
           ACTOR,
@@ -1398,12 +1423,15 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
           type: 'edge.patch',
           clientOpId: randomUUID(),
           id: edgeId,
-          patch: { style: { labelOffset: { x: 50, y: 50 } } },
+          patch: { style: { labelOffset: { t: 0.8, distance: 20 } } },
         },
         BOARD_ID,
         ACTOR,
       );
-      expect((state.edges.get(edgeId) as BoardEdge).style.labelOffset).toEqual({ x: 50, y: 50 });
+      expect((state.edges.get(edgeId) as BoardEdge).style.labelOffset).toEqual({
+        t: 0.8,
+        distance: 20,
+      });
 
       applyBoardOp(
         state,

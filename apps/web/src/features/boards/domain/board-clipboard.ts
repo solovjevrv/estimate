@@ -318,8 +318,8 @@ export function parseClipboardPayload(text: string): BoardClipboardPayload | nul
         styleRecord.labelOffset === null ||
         (typeof styleRecord.labelOffset === 'object' &&
           styleRecord.labelOffset !== null &&
-          typeof (styleRecord.labelOffset as { x?: unknown }).x === 'number' &&
-          typeof (styleRecord.labelOffset as { y?: unknown }).y === 'number'))
+          typeof (styleRecord.labelOffset as { t?: unknown }).t === 'number' &&
+          typeof (styleRecord.labelOffset as { distance?: unknown }).distance === 'number'))
     );
   });
 
