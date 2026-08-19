@@ -233,6 +233,23 @@ function onLabelKeydown(e: KeyboardEvent): void {
  * кривой. Коммит одним edge.patch на pointerup, как NodeResizer/@resize-end.
  */
 const CURVE_OFFSET_RESET_EPSILON = 4;
+const LABEL_OFFSET_RESET_EPSILON = 4; // px, как у CURVE_OFFSET_RESET_EPSILON
+const LABEL_DRAG_THRESHOLD = 3; // px — ниже порога это клик/dblclick, не драг
+
+const dragLabelOffsetPreview = ref<{ x: number; y: number } | null>(null);
+
+/**
+ * Позиция подписи = базовая точка (labelX/labelY) + активное смещение:
+ * либо превью текущего драга, либо сохранённый labelOffset, либо null
+ * (подпись ровно в базовой точке, как до фичи 12.18). Смещение ОТНОСИТЕЛЬНОЕ:
+ * при движении концов связи базовая точка меняется, а подпись едет вместе с ней.
+ */
+const labelPosition = computed(() => {
+  const base = { x: labelX.value, y: labelY.value };
+  const active = dragLabelOffsetPreview.value ?? props.data.style.labelOffset ?? null;
+  if (!active) return base;
+  return { x: base.x + active.x, y: base.y + active.y };
+});
 
 function toWorldPoint(event: PointerEvent): { x: number; y: number } {
   const rect = vueFlowRef.value?.getBoundingClientRect();
@@ -289,6 +306,7 @@ function resetCurveOffset(): void {
  */
 onUnmounted(() => {
   window.removeEventListener('keydown', onCurveDragKeydown);
+  window.removeEventListener('keydown', onLabelDragKeydown);
 });
 
 function commitCurveOffset(offset: { x: number; y: number } | null): void {
@@ -299,6 +317,63 @@ function commitCurveOffset(offset: { x: number; y: number } | null): void {
       clientOpId: globalThis.crypto.randomUUID(),
       id: props.id,
       patch: { style: { ...props.data.style, curveOffset: offset } },
+    },
+  ]);
+}
+
+/**
+ * Перетаскивание подписи связи (12.18) — сама подпись является «хватом»,
+ * нет отдельной ручки. Коммит одним edge.patch на pointerup (labelOffset),
+ * без нового WS-события — переиспользуем boardSession.applyOps.
+ */
+const labelDragStart = ref<{ x: number; y: number } | null>(null);
+const labelDragBaseOffset = ref<{ x: number; y: number }>({ x: 0, y: 0 });
+
+function onLabelPointerDown(event: PointerEvent): void {
+  if (!canEdit.value || editing.value) return;
+  (event.currentTarget as Element).setPointerCapture(event.pointerId);
+  labelDragStart.value = toWorldPoint(event);
+  labelDragBaseOffset.value = props.data.style.labelOffset ?? { x: 0, y: 0 };
+  window.addEventListener('keydown', onLabelDragKeydown);
+}
+
+function onLabelPointerMove(event: PointerEvent): void {
+  if (!labelDragStart.value) return;
+  const point = toWorldPoint(event);
+  const dx = point.x - labelDragStart.value.x;
+  const dy = point.y - labelDragStart.value.y;
+  if (!dragLabelOffsetPreview.value && Math.hypot(dx, dy) < LABEL_DRAG_THRESHOLD) return;
+  dragLabelOffsetPreview.value = {
+    x: labelDragBaseOffset.value.x + dx,
+    y: labelDragBaseOffset.value.y + dy,
+  };
+}
+
+function onLabelPointerUp(): void {
+  labelDragStart.value = null;
+  window.removeEventListener('keydown', onLabelDragKeydown);
+  if (!dragLabelOffsetPreview.value) return; // не было реального драга — обычный клик
+  const offset = dragLabelOffsetPreview.value;
+  dragLabelOffsetPreview.value = null;
+  const magnitude = Math.hypot(offset.x, offset.y);
+  commitLabelOffset(magnitude < LABEL_OFFSET_RESET_EPSILON ? null : offset);
+}
+
+function onLabelDragKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Escape') return;
+  labelDragStart.value = null;
+  dragLabelOffsetPreview.value = null;
+  window.removeEventListener('keydown', onLabelDragKeydown);
+}
+
+function commitLabelOffset(offset: { x: number; y: number } | null): void {
+  if (offset === (props.data.style.labelOffset ?? null)) return;
+  void boardSession.applyOps([
+    {
+      type: 'edge.patch',
+      clientOpId: globalThis.crypto.randomUUID(),
+      id: props.id,
+      patch: { style: { ...props.data.style, labelOffset: offset } },
     },
   ]);
 }
@@ -350,9 +425,14 @@ function commitCurveOffset(offset: { x: number; y: number } | null): void {
       v-if="editing || data.label"
       data-testid="board-edge-label"
       class="board-edge-label nodrag nopan"
-      :style="{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }"
+      :class="{ 'board-edge-label--draggable': canEdit && !editing }"
+      :style="{
+        transform: `translate(-50%, -50%) translate(${labelPosition.x}px, ${labelPosition.y}px)`,
+      }"
       @dblclick.stop="startEditing"
-      @pointerdown.stop
+      @pointerdown.stop="onLabelPointerDown"
+      @pointermove.stop="onLabelPointerMove"
+      @pointerup.stop="onLabelPointerUp"
     >
       <textarea
         v-if="editing"
@@ -398,17 +478,22 @@ g:hover .board-edge-curve-handle {
   opacity: 1;
 }
 
-/* Никакой подложки (просьба пользователя) — просто текст поверх холста, с лёгким
-   белым гало вместо белого прямоугольника, чтобы оставаться читаемым над линией */
+/* Полупрозрачная подложка под текстом (12.18) — гало из text-shadow плохо
+   читалось на пёстром/тёмном фоне холста; var(--ui-bg) уже темизирована,
+   color-mix даёт лёгкую прозрачность вместо сплошного прямоугольника */
 .board-edge-label-text,
 .board-edge-label-input {
   color: var(--brand-ink);
-  text-shadow:
-    -1px -1px 0 var(--ui-bg),
-    1px -1px 0 var(--ui-bg),
-    -1px 1px 0 var(--ui-bg),
-    1px 1px 0 var(--ui-bg),
-    0 0 6px var(--ui-bg);
+  background: color-mix(in oklch, var(--ui-bg) 82%, transparent);
+  border-radius: 4px;
+  padding: 1px 4px;
+}
+
+.board-edge-label--draggable {
+  cursor: grab;
+}
+.board-edge-label--draggable:active {
+  cursor: grabbing;
 }
 
 .board-edge-label-text {
@@ -428,7 +513,6 @@ g:hover .board-edge-curve-handle {
   box-sizing: border-box;
   /* min-height ровно на одну строку — line-height × font-size */
   min-height: 1.4em;
-  padding: 0;
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
@@ -438,7 +522,6 @@ g:hover .board-edge-curve-handle {
   overflow-wrap: anywhere;
   resize: none;
   overflow: hidden;
-  background: transparent;
   border: none;
   outline: none;
 }
