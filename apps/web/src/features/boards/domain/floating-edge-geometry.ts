@@ -118,3 +118,69 @@ export function getOffsetCurvePath(
   const apexY = midY + offset.y;
   return [`M${sx},${sy} Q${controlX},${controlY} ${tx},${ty}`, apexX, apexY];
 }
+
+/**
+ * Точка дискретной выборки отрисованного пути связи (12.18) — мировые px
+ * канваса, та же система координат, что у sx/sy/tx/ty.
+ */
+export interface PathSample {
+  x: number;
+  y: number;
+}
+
+/**
+ * Ближайшая к целевой точке точка на предвычисленной выборке пути — линейный
+ * проход без интерполяции между соседними сэмплами (плотности выборки,
+ * задаваемой вызывающим кодом — см. `LABEL_PATH_SAMPLE_COUNT` в
+ * `BoardFloatingEdge.vue` — достаточно для интерактивного драга). Возвращает
+ * индекс, а не саму точку, чтобы вызывающий код мог сразу получить
+ * касательную через `tangentAtSample` тем же индексом.
+ *
+ * Используется для перетаскивания подписи связи «магнитом» к РЕАЛЬНОЙ
+ * отрисованной кривой (12.18) — раньше смещение считалось относительно
+ * прямой между точками крепления, что заметно расходилось с видимой формой
+ * у сильно изогнутых связей (найдено пользователем при ручной проверке).
+ */
+export function closestSampleIndex(samples: readonly PathSample[], target: PathSample): number {
+  let bestIndex = 0;
+  let bestDistSq = Infinity;
+  for (let i = 0; i < samples.length; i++) {
+    const sample = samples[i]!;
+    const dx = sample.x - target.x;
+    const dy = sample.y - target.y;
+    const distSq = dx * dx + dy * dy;
+    if (distSq < bestDistSq) {
+      bestDistSq = distSq;
+      bestIndex = i;
+    }
+  }
+  return bestIndex;
+}
+
+/**
+ * Единичный касательный вектор пути в точке выборки с данным индексом — по
+ * соседним сэмплам (центральная разность, где есть оба соседа; иначе
+ * односторонняя на границах выборки).
+ */
+export function tangentAtSample(samples: readonly PathSample[], index: number): PathSample {
+  const prev = samples[Math.max(0, index - 1)]!;
+  const next = samples[Math.min(samples.length - 1, index + 1)]!;
+  const dx = next.x - prev.x;
+  const dy = next.y - prev.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 1e-6) return { x: 1, y: 0 };
+  return { x: dx / length, y: dy / length };
+}
+
+/**
+ * Точка, сдвинутая от `point` вдоль нормали к `tangent` на `distance` px.
+ * Нормаль — поворот касательной на 90° (`-tangent.y, tangent.x`), тот же
+ * знак/ориентация, что и в остальной геометрии связей в этом файле.
+ */
+export function offsetAlongNormal(
+  point: PathSample,
+  tangent: PathSample,
+  distance: number,
+): PathSample {
+  return { x: point.x - tangent.y * distance, y: point.y + tangent.x * distance };
+}

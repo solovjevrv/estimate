@@ -1,6 +1,13 @@
-import type { BoardColorHex, BoardEdge, BoardEdgeStyle, BoardOp } from '@poker/shared';
+import type {
+  BoardColorHex,
+  BoardEdge,
+  BoardEdgeStyle,
+  BoardOp,
+  BoardTextAlign,
+} from '@poker/shared';
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
 
+import { getEdgeAnchorParams } from '../../../features/boards/domain/floating-edge-geometry';
 import { uuid } from '../../../features/boards/infrastructure/uuid';
 import type {
   BoardFlowEdge,
@@ -49,6 +56,13 @@ export interface UseBoardEdgesResult {
   edgeToolbarPosition: ComputedRef<{ left: number; top: number } | null>;
   selectedEdgeStyle: ComputedRef<BoardEdgeStyle>;
   selectedEdgeColor: ComputedRef<BoardColorHex>;
+  selectedEdgeLabelFontSize: ComputedRef<number>;
+  selectedEdgeLabelTextAlign: ComputedRef<BoardTextAlign>;
+  selectedEdgeLabelTextColor: ComputedRef<BoardColorHex>;
+  selectedEdgeLabelBold: ComputedRef<boolean>;
+  selectedEdgeLabelItalic: ComputedRef<boolean>;
+  selectedEdgeLabelUnderline: ComputedRef<boolean>;
+  selectedEdgeLabelStrike: ComputedRef<boolean>;
 
   onConnect: (connection: BoardEdgeConnection) => void;
   onEdgeDoubleClick: (event: BoardEdgeDoubleClickEvent) => void;
@@ -62,6 +76,13 @@ export interface UseBoardEdgesResult {
   patchEdgeColor: (color: BoardColorHex) => void;
   previewEdgeColor: (color: BoardColorHex) => void;
   cancelEdgeColorPreview: (originalColor: BoardColorHex) => void;
+  patchEdgeLabelFontSize: (size: number) => void;
+  patchEdgeLabelTextAlign: (align: BoardTextAlign) => void;
+  patchEdgeLabelTextColor: (color: BoardColorHex) => void;
+  patchEdgeLabelBold: (bold: boolean) => void;
+  patchEdgeLabelItalic: (italic: boolean) => void;
+  patchEdgeLabelUnderline: (underline: boolean) => void;
+  patchEdgeLabelStrike: (strike: boolean) => void;
 }
 
 /**
@@ -86,9 +107,14 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
   /* ----------------------- Позиция тулбара связи ----------------------- */
 
   /**
-   * Плавающий тулбар над выделенной связью (12.9): midpoint между позициями source
-   * и target узлов, затем проецируется через viewport. Если нет edit-доступа,
-   * выделения или одной из нод — `null` (тулбар не рисуется).
+   * Плавающий тулбар над выделенной связью (12.9): midpoint между реальными
+   * точками крепления связи (та же сторона карточки, что рисует
+   * `BoardFloatingEdge.vue` через `getEdgeAnchorParams`), затем проецируется
+   * через viewport. Раньше брался midpoint между `node.position` (левый
+   * верхний угол карточки, а не точка на её границе) — для крупных карточек
+   * это уводило тулбар далеко от реальной стрелки (баг, найден пользователем
+   * 20.08.2026). Если нет edit-доступа, выделения или одной из нод — `null`
+   * (тулбар не рисуется).
    */
   const edgeToolbarPosition = computed(() => {
     const selected = selectedEdges.value;
@@ -98,8 +124,14 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     const sourceNode = nodeMap.get(edge.source);
     const targetNode = nodeMap.get(edge.target);
     if (!sourceNode || !targetNode) return null;
-    const x = (sourceNode.position.x + targetNode.position.x) / 2;
-    const y = (sourceNode.position.y + targetNode.position.y) / 2;
+    const { sx, sy, tx, ty } = getEdgeAnchorParams(
+      sourceNode,
+      targetNode,
+      edge.sourceHandle,
+      edge.targetHandle,
+    );
+    const x = (sx + tx) / 2;
+    const y = (sy + ty) / 2;
     const viewport = options.getViewport();
     return {
       left: viewport.x + x * viewport.zoom,
@@ -120,6 +152,23 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
   const selectedEdgeColor = computed<BoardColorHex>(() =>
     options.resolveEdgeColor(selectedEdgeStyle.value.color),
   );
+
+  /** Резолвнутые значения стиля текста подписи (12.18) — те же дефолты, что в BoardFloatingEdge.vue */
+  const selectedEdgeLabelFontSize = computed<number>(
+    () => selectedEdgeStyle.value.labelFontSize ?? 13,
+  );
+  const selectedEdgeLabelTextAlign = computed<BoardTextAlign>(
+    () => selectedEdgeStyle.value.labelTextAlign ?? 'center',
+  );
+  const selectedEdgeLabelTextColor = computed<BoardColorHex>(() =>
+    options.resolveEdgeColor(selectedEdgeStyle.value.labelTextColor),
+  );
+  const selectedEdgeLabelBold = computed<boolean>(() => !!selectedEdgeStyle.value.labelBold);
+  const selectedEdgeLabelItalic = computed<boolean>(() => !!selectedEdgeStyle.value.labelItalic);
+  const selectedEdgeLabelUnderline = computed<boolean>(
+    () => !!selectedEdgeStyle.value.labelUnderline,
+  );
+  const selectedEdgeLabelStrike = computed<boolean>(() => !!selectedEdgeStyle.value.labelStrike);
 
   /* ----------------------- Live-preview цвета ----------------------- */
 
@@ -241,6 +290,71 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     }));
   }
 
+  /* --------------------- Стиль текста подписи (12.18) --------------------- */
+
+  function patchEdgeLabelFontSize(size: number): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelFontSize: size } },
+    }));
+  }
+
+  function patchEdgeLabelTextAlign(align: BoardTextAlign): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelTextAlign: align } },
+    }));
+  }
+
+  function patchEdgeLabelTextColor(color: BoardColorHex): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelTextColor: color } },
+    }));
+  }
+
+  function patchEdgeLabelBold(bold: boolean): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelBold: bold } },
+    }));
+  }
+
+  function patchEdgeLabelItalic(italic: boolean): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelItalic: italic } },
+    }));
+  }
+
+  function patchEdgeLabelUnderline(underline: boolean): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelUnderline: underline } },
+    }));
+  }
+
+  function patchEdgeLabelStrike(strike: boolean): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelStrike: strike } },
+    }));
+  }
+
   /* ----------------------- Создание / подпись ----------------------- */
 
   /**
@@ -301,6 +415,13 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     edgeToolbarPosition,
     selectedEdgeStyle,
     selectedEdgeColor,
+    selectedEdgeLabelFontSize,
+    selectedEdgeLabelTextAlign,
+    selectedEdgeLabelTextColor,
+    selectedEdgeLabelBold,
+    selectedEdgeLabelItalic,
+    selectedEdgeLabelUnderline,
+    selectedEdgeLabelStrike,
     onConnect,
     onEdgeDoubleClick,
     addTextToSelectedEdge,
@@ -312,5 +433,12 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     patchEdgeColor,
     previewEdgeColor,
     cancelEdgeColorPreview,
+    patchEdgeLabelFontSize,
+    patchEdgeLabelTextAlign,
+    patchEdgeLabelTextColor,
+    patchEdgeLabelBold,
+    patchEdgeLabelItalic,
+    patchEdgeLabelUnderline,
+    patchEdgeLabelStrike,
   };
 }

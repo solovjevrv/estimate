@@ -19,9 +19,13 @@ import {
 } from '../../features/boards/context/board-canvas-keys';
 import { resolveEdgeColor } from '../../features/boards/config/board-item-defaults';
 import {
+  closestSampleIndex,
   type EdgeAnchorSide,
   getEdgeAnchorParams,
   getOffsetCurvePath,
+  offsetAlongNormal,
+  type PathSample,
+  tangentAtSample,
 } from '../../features/boards/domain/floating-edge-geometry';
 import { useBoardSessionStore } from '../../stores/board-session';
 
@@ -31,7 +35,23 @@ const { t } = useI18n();
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 const pendingEdgeEditId = inject(BOARD_PENDING_EDGE_EDIT_ID_KEY, ref(null));
-const { project, vueFlowRef } = useVueFlow();
+const { project, vueFlowRef, viewport, getEdges, addSelectedEdges, removeSelectedElements } =
+  useVueFlow();
+
+/**
+ * Клик по подписи выделяет связь (тулбар всплывает) — раньше не работало
+ * (найдено пользователем): `EdgeLabelRenderer` рендерит подпись в отдельный
+ * HTML-оверлей поверх канваса, а не внутрь `.vue-flow__edge` конкретной связи,
+ * поэтому нативное выделение связи по клику (внутренний механизм Vue Flow,
+ * привязанный к его собственным SVG-элементам) на эту подпись не срабатывает
+ * в принципе — щёлкнуть нужно было именно по самой линии. Выделяем вручную.
+ */
+function selectThisEdge(): void {
+  const edge = getEdges.value.find((candidate) => candidate.id === props.id);
+  if (!edge) return;
+  removeSelectedElements();
+  addSelectedEdges([edge]);
+}
 
 /** Не задан в data.style.color (12.9) — точка 'dot' красится так же, как линия/маркер */
 const dotColor = computed(() => resolveEdgeColor(props.data.style.color));
@@ -197,6 +217,29 @@ const labelInputStyle = computed(() => {
   return { width: `${cols}ch` } as const;
 });
 
+/**
+ * Стили текста подписи (12.18) — размер/выравнивание/цвет/начертание, по
+ * образцу аналогичных полей `BoardItemStyle` у стикеров/фигур, но один
+ * переключатель на весь текст (не per-символьная разметка `BoardTextRun.marks`,
+ * 12.13 — подпись связи короткая строка без rich-text редактора). Не заданы —
+ * прежнее поведение (13px, center, авто-цвет от темы через `resolveEdgeColor`,
+ * вес 600, без курсива/подчёркивания/зачёркивания — то, что было жёстко
+ * зашито в CSS до этой фичи).
+ */
+const labelTextStyle = computed(() => {
+  const decorations: string[] = [];
+  if (props.data.style.labelUnderline) decorations.push('underline');
+  if (props.data.style.labelStrike) decorations.push('line-through');
+  return {
+    fontSize: `${props.data.style.labelFontSize ?? 13}px`,
+    textAlign: props.data.style.labelTextAlign ?? 'center',
+    color: resolveEdgeColor(props.data.style.labelTextColor),
+    fontWeight: props.data.style.labelBold ? 700 : 600,
+    fontStyle: props.data.style.labelItalic ? 'italic' : 'normal',
+    textDecoration: decorations.length ? decorations.join(' ') : 'none',
+  };
+});
+
 /** Обнуляем inline-height: иначе `scrollHeight` отражает прежний (больший) размер,
  *  и textarea не схлопнется при удалении строк — классический трюк для автороста. */
 function resizeLabelInput(): void {
@@ -280,17 +323,6 @@ function resetCurveOffset(): void {
   commitCurveOffset(null);
 }
 
-/**
- * Драг прерывается без pointerup, если компонент размонтируется раньше
- * (другой участник удалил связь, undo/redo, виртуализация Vue Flow при
- * скролле) — браузер сам снимает pointer capture с удалённого узла, поэтому
- * наш pointerup никогда не придёт. Без этого слушатель Escape навсегда
- * оставался бы висеть на window.
- */
-onUnmounted(() => {
-  window.removeEventListener('keydown', onCurveDragKeydown);
-});
-
 function commitCurveOffset(offset: { x: number; y: number } | null): void {
   if (offset === (props.data.style.curveOffset ?? null)) return;
   void boardSession.applyOps([
@@ -302,18 +334,288 @@ function commitCurveOffset(offset: { x: number; y: number } | null): void {
     },
   ]);
 }
+
+/**
+ * Дискретная выборка отрисованного пути (12.18) — источник геометрии и для
+ * позиционирования подписи вдоль РЕАЛЬНОЙ кривой (не по прямой между точками
+ * крепления — та версия заметно расходилась с видимой формой у сильно
+ * изогнутых связей, найдено пользователем при ручной проверке), и для
+ * поиска ближайшей к курсору точки при драге. Путь строится по-разному в
+ * зависимости от типа линии (`getSmoothStepPath`/`getBezierPath`/
+ * `getOffsetCurvePath`), поэтому вместо трёх разных формул касательной
+ * берём геометрию из самого браузера (`SVGPathElement.getPointAtLength`)
+ * через невидимый технический `<path>` с тем же `d`, что и у видимого
+ * `<BaseEdge>`. Пересчитывается через `nextTick` после каждого изменения
+ * `path` — читать `getTotalLength()` в этом же тике означало бы читать ещё
+ * не обновлённый DOM (гонка рендера).
+ */
+const LABEL_PATH_SAMPLE_COUNT = 120;
+const geometryPathEl = useTemplateRef<SVGPathElement>('geometryPathEl');
+const labelPathSamples = ref<PathSample[] | null>(null);
+
+function samplePath(): PathSample[] | null {
+  const el = geometryPathEl.value;
+  if (!el) return null;
+  let total: number;
+  try {
+    total = el.getTotalLength();
+  } catch {
+    return null;
+  }
+  if (!Number.isFinite(total) || total <= 0) return null;
+  const samples: PathSample[] = [];
+  for (let i = 0; i <= LABEL_PATH_SAMPLE_COUNT; i++) {
+    const point = el.getPointAtLength((total * i) / LABEL_PATH_SAMPLE_COUNT);
+    samples.push({ x: point.x, y: point.y });
+  }
+  return samples;
+}
+
+watch(
+  path,
+  async () => {
+    await nextTick();
+    labelPathSamples.value = samplePath();
+  },
+  { immediate: true },
+);
+
+const LABEL_OFFSET_RESET_EPSILON = 4; // px, как у CURVE_OFFSET_RESET_EPSILON
+const LABEL_DRAG_THRESHOLD = 3; // px — ниже порога это клик/dblclick, не драг
+/** Miro-подобное ограничение (12.18): вдоль кривой — свободно (следует за её формой), поперёк — небольшой отступ */
+const LABEL_PERPENDICULAR_MAX = 32;
+
+const dragLabelOffsetPreview = ref<{ t: number; distance: number } | null>(null);
+
+/**
+ * Позиция подписи (12.18) — точка на выборке пути при параметре `t` (доля
+ * длины пути 0..1, дефолт 0.5 — геометрическая середина, как до фичи),
+ * сдвинутая вдоль нормали пути в этой точке на `distance` px. И `t`, и
+ * касательная берутся из `labelPathSamples`, поэтому при драге подпись
+ * следует форме кривой, а не прямой между точками крепления.
+ * `labelX`/`labelY` (аналитическая середина/апекс) — только fallback, пока
+ * выборка ещё не готова (до первого `nextTick`).
+ */
+const labelPosition = computed(() => {
+  const samples = labelPathSamples.value;
+  if (!samples || samples.length < 2) return { x: labelX.value, y: labelY.value };
+  const active = dragLabelOffsetPreview.value ??
+    props.data.style.labelOffset ?? {
+      t: 0.5,
+      distance: 0,
+    };
+  const index = Math.max(
+    0,
+    Math.min(samples.length - 1, Math.round(active.t * (samples.length - 1))),
+  );
+  const point = samples[index]!;
+  const tangent = tangentAtSample(samples, index);
+  return offsetAlongNormal(point, tangent, active.distance);
+});
+
+/**
+ * Перетаскивание подписи связи (12.18) — сама подпись является «хватом»,
+ * нет отдельной ручки. Позиция во время драга «магнитится» к ближайшей точке
+ * на РЕАЛЬНОЙ отрисованной кривой (курсор не обязан идти точно по линии,
+ * важна лишь проекция на неё). Коммит одним edge.patch на pointerup
+ * (labelOffset: {t, distance}), без нового WS-события.
+ */
+const labelDragStart = ref<{ x: number; y: number } | null>(null);
+
+function pointerToLabelOffset(event: PointerEvent): { t: number; distance: number } | null {
+  const samples = labelPathSamples.value;
+  if (!samples || samples.length < 2) return null;
+  const world = toWorldPoint(event);
+  const index = closestSampleIndex(samples, world);
+  const point = samples[index]!;
+  const tangent = tangentAtSample(samples, index);
+  const dx = world.x - point.x;
+  const dy = world.y - point.y;
+  const rawDistance = dx * -tangent.y + dy * tangent.x;
+  const distance = Math.max(
+    -LABEL_PERPENDICULAR_MAX,
+    Math.min(LABEL_PERPENDICULAR_MAX, rawDistance),
+  );
+  return { t: index / (samples.length - 1), distance };
+}
+
+function onLabelPointerDown(event: PointerEvent): void {
+  if (!canEdit.value || editing.value) return;
+  (event.currentTarget as Element).setPointerCapture(event.pointerId);
+  labelDragStart.value = toWorldPoint(event);
+  window.addEventListener('keydown', onLabelDragKeydown);
+}
+
+function onLabelPointerMove(event: PointerEvent): void {
+  if (!labelDragStart.value) return;
+  const point = toWorldPoint(event);
+  const moved = Math.hypot(point.x - labelDragStart.value.x, point.y - labelDragStart.value.y);
+  if (!dragLabelOffsetPreview.value && moved < LABEL_DRAG_THRESHOLD) return;
+  const offset = pointerToLabelOffset(event);
+  if (offset) dragLabelOffsetPreview.value = offset;
+}
+
+function onLabelPointerUp(): void {
+  labelDragStart.value = null;
+  window.removeEventListener('keydown', onLabelDragKeydown);
+  selectThisEdge();
+  const offset = dragLabelOffsetPreview.value;
+  dragLabelOffsetPreview.value = null;
+  if (!offset) return; // не было реального драга — обычный клик
+  commitLabelOffset(isNearDefaultLabelPosition(offset) ? null : offset);
+}
+
+/**
+ * «Отпустили около исходной точки» — сравнение в мировых px, а не по
+ * `t`/`distance` напрямую: расстояние по параметру пути нелинейно
+ * относительно экранного расстояния, особенно на резких изгибах.
+ */
+function isNearDefaultLabelPosition(offset: { t: number; distance: number }): boolean {
+  const samples = labelPathSamples.value;
+  if (!samples || samples.length < 2) return false;
+  const base = { x: labelX.value, y: labelY.value };
+  const index = Math.max(
+    0,
+    Math.min(samples.length - 1, Math.round(offset.t * (samples.length - 1))),
+  );
+  const point = offsetAlongNormal(
+    samples[index]!,
+    tangentAtSample(samples, index),
+    offset.distance,
+  );
+  return Math.hypot(point.x - base.x, point.y - base.y) < LABEL_OFFSET_RESET_EPSILON;
+}
+
+function onLabelDragKeydown(event: KeyboardEvent): void {
+  if (event.key !== 'Escape') return;
+  labelDragStart.value = null;
+  dragLabelOffsetPreview.value = null;
+  window.removeEventListener('keydown', onLabelDragKeydown);
+}
+
+function commitLabelOffset(offset: { t: number; distance: number } | null): void {
+  if (offset === (props.data.style.labelOffset ?? null)) return;
+  void boardSession.applyOps([
+    {
+      type: 'edge.patch',
+      clientOpId: globalThis.crypto.randomUUID(),
+      id: props.id,
+      patch: { style: { ...props.data.style, labelOffset: offset } },
+    },
+  ]);
+}
+
+/**
+ * «Разрыв» линии под подписью (12.18) — по образцу Miro: у текста НЕТ
+ * собственного фона, вместо этого у самой связи вырезается прямоугольная
+ * дыра в её видимом месте через SVG-маску (`mask`, применяется к
+ * `<BaseEdge>` через его `:style`, т.к. произвольные attrs он не
+ * пробрасывает — см. комментарий у testid ниже). Раньше читаемость
+ * подписи над линией решалась полупрозрачной подложкой позади текста —
+ * по просьбе пользователя заменено на этот приём: подложки нет вовсе, есть
+ * геометрический разрыв самой стрелки.
+ *
+ * Размер дыры — реальный отрисованный размер подписи (`ResizeObserver`),
+ * экранные px делятся на текущий zoom, чтобы получить мировые единицы —
+ * те же, что у `path`/`labelPosition`.
+ */
+const LABEL_GAP_PADDING = 3;
+const labelEl = useTemplateRef<HTMLDivElement>('labelEl');
+const labelWorldSize = ref<{ width: number; height: number }>({ width: 0, height: 0 });
+let labelSizeObserver: ResizeObserver | null = null;
+
+function updateLabelWorldSize(): void {
+  const el = labelEl.value;
+  if (!el) return;
+  const rect = el.getBoundingClientRect();
+  const zoom = viewport.value.zoom || 1;
+  labelWorldSize.value = { width: rect.width / zoom, height: rect.height / zoom };
+}
+
+watch(labelEl, (el) => {
+  labelSizeObserver?.disconnect();
+  labelSizeObserver = null;
+  if (!el) return;
+  labelSizeObserver = new ResizeObserver(updateLabelWorldSize);
+  labelSizeObserver.observe(el);
+  updateLabelWorldSize();
+});
+
+const labelGapMaskId = computed(() => `board-edge-label-gap-${props.id}`);
+
+const labelGapRect = computed(() => {
+  if (!(editing.value || props.data.label)) return null;
+  const width = labelWorldSize.value.width + LABEL_GAP_PADDING * 2;
+  const height = labelWorldSize.value.height + LABEL_GAP_PADDING * 2;
+  if (width <= 0 || height <= 0) return null;
+  const pos = labelPosition.value;
+  return { x: pos.x - width / 2, y: pos.y - height / 2, width, height };
+});
+
+const edgePathStyle = computed(() => {
+  if (!labelGapRect.value) return props.style;
+  return { ...props.style, mask: `url(#${labelGapMaskId.value})` };
+});
+
+/**
+ * Драг прерывается без pointerup, если компонент размонтируется раньше
+ * (другой участник удалил связь, undo/redo, виртуализация Vue Flow при
+ * скролле) — браузер сам снимает pointer capture с удалённого узла, поэтому
+ * наш pointerup никогда не придёт. Без этого слушатель Escape навсегда
+ * оставался бы висеть на window.
+ */
+onUnmounted(() => {
+  window.removeEventListener('keydown', onCurveDragKeydown);
+  window.removeEventListener('keydown', onLabelDragKeydown);
+  labelSizeObserver?.disconnect();
+});
 </script>
 
 <template>
   <!-- BaseEdge не пробрасывает произвольные attrs в SVG path; testid ставим на
-       реальный SVG-контейнер, не меняя геометрию или bubbling событий Vue Flow. -->
-  <g data-testid="board-edge">
+       реальный SVG-контейнер, не меняя геометрию или bubbling событий Vue Flow.
+       @dblclick — прямой локальный обработчик (не через Vue Flow-нативное
+       `@edge-double-click`/`pendingEdgeEditId`, тот путь ненадёжен: не
+       срабатывает на пустой связи без подписи, воспроизводится и без
+       правок этой задачи, найдено при ручной проверке). Ловит нативный
+       dblclick, всплывающий от любого дочернего элемента (мой invisible
+       geometry-path не мешает — pointer-events:none, событие всё равно
+       долетает до реального пути/интеракшн-пути Vue Flow под курсором). -->
+  <g data-testid="board-edge" @dblclick.stop="startEditing">
+    <!-- Технический путь только для геометрии (getPointAtLength/getTotalLength,
+         12.18) — не рендерится: fill/stroke=none, вне hit-testing. -->
+    <path ref="geometryPathEl" :d="path" fill="none" stroke="none" style="pointer-events: none" />
+
+    <!-- Дыра под подписью (12.18) — см. докблок edgePathStyle/labelGapRect выше.
+         x/y/width/height у самой <mask> обязательны: дефолтная область маски
+         (-10% -10% 120% 120%) считается от вьюпорта SVG, а не от пути связи —
+         в мировых px канваса это обрезает всю стрелку целиком (найдено
+         пользователем — связь становилась невидимой при добавлении подписи). -->
+    <mask
+      v-if="labelGapRect"
+      :id="labelGapMaskId"
+      maskUnits="userSpaceOnUse"
+      x="-100000"
+      y="-100000"
+      width="200000"
+      height="200000"
+    >
+      <rect x="-100000" y="-100000" width="200000" height="200000" fill="white" />
+      <rect
+        :x="labelGapRect.x"
+        :y="labelGapRect.y"
+        :width="labelGapRect.width"
+        :height="labelGapRect.height"
+        fill="black"
+      />
+    </mask>
+
     <BaseEdge
       :id="id"
       :path="path"
       :marker-start="markerStart"
       :marker-end="markerEnd"
-      :style="style"
+      :style="edgePathStyle"
     />
     <!-- 'dot' — не встроенный тип маркера Vue Flow (умеет рисовать только arrow/arrowclosed),
          рисуем сами поверх пути -->
@@ -348,11 +650,20 @@ function commitCurveOffset(offset: { x: number; y: number } | null): void {
   <EdgeLabelRenderer>
     <div
       v-if="editing || data.label"
+      ref="labelEl"
       data-testid="board-edge-label"
       class="board-edge-label nodrag nopan"
-      :style="{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }"
+      :class="{
+        'board-edge-label--draggable': canEdit && !editing,
+        'board-edge-label--dragging': dragLabelOffsetPreview !== null || dragOffsetPreview !== null,
+      }"
+      :style="{
+        transform: `translate(-50%, -50%) translate(${labelPosition.x}px, ${labelPosition.y}px)`,
+      }"
       @dblclick.stop="startEditing"
-      @pointerdown.stop
+      @pointerdown.stop="onLabelPointerDown"
+      @pointermove.stop="onLabelPointerMove"
+      @pointerup.stop="onLabelPointerUp"
     >
       <textarea
         v-if="editing"
@@ -363,13 +674,17 @@ function commitCurveOffset(offset: { x: number; y: number } | null): void {
         spellcheck="false"
         data-testid="board-edge-label-input"
         class="board-edge-label-input"
-        :style="labelInputStyle"
+        :style="[labelInputStyle, labelTextStyle]"
         @keydown.stop="onLabelKeydown"
         @blur="commitEditing"
       />
-      <span v-else data-testid="board-edge-label-text" class="board-edge-label-text">{{
-        data.label
-      }}</span>
+      <span
+        v-else
+        data-testid="board-edge-label-text"
+        class="board-edge-label-text"
+        :style="labelTextStyle"
+        >{{ data.label }}</span
+      >
     </div>
   </EdgeLabelRenderer>
 </template>
@@ -378,6 +693,15 @@ function commitCurveOffset(offset: { x: number; y: number } | null): void {
 .board-edge-label {
   position: absolute;
   pointer-events: all;
+  /* Чужие перемещения карточек долетают throttled-патчами — без сглаживания
+     подпись, катающаяся по кривой вместе с ней, дёргается так же резко, как
+     сама связь (тот же приём, что у карточек, 12.6, BoardCanvas.vue). Не
+     во время СВОЕГО активного драга — иначе курсор будет отставать. */
+  transition: transform 120ms linear;
+}
+
+.board-edge-label--dragging {
+  transition: none;
 }
 
 .board-edge-curve-handle {
@@ -398,23 +722,20 @@ g:hover .board-edge-curve-handle {
   opacity: 1;
 }
 
-/* Никакой подложки (просьба пользователя) — просто текст поверх холста, с лёгким
-   белым гало вместо белого прямоугольника, чтобы оставаться читаемым над линией */
-.board-edge-label-text,
-.board-edge-label-input {
-  color: var(--brand-ink);
-  text-shadow:
-    -1px -1px 0 var(--ui-bg),
-    1px -1px 0 var(--ui-bg),
-    -1px 1px 0 var(--ui-bg),
-    1px 1px 0 var(--ui-bg),
-    0 0 6px var(--ui-bg);
+/* Без подложки (12.18, Miro-паттерн) — читаемость над линией даёт разрыв
+   самой стрелки (SVG-маска у BaseEdge, см. labelGapRect в <script>), а не
+   фон/гало позади текста. font-size/text-align/color задаются inline через
+   labelTextStyle (12.18) — управляются тулбаром, здесь только дефолты для
+   остальных свойств. */
+.board-edge-label--draggable {
+  cursor: grab;
+}
+.board-edge-label--draggable:active {
+  cursor: grabbing;
 }
 
 .board-edge-label-text {
   display: inline-block;
-  font-size: 13px;
-  font-weight: 600;
   line-height: 1.4;
   /* 28ch — жёсткий лимит ширины подписи, согласован с EDGE_LABEL_MAX_WIDTH_CH */
   max-inline-size: 28ch;
@@ -428,17 +749,12 @@ g:hover .board-edge-curve-handle {
   box-sizing: border-box;
   /* min-height ровно на одну строку — line-height × font-size */
   min-height: 1.4em;
-  padding: 0;
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
   line-height: 1.4;
-  text-align: center;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   resize: none;
   overflow: hidden;
-  background: transparent;
   border: none;
   outline: none;
 }

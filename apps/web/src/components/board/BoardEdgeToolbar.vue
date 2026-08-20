@@ -11,10 +11,19 @@
  * Цвет стрелки (12.8) — палитра + кастомный цвет через `UColorPicker`
  * (18.3 — замена нативного `<input type="color">`).
  */
-import { type BoardColorHex } from '@poker/shared';
+import {
+  BOARD_ITEM_FONT_SIZE_MAX,
+  BOARD_ITEM_FONT_SIZE_MIN,
+  BOARD_TEXT_ALIGNS,
+  type BoardColorHex,
+  type BoardTextAlign,
+} from '@poker/shared';
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import type { FormatMarkKey } from '../../features/boards/composables/use-rich-text-editing';
 import BoardColorPickerMenu from './BoardColorPickerMenu.vue';
+import BoardFormatButtons from './BoardFormatButtons.vue';
 
 export type BoardEdgeLineKindOption = 'straight' | 'orthogonal' | 'curved';
 export type BoardEdgeDashOption = 'solid' | 'dashed' | 'dotted';
@@ -43,6 +52,14 @@ const MARKER_END_ICONS: Record<BoardEdgeMarkerOption, string> = {
   dot: 'i-lucide-circle',
 };
 
+const ALIGN_ICONS: Record<BoardTextAlign, string> = {
+  left: 'i-lucide-align-left',
+  center: 'i-lucide-align-center',
+  right: 'i-lucide-align-right',
+};
+
+const FONT_SIZE_STEP = 2;
+
 const props = defineProps<{
   left: number;
   top: number;
@@ -51,6 +68,13 @@ const props = defineProps<{
   currentMarkerStart: BoardEdgeMarkerOption;
   currentMarkerEnd: BoardEdgeMarkerOption;
   currentColor: BoardColorHex;
+  currentLabelFontSize: number;
+  currentLabelTextAlign: BoardTextAlign;
+  currentLabelTextColor: BoardColorHex;
+  currentLabelBold: boolean;
+  currentLabelItalic: boolean;
+  currentLabelUnderline: boolean;
+  currentLabelStrike: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -67,6 +91,13 @@ const emit = defineEmits<{
    * BoardColorPickerMenu.vue и у `previewEdgeColor`/`edgeColorPreviewIds`
    * в use-board-edges.ts. */
   colorCancel: [hex: BoardColorHex];
+  labelFontSize: [size: number];
+  labelTextAlign: [align: BoardTextAlign];
+  labelTextColor: [hex: BoardColorHex];
+  labelBold: [bold: boolean];
+  labelItalic: [italic: boolean];
+  labelUnderline: [underline: boolean];
+  labelStrike: [strike: boolean];
   addText: [];
   delete: [];
 }>();
@@ -86,6 +117,55 @@ function previewColor(hex: BoardColorHex): void {
 
 function cancelColor(hex: BoardColorHex): void {
   emit('colorCancel', hex);
+}
+
+/** Цвет текста подписи из инлайн-пикера (12.18) — как pickTextColor в
+ * BoardSelectionToolbar.vue: инлайн-режим внутри уже открытого попапа «Aa»
+ * не даёт callback close (не отдельный popover), закрывать нечего. Без
+ * live-preview драга (в отличие от цвета связи/текста стикеров, 18.4) —
+ * сознательно упрощённая версия, коммит сразу по выбору. */
+function pickLabelTextColor(hex: BoardColorHex): void {
+  emit('labelTextColor', hex);
+}
+
+function clampFontSize(size: number): number {
+  return Math.max(BOARD_ITEM_FONT_SIZE_MIN, Math.min(BOARD_ITEM_FONT_SIZE_MAX, size));
+}
+
+function stepLabelFontSize(delta: number): void {
+  emit('labelFontSize', clampFontSize(props.currentLabelFontSize + delta));
+}
+
+/**
+ * Начертание подписи (12.18) — общий BoardFormatButtons.vue с
+ * BoardSelectionToolbar.vue, но переключатель на весь текст целиком (не
+ * per-символьная разметка): `toggle` эмиттит конкретный ключ, здесь просто
+ * инвертируем соответствующее булево поле текущего состояния.
+ */
+const activeLabelFormatKeys = computed<FormatMarkKey[]>(() => {
+  const keys: FormatMarkKey[] = [];
+  if (props.currentLabelBold) keys.push('bold');
+  if (props.currentLabelItalic) keys.push('italic');
+  if (props.currentLabelUnderline) keys.push('underline');
+  if (props.currentLabelStrike) keys.push('strike');
+  return keys;
+});
+
+function onToggleLabelFormat(key: FormatMarkKey): void {
+  switch (key) {
+    case 'bold':
+      emit('labelBold', !props.currentLabelBold);
+      break;
+    case 'italic':
+      emit('labelItalic', !props.currentLabelItalic);
+      break;
+    case 'underline':
+      emit('labelUnderline', !props.currentLabelUnderline);
+      break;
+    case 'strike':
+      emit('labelStrike', !props.currentLabelStrike);
+      break;
+  }
 }
 </script>
 
@@ -226,6 +306,91 @@ function cancelColor(hex: BoardColorHex): void {
         />
       </template>
     </UPopover>
+
+    <div class="board-selection-divider" />
+
+    <!-- Aa: размер шрифта + цвет текста подписи (12.18) -->
+    <UPopover :content="{ side: 'top', sideOffset: 20 }">
+      <button
+        type="button"
+        class="board-selection-icon-btn board-text-options-btn"
+        :aria-label="t('board.textOptionsLabel')"
+      >
+        Aa
+      </button>
+
+      <template #content>
+        <div class="board-text-menu">
+          <div class="board-text-menu-row">
+            <span class="board-text-menu-label">{{ t('board.fontSizeLabel') }}</span>
+            <div class="board-stepper">
+              <button
+                type="button"
+                class="board-stepper-btn"
+                :disabled="props.currentLabelFontSize <= BOARD_ITEM_FONT_SIZE_MIN"
+                :aria-label="t('board.fontSizeDecrease')"
+                @click="stepLabelFontSize(-FONT_SIZE_STEP)"
+              >
+                <UIcon name="i-lucide-minus" class="size-3" />
+              </button>
+              <span class="board-stepper-value">{{ props.currentLabelFontSize }}</span>
+              <button
+                type="button"
+                class="board-stepper-btn"
+                :disabled="props.currentLabelFontSize >= BOARD_ITEM_FONT_SIZE_MAX"
+                :aria-label="t('board.fontSizeIncrease')"
+                @click="stepLabelFontSize(FONT_SIZE_STEP)"
+              >
+                <UIcon name="i-lucide-plus" class="size-3" />
+              </button>
+            </div>
+          </div>
+
+          <div class="board-text-menu-row">
+            <span class="board-text-menu-label">{{ t('board.textColorLabel') }}</span>
+            <BoardColorPickerMenu
+              inline
+              :current-color="props.currentLabelTextColor"
+              @pick="pickLabelTextColor"
+            />
+          </div>
+        </div>
+      </template>
+    </UPopover>
+
+    <!-- Выравнивание текста подписи (12.18) -->
+    <UPopover :content="{ side: 'top', sideOffset: 20 }">
+      <button
+        type="button"
+        class="board-selection-icon-btn"
+        :aria-label="t('board.textAlignLabel')"
+      >
+        <UIcon :name="ALIGN_ICONS[props.currentLabelTextAlign]" class="size-3.5" />
+      </button>
+
+      <template #content>
+        <div class="board-form-menu">
+          <button
+            v-for="align in BOARD_TEXT_ALIGNS"
+            :key="align"
+            type="button"
+            class="board-form-menu-item"
+            :class="{ 'board-form-menu-item-active': align === props.currentLabelTextAlign }"
+            :aria-label="t(`board.aligns.${align}`)"
+            :title="t(`board.aligns.${align}`)"
+            @click="emit('labelTextAlign', align)"
+          >
+            <UIcon :name="ALIGN_ICONS[align]" class="size-4" />
+          </button>
+        </div>
+      </template>
+    </UPopover>
+
+    <!-- Начертание подписи (12.18) — общий BoardFormatButtons.vue со
+         стикерами/фигурами (найдено пользователем: тулбары визуально
+         расходились, попросил один компонент), но переключатель на весь
+         текст целиком, а не per-символьная разметка. -->
+    <BoardFormatButtons :active-keys="activeLabelFormatKeys" @toggle="onToggleLabelFormat" />
 
     <div class="board-selection-divider" />
 

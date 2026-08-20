@@ -12,6 +12,7 @@ interface MockNode {
   id: string;
   data: BoardFlowNode['data'];
   position: { x: number; y: number };
+  computedPosition: { x: number; y: number };
   dimensions: { width: number; height: number };
   selected: boolean;
   source?: string;
@@ -54,6 +55,7 @@ function flowNode(id: string, x = 0, y = 0): MockNode {
   return {
     id,
     position: { x, y },
+    computedPosition: { x, y },
     dimensions: { width: 100, height: 100 },
     selected: false,
     data: {} as BoardFlowNode['data'],
@@ -237,7 +239,11 @@ describe('useBoardEdges — deleteSelectedEdges', () => {
 });
 
 describe('useBoardEdges — edgeToolbarPosition', () => {
-  it('projects the midpoint between source and target nodes via viewport', () => {
+  it('projects the midpoint between the real anchor points (node border, not top-left corner) via viewport', () => {
+    // Узлы 100x100, дефолтные стороны крепления right/left (sourceHandle/targetHandle
+    // не заданы) — точка на границе `s` смещена от его position на (+100, +50), а не
+    // берётся напрямую из position (баг: тулбар уезжал далеко от крупных карточек,
+    // найден пользователем 20.08.2026).
     const src = flowNode('s', 0, 0);
     const tgt = flowNode('t', 200, 100);
     const e = flowEdge(boardEdge('e', { sourceItemId: 's', targetItemId: 't' }));
@@ -250,8 +256,10 @@ describe('useBoardEdges — edgeToolbarPosition', () => {
     setSelected([e]);
 
     const pos = edges.edgeToolbarPosition.value!;
-    expect(pos.left).toBe(100); // (0 + 200) / 2
-    expect(pos.top).toBe(50); // (0 + 100) / 2
+    // anchor(s) = right midpoint of {0,0,100,100} = (100, 50)
+    // anchor(t) = left midpoint of {200,100,100,100} = (200, 150)
+    expect(pos.left).toBe(150); // (100 + 200) / 2
+    expect(pos.top).toBe(100); // (50 + 150) / 2
   });
 
   it('is null when no edge is selected', () => {
@@ -327,6 +335,51 @@ describe('useBoardEdges — selectedEdgeStyle/Color', () => {
       resolveEdgeColor: (c) => c ?? '#222222',
     });
     expect(edges.selectedEdgeColor.value).toBe('#222222');
+  });
+
+  it('label text style defaults (12.18): 13/center/resolved color/false when no edge selected', () => {
+    const { edges, setSelected } = makeEdges({
+      resolveEdgeColor: (c) => c ?? '#222222',
+    });
+    setSelected([]);
+    expect(edges.selectedEdgeLabelFontSize.value).toBe(13);
+    expect(edges.selectedEdgeLabelTextAlign.value).toBe('center');
+    expect(edges.selectedEdgeLabelTextColor.value).toBe('#222222');
+    expect(edges.selectedEdgeLabelBold.value).toBe(false);
+    expect(edges.selectedEdgeLabelItalic.value).toBe(false);
+    expect(edges.selectedEdgeLabelUnderline.value).toBe(false);
+    expect(edges.selectedEdgeLabelStrike.value).toBe(false);
+  });
+
+  it('reads label text style from the first selected edge (12.18)', () => {
+    const e = flowEdge(
+      boardEdge('e', {
+        style: {
+          line: 'curved',
+          dash: 'solid',
+          markerStart: 'none',
+          markerEnd: 'arrow',
+          labelFontSize: 20,
+          labelTextAlign: 'left',
+          labelTextColor: '#ABCDEF',
+          labelBold: true,
+          labelItalic: true,
+          labelUnderline: true,
+          labelStrike: true,
+        },
+      }),
+    );
+    const { edges } = makeEdges({
+      selectedEdges: [e],
+      resolveEdgeColor: (c) => c ?? '#222222',
+    });
+    expect(edges.selectedEdgeLabelFontSize.value).toBe(20);
+    expect(edges.selectedEdgeLabelTextAlign.value).toBe('left');
+    expect(edges.selectedEdgeLabelTextColor.value).toBe('#ABCDEF');
+    expect(edges.selectedEdgeLabelBold.value).toBe(true);
+    expect(edges.selectedEdgeLabelItalic.value).toBe(true);
+    expect(edges.selectedEdgeLabelUnderline.value).toBe(true);
+    expect(edges.selectedEdgeLabelStrike.value).toBe(true);
   });
 });
 
@@ -450,5 +503,54 @@ describe('useBoardEdges — edge style patch ops', () => {
     edges.cancelEdgeColorPreview('#orig');
 
     expect(lastOps(applyOps)[0]!.patch.style.color).toBe('#orig');
+  });
+
+  it('patchEdgeLabelFontSize emits edge.patch with the new font size (12.18)', () => {
+    const e = flowEdge(boardEdge('e'));
+    const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
+    edges.patchEdgeLabelFontSize(22);
+    expect(lastOps(applyOps)[0]!.patch.style.labelFontSize).toBe(22);
+  });
+
+  it('patchEdgeLabelTextAlign emits edge.patch with the new align (12.18)', () => {
+    const e = flowEdge(boardEdge('e'));
+    const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
+    edges.patchEdgeLabelTextAlign('right');
+    expect(lastOps(applyOps)[0]!.patch.style.labelTextAlign).toBe('right');
+  });
+
+  it('patchEdgeLabelTextColor emits edge.patch with the new color (12.18)', () => {
+    const e = flowEdge(boardEdge('e'));
+    const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
+    edges.patchEdgeLabelTextColor('#123456');
+    expect(lastOps(applyOps)[0]!.patch.style.labelTextColor).toBe('#123456');
+  });
+
+  it('patchEdgeLabelBold emits edge.patch with the new bold flag (12.18)', () => {
+    const e = flowEdge(boardEdge('e'));
+    const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
+    edges.patchEdgeLabelBold(true);
+    expect(lastOps(applyOps)[0]!.patch.style.labelBold).toBe(true);
+  });
+
+  it('patchEdgeLabelItalic emits edge.patch with the new italic flag (12.18)', () => {
+    const e = flowEdge(boardEdge('e'));
+    const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
+    edges.patchEdgeLabelItalic(true);
+    expect(lastOps(applyOps)[0]!.patch.style.labelItalic).toBe(true);
+  });
+
+  it('patchEdgeLabelUnderline emits edge.patch with the new underline flag (12.18)', () => {
+    const e = flowEdge(boardEdge('e'));
+    const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
+    edges.patchEdgeLabelUnderline(true);
+    expect(lastOps(applyOps)[0]!.patch.style.labelUnderline).toBe(true);
+  });
+
+  it('patchEdgeLabelStrike emits edge.patch with the new strike flag (12.18)', () => {
+    const e = flowEdge(boardEdge('e'));
+    const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
+    edges.patchEdgeLabelStrike(true);
+    expect(lastOps(applyOps)[0]!.patch.style.labelStrike).toBe(true);
   });
 });

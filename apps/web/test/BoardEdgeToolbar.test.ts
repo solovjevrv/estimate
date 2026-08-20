@@ -2,7 +2,11 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import { nextTick } from 'vue';
 
-import { BOARD_COLOR_PALETTE } from '@poker/shared';
+import {
+  BOARD_COLOR_PALETTE,
+  BOARD_ITEM_FONT_SIZE_MAX,
+  BOARD_ITEM_FONT_SIZE_MIN,
+} from '@poker/shared';
 
 import BoardEdgeToolbar from '../src/components/board/BoardEdgeToolbar.vue';
 import { createAppI18n } from '../src/i18n';
@@ -40,6 +44,13 @@ function mountToolbar(props: Record<string, unknown> = {}) {
       currentMarkerStart: 'arrow',
       currentMarkerEnd: 'arrow',
       currentColor: '#FF0000',
+      currentLabelFontSize: 13,
+      currentLabelTextAlign: 'center',
+      currentLabelTextColor: '#000000',
+      currentLabelBold: false,
+      currentLabelItalic: false,
+      currentLabelUnderline: false,
+      currentLabelStrike: false,
       ...props,
     },
   });
@@ -249,6 +260,216 @@ describe('BoardEdgeToolbar — стиль обводки связи', () => {
       (btn) => btn.getAttribute('aria-label') === dashItemAriaLabel('dotted'),
     )!;
     expect(dashItem.classList.contains('board-form-menu-item-active')).toBe(true);
+    wrapper.unmount();
+  });
+});
+
+async function openTextOptionsPopover(wrapper: ReturnType<typeof mountToolbar>) {
+  const trigger = wrapper.find('button[aria-label="Настройки текста"]');
+  await trigger.trigger('click');
+  await nextTick();
+  return trigger;
+}
+
+async function openLabelAlignPopover(wrapper: ReturnType<typeof mountToolbar>) {
+  const trigger = wrapper.find('button[aria-label="Выравнивание"]');
+  await trigger.trigger('click');
+  await nextTick();
+  return trigger;
+}
+
+describe('BoardEdgeToolbar — размер шрифта подписи (12.18)', () => {
+  it('попап "Aa" показывает текущий размер и открывается по клику на триггер', async () => {
+    const wrapper = mountToolbar({ currentLabelFontSize: 20 });
+    const trigger = await openTextOptionsPopover(wrapper);
+    expect(trigger.attributes('data-state')).toBe('open');
+    expect(document.querySelector('.board-stepper-value')?.textContent).toBe('20');
+    wrapper.unmount();
+  });
+
+  it('клик "+" эмиттит labelFontSize на FONT_SIZE_STEP больше текущего', async () => {
+    const wrapper = mountToolbar({ currentLabelFontSize: 20 });
+    await openTextOptionsPopover(wrapper);
+    document
+      .querySelector<HTMLButtonElement>('button[aria-label="Увеличить размер шрифта"]')!
+      .click();
+    await nextTick();
+    expect(wrapper.emitted('labelFontSize')?.[0]?.[0]).toBe(22);
+    wrapper.unmount();
+  });
+
+  it('клик "-" эмиттит labelFontSize на FONT_SIZE_STEP меньше текущего', async () => {
+    const wrapper = mountToolbar({ currentLabelFontSize: 20 });
+    await openTextOptionsPopover(wrapper);
+    document
+      .querySelector<HTMLButtonElement>('button[aria-label="Уменьшить размер шрифта"]')!
+      .click();
+    await nextTick();
+    expect(wrapper.emitted('labelFontSize')?.[0]?.[0]).toBe(18);
+    wrapper.unmount();
+  });
+
+  it('кнопка "+" отключена на верхней границе BOARD_ITEM_FONT_SIZE_MAX', async () => {
+    const wrapper = mountToolbar({ currentLabelFontSize: BOARD_ITEM_FONT_SIZE_MAX });
+    await openTextOptionsPopover(wrapper);
+    const plus = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Увеличить размер шрифта"]',
+    )!;
+    expect(plus.disabled).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('кнопка "-" отключена на нижней границе BOARD_ITEM_FONT_SIZE_MIN', async () => {
+    const wrapper = mountToolbar({ currentLabelFontSize: BOARD_ITEM_FONT_SIZE_MIN });
+    await openTextOptionsPopover(wrapper);
+    const minus = document.querySelector<HTMLButtonElement>(
+      'button[aria-label="Уменьшить размер шрифта"]',
+    )!;
+    expect(minus.disabled).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('клик по свотчу палитры внутри "Aa" эмиттит labelTextColor', async () => {
+    const wrapper = mountToolbar();
+    await openTextOptionsPopover(wrapper);
+    const swatch = document.querySelectorAll<HTMLButtonElement>('.board-color-menu button')[0]!;
+    swatch.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('labelTextColor')?.[0]?.[0]).toBe(BOARD_COLOR_PALETTE[0]);
+    wrapper.unmount();
+  });
+});
+
+describe('BoardEdgeToolbar — выравнивание текста подписи (12.18)', () => {
+  it('попап выравнивания открывается по клику на триггер и содержит 3 варианта', async () => {
+    const wrapper = mountToolbar();
+    const trigger = await openLabelAlignPopover(wrapper);
+    expect(trigger.attributes('data-state')).toBe('open');
+    expect(document.querySelectorAll('.board-form-menu-item')).toHaveLength(3);
+    wrapper.unmount();
+  });
+
+  it('клик по пункту "По левому краю" эмиттит labelTextAlign="left"', async () => {
+    const wrapper = mountToolbar({ currentLabelTextAlign: 'center' });
+    await openLabelAlignPopover(wrapper);
+    const item = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.board-form-menu-item'),
+    ).find((btn) => btn.getAttribute('aria-label') === 'По левому краю')!;
+    item.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('labelTextAlign')?.[0]?.[0]).toBe('left');
+    wrapper.unmount();
+  });
+
+  it('клик по пункту "По правому краю" эмиттит labelTextAlign="right"', async () => {
+    const wrapper = mountToolbar({ currentLabelTextAlign: 'center' });
+    await openLabelAlignPopover(wrapper);
+    const item = Array.from(
+      document.querySelectorAll<HTMLButtonElement>('.board-form-menu-item'),
+    ).find((btn) => btn.getAttribute('aria-label') === 'По правому краю')!;
+    item.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('labelTextAlign')?.[0]?.[0]).toBe('right');
+    wrapper.unmount();
+  });
+
+  it('пункт, соответствующий currentLabelTextAlign, помечен активным классом', async () => {
+    const wrapper = mountToolbar({ currentLabelTextAlign: 'right' });
+    await openLabelAlignPopover(wrapper);
+    const items = document.querySelectorAll<HTMLButtonElement>('.board-form-menu-item');
+    const activeItem = Array.from(items).find(
+      (btn) => btn.getAttribute('aria-label') === 'По правому краю',
+    )!;
+    expect(activeItem.classList.contains('board-form-menu-item-active')).toBe(true);
+    wrapper.unmount();
+  });
+});
+
+async function openLabelFormatPopover(wrapper: ReturnType<typeof mountToolbar>) {
+  const trigger = wrapper.find('button[aria-label="Начертание"]');
+  await trigger.trigger('click');
+  await nextTick();
+  return trigger;
+}
+
+function formatItem(label: string): HTMLButtonElement {
+  return Array.from(document.querySelectorAll<HTMLButtonElement>('.board-form-menu-item')).find(
+    (btn) => btn.getAttribute('aria-label') === label,
+  )!;
+}
+
+describe('BoardEdgeToolbar — начертание текста подписи (12.18, общий BoardFormatButtons.vue)', () => {
+  it('попап открывается по клику на триггер и содержит 4 варианта (bold/italic/underline/strike)', async () => {
+    const wrapper = mountToolbar();
+    const trigger = await openLabelFormatPopover(wrapper);
+    expect(trigger.attributes('data-state')).toBe('open');
+    expect(document.querySelectorAll('.board-form-menu-item')).toHaveLength(4);
+    wrapper.unmount();
+  });
+
+  it('клик по "Жирный" эмиттит labelBold=true, если сейчас выключено', async () => {
+    const wrapper = mountToolbar({ currentLabelBold: false });
+    await openLabelFormatPopover(wrapper);
+    formatItem('Жирный').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('labelBold')?.[0]?.[0]).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('клик по "Жирный" эмиттит labelBold=false, если сейчас включено', async () => {
+    const wrapper = mountToolbar({ currentLabelBold: true });
+    await openLabelFormatPopover(wrapper);
+    formatItem('Жирный').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('labelBold')?.[0]?.[0]).toBe(false);
+    wrapper.unmount();
+  });
+
+  it('клик по "Курсив" эмиттит labelItalic=true', async () => {
+    const wrapper = mountToolbar({ currentLabelItalic: false });
+    await openLabelFormatPopover(wrapper);
+    formatItem('Курсив').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('labelItalic')?.[0]?.[0]).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('клик по "Подчёркнутый" эмиттит labelUnderline=true', async () => {
+    const wrapper = mountToolbar({ currentLabelUnderline: false });
+    await openLabelFormatPopover(wrapper);
+    formatItem('Подчёркнутый').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('labelUnderline')?.[0]?.[0]).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('клик по "Зачёркнутый" эмиттит labelStrike=true', async () => {
+    const wrapper = mountToolbar({ currentLabelStrike: false });
+    await openLabelFormatPopover(wrapper);
+    formatItem('Зачёркнутый').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('labelStrike')?.[0]?.[0]).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('триггер помечен активным классом, если активен хотя бы один вариант', async () => {
+    const wrapper = mountToolbar({ currentLabelBold: true });
+    const trigger = wrapper.find('button[aria-label="Начертание"]');
+    expect(trigger.classes()).toContain('board-selection-icon-btn-active');
+    wrapper.unmount();
+  });
+
+  it('триггер не активен, если ни один вариант не включён', async () => {
+    const wrapper = mountToolbar();
+    const trigger = wrapper.find('button[aria-label="Начертание"]');
+    expect(trigger.classes()).not.toContain('board-selection-icon-btn-active');
+    wrapper.unmount();
+  });
+
+  it('пункт "Жирный" внутри попапа помечен активным классом, когда currentLabelBold=true', async () => {
+    const wrapper = mountToolbar({ currentLabelBold: true });
+    await openLabelFormatPopover(wrapper);
+    expect(formatItem('Жирный').classList.contains('board-form-menu-item-active')).toBe(true);
     wrapper.unmount();
   });
 });

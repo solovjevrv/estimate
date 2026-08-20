@@ -5,8 +5,11 @@ import type {
 import { describe, expect, it } from 'vitest';
 
 import {
+  closestSampleIndex,
   getEdgeAnchorParams,
   getOffsetCurvePath,
+  offsetAlongNormal,
+  tangentAtSample,
 } from '../src/features/boards/domain/floating-edge-geometry';
 
 function node(
@@ -133,5 +136,79 @@ describe('getOffsetCurvePath', () => {
     expect(path).toBe('M0,0 Q50,0 100,0');
     expect(labelX).toBe(50);
     expect(labelY).toBe(0);
+  });
+});
+
+/** Горизонтальная выборка (0,0)→(100,0) с шагом 25 — прямая линия, 5 точек */
+const horizontalSamples = [
+  { x: 0, y: 0 },
+  { x: 25, y: 0 },
+  { x: 50, y: 0 },
+  { x: 75, y: 0 },
+  { x: 100, y: 0 },
+];
+
+describe('closestSampleIndex', () => {
+  it('находит индекс ближайшего сэмпла к целевой точке', () => {
+    // расстояния до (60,10)²: 3700, 1325, 200, 325, 1700 → минимум у индекса 2 (x=50)
+    expect(closestSampleIndex(horizontalSamples, { x: 60, y: 10 })).toBe(2);
+  });
+
+  it('точное совпадение с сэмплом даёт его индекс', () => {
+    expect(closestSampleIndex(horizontalSamples, { x: 100, y: 0 })).toBe(4);
+  });
+});
+
+describe('tangentAtSample', () => {
+  it('касательная в средней точке горизонтальной прямой — (1,0)', () => {
+    expect(tangentAtSample(horizontalSamples, 2)).toEqual({ x: 1, y: 0 });
+  });
+
+  it('на границе выборки берёт одностороннюю разность', () => {
+    expect(tangentAtSample(horizontalSamples, 0)).toEqual({ x: 1, y: 0 });
+    expect(tangentAtSample(horizontalSamples, 4)).toEqual({ x: 1, y: 0 });
+  });
+
+  it('диагональная выборка даёт нормализованный диагональный вектор', () => {
+    const diagonal = [
+      { x: 0, y: 0 },
+      { x: 10, y: 10 },
+      { x: 20, y: 20 },
+    ];
+    const result = tangentAtSample(diagonal, 1);
+    expect(result.x).toBeCloseTo(Math.SQRT1_2);
+    expect(result.y).toBeCloseTo(Math.SQRT1_2);
+  });
+
+  it('вырожденная выборка (совпадающие соседи) — фолбэк (1,0)', () => {
+    const degenerate = [
+      { x: 5, y: 5 },
+      { x: 5, y: 5 },
+    ];
+    expect(tangentAtSample(degenerate, 0)).toEqual({ x: 1, y: 0 });
+  });
+});
+
+describe('offsetAlongNormal', () => {
+  it('смещает точку вдоль нормали к горизонтальной касательной', () => {
+    // tangent=(1,0) → normal=(0,1)
+    const result = offsetAlongNormal({ x: 10, y: 0 }, { x: 1, y: 0 }, 5);
+    expect(result).toEqual({ x: 10, y: 5 });
+  });
+
+  it('отрицательная дистанция смещает в противоположную сторону', () => {
+    const result = offsetAlongNormal({ x: 10, y: 0 }, { x: 1, y: 0 }, -5);
+    expect(result).toEqual({ x: 10, y: -5 });
+  });
+
+  it('смещает точку вдоль нормали к вертикальной касательной', () => {
+    // tangent=(0,1) → normal=(-1,0)
+    const result = offsetAlongNormal({ x: 0, y: 0 }, { x: 0, y: 1 }, 4);
+    expect(result).toEqual({ x: -4, y: 0 });
+  });
+
+  it('нулевая дистанция не меняет точку', () => {
+    const result = offsetAlongNormal({ x: 3, y: 7 }, { x: 1, y: 0 }, 0);
+    expect(result).toEqual({ x: 3, y: 7 });
   });
 });

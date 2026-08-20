@@ -10,6 +10,7 @@ import {
   BOARD_COLOR_HEX_PATTERN,
   BOARD_EDGE_LABEL_MAX_LENGTH,
   BOARD_EDGE_CURVE_OFFSET_MAX,
+  BOARD_EDGE_LABEL_OFFSET_MAX,
   BOARD_EDGE_DASH_KINDS,
   BOARD_EDGE_LINE_KINDS,
   BOARD_EDGE_MARKER_KINDS,
@@ -139,18 +140,76 @@ function validateCurveOffset(value: unknown): { x: number; y: number } | null {
   };
 }
 
+/** Общий валидатор для булевых переключателей начертания подписи связи
+ * (labelBold/labelItalic/labelUnderline/labelStrike, 12.18) — null трактуется
+ * как undefined, тот же паттерн, что у остальных опциональных полей style. */
+function validateOptionalBoolean(value: unknown, what: string): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'boolean') {
+    throw new ValidationError(`Некорректное значение поля «${what}»`);
+  }
+  return value;
+}
+
+function validateLabelOffset(value: unknown): { t: number; distance: number } | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== 'object') {
+    throw new ValidationError('Некорректное позиционирование подписи связи');
+  }
+  const { t, distance } = value as { t?: unknown; distance?: unknown };
+  return {
+    t: requireFinite(t, 'labelOffset.t', 0, 1),
+    distance: requireFinite(
+      distance,
+      'labelOffset.distance',
+      -BOARD_EDGE_LABEL_OFFSET_MAX,
+      BOARD_EDGE_LABEL_OFFSET_MAX,
+    ),
+  };
+}
+
 function validateEdgeStyle(style: unknown): BoardEdge['style'] {
   if (typeof style !== 'object' || style === null) {
     throw new ValidationError('Не указан стиль связи');
   }
-  const { color, line, markerStart, markerEnd, dash, curveOffset } = style as {
+  const {
+    color,
+    line,
+    markerStart,
+    markerEnd,
+    dash,
+    curveOffset,
+    labelOffset,
+    labelFontSize,
+    labelTextAlign,
+    labelTextColor,
+    labelBold,
+    labelItalic,
+    labelUnderline,
+    labelStrike,
+  } = style as {
     color?: unknown;
     line?: unknown;
     markerStart?: unknown;
     markerEnd?: unknown;
     dash?: unknown;
     curveOffset?: unknown;
+    labelOffset?: unknown;
+    labelFontSize?: unknown;
+    labelTextAlign?: unknown;
+    labelTextColor?: unknown;
+    labelBold?: unknown;
+    labelItalic?: unknown;
+    labelUnderline?: unknown;
+    labelStrike?: unknown;
   };
+  const validLabelBold = validateOptionalBoolean(labelBold, 'жирность подписи связи');
+  const validLabelItalic = validateOptionalBoolean(labelItalic, 'курсив подписи связи');
+  const validLabelUnderline = validateOptionalBoolean(
+    labelUnderline,
+    'подчёркивание подписи связи',
+  );
+  const validLabelStrike = validateOptionalBoolean(labelStrike, 'зачёркивание подписи связи');
   // Не задан — цвет решается на фронте от темы зрителя (12.9), не хранится
   const validColor =
     color === undefined || color === null ? undefined : requireColorHex(color, 'связи');
@@ -190,6 +249,17 @@ function validateEdgeStyle(style: unknown): BoardEdge['style'] {
     markerStart: validMarkerStart,
     markerEnd: validMarkerEnd,
     curveOffset: validateCurveOffset(curveOffset),
+    labelOffset: validateLabelOffset(labelOffset),
+    labelFontSize: validateFontSize(labelFontSize),
+    labelTextAlign: validateTextAlign(labelTextAlign),
+    labelTextColor:
+      labelTextColor === undefined || labelTextColor === null
+        ? undefined
+        : requireColorHex(labelTextColor, 'подписи связи'),
+    labelBold: validLabelBold,
+    labelItalic: validLabelItalic,
+    labelUnderline: validLabelUnderline,
+    labelStrike: validLabelStrike,
   };
 }
 
