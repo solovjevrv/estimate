@@ -20,9 +20,11 @@ import {
 import { resolveEdgeColor } from '../../features/boards/config/board-item-defaults';
 import {
   closestSampleIndex,
+  type EdgeAnchorParams,
   type EdgeAnchorSide,
   getEdgeAnchorParams,
   getOffsetCurvePath,
+  lerpEdgeAnchorParams,
   offsetAlongNormal,
   type PathSample,
   tangentAtSample,
@@ -84,15 +86,68 @@ const params = computed(() =>
   ),
 );
 
+/**
+ * Сглаживание точек крепления при перемещении подключённой карточки ДРУГИМ
+ * участником (12.19) — throttled-патчи позиции (~80мс, `BOARD_DRAG_THROTTLE_MS`)
+ * без интерполяции давали дискретные скачки пути связи, хотя сама карточка уже
+ * сглаживается CSS-переходом transform (12.6, `BoardCanvas.vue`) и подпись —
+ * тоже CSS-переходом (12.18, `.board-edge-label` ниже). Для SVG `d` CSS
+ * transition ненадёжен (не interpolable свойство без риска расхождения между
+ * рендером и `getPointAtLength` в разных браузерах), поэтому интерполируются
+ * сами координаты (`lerpEdgeAnchorParams`) через rAF, а path пересчитывается
+ * заново на каждом кадре — `renderedAnchor` ниже заменяет `params` всюду, где
+ * рендерится видимая геометрия (path/mid/маркеры-точки), сам `params` остаётся
+ * «сырой» целью, к которой едет анимация.
+ *
+ * Отключается (мгновенный снап без анимации), если хотя бы одна из подключённых
+ * карточек тащится ЛОКАЛЬНО этим пользователем (`node.dragging` — Vue Flow-нативный
+ * флаг, выставляется исключительно её собственным pointer-драгом, не патчами
+ * извне, — иначе линия отставала бы от курсора при обычном перетаскивании), либо
+ * изменилась сторона крепления (дискретный выбор, не непрерывная величина —
+ * интерполировать нечего, скачок и так мгновенный).
+ */
+const EDGE_ANCHOR_TRANSITION_MS = 120;
+const renderedAnchor = ref<EdgeAnchorParams>(params.value);
+let anchorAnimationFrame: number | null = null;
+let anchorTweenFrom: EdgeAnchorParams = params.value;
+let anchorTweenStart = 0;
+
+function cancelAnchorTween(): void {
+  if (anchorAnimationFrame === null) return;
+  cancelAnimationFrame(anchorAnimationFrame);
+  anchorAnimationFrame = null;
+}
+
+function stepAnchorTween(target: EdgeAnchorParams, now: number): void {
+  const t = Math.min(1, (now - anchorTweenStart) / EDGE_ANCHOR_TRANSITION_MS);
+  renderedAnchor.value = lerpEdgeAnchorParams(anchorTweenFrom, target, t);
+  anchorAnimationFrame = t < 1 ? requestAnimationFrame((n) => stepAnchorTween(target, n)) : null;
+}
+
+watch(params, (next) => {
+  const isLocalDrag = props.sourceNode.dragging || props.targetNode.dragging;
+  const sideChanged =
+    next.sourceSide !== renderedAnchor.value.sourceSide ||
+    next.targetSide !== renderedAnchor.value.targetSide;
+  cancelAnchorTween();
+  if (isLocalDrag || sideChanged) {
+    renderedAnchor.value = next;
+    return;
+  }
+  anchorTweenFrom = renderedAnchor.value;
+  anchorTweenStart = performance.now();
+  anchorAnimationFrame = requestAnimationFrame((now) => stepAnchorTween(next, now));
+});
+
 const straightMid = computed(() => ({
-  x: (params.value.sx + params.value.tx) / 2,
-  y: (params.value.sy + params.value.ty) / 2,
+  x: (renderedAnchor.value.sx + renderedAnchor.value.tx) / 2,
+  y: (renderedAnchor.value.sy + renderedAnchor.value.ty) / 2,
 }));
 
 const dragOffsetPreview = ref<{ x: number; y: number } | null>(null);
 
 const pathData = computed(() => {
-  const { sx, sy, tx, ty, sourceSide, targetSide } = params.value;
+  const { sx, sy, tx, ty, sourceSide, targetSide } = renderedAnchor.value;
   const line = props.data.style.line;
 
   if (line === 'orthogonal') {
@@ -568,6 +623,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', onCurveDragKeydown);
   window.removeEventListener('keydown', onLabelDragKeydown);
   labelSizeObserver?.disconnect();
+  cancelAnchorTween();
 });
 </script>
 
@@ -621,15 +677,15 @@ onUnmounted(() => {
          рисуем сами поверх пути -->
     <circle
       v-if="data.style.markerStart === 'dot'"
-      :cx="params.sx"
-      :cy="params.sy"
+      :cx="renderedAnchor.sx"
+      :cy="renderedAnchor.sy"
       r="4"
       :fill="dotColor"
     />
     <circle
       v-if="data.style.markerEnd === 'dot'"
-      :cx="params.tx"
-      :cy="params.ty"
+      :cx="renderedAnchor.tx"
+      :cy="renderedAnchor.ty"
       r="4"
       :fill="dotColor"
     />

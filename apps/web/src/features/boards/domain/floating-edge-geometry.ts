@@ -98,6 +98,32 @@ export function getEdgeAnchorParams(
 }
 
 /**
+ * Линейная интерполяция между двумя наборами точек крепления (12.19) — сглаживает
+ * путь связи при перемещении подключённой карточки ДРУГИМ участником: throttled-патчи
+ * позиции (~80мс) без интерполяции давали дискретные скачки, хотя сама карточка уже
+ * сглаживается CSS-переходом transform (12.6) — та же цель, но для пути связи CSS
+ * transition на SVG `d` ненадёжен (не interpolable без риска расхождения рендера
+ * и getPointAtLength между браузерами), поэтому интерполируются сами координаты, а
+ * path пересчитывается на каждом кадре в `BoardFloatingEdge.vue`. Стороны крепления
+ * (`sourceSide`/`targetSide`) не интерполируются — это дискретный выбор, не непрерывная
+ * величина, берутся из `to`.
+ */
+export function lerpEdgeAnchorParams(
+  from: EdgeAnchorParams,
+  to: EdgeAnchorParams,
+  t: number,
+): EdgeAnchorParams {
+  return {
+    sx: from.sx + (to.sx - from.sx) * t,
+    sy: from.sy + (to.sy - from.sy) * t,
+    tx: from.tx + (to.tx - from.tx) * t,
+    ty: from.ty + (to.ty - from.ty) * t,
+    sourceSide: to.sourceSide,
+    targetSide: to.targetSide,
+  };
+}
+
+/**
  * Кривая связь (line: 'curved') с пользовательским смещением изгиба (12.17).
  * `curveOffset` — смещение апекса (видимой точки изгиба) от геометрической
  * середины прямой между точками крепления. Чтобы точка на квадратичной

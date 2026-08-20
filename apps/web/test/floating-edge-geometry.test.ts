@@ -8,6 +8,7 @@ import {
   closestSampleIndex,
   getEdgeAnchorParams,
   getOffsetCurvePath,
+  lerpEdgeAnchorParams,
   offsetAlongNormal,
   tangentAtSample,
 } from '../src/features/boards/domain/floating-edge-geometry';
@@ -210,5 +211,56 @@ describe('offsetAlongNormal', () => {
   it('нулевая дистанция не меняет точку', () => {
     const result = offsetAlongNormal({ x: 3, y: 7 }, { x: 1, y: 0 }, 0);
     expect(result).toEqual({ x: 3, y: 7 });
+  });
+});
+
+describe('lerpEdgeAnchorParams', () => {
+  const from: EdgeAnchorParams = {
+    sx: 0,
+    sy: 0,
+    tx: 100,
+    ty: 200,
+    sourceSide: 'right',
+    targetSide: 'left',
+  };
+  const to: EdgeAnchorParams = {
+    sx: 40,
+    sy: 20,
+    tx: 140,
+    ty: 220,
+    sourceSide: 'bottom',
+    targetSide: 'top',
+  };
+
+  it('t=0 возвращает исходные координаты', () => {
+    expect(lerpEdgeAnchorParams(from, to, 0)).toEqual({
+      sx: 0,
+      sy: 0,
+      tx: 100,
+      ty: 200,
+      sourceSide: 'bottom',
+      targetSide: 'top',
+    });
+  });
+
+  it('t=1 возвращает целевые координаты', () => {
+    expect(lerpEdgeAnchorParams(from, to, 1)).toEqual(to);
+  });
+
+  it('t=0.5 — середина между координатами', () => {
+    expect(lerpEdgeAnchorParams(from, to, 0.5)).toEqual({
+      sx: 20,
+      sy: 10,
+      tx: 120,
+      ty: 210,
+      sourceSide: 'bottom',
+      targetSide: 'top',
+    });
+  });
+
+  it('sourceSide/targetSide не интерполируются — всегда берутся из to (дискретный выбор, не непрерывная величина)', () => {
+    const result = lerpEdgeAnchorParams(from, to, 0);
+    expect(result.sourceSide).toBe(to.sourceSide);
+    expect(result.targetSide).toBe(to.targetSide);
   });
 });
