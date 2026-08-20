@@ -140,6 +140,17 @@ function validateCurveOffset(value: unknown): { x: number; y: number } | null {
   };
 }
 
+/** Общий валидатор для булевых переключателей начертания подписи связи
+ * (labelBold/labelItalic/labelUnderline/labelStrike, 12.18) — null трактуется
+ * как undefined, тот же паттерн, что у остальных опциональных полей style. */
+function validateOptionalBoolean(value: unknown, what: string): boolean | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== 'boolean') {
+    throw new ValidationError(`Некорректное значение поля «${what}»`);
+  }
+  return value;
+}
+
 function validateLabelOffset(value: unknown): { t: number; distance: number } | null {
   if (value === undefined || value === null) return null;
   if (typeof value !== 'object') {
@@ -173,6 +184,9 @@ function validateEdgeStyle(style: unknown): BoardEdge['style'] {
     labelTextAlign,
     labelTextColor,
     labelBold,
+    labelItalic,
+    labelUnderline,
+    labelStrike,
   } = style as {
     color?: unknown;
     line?: unknown;
@@ -185,16 +199,17 @@ function validateEdgeStyle(style: unknown): BoardEdge['style'] {
     labelTextAlign?: unknown;
     labelTextColor?: unknown;
     labelBold?: unknown;
+    labelItalic?: unknown;
+    labelUnderline?: unknown;
+    labelStrike?: unknown;
   };
-  const validLabelBold =
-    labelBold === undefined || labelBold === null
-      ? undefined
-      : (() => {
-          if (typeof labelBold !== 'boolean') {
-            throw new ValidationError('Некорректная жирность подписи связи');
-          }
-          return labelBold;
-        })();
+  const validLabelBold = validateOptionalBoolean(labelBold, 'жирность подписи связи');
+  const validLabelItalic = validateOptionalBoolean(labelItalic, 'курсив подписи связи');
+  const validLabelUnderline = validateOptionalBoolean(
+    labelUnderline,
+    'подчёркивание подписи связи',
+  );
+  const validLabelStrike = validateOptionalBoolean(labelStrike, 'зачёркивание подписи связи');
   // Не задан — цвет решается на фронте от темы зрителя (12.9), не хранится
   const validColor =
     color === undefined || color === null ? undefined : requireColorHex(color, 'связи');
@@ -242,6 +257,9 @@ function validateEdgeStyle(style: unknown): BoardEdge['style'] {
         ? undefined
         : requireColorHex(labelTextColor, 'подписи связи'),
     labelBold: validLabelBold,
+    labelItalic: validLabelItalic,
+    labelUnderline: validLabelUnderline,
+    labelStrike: validLabelStrike,
   };
 }
 

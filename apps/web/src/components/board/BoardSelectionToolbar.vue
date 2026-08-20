@@ -80,6 +80,7 @@ import type { FormatMarkKey } from '../../features/boards/composables/use-rich-t
 import type { ItemFormKind } from '../../features/boards/board-item-form';
 import BoardStickerPicker from './BoardStickerPicker.vue';
 import BoardColorPickerMenu from './BoardColorPickerMenu.vue';
+import BoardFormatButtons from './BoardFormatButtons.vue';
 
 export type { ItemFormKind };
 
@@ -211,8 +212,9 @@ const FORMAT_BUTTONS: readonly { key: FormatMarkKey; icon: string }[] = [
 const formattingDisabled = computed(() => !props.editingText || props.activeMarks === null);
 /** Ссылка требует ЯВНОГО выделения (18.7): без него показываем подсказку, а не форму URL */
 const linkUnavailable = computed(() => !props.editingText || !props.hasTextSelection);
-const anyFormatActive = computed(
-  () => !!props.activeMarks && FORMAT_BUTTONS.some((format) => !!props.activeMarks?.[format.key]),
+/** Ключи начертания, активные в activeMarks — вход для общего BoardFormatButtons.vue */
+const activeFormatKeys = computed<FormatMarkKey[]>(() =>
+  FORMAT_BUTTONS.map((format) => format.key).filter((key) => !!props.activeMarks?.[key]),
 );
 
 const linkPopoverOpen = ref(false);
@@ -523,51 +525,16 @@ function cancelTextColor(hex: BoardColorHex): void {
 
       <!--
        Начертание (12.13) — к целевому диапазону внутри редактируемого текста: при
-       схлопнутом курсоре (18.7) — ко всему непустому тексту. `@mousedown.prevent` —
-       на триггере И на каждой кнопке внутри попапа: без него фокус ушёл бы с
-       contenteditable уже при открытии попапа (клик по триггеру), а не только при
-       клике по конкретной кнопке форматирования — см. пояснение в шапке файла.
-       `onFocusOutside` отключает автозакрытие попапа именно по уходу фокуса (его
-       вызывает восстановление выделения в `applyRangePatch` после каждого клика) —
-       обычное «кликнули мимо» (`pointerDownOutside`) не тронуто, попап всё ещё
-       закрывается им.
+       схлопнутом курсоре (18.7) — ко всему непустому тексту. Разметка/иконки/классы —
+       общий `BoardFormatButtons.vue` (12.18, переиспользуется и BoardEdgeToolbar.vue),
+       он же несёт `@mousedown.prevent`/`onFocusOutside`, нужные, чтобы фокус не уходил
+       с contenteditable — см. пояснение в шапке файла.
       -->
-      <UPopover
-        :content="{
-          side: 'top',
-          sideOffset: 20,
-          onFocusOutside: (event: Event) => event.preventDefault(),
-        }"
-      >
-        <button
-          type="button"
-          class="board-selection-icon-btn"
-          :class="{ 'board-selection-icon-btn-active': anyFormatActive }"
-          :aria-label="t('board.formatLabel')"
-          @mousedown.prevent
-        >
-          <UIcon name="i-lucide-bold" class="size-3.5" />
-        </button>
-
-        <template #content>
-          <div class="board-form-menu" data-board-text-toolbar>
-            <button
-              v-for="format in FORMAT_BUTTONS"
-              :key="format.key"
-              type="button"
-              class="board-form-menu-item"
-              :class="{ 'board-form-menu-item-active': !!activeMarks?.[format.key] }"
-              :disabled="formattingDisabled"
-              :aria-label="t(`board.formats.${format.key}`)"
-              :title="t(`board.formats.${format.key}`)"
-              @mousedown.prevent
-              @click="emit('toggleMark', format.key)"
-            >
-              <UIcon :name="format.icon" class="size-4" />
-            </button>
-          </div>
-        </template>
-      </UPopover>
+      <BoardFormatButtons
+        :active-keys="activeFormatKeys"
+        :disabled="formattingDisabled"
+        @toggle="emit('toggleMark', $event)"
+      />
 
       <div class="board-selection-divider" />
 

@@ -338,6 +338,9 @@ describe('useBoardEdges — selectedEdgeStyle/Color', () => {
     expect(edges.selectedEdgeLabelTextAlign.value).toBe('center');
     expect(edges.selectedEdgeLabelTextColor.value).toBe('#222222');
     expect(edges.selectedEdgeLabelBold.value).toBe(false);
+    expect(edges.selectedEdgeLabelItalic.value).toBe(false);
+    expect(edges.selectedEdgeLabelUnderline.value).toBe(false);
+    expect(edges.selectedEdgeLabelStrike.value).toBe(false);
   });
 
   it('reads label text style from the first selected edge (12.18)', () => {
@@ -352,6 +355,9 @@ describe('useBoardEdges — selectedEdgeStyle/Color', () => {
           labelTextAlign: 'left',
           labelTextColor: '#ABCDEF',
           labelBold: true,
+          labelItalic: true,
+          labelUnderline: true,
+          labelStrike: true,
         },
       }),
     );
@@ -363,6 +369,9 @@ describe('useBoardEdges — selectedEdgeStyle/Color', () => {
     expect(edges.selectedEdgeLabelTextAlign.value).toBe('left');
     expect(edges.selectedEdgeLabelTextColor.value).toBe('#ABCDEF');
     expect(edges.selectedEdgeLabelBold.value).toBe(true);
+    expect(edges.selectedEdgeLabelItalic.value).toBe(true);
+    expect(edges.selectedEdgeLabelUnderline.value).toBe(true);
+    expect(edges.selectedEdgeLabelStrike.value).toBe(true);
   });
 });
 
@@ -514,5 +523,26 @@ describe('useBoardEdges — edge style patch ops', () => {
     const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
     edges.patchEdgeLabelBold(true);
     expect(lastOps(applyOps)[0]!.patch.style.labelBold).toBe(true);
+  });
+
+  it('patchEdgeLabelItalic emits edge.patch with the new italic flag (12.18)', () => {
+    const e = flowEdge(boardEdge('e'));
+    const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
+    edges.patchEdgeLabelItalic(true);
+    expect(lastOps(applyOps)[0]!.patch.style.labelItalic).toBe(true);
+  });
+
+  it('patchEdgeLabelUnderline emits edge.patch with the new underline flag (12.18)', () => {
+    const e = flowEdge(boardEdge('e'));
+    const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
+    edges.patchEdgeLabelUnderline(true);
+    expect(lastOps(applyOps)[0]!.patch.style.labelUnderline).toBe(true);
+  });
+
+  it('patchEdgeLabelStrike emits edge.patch with the new strike flag (12.18)', () => {
+    const e = flowEdge(boardEdge('e'));
+    const { edges, applyOps } = makeEdges({ selectedEdges: [e] });
+    edges.patchEdgeLabelStrike(true);
+    expect(lastOps(applyOps)[0]!.patch.style.labelStrike).toBe(true);
   });
 });

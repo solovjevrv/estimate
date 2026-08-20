@@ -400,6 +400,15 @@ export interface BoardEdgeStyle {
    * 12.13) — подпись связи короткая строка без rich-text редактора.
    */
   labelBold?: boolean;
+  /** Курсив текста подписи связи (12.18) — тот же паттерн, что labelBold: один
+   * переключатель на весь текст, не задано/false = обычный стиль. */
+  labelItalic?: boolean;
+  /** Подчёркивание текста подписи связи (12.18) — тот же паттерн, что labelBold. */
+  labelUnderline?: boolean;
+  /** Зачёркивание текста подписи связи (12.18) — тот же паттерн, что labelBold.
+   * Может сочетаться с labelUnderline (оба типа text-decoration одновременно,
+   * как и у стикеров/фигур, 12.13). */
+  labelStrike?: boolean;
 }
 
 export interface BoardEdge {

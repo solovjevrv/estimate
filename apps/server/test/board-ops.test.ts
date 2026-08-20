@@ -1608,6 +1608,97 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
 
       expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
     });
+
+    it('принимает и сохраняет labelItalic/labelUnderline/labelStrike', () => {
+      const { state, a, b } = withTwoItems();
+      const edgeId = randomUUID();
+      applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+      applyBoardOp(
+        state,
+        {
+          type: 'edge.patch',
+          clientOpId: randomUUID(),
+          id: edgeId,
+          patch: { style: { labelItalic: true, labelUnderline: true, labelStrike: true } },
+        },
+        BOARD_ID,
+        ACTOR,
+      );
+
+      const style = (state.edges.get(edgeId) as BoardEdge).style;
+      expect(style.labelItalic).toBe(true);
+      expect(style.labelUnderline).toBe(true);
+      expect(style.labelStrike).toBe(true);
+    });
+
+    it('labelItalic/labelUnderline/labelStrike по умолчанию undefined, если ключи отсутствуют в патче', () => {
+      const { state, a, b } = withTwoItems();
+      const edgeId = randomUUID();
+      applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+      applyBoardOp(
+        state,
+        {
+          type: 'edge.patch',
+          clientOpId: randomUUID(),
+          id: edgeId,
+          patch: { label: 'без начертания' },
+        },
+        BOARD_ID,
+        ACTOR,
+      );
+
+      const style = (state.edges.get(edgeId) as BoardEdge).style;
+      expect(style.labelItalic).toBeUndefined();
+      expect(style.labelUnderline).toBeUndefined();
+      expect(style.labelStrike).toBeUndefined();
+    });
+
+    it('отклоняет нечисловое/небулево значение labelItalic', () => {
+      const { state, a, b } = withTwoItems();
+      const edgeId = randomUUID();
+      applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+      const op = {
+        type: 'edge.patch' as const,
+        clientOpId: randomUUID(),
+        id: edgeId,
+        patch: { style: { labelItalic: 'yes' } },
+      } as unknown as BoardOp;
+
+      expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+    });
+
+    it('отклоняет нечисловое/небулево значение labelUnderline', () => {
+      const { state, a, b } = withTwoItems();
+      const edgeId = randomUUID();
+      applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+      const op = {
+        type: 'edge.patch' as const,
+        clientOpId: randomUUID(),
+        id: edgeId,
+        patch: { style: { labelUnderline: 'yes' } },
+      } as unknown as BoardOp;
+
+      expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+    });
+
+    it('отклоняет нечисловое/небулево значение labelStrike', () => {
+      const { state, a, b } = withTwoItems();
+      const edgeId = randomUUID();
+      applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+      const op = {
+        type: 'edge.patch' as const,
+        clientOpId: randomUUID(),
+        id: edgeId,
+        patch: { style: { labelStrike: 'yes' } },
+      } as unknown as BoardOp;
+
+      expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+    });
   });
 });
 

@@ -59,6 +59,9 @@ export interface UseBoardEdgesResult {
   selectedEdgeLabelTextAlign: ComputedRef<BoardTextAlign>;
   selectedEdgeLabelTextColor: ComputedRef<BoardColorHex>;
   selectedEdgeLabelBold: ComputedRef<boolean>;
+  selectedEdgeLabelItalic: ComputedRef<boolean>;
+  selectedEdgeLabelUnderline: ComputedRef<boolean>;
+  selectedEdgeLabelStrike: ComputedRef<boolean>;
 
   onConnect: (connection: BoardEdgeConnection) => void;
   onEdgeDoubleClick: (event: BoardEdgeDoubleClickEvent) => void;
@@ -76,6 +79,9 @@ export interface UseBoardEdgesResult {
   patchEdgeLabelTextAlign: (align: BoardTextAlign) => void;
   patchEdgeLabelTextColor: (color: BoardColorHex) => void;
   patchEdgeLabelBold: (bold: boolean) => void;
+  patchEdgeLabelItalic: (italic: boolean) => void;
+  patchEdgeLabelUnderline: (underline: boolean) => void;
+  patchEdgeLabelStrike: (strike: boolean) => void;
 }
 
 /**
@@ -146,6 +152,11 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     options.resolveEdgeColor(selectedEdgeStyle.value.labelTextColor),
   );
   const selectedEdgeLabelBold = computed<boolean>(() => !!selectedEdgeStyle.value.labelBold);
+  const selectedEdgeLabelItalic = computed<boolean>(() => !!selectedEdgeStyle.value.labelItalic);
+  const selectedEdgeLabelUnderline = computed<boolean>(
+    () => !!selectedEdgeStyle.value.labelUnderline,
+  );
+  const selectedEdgeLabelStrike = computed<boolean>(() => !!selectedEdgeStyle.value.labelStrike);
 
   /* ----------------------- Live-preview цвета ----------------------- */
 
@@ -305,6 +316,33 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     }));
   }
 
+  function patchEdgeLabelItalic(italic: boolean): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelItalic: italic } },
+    }));
+  }
+
+  function patchEdgeLabelUnderline(underline: boolean): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelUnderline: underline } },
+    }));
+  }
+
+  function patchEdgeLabelStrike(strike: boolean): void {
+    patchSelectedEdge((edge) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { style: { ...edge.data.style, labelStrike: strike } },
+    }));
+  }
+
   /* ----------------------- Создание / подпись ----------------------- */
 
   /**
@@ -369,6 +407,9 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     selectedEdgeLabelTextAlign,
     selectedEdgeLabelTextColor,
     selectedEdgeLabelBold,
+    selectedEdgeLabelItalic,
+    selectedEdgeLabelUnderline,
+    selectedEdgeLabelStrike,
     onConnect,
     onEdgeDoubleClick,
     addTextToSelectedEdge,
@@ -384,5 +425,8 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     patchEdgeLabelTextAlign,
     patchEdgeLabelTextColor,
     patchEdgeLabelBold,
+    patchEdgeLabelItalic,
+    patchEdgeLabelUnderline,
+    patchEdgeLabelStrike,
   };
 }

@@ -48,6 +48,9 @@ function mountToolbar(props: Record<string, unknown> = {}) {
       currentLabelTextAlign: 'center',
       currentLabelTextColor: '#000000',
       currentLabelBold: false,
+      currentLabelItalic: false,
+      currentLabelUnderline: false,
+      currentLabelStrike: false,
       ...props,
     },
   });
@@ -382,32 +385,91 @@ describe('BoardEdgeToolbar — выравнивание текста подпи�
   });
 });
 
-describe('BoardEdgeToolbar — жирность текста подписи (12.18)', () => {
-  it('клик по кнопке "Жирный" эмиттит labelBold=true, если сейчас выключено', async () => {
+async function openLabelFormatPopover(wrapper: ReturnType<typeof mountToolbar>) {
+  const trigger = wrapper.find('button[aria-label="Начертание"]');
+  await trigger.trigger('click');
+  await nextTick();
+  return trigger;
+}
+
+function formatItem(label: string): HTMLButtonElement {
+  return Array.from(document.querySelectorAll<HTMLButtonElement>('.board-form-menu-item')).find(
+    (btn) => btn.getAttribute('aria-label') === label,
+  )!;
+}
+
+describe('BoardEdgeToolbar — начертание текста подписи (12.18, общий BoardFormatButtons.vue)', () => {
+  it('попап открывается по клику на триггер и содержит 4 варианта (bold/italic/underline/strike)', async () => {
+    const wrapper = mountToolbar();
+    const trigger = await openLabelFormatPopover(wrapper);
+    expect(trigger.attributes('data-state')).toBe('open');
+    expect(document.querySelectorAll('.board-form-menu-item')).toHaveLength(4);
+    wrapper.unmount();
+  });
+
+  it('клик по "Жирный" эмиттит labelBold=true, если сейчас выключено', async () => {
     const wrapper = mountToolbar({ currentLabelBold: false });
-    await wrapper.find('button[aria-label="Жирный"]').trigger('click');
+    await openLabelFormatPopover(wrapper);
+    formatItem('Жирный').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
     expect(wrapper.emitted('labelBold')?.[0]?.[0]).toBe(true);
     wrapper.unmount();
   });
 
-  it('клик по кнопке "Жирный" эмиттит labelBold=false, если сейчас включено', async () => {
+  it('клик по "Жирный" эмиттит labelBold=false, если сейчас включено', async () => {
     const wrapper = mountToolbar({ currentLabelBold: true });
-    await wrapper.find('button[aria-label="Жирный"]').trigger('click');
+    await openLabelFormatPopover(wrapper);
+    formatItem('Жирный').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
     expect(wrapper.emitted('labelBold')?.[0]?.[0]).toBe(false);
     wrapper.unmount();
   });
 
-  it('кнопка помечена активным классом, когда currentLabelBold=true', () => {
-    const wrapper = mountToolbar({ currentLabelBold: true });
-    const button = wrapper.find('button[aria-label="Жирный"]');
-    expect(button.classes()).toContain('board-selection-icon-btn-active');
+  it('клик по "Курсив" эмиттит labelItalic=true', async () => {
+    const wrapper = mountToolbar({ currentLabelItalic: false });
+    await openLabelFormatPopover(wrapper);
+    formatItem('Курсив').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('labelItalic')?.[0]?.[0]).toBe(true);
     wrapper.unmount();
   });
 
-  it('кнопка не активна, когда currentLabelBold=false', () => {
-    const wrapper = mountToolbar({ currentLabelBold: false });
-    const button = wrapper.find('button[aria-label="Жирный"]');
-    expect(button.classes()).not.toContain('board-selection-icon-btn-active');
+  it('клик по "Подчёркнутый" эмиттит labelUnderline=true', async () => {
+    const wrapper = mountToolbar({ currentLabelUnderline: false });
+    await openLabelFormatPopover(wrapper);
+    formatItem('Подчёркнутый').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('labelUnderline')?.[0]?.[0]).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('клик по "Зачёркнутый" эмиттит labelStrike=true', async () => {
+    const wrapper = mountToolbar({ currentLabelStrike: false });
+    await openLabelFormatPopover(wrapper);
+    formatItem('Зачёркнутый').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+    expect(wrapper.emitted('labelStrike')?.[0]?.[0]).toBe(true);
+    wrapper.unmount();
+  });
+
+  it('триггер помечен активным классом, если активен хотя бы один вариант', async () => {
+    const wrapper = mountToolbar({ currentLabelBold: true });
+    const trigger = wrapper.find('button[aria-label="Начертание"]');
+    expect(trigger.classes()).toContain('board-selection-icon-btn-active');
+    wrapper.unmount();
+  });
+
+  it('триггер не активен, если ни один вариант не включён', async () => {
+    const wrapper = mountToolbar();
+    const trigger = wrapper.find('button[aria-label="Начертание"]');
+    expect(trigger.classes()).not.toContain('board-selection-icon-btn-active');
+    wrapper.unmount();
+  });
+
+  it('пункт "Жирный" внутри попапа помечен активным классом, когда currentLabelBold=true', async () => {
+    const wrapper = mountToolbar({ currentLabelBold: true });
+    await openLabelFormatPopover(wrapper);
+    expect(formatItem('Жирный').classList.contains('board-form-menu-item-active')).toBe(true);
     wrapper.unmount();
   });
 });

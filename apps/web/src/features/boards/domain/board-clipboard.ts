@@ -327,7 +327,11 @@ export function parseClipboardPayload(text: string): BoardClipboardPayload | nul
         styleRecord.labelTextAlign === 'right') &&
       (styleRecord.labelTextColor === undefined ||
         typeof styleRecord.labelTextColor === 'string') &&
-      (styleRecord.labelBold === undefined || typeof styleRecord.labelBold === 'boolean')
+      (styleRecord.labelBold === undefined || typeof styleRecord.labelBold === 'boolean') &&
+      (styleRecord.labelItalic === undefined || typeof styleRecord.labelItalic === 'boolean') &&
+      (styleRecord.labelUnderline === undefined ||
+        typeof styleRecord.labelUnderline === 'boolean') &&
+      (styleRecord.labelStrike === undefined || typeof styleRecord.labelStrike === 'boolean')
     );
   });
 

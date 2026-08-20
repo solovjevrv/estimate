@@ -35,7 +35,23 @@ const { t } = useI18n();
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 const pendingEdgeEditId = inject(BOARD_PENDING_EDGE_EDIT_ID_KEY, ref(null));
-const { project, vueFlowRef, viewport } = useVueFlow();
+const { project, vueFlowRef, viewport, getEdges, addSelectedEdges, removeSelectedElements } =
+  useVueFlow();
+
+/**
+ * Клик по подписи выделяет связь (тулбар всплывает) — раньше не работало
+ * (найдено пользователем): `EdgeLabelRenderer` рендерит подпись в отдельный
+ * HTML-оверлей поверх канваса, а не внутрь `.vue-flow__edge` конкретной связи,
+ * поэтому нативное выделение связи по клику (внутренний механизм Vue Flow,
+ * привязанный к его собственным SVG-элементам) на эту подпись не срабатывает
+ * в принципе — щёлкнуть нужно было именно по самой линии. Выделяем вручную.
+ */
+function selectThisEdge(): void {
+  const edge = getEdges.value.find((candidate) => candidate.id === props.id);
+  if (!edge) return;
+  removeSelectedElements();
+  addSelectedEdges([edge]);
+}
 
 /** Не задан в data.style.color (12.9) — точка 'dot' красится так же, как линия/маркер */
 const dotColor = computed(() => resolveEdgeColor(props.data.style.color));
@@ -202,18 +218,27 @@ const labelInputStyle = computed(() => {
 });
 
 /**
- * Стили текста подписи (12.18) — размер/выравнивание/цвет/жирность, по
- * образцу аналогичных полей `BoardItemStyle` у стикеров/фигур. Не заданы —
- * прежнее поведение (13px, center, авто-цвет от темы через
- * `resolveEdgeColor`, вес 600 — тот же приём/значения, что были жёстко
- * зашиты в CSS до этой фичи).
+ * Стили текста подписи (12.18) — размер/выравнивание/цвет/начертание, по
+ * образцу аналогичных полей `BoardItemStyle` у стикеров/фигур, но один
+ * переключатель на весь текст (не per-символьная разметка `BoardTextRun.marks`,
+ * 12.13 — подпись связи короткая строка без rich-text редактора). Не заданы —
+ * прежнее поведение (13px, center, авто-цвет от темы через `resolveEdgeColor`,
+ * вес 600, без курсива/подчёркивания/зачёркивания — то, что было жёстко
+ * зашито в CSS до этой фичи).
  */
-const labelTextStyle = computed(() => ({
-  fontSize: `${props.data.style.labelFontSize ?? 13}px`,
-  textAlign: props.data.style.labelTextAlign ?? 'center',
-  color: resolveEdgeColor(props.data.style.labelTextColor),
-  fontWeight: props.data.style.labelBold ? 700 : 600,
-}));
+const labelTextStyle = computed(() => {
+  const decorations: string[] = [];
+  if (props.data.style.labelUnderline) decorations.push('underline');
+  if (props.data.style.labelStrike) decorations.push('line-through');
+  return {
+    fontSize: `${props.data.style.labelFontSize ?? 13}px`,
+    textAlign: props.data.style.labelTextAlign ?? 'center',
+    color: resolveEdgeColor(props.data.style.labelTextColor),
+    fontWeight: props.data.style.labelBold ? 700 : 600,
+    fontStyle: props.data.style.labelItalic ? 'italic' : 'normal',
+    textDecoration: decorations.length ? decorations.join(' ') : 'none',
+  };
+});
 
 /** Обнуляем inline-height: иначе `scrollHeight` отражает прежний (больший) размер,
  *  и textarea не схлопнется при удалении строк — классический трюк для автороста. */
@@ -433,6 +458,7 @@ function onLabelPointerMove(event: PointerEvent): void {
 function onLabelPointerUp(): void {
   labelDragStart.value = null;
   window.removeEventListener('keydown', onLabelDragKeydown);
+  selectThisEdge();
   const offset = dragLabelOffsetPreview.value;
   dragLabelOffsetPreview.value = null;
   if (!offset) return; // не было реального драга — обычный клик
@@ -547,8 +573,15 @@ onUnmounted(() => {
 
 <template>
   <!-- BaseEdge не пробрасывает произвольные attrs в SVG path; testid ставим на
-       реальный SVG-контейнер, не меняя геометрию или bubbling событий Vue Flow. -->
-  <g data-testid="board-edge">
+       реальный SVG-контейнер, не меняя геометрию или bubbling событий Vue Flow.
+       @dblclick — прямой локальный обработчик (не через Vue Flow-нативное
+       `@edge-double-click`/`pendingEdgeEditId`, тот путь ненадёжен: не
+       срабатывает на пустой связи без подписи, воспроизводится и без
+       правок этой задачи, найдено при ручной проверке). Ловит нативный
+       dblclick, всплывающий от любого дочернего элемента (мой invisible
+       geometry-path не мешает — pointer-events:none, событие всё равно
+       долетает до реального пути/интеракшн-пути Vue Flow под курсором). -->
+  <g data-testid="board-edge" @dblclick.stop="startEditing">
     <!-- Технический путь только для геометрии (getPointAtLength/getTotalLength,
          12.18) — не рендерится: fill/stroke=none, вне hit-testing. -->
     <path ref="geometryPathEl" :d="path" fill="none" stroke="none" style="pointer-events: none" />

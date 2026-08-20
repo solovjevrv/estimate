@@ -18,9 +18,12 @@ import {
   type BoardColorHex,
   type BoardTextAlign,
 } from '@poker/shared';
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import type { FormatMarkKey } from '../../features/boards/composables/use-rich-text-editing';
 import BoardColorPickerMenu from './BoardColorPickerMenu.vue';
+import BoardFormatButtons from './BoardFormatButtons.vue';
 
 export type BoardEdgeLineKindOption = 'straight' | 'orthogonal' | 'curved';
 export type BoardEdgeDashOption = 'solid' | 'dashed' | 'dotted';
@@ -69,6 +72,9 @@ const props = defineProps<{
   currentLabelTextAlign: BoardTextAlign;
   currentLabelTextColor: BoardColorHex;
   currentLabelBold: boolean;
+  currentLabelItalic: boolean;
+  currentLabelUnderline: boolean;
+  currentLabelStrike: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -89,6 +95,9 @@ const emit = defineEmits<{
   labelTextAlign: [align: BoardTextAlign];
   labelTextColor: [hex: BoardColorHex];
   labelBold: [bold: boolean];
+  labelItalic: [italic: boolean];
+  labelUnderline: [underline: boolean];
+  labelStrike: [strike: boolean];
   addText: [];
   delete: [];
 }>();
@@ -125,6 +134,38 @@ function clampFontSize(size: number): number {
 
 function stepLabelFontSize(delta: number): void {
   emit('labelFontSize', clampFontSize(props.currentLabelFontSize + delta));
+}
+
+/**
+ * Начертание подписи (12.18) — общий BoardFormatButtons.vue с
+ * BoardSelectionToolbar.vue, но переключатель на весь текст целиком (не
+ * per-символьная разметка): `toggle` эмиттит конкретный ключ, здесь просто
+ * инвертируем соответствующее булево поле текущего состояния.
+ */
+const activeLabelFormatKeys = computed<FormatMarkKey[]>(() => {
+  const keys: FormatMarkKey[] = [];
+  if (props.currentLabelBold) keys.push('bold');
+  if (props.currentLabelItalic) keys.push('italic');
+  if (props.currentLabelUnderline) keys.push('underline');
+  if (props.currentLabelStrike) keys.push('strike');
+  return keys;
+});
+
+function onToggleLabelFormat(key: FormatMarkKey): void {
+  switch (key) {
+    case 'bold':
+      emit('labelBold', !props.currentLabelBold);
+      break;
+    case 'italic':
+      emit('labelItalic', !props.currentLabelItalic);
+      break;
+    case 'underline':
+      emit('labelUnderline', !props.currentLabelUnderline);
+      break;
+    case 'strike':
+      emit('labelStrike', !props.currentLabelStrike);
+      break;
+  }
 }
 </script>
 
@@ -345,18 +386,11 @@ function stepLabelFontSize(delta: number): void {
       </template>
     </UPopover>
 
-    <!-- Жирность текста подписи (12.18) — один переключатель на весь текст,
-         не per-символьная разметка, поэтому отдельная кнопка, а не попап. -->
-    <button
-      type="button"
-      class="board-selection-icon-btn"
-      :class="{ 'board-selection-icon-btn-active': props.currentLabelBold }"
-      :aria-label="t('board.formats.bold')"
-      :title="t('board.formats.bold')"
-      @click="emit('labelBold', !props.currentLabelBold)"
-    >
-      <UIcon name="i-lucide-bold" class="size-3.5" />
-    </button>
+    <!-- Начертание подписи (12.18) — общий BoardFormatButtons.vue со
+         стикерами/фигурами (найдено пользователем: тулбары визуально
+         расходились, попросил один компонент), но переключатель на весь
+         текст целиком, а не per-символьная разметка. -->
+    <BoardFormatButtons :active-keys="activeLabelFormatKeys" @toggle="onToggleLabelFormat" />
 
     <div class="board-selection-divider" />
 

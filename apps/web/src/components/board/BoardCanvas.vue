@@ -472,6 +472,9 @@ const {
   selectedEdgeLabelTextAlign,
   selectedEdgeLabelTextColor,
   selectedEdgeLabelBold,
+  selectedEdgeLabelItalic,
+  selectedEdgeLabelUnderline,
+  selectedEdgeLabelStrike,
   addTextToSelectedEdge,
   deleteSelectedEdges,
   patchEdgeLine,
@@ -485,6 +488,9 @@ const {
   patchEdgeLabelTextAlign,
   patchEdgeLabelTextColor,
   patchEdgeLabelBold,
+  patchEdgeLabelItalic,
+  patchEdgeLabelUnderline,
+  patchEdgeLabelStrike,
 } = edges;
 
 /**
@@ -835,6 +841,9 @@ useBoardHotkeys({
         :current-label-text-align="selectedEdgeLabelTextAlign"
         :current-label-text-color="selectedEdgeLabelTextColor"
         :current-label-bold="selectedEdgeLabelBold"
+        :current-label-italic="selectedEdgeLabelItalic"
+        :current-label-underline="selectedEdgeLabelUnderline"
+        :current-label-strike="selectedEdgeLabelStrike"
         @line="patchEdgeLine"
         @dash="patchEdgeDash"
         @marker-start="patchEdgeMarkerStart"
@@ -845,6 +854,9 @@ useBoardHotkeys({
         @label-font-size="patchEdgeLabelFontSize"
         @label-text-align="patchEdgeLabelTextAlign"
         @label-bold="patchEdgeLabelBold"
+        @label-italic="patchEdgeLabelItalic"
+        @label-underline="patchEdgeLabelUnderline"
+        @label-strike="patchEdgeLabelStrike"
         @label-text-color="patchEdgeLabelTextColor"
         @add-text="addTextToSelectedEdge"
         @delete="deleteSelectedEdges"
