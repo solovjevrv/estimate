@@ -116,6 +116,21 @@ function act(fn: () => void): void {
       <div class="board-context-menu-divider" />
     </template>
     <template v-else>
+      <!-- Передний/задний план связи (12.21) — то же действие, что у карточек:
+           по умолчанию связь и так всегда поверх карточек, но пользователь
+           может явно переопределить порядок (как в Miro) -->
+      <button
+        type="button"
+        class="board-context-menu-item"
+        @click="act(() => emit('bringToFront'))"
+      >
+        <UIcon name="i-lucide-bring-to-front" class="size-4" />
+        {{ t('board.bringToFront') }}
+      </button>
+      <button type="button" class="board-context-menu-item" @click="act(() => emit('sendToBack'))">
+        <UIcon name="i-lucide-send-to-back" class="size-4" />
+        {{ t('board.sendToBack') }}
+      </button>
       <button type="button" class="board-context-menu-item" @click="act(() => emit('addText'))">
         <UIcon name="i-lucide-type" class="size-4" />
         {{ t('board.edgeAddText') }}

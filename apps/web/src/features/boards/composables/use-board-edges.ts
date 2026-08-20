@@ -49,6 +49,10 @@ export interface UseBoardEdgesOptions {
   setActiveTool: (tool: string) => void;
   resolveEdgeColor: (color: BoardColorHex | undefined) => BoardColorHex;
   breakFollowOnEdit: () => void;
+  /** max/min zIndex среди ВСЕХ карточек и связей (12.21) — та же функция, что
+   * передаётся в useBoardSelection для «на передний/задний план»; здесь нужна
+   * только для дефолта новой связи при создании (см. onConnect). */
+  getBoardZIndex: () => { max: number; min: number };
 }
 
 export interface UseBoardEdgesResult {
@@ -362,6 +366,14 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
    * сохраняет handles события и дефолтный стиль. Инструмент «Стрелка» — лишь
    * affordance, после соединения он возвращается на «Выделение»; прочие
    * инструменты не меняются.
+   *
+   * `zIndex` (12.21) — на единицу выше текущего максимума среди ВСЕХ карточек
+   * и связей: новая связь встаёт поверх всего на доске сразу при создании
+   * (Miro-приём — стрелка всегда видна поверх объектов), а не только поверх
+   * своих двух карточек. Карточки при создании продолжают считать дефолт
+   * только от других карточек (`nextZIndexAbove` в use-board-creation.ts) —
+   * так уже существующие связи остаются поверх новых карточек тоже, без
+   * отдельной логики.
    */
   function onConnect(connection: BoardEdgeConnection): void {
     if (!options.canEdit()) return;
@@ -380,6 +392,7 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
           targetHandle: connection.targetHandle ?? null,
           label: null,
           style: { line: 'curved', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
+          zIndex: options.getBoardZIndex().max + 1,
         },
       },
     ]);

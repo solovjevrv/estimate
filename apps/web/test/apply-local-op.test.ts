@@ -42,6 +42,7 @@ const edge: BoardEdge = {
     markerStart: 'none',
     markerEnd: 'none',
   },
+  zIndex: 1,
 };
 
 describe('applyLocalBoardOp', () => {

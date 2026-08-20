@@ -122,6 +122,7 @@ const boardEdgeResponse = {
     targetHandle: { type: ['string', 'null'] },
     label: { type: ['string', 'null'] },
     style: jsonbResponse,
+    zIndex: { type: 'integer' },
   },
 } as const;
 

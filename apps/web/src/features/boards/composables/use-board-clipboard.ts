@@ -146,6 +146,11 @@ export function useBoardClipboard(options: UseBoardClipboardOptions) {
     if (!rect) return;
     const viewportCenter = options.project({ x: rect.width / 2, y: rect.height / 2 });
     const baseZIndex = maxZIndex(options.getItems()) + 1;
+    // Связи из вставленной группы — поверх всего на доске, включая только что
+    // вставленные карточки (12.21, тот же дефолт, что у onConnect в use-board-edges.ts).
+    // baseZIndex + items.length — верхняя граница zIndex ещё не созданных карточек
+    // (см. item.create ниже: `zIndex: baseZIndex + index`).
+    const baseEdgeZIndex = Math.max(baseZIndex + items.length, maxZIndex(options.getEdges()) + 1);
     const ops: BoardOp[] = [];
     // Индексы соответствуют исходному payload: parentIndex/edge index не должны
     // сдвигаться, если загрузка одной картинки не удалась.
@@ -196,7 +201,7 @@ export function useBoardClipboard(options: UseBoardClipboardOptions) {
       });
     }
 
-    for (const edge of edges) {
+    for (const [index, edge] of edges.entries()) {
       const sourceItemId = newIds[edge.sourceIndex];
       const targetItemId = newIds[edge.targetIndex];
       if (!sourceItemId || !targetItemId) continue;
@@ -211,6 +216,7 @@ export function useBoardClipboard(options: UseBoardClipboardOptions) {
           targetHandle: edge.targetHandle,
           label: edge.label,
           style: edge.style,
+          zIndex: baseEdgeZIndex + index,
         },
       });
     }
@@ -259,6 +265,12 @@ export function useBoardClipboard(options: UseBoardClipboardOptions) {
     if (!options.canApplyOpsCount(sourceItems.length + sourceEdges.length)) return;
 
     const baseZIndex = maxZIndex(options.getItems()) + 1;
+    // См. pasteBoardItems выше — связи дубля тоже поверх всего, включая только
+    // что созданные дубли карточек (12.21).
+    const baseEdgeZIndex = Math.max(
+      baseZIndex + sourceItems.length,
+      maxZIndex(options.getEdges()) + 1,
+    );
     const idMap = new Map(sourceItems.map((source) => [source.id, uuid()]));
     const itemOps: BoardOp[] = sourceItems.map((source, index) => ({
       type: 'item.create',
@@ -277,7 +289,7 @@ export function useBoardClipboard(options: UseBoardClipboardOptions) {
         reactions: [],
       },
     }));
-    const edgeOps: BoardOp[] = sourceEdges.map((edge) => ({
+    const edgeOps: BoardOp[] = sourceEdges.map((edge, index) => ({
       type: 'edge.create',
       clientOpId: uuid(),
       edge: {
@@ -288,6 +300,7 @@ export function useBoardClipboard(options: UseBoardClipboardOptions) {
         targetHandle: edge.targetHandle,
         label: edge.label,
         style: edge.style,
+        zIndex: baseEdgeZIndex + index,
       },
     }));
     options.applyOps([...itemOps, ...edgeOps]);

@@ -2,7 +2,7 @@
  * Значения по умолчанию и границы для создания/резайза стикеров (12.6) —
  * держим их отдельно от компонентов, чтобы холст и тулбар их не дублировали.
  */
-import type { BoardColorHex, BoardFontFamily, BoardItem } from '@poker/shared';
+import type { BoardColorHex, BoardFontFamily } from '@poker/shared';
 
 import { theme } from '../../../lib/theme';
 
@@ -121,15 +121,25 @@ export function fitImageToDefaultBox(
   return { width: Math.round(sourceWidth * scale), height: Math.round(sourceHeight * scale) };
 }
 
+/**
+ * `{ zIndex: number }` вместо конкретно `BoardItem` (12.21) — карточки и связи
+ * делят одно пространство порядка (`BoardEdge.zIndex`), поэтому вызывающий
+ * код может передать сюда смешанный массив `[...items, ...edges]`, когда нужно
+ * учитывать оба типа (передний/задний план связи), а не только карточки.
+ */
+interface ZIndexed {
+  zIndex: number;
+}
+
 /** На единицу выше текущего максимума — новый элемент встаёт поверх всех существующих */
-export function nextZIndexAbove(items: readonly BoardItem[]): number {
-  return items.reduce((max, item) => Math.max(max, item.zIndex), 0) + 1;
+export function nextZIndexAbove(elements: readonly ZIndexed[]): number {
+  return elements.reduce((max, el) => Math.max(max, el.zIndex), 0) + 1;
 }
 
-export function minZIndex(items: readonly BoardItem[]): number {
-  return items.reduce((min, item) => Math.min(min, item.zIndex), 0);
+export function minZIndex(elements: readonly ZIndexed[]): number {
+  return elements.reduce((min, el) => Math.min(min, el.zIndex), 0);
 }
 
-export function maxZIndex(items: readonly BoardItem[]): number {
-  return items.reduce((max, item) => Math.max(max, item.zIndex), 0);
+export function maxZIndex(elements: readonly ZIndexed[]): number {
+  return elements.reduce((max, el) => Math.max(max, el.zIndex), 0);
 }

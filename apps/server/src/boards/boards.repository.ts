@@ -254,10 +254,21 @@ export class BoardsRepository {
 
   /** Поля перечисляются явно — та же причина, что у `insertItem` выше */
   async insertEdge(boardId: string, edge: Omit<BoardEdge, 'boardId'>): Promise<BoardEdge> {
-    const { id, sourceItemId, targetItemId, sourceHandle, targetHandle, label, style } = edge;
+    const { id, sourceItemId, targetItemId, sourceHandle, targetHandle, label, style, zIndex } =
+      edge;
     const [row] = await this.db
       .insert(schema.boardEdges)
-      .values({ id, boardId, sourceItemId, targetItemId, sourceHandle, targetHandle, label, style })
+      .values({
+        id,
+        boardId,
+        sourceItemId,
+        targetItemId,
+        sourceHandle,
+        targetHandle,
+        label,
+        style,
+        zIndex,
+      })
       .returning();
     if (!row) {
       throw new Error('Не удалось создать связь доски');
@@ -266,19 +277,26 @@ export class BoardsRepository {
   }
 
   /** Принимает провалидированную запись целиком — та же причина, что у `updateItem` выше.
-   *  sourceItemId/targetItemId — ручное перецепление конца связи (12.20). */
+   *  sourceItemId/targetItemId — ручное перецепление конца связи (12.20).
+   *  zIndex — передний/задний план связи (12.21). */
   async updateEdge(
     boardId: string,
     edgeId: string,
     edge: Pick<
       BoardEdge,
-      'sourceItemId' | 'targetItemId' | 'sourceHandle' | 'targetHandle' | 'label' | 'style'
+      | 'sourceItemId'
+      | 'targetItemId'
+      | 'sourceHandle'
+      | 'targetHandle'
+      | 'label'
+      | 'style'
+      | 'zIndex'
     >,
   ): Promise<BoardEdge | null> {
-    const { sourceItemId, targetItemId, sourceHandle, targetHandle, label, style } = edge;
+    const { sourceItemId, targetItemId, sourceHandle, targetHandle, label, style, zIndex } = edge;
     const [row] = await this.db
       .update(schema.boardEdges)
-      .set({ sourceItemId, targetItemId, sourceHandle, targetHandle, label, style })
+      .set({ sourceItemId, targetItemId, sourceHandle, targetHandle, label, style, zIndex })
       .where(and(eq(schema.boardEdges.id, edgeId), eq(schema.boardEdges.boardId, boardId)))
       .returning();
     return row ? this.toEdge(row) : null;
@@ -335,6 +353,7 @@ export class BoardsRepository {
       targetHandle: row.targetHandle,
       label: row.label,
       style: row.style,
+      zIndex: row.zIndex,
     };
   }
 }

@@ -31,6 +31,7 @@ const EDGE: BoardEdge = {
   targetHandle: null,
   label: 'Связь',
   style: { line: 'straight', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
+  zIndex: 2,
 };
 
 function repository(): {
@@ -97,6 +98,7 @@ describe('persistBoardOps', () => {
           targetHandle: EDGE.targetHandle,
           label: EDGE.label,
           style: EDGE.style,
+          zIndex: EDGE.zIndex,
         },
       },
       { type: 'edge.patch', clientOpId: 'patch-edge', id: EDGE.id, patch: { label: 'Сырой патч' } },

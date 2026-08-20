@@ -374,6 +374,21 @@ const {
   selectItems: (ids) => addSelectedNodes(ids.map((id) => ({ id }) as GraphNode<BoardItem>)),
 });
 
+// Сохраняем прежнюю baseline-семантику: максимум не ниже 0, минимум не выше 0.
+// Иначе при доске только с отрицательными (или положительными) z-index действие
+// «на передний/задний план» меняло бы поведение после выноса в composable.
+// Карточки и связи делят одно пространство порядка (12.21) — max/min считаем
+// по ОБОИМ спискам, иначе «на передний план» для связи или карточки могло бы
+// не обогнать элемент другого типа с более высоким zIndex. Общая функция —
+// используется и в useBoardSelection (bring/send для выделения), и в
+// useBoardEdges (дефолтный zIndex новой связи при создании).
+function getBoardZIndex(): { max: number; min: number } {
+  return {
+    max: maxZIndex([...props.items, ...props.edges]),
+    min: minZIndex([...props.items, ...props.edges]),
+  };
+}
+
 // useBoardSelection деструктурируется сразу — шаблон обращается к полям через
 // локальные имена (selectionToolbarPosition, selectedForm, contextMenu и т.п.),
 // а события Vue Flow (node-click и т.д.) — к методам `selection.*`.
@@ -394,10 +409,7 @@ const selection = useBoardSelection({
   activeTool: () => activeTool.value,
   breakFollowOnEdit,
   textDefaultDimensions,
-  // Сохраняем прежнюю baseline-семантику: максимум не ниже 0, минимум не выше 0.
-  // Иначе при доске только с отрицательными (или положительными) z-index действие
-  // «на передний/задний план» меняло бы поведение после выноса в composable.
-  getBoardZIndex: () => ({ max: maxZIndex(props.items), min: minZIndex(props.items) }),
+  getBoardZIndex,
   defaultItemColor: STICKY_DEFAULT_COLOR,
   resolveTextColor: readableTextColor,
 });
@@ -462,6 +474,7 @@ const edges = useBoardEdges({
   },
   resolveEdgeColor,
   breakFollowOnEdit,
+  getBoardZIndex,
 });
 
 const {

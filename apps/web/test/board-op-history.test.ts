@@ -51,6 +51,7 @@ function edge(over: Partial<BoardEdge> = {}): BoardEdge {
       markerStart: 'none',
       markerEnd: 'none',
     },
+    zIndex: 1,
     ...over,
   };
 }

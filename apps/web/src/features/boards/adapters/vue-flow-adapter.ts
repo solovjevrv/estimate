@@ -177,6 +177,21 @@ function resolveEdgeDashStyle(dash: BoardEdgeDash | undefined): Record<string, s
   return kind === 'dotted' ? { strokeDasharray, strokeLinecap: 'round' } : { strokeDasharray };
 }
 
+/**
+ * `zIndex` — своё персистентное поле связи (12.21), общее пространство порядка
+ * с карточками (`BoardItem.zIndex`), не вычисляется на лету. Раньше (в рамках
+ * этой же задачи) считался как `max(source.zIndex, target.zIndex) + 1` прямо
+ * тут — без явного поля Vue Flow резолвил незаданный `zIndex` связи в 0
+ * (`getEdgeZIndex`, дефолт при пустом поле и выключенном `elevateEdgesOnSelect`),
+ * а карточки всегда ≥1, поэтому связь ВСЕГДА рисовалась под любой карточкой
+ * (для обычной связи незаметно из-за зазора до границы карточки, но самопетля
+ * дугой шла прямо над своей же карточкой и пряталась под ней). Вычисленного
+ * значения хватало, пока порядок был только «выше своих двух карточек», но
+ * не пользовательского управления передним/задним планом — теперь это обычное
+ * патчибельное поле, дефолт при создании считает вызывающий код (см.
+ * `use-board-edges.ts`, `onConnect`) через тот же `getBoardZIndex`, что и у
+ * карточек.
+ */
 export function boardEdgeToFlowEdge(edge: BoardEdge): Edge<BoardEdge> {
   // Не задан явно (12.9) — резолвится от текущей темы ЭТОГО зрителя, а не
   // хранится (см. resolveEdgeColor) — читает реактивный theme, поэтому
@@ -196,6 +211,7 @@ export function boardEdgeToFlowEdge(edge: BoardEdge): Edge<BoardEdge> {
     style: { stroke: color, strokeWidth: 2, ...resolveEdgeDashStyle(edge.style.dash) },
     markerStart: toFlowMarkerType(edge.style.markerStart, color),
     markerEnd: toFlowMarkerType(edge.style.markerEnd, color),
+    zIndex: edge.zIndex,
     data: edge,
   };
 }

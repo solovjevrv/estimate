@@ -73,14 +73,16 @@ export function useEdgeReconnect(options: UseEdgeReconnectOptions): UseEdgeRecon
    * подсветка ставится императивно через DOM (тот же класс, что делает
    * коннект-хендлы карточки видимыми при выделении — `board-connect-handle.css`).
    */
-  function updateReconnectDropTarget(event: PointerEvent, fixedItemId: string): void {
+  function updateReconnectDropTarget(event: PointerEvent): void {
     const stack = document.elementsFromPoint(event.clientX, event.clientY);
     const el = stack.find(
       (candidate) => !candidate.closest('[data-testid="board-edge-reconnect-handle"]'),
     );
     const nodeEl = el?.closest('.vue-flow__node') ?? null;
     const nodeId = nodeEl?.getAttribute('data-id') ?? null;
-    const isValidTarget = nodeId !== null && nodeId !== fixedItemId;
+    // Самопетля разрешена (12.21) — карточка на другом (фиксированном) конце
+    // связи такая же валидная цель сброса, как и любая другая.
+    const isValidTarget = nodeId !== null;
 
     if (nodeEl !== reconnectHoverNodeEl) {
       clearReconnectHover();
@@ -127,9 +129,7 @@ export function useEdgeReconnect(options: UseEdgeReconnectOptions): UseEdgeRecon
     if (!preview) return;
     const point = options.toWorldPoint(event);
     dragReconnectPreview.value = { ...preview, x: point.x, y: point.y };
-    const fixedItemId =
-      preview.end === 'source' ? options.currentTargetItemId() : options.currentSourceItemId();
-    updateReconnectDropTarget(event, fixedItemId);
+    updateReconnectDropTarget(event);
   }
 
   function commitReconnect(end: 'source' | 'target', nodeId: string, handle: EdgeAnchorSide): void {
@@ -138,9 +138,6 @@ export function useEdgeReconnect(options: UseEdgeReconnectOptions): UseEdgeRecon
     const currentHandle =
       end === 'source' ? options.currentSourceHandle() : options.currentTargetHandle();
     if (nodeId === currentItemId && handle === currentHandle) return;
-    const otherEndItemId =
-      end === 'source' ? options.currentTargetItemId() : options.currentSourceItemId();
-    if (nodeId === otherEndItemId) return; // самопетля — сервер и так отклонит, но незачем гонять op
     options.applyOps([
       {
         type: 'edge.patch',
@@ -163,9 +160,9 @@ export function useEdgeReconnect(options: UseEdgeReconnectOptions): UseEdgeRecon
     const handle = reconnectDropHandle;
     reconnectDropNodeId = null;
     reconnectDropHandle = null;
-    // Отпустили не над карточкой (пустой канвас, свой же фиксированный конец) —
-    // отмена, связь остаётся как была. Никакого auto-выбора «ближайшей стороны»
-    // без явного намерения пользователя — та же осторожность, что и в 12.8.
+    // Отпустили не над карточкой (пустой канвас) — отмена, связь остаётся как
+    // была. Никакого auto-выбора «ближайшей стороны» без явного намерения
+    // пользователя — та же осторожность, что и в 12.8.
     if (!preview || !nodeId || !handle) return;
     commitReconnect(preview.end, nodeId, handle);
   }

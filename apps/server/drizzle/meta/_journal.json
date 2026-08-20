@@ -120,6 +120,13 @@
       "when": 1786563251043,
       "tag": "0016_equal_leader",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1787258921987,
+      "tag": "0017_goofy_speed",
+      "breakpoints": true
     }
   ]
 }
