@@ -18,6 +18,8 @@ import {
   BOARD_PENDING_EDGE_EDIT_ID_KEY,
 } from '../../features/boards/context/board-canvas-keys';
 import { resolveEdgeColor } from '../../features/boards/config/board-item-defaults';
+import { useEdgeCurveOffset } from '../../features/boards/composables/use-edge-curve-offset';
+import { useEdgeReconnect } from '../../features/boards/composables/use-edge-reconnect';
 import {
   closestSampleIndex,
   type EdgeAnchorParams,
@@ -26,6 +28,7 @@ import {
   getOffsetCurvePath,
   lerpEdgeAnchorParams,
   offsetAlongNormal,
+  outwardGapPoint,
   type PathSample,
   tangentAtSample,
 } from '../../features/boards/domain/floating-edge-geometry';
@@ -37,8 +40,15 @@ const { t } = useI18n();
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 const pendingEdgeEditId = inject(BOARD_PENDING_EDGE_EDIT_ID_KEY, ref(null));
-const { project, vueFlowRef, viewport, getEdges, addSelectedEdges, removeSelectedElements } =
-  useVueFlow();
+const {
+  project,
+  vueFlowRef,
+  viewport,
+  getNodes,
+  getEdges,
+  addSelectedEdges,
+  removeSelectedElements,
+} = useVueFlow();
 
 /**
  * Клик по подписи выделяет связь (тулбар всплывает) — раньше не работало
@@ -139,15 +149,110 @@ watch(params, (next) => {
   anchorAnimationFrame = requestAnimationFrame((now) => stepAnchorTween(next, now));
 });
 
+/**
+ * Ручное перецепление конца связи (12.20) — логика вынесена в composable
+ * (`use-edge-reconnect.ts`, там же подробности приёма): здесь только адаптация
+ * к пропсам/стору этого компонента. Объявлено здесь (а не рядом с реальным
+ * использованием `onReconnectPointer*` ниже), потому что `dragReconnectPreview`
+ * читается уже в `activeAnchor`/`pathData` сразу следом — `toWorldPoint`
+ * ниже по файлу, но это `function`-объявление, оно поднимается целиком.
+ */
+const reconnect = useEdgeReconnect({
+  canEdit: () => canEdit.value,
+  edgeId: () => props.id,
+  currentSourceItemId: () => props.data.sourceItemId,
+  currentTargetItemId: () => props.data.targetItemId,
+  currentSourceHandle: () => props.data.sourceHandle,
+  currentTargetHandle: () => props.data.targetHandle,
+  getNodes: () => getNodes.value,
+  toWorldPoint,
+  applyOps: (ops) => void boardSession.applyOps(ops),
+});
+const {
+  dragReconnectPreview,
+  onReconnectPointerDown,
+  onReconnectPointerMove,
+  onReconnectPointerUp,
+} = reconnect;
+
+/**
+ * Точки крепления с учётом активного локального перецепления конца —
+ * во время такого драга перетаскиваемый конец должен мгновенно следовать за
+ * курсором (не за `renderedAnchor`, который реагирует на реальную позицию
+ * карточки), не дожидаясь коммита.
+ */
+const activeAnchor = computed<EdgeAnchorParams>(() => {
+  const preview = dragReconnectPreview.value;
+  if (!preview) return renderedAnchor.value;
+  return preview.end === 'source'
+    ? { ...renderedAnchor.value, sx: preview.x, sy: preview.y }
+    : { ...renderedAnchor.value, tx: preview.x, ty: preview.y };
+});
+
+/**
+ * Зазор перед карточкой (12.20, Miro-приём, решение пользователя 20.08.2026) —
+ * линия связи не идёт вплотную до границы карточки, а останавливается на
+ * `EDGE_ANCHOR_GAP` px раньше, и ручка переподключения (шаблон ниже) сидит
+ * РОВНО в этой же точке — не отдельной геометрией поверх линии (была версия,
+ * где линия и ручка считались по разным зазорам — 8px у линии против 20px у
+ * ручки, чтобы обойти перекрытие с `.board-connect-handle`; по факту ручка
+ * визуально отрывалась от конца линии, найдено пользователем на скриншотах
+ * 20.08.2026). Единое значение достаточно большое (20px), чтобы: 1) самого
+ * перекрытия с `.board-connect-handle` не было в принципе (тот при `:hover`
+ * карточки простирается максимум на ~7px наружу от границы); 2) было легко
+ * попасть курсором и потянуть — тот самый Miro-эффект «край карточки
+ * заметно свободен под захват». Зазор задаётся ДО построения кривой
+ * (сдвигаются сами точки, которые видит `pathData` ниже). Во время
+ * АКТИВНОГО драга своего конца зазор снимается — конец должен идти точно
+ * за курсором.
+ */
+const EDGE_ANCHOR_GAP = 20;
+
+const renderAnchor = computed<EdgeAnchorParams>(() => {
+  const anchor = activeAnchor.value;
+  const preview = dragReconnectPreview.value;
+  const source =
+    preview?.end === 'source'
+      ? { x: anchor.sx, y: anchor.sy }
+      : outwardGapPoint({ x: anchor.sx, y: anchor.sy }, anchor.sourceSide, EDGE_ANCHOR_GAP);
+  const target =
+    preview?.end === 'target'
+      ? { x: anchor.tx, y: anchor.ty }
+      : outwardGapPoint({ x: anchor.tx, y: anchor.ty }, anchor.targetSide, EDGE_ANCHOR_GAP);
+  return { ...anchor, sx: source.x, sy: source.y, tx: target.x, ty: target.y };
+});
+
 const straightMid = computed(() => ({
-  x: (renderedAnchor.value.sx + renderedAnchor.value.tx) / 2,
-  y: (renderedAnchor.value.sy + renderedAnchor.value.ty) / 2,
+  x: (renderAnchor.value.sx + renderAnchor.value.tx) / 2,
+  y: (renderAnchor.value.sy + renderAnchor.value.ty) / 2,
 }));
 
-const dragOffsetPreview = ref<{ x: number; y: number } | null>(null);
+/**
+ * Ручка изгиба связи (12.17) — логика вынесена в composable
+ * (`use-edge-curve-offset.ts`, там же подробности приёма). `dragOffsetPreview`
+ * нужен уже в `pathData`/`curveHandlePosition` ниже, `toWorldPoint`/`straightMid`
+ * читаются через геттеры — `toWorldPoint` определён дальше по файлу как
+ * `function`, объявление поднимается целиком.
+ */
+const curveOffset = useEdgeCurveOffset({
+  canEdit: () => canEdit.value,
+  edgeId: () => props.id,
+  currentStyle: () => props.data.style,
+  currentCurveOffset: () => props.data.style.curveOffset ?? null,
+  getStraightMid: () => straightMid.value,
+  toWorldPoint,
+  applyOps: (ops) => void boardSession.applyOps(ops),
+});
+const {
+  dragOffsetPreview,
+  onCurveHandlePointerDown,
+  onCurveHandlePointerMove,
+  onCurveHandlePointerUp,
+  resetCurveOffset,
+} = curveOffset;
 
 const pathData = computed(() => {
-  const { sx, sy, tx, ty, sourceSide, targetSide } = renderedAnchor.value;
+  const { sx, sy, tx, ty, sourceSide, targetSide } = renderAnchor.value;
   const line = props.data.style.line;
 
   if (line === 'orthogonal') {
@@ -326,68 +431,12 @@ function onLabelKeydown(e: KeyboardEvent): void {
   }
 }
 
-/**
- * Ручка изгиба связи (12.17) — перетаскивание локального смещения апекса
- * кривой. Коммит одним edge.patch на pointerup, как NodeResizer/@resize-end.
- */
-const CURVE_OFFSET_RESET_EPSILON = 4;
-
+/** Экранные px → мировые координаты холста — общая утилита для ручки изгиба
+ *  (12.17), перецепления конца связи (12.20) и позиционирования подписи. */
 function toWorldPoint(event: PointerEvent): { x: number; y: number } {
   const rect = vueFlowRef.value?.getBoundingClientRect();
   if (!rect) return straightMid.value;
   return project({ x: event.clientX - rect.left, y: event.clientY - rect.top });
-}
-
-function onCurveHandlePointerDown(event: PointerEvent): void {
-  if (!canEdit.value) return;
-  (event.currentTarget as Element).setPointerCapture(event.pointerId);
-  const start = toWorldPoint(event);
-  dragOffsetPreview.value = {
-    x: start.x - straightMid.value.x,
-    y: start.y - straightMid.value.y,
-  };
-  window.addEventListener('keydown', onCurveDragKeydown);
-}
-
-function onCurveHandlePointerMove(event: PointerEvent): void {
-  if (!dragOffsetPreview.value) return;
-  const point = toWorldPoint(event);
-  dragOffsetPreview.value = {
-    x: point.x - straightMid.value.x,
-    y: point.y - straightMid.value.y,
-  };
-}
-
-function onCurveHandlePointerUp(): void {
-  if (!dragOffsetPreview.value) return;
-  const offset = dragOffsetPreview.value;
-  dragOffsetPreview.value = null;
-  window.removeEventListener('keydown', onCurveDragKeydown);
-  const magnitude = Math.hypot(offset.x, offset.y);
-  commitCurveOffset(magnitude < CURVE_OFFSET_RESET_EPSILON ? null : offset);
-}
-
-function onCurveDragKeydown(event: KeyboardEvent): void {
-  if (event.key !== 'Escape') return;
-  dragOffsetPreview.value = null;
-  window.removeEventListener('keydown', onCurveDragKeydown);
-}
-
-function resetCurveOffset(): void {
-  if (!canEdit.value) return;
-  commitCurveOffset(null);
-}
-
-function commitCurveOffset(offset: { x: number; y: number } | null): void {
-  if (offset === (props.data.style.curveOffset ?? null)) return;
-  void boardSession.applyOps([
-    {
-      type: 'edge.patch',
-      clientOpId: globalThis.crypto.randomUUID(),
-      id: props.id,
-      patch: { style: { ...props.data.style, curveOffset: offset } },
-    },
-  ]);
 }
 
 /**
@@ -620,8 +669,9 @@ const edgePathStyle = computed(() => {
  * оставался бы висеть на window.
  */
 onUnmounted(() => {
-  window.removeEventListener('keydown', onCurveDragKeydown);
   window.removeEventListener('keydown', onLabelDragKeydown);
+  curveOffset.cleanup();
+  reconnect.cleanup();
   labelSizeObserver?.disconnect();
   cancelAnchorTween();
 });
@@ -677,15 +727,15 @@ onUnmounted(() => {
          рисуем сами поверх пути -->
     <circle
       v-if="data.style.markerStart === 'dot'"
-      :cx="renderedAnchor.sx"
-      :cy="renderedAnchor.sy"
+      :cx="renderAnchor.sx"
+      :cy="renderAnchor.sy"
       r="4"
       :fill="dotColor"
     />
     <circle
       v-if="data.style.markerEnd === 'dot'"
-      :cx="renderedAnchor.tx"
-      :cy="renderedAnchor.ty"
+      :cx="renderAnchor.tx"
+      :cy="renderAnchor.ty"
       r="4"
       :fill="dotColor"
     />
@@ -700,6 +750,35 @@ onUnmounted(() => {
       @pointermove.stop="onCurveHandlePointerMove"
       @pointerup.stop="onCurveHandlePointerUp"
       @dblclick.stop="resetCurveOffset"
+    />
+    <!-- Ручное перецепление конца связи на другую сторону/карточку (12.20) —
+         видимы только когда связь выделена (клик по линии), по образцу ручки
+         изгиба выше. Позиция — та же точка, что и видимый конец линии
+         (renderAnchor, зазор перед карточкой выше) — ручка и линия физически
+         совпадают, а не расходятся на изогнутой связи. -->
+    <circle
+      v-if="canEdit && selected"
+      data-testid="board-edge-reconnect-handle"
+      data-endpoint="source"
+      class="board-edge-reconnect-handle nodrag nopan"
+      :cx="renderAnchor.sx"
+      :cy="renderAnchor.sy"
+      r="6"
+      @pointerdown.stop="onReconnectPointerDown('source', $event)"
+      @pointermove.stop="onReconnectPointerMove"
+      @pointerup.stop="onReconnectPointerUp"
+    />
+    <circle
+      v-if="canEdit && selected"
+      data-testid="board-edge-reconnect-handle"
+      data-endpoint="target"
+      class="board-edge-reconnect-handle nodrag nopan"
+      :cx="renderAnchor.tx"
+      :cy="renderAnchor.ty"
+      r="6"
+      @pointerdown.stop="onReconnectPointerDown('target', $event)"
+      @pointermove.stop="onReconnectPointerMove"
+      @pointerup.stop="onReconnectPointerUp"
     />
   </g>
 
@@ -776,6 +855,27 @@ onUnmounted(() => {
 .board-edge-curve-handle:hover,
 g:hover .board-edge-curve-handle {
   opacity: 1;
+}
+
+/* Ручка перецепления конца связи (12.20) — визуально отличается от ручки
+   изгиба (полая, не залитая), чтобы не смешивать «двигает форму кривой» и
+   «двигает КУДА стрелка крепится». pointer-events: all — та же ловушка
+   .vue-flow__edge, что и у ручки изгиба выше. */
+/* Видима всегда, пока связь выделена (рендерится только тогда — v-if в
+   шаблоне), БЕЗ дополнительного скрытия по :hover — иначе, как только курсор
+   уходит с самой линии по пути к ручке (она вынесена наружу от карточки),
+   ручка гаснет раньше, чем пользователь успевает её схватить (баг, найден
+   пользователем 20.08.2026: «вижу точки только пока не увожу мышку»). */
+.board-edge-reconnect-handle {
+  fill: var(--brand-surface, #fff);
+  stroke: var(--ui-color-primary-500);
+  stroke-width: 2px;
+  cursor: grab;
+  transition: stroke-width 0.12s ease;
+  pointer-events: all;
+}
+.board-edge-reconnect-handle:hover {
+  stroke-width: 3px;
 }
 
 /* Без подложки (12.18, Miro-паттерн) — читаемость над линией даёт разрыв

@@ -124,6 +124,60 @@ export function lerpEdgeAnchorParams(
 }
 
 /**
+ * Ближайшая к точке сторона карточки (12.20) — используется при ручном
+ * перецеплении конца связи: во время драга курсор редко попадает точно на
+ * 10px-хендл, поэтому сторона крепления на карточке-цели определяется
+ * геометрией (какая из 4 середин сторон ближе), а не требует точного клика.
+ */
+export function nearestSide(
+  node: EdgeGeometryNode,
+  point: { x: number; y: number },
+): EdgeAnchorSide {
+  const rect = nodeRect(node);
+  const sides: EdgeAnchorSide[] = ['top', 'right', 'bottom', 'left'];
+  let closest: EdgeAnchorSide = sides[0]!;
+  let closestDistance = Infinity;
+  for (const side of sides) {
+    const mid = sideMidpoint(rect, side);
+    const distance = Math.hypot(mid.x - point.x, mid.y - point.y);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closest = side;
+    }
+  }
+  return closest;
+}
+
+/**
+ * Точка, сдвинутая на `gap` px НАРУЖУ от точки крепления вдоль стороны
+ * карточки (12.20) — Miro-приём: линия связи визуально не касается карточки
+ * впритык, а останавливается с небольшим зазором. Раньше зазора не было (сама
+ * линия шла точно до границы), а отдельная ручка переподключения смещалась
+ * relative к касательной кривой — при заметном изгибе (12.17) ручка визуально
+ * «съезжала» с линии, и было неочевидно, что у связи вообще есть точки
+ * переподключения (оба нюанса — по репорту пользователя 20.08.2026). Теперь
+ * зазор — часть самой отрисовки: сдвигаются точки крепления, которые видит
+ * `pathData`, поэтому линия и ручка переподключения совпадают по построению,
+ * без отдельной геометрии по касательной.
+ */
+export function outwardGapPoint(
+  anchor: { x: number; y: number },
+  side: EdgeAnchorSide,
+  gap: number,
+): { x: number; y: number } {
+  switch (side) {
+    case 'top':
+      return { x: anchor.x, y: anchor.y - gap };
+    case 'bottom':
+      return { x: anchor.x, y: anchor.y + gap };
+    case 'left':
+      return { x: anchor.x - gap, y: anchor.y };
+    case 'right':
+      return { x: anchor.x + gap, y: anchor.y };
+  }
+}
+
+/**
  * Кривая связь (line: 'curved') с пользовательским смещением изгиба (12.17).
  * `curveOffset` — смещение апекса (видимой точки изгиба) от геометрической
  * середины прямой между точками крепления. Чтобы точка на квадратичной

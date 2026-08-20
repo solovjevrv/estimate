@@ -9,7 +9,9 @@ import {
   getEdgeAnchorParams,
   getOffsetCurvePath,
   lerpEdgeAnchorParams,
+  nearestSide,
   offsetAlongNormal,
+  outwardGapPoint,
   tangentAtSample,
 } from '../src/features/boards/domain/floating-edge-geometry';
 
@@ -262,5 +264,46 @@ describe('lerpEdgeAnchorParams', () => {
     const result = lerpEdgeAnchorParams(from, to, 0);
     expect(result.sourceSide).toBe(to.sourceSide);
     expect(result.targetSide).toBe(to.targetSide);
+  });
+});
+
+describe('nearestSide', () => {
+  /** x=100, y=200, w=60, h=40 → top mid (130,200), right mid (160,220), bottom mid (130,240), left mid (100,220) */
+  const rectNode = node({ x: 100, y: 200 }, { width: 60, height: 40 });
+
+  it('точка над карточкой — ближе всего верхняя сторона', () => {
+    expect(nearestSide(rectNode, { x: 130, y: 100 })).toBe('top');
+  });
+
+  it('точка справа от карточки — ближе всего правая сторона', () => {
+    expect(nearestSide(rectNode, { x: 400, y: 220 })).toBe('right');
+  });
+
+  it('точка под карточкой — ближе всего нижняя сторона', () => {
+    expect(nearestSide(rectNode, { x: 130, y: 500 })).toBe('bottom');
+  });
+
+  it('точка слева от карточки — ближе всего левая сторона', () => {
+    expect(nearestSide(rectNode, { x: -200, y: 220 })).toBe('left');
+  });
+
+  it('точка ровно в центре карточки — детерминированно выбирает одну сторону (без разброса при равных расстояниях)', () => {
+    const square = node({ x: 0, y: 0 }, { width: 100, height: 100 });
+    expect(nearestSide(square, { x: 50, y: 50 })).toBe('top');
+  });
+});
+
+describe('outwardGapPoint', () => {
+  const anchor = { x: 100, y: 200 };
+
+  it('сдвигает точку наружу вдоль стороны карточки на gap px', () => {
+    expect(outwardGapPoint(anchor, 'top', 8)).toEqual({ x: 100, y: 192 });
+    expect(outwardGapPoint(anchor, 'bottom', 8)).toEqual({ x: 100, y: 208 });
+    expect(outwardGapPoint(anchor, 'left', 8)).toEqual({ x: 92, y: 200 });
+    expect(outwardGapPoint(anchor, 'right', 8)).toEqual({ x: 108, y: 200 });
+  });
+
+  it('нулевой gap не меняет точку', () => {
+    expect(outwardGapPoint(anchor, 'right', 0)).toEqual(anchor);
   });
 });

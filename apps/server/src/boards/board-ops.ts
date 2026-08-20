@@ -656,9 +656,29 @@ export function applyBoardOp(
       if (!existing) {
         throw new ValidationError('Связь не найдена');
       }
+      // Ручное перецепление конца связи (12.20) — sourceItemId/targetItemId патчатся
+      // вместе с sourceHandle/targetHandle одним атомарным батчем от клиента, но
+      // валидируются тут теми же правилами, что и при edge.create: элемент должен
+      // существовать на доске, самопетля запрещена.
+      const sourceItemId =
+        op.patch.sourceItemId !== undefined
+          ? requireUuid(op.patch.sourceItemId, 'исходного элемента')
+          : existing.sourceItemId;
+      const targetItemId =
+        op.patch.targetItemId !== undefined
+          ? requireUuid(op.patch.targetItemId, 'целевого элемента')
+          : existing.targetItemId;
+      if (sourceItemId === targetItemId) {
+        throw new ValidationError('Связь не может соединять элемент с самим собой');
+      }
+      if (!state.items.has(sourceItemId) || !state.items.has(targetItemId)) {
+        throw new ValidationError('Элемент связи не найден на доске');
+      }
       const merged = { ...existing, ...op.patch };
       state.edges.set(op.id, {
         ...existing,
+        sourceItemId,
+        targetItemId,
         sourceHandle: merged.sourceHandle ?? null,
         targetHandle: merged.targetHandle ?? null,
         label: op.patch.label !== undefined ? validateEdgeLabel(op.patch.label) : existing.label,

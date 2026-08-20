@@ -24,3 +24,35 @@
 .board-connect-handle.vue-flow__handle-right {
   right: -6px;
 }
+
+/**
+ * Видимость коннект-хендлов — по :hover карточки, как в Miro (см. скриншоты
+ * пользователя 20.08.2026): выделенная карточка показывает только углы
+ * ресайза, БЕЗ отдельных точек крепления по бокам — это два разных, не
+ * пересекающихся механизма (hover → начать НОВУЮ связь; выделение самой
+ * связи → её собственные ручки переподключения в `BoardFloatingEdge.vue`,
+ * `.board-edge-reconnect-handle`). Промежуточная версия этой задачи (12.20)
+ * пробовала показ по выделению карточки клику вместо hover — по факту живой
+ * проверки оказалось менее удобно, откачено обратно.
+ *
+ * `.board-node--reconnect-hover` — во время активного перетаскивания ручки
+ * переподключения конца связи (`BoardFloatingEdge.vue`, .board-edge-reconnect-
+ * handle) на карточку под курсором ставится этот класс императивно (через
+ * `elementFromPoint`, не Vue-реактивность — конец связи и карточка-цель живут
+ * в разных компонентах без общего состояния); дублирует обычный :hover на
+ * случай, если браузер не считает карточку hover'нутой во время активного
+ * pointer capture на другом элементе.
+ */
+.board-connect-handle {
+  width: 14px;
+  height: 14px;
+  background: var(--ui-primary);
+  border: 2px solid var(--ui-bg);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.vue-flow__node:hover .board-connect-handle,
+.board-node--reconnect-hover .board-connect-handle {
+  opacity: 1;
+}

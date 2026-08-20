@@ -1700,6 +1700,103 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
       expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
     });
   });
+
+  describe('applyBoardOp — edge.patch — sourceItemId/targetItemId (12.20)', () => {
+    it('перецепляет источник связи на другой существующий элемент', () => {
+      const { state, a, b } = withTwoItems();
+      const c = randomUUID();
+      applyBoardOp(state, stickyCreateOp(c), BOARD_ID, ACTOR);
+      const edgeId = randomUUID();
+      applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+      applyBoardOp(
+        state,
+        {
+          type: 'edge.patch',
+          clientOpId: randomUUID(),
+          id: edgeId,
+          patch: { sourceItemId: c },
+        },
+        BOARD_ID,
+        ACTOR,
+      );
+
+      expect(state.edges.get(edgeId)).toMatchObject({ sourceItemId: c, targetItemId: b });
+    });
+
+    it('перецепляет цель связи на другой существующий элемент', () => {
+      const { state, a, b } = withTwoItems();
+      const c = randomUUID();
+      applyBoardOp(state, stickyCreateOp(c), BOARD_ID, ACTOR);
+      const edgeId = randomUUID();
+      applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+      applyBoardOp(
+        state,
+        {
+          type: 'edge.patch',
+          clientOpId: randomUUID(),
+          id: edgeId,
+          patch: { targetItemId: c },
+        },
+        BOARD_ID,
+        ACTOR,
+      );
+
+      expect(state.edges.get(edgeId)).toMatchObject({ sourceItemId: a, targetItemId: c });
+    });
+
+    it('без sourceItemId/targetItemId в патче — концы связи не меняются', () => {
+      const { state, a, b } = withTwoItems();
+      const edgeId = randomUUID();
+      applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+      applyBoardOp(
+        state,
+        {
+          type: 'edge.patch',
+          clientOpId: randomUUID(),
+          id: edgeId,
+          patch: { sourceHandle: 'top' },
+        },
+        BOARD_ID,
+        ACTOR,
+      );
+
+      expect(state.edges.get(edgeId)).toMatchObject({ sourceItemId: a, targetItemId: b });
+    });
+
+    it('отклоняет перецепление на несуществующий элемент', () => {
+      const { state, a, b } = withTwoItems();
+      const edgeId = randomUUID();
+      applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+      const op: BoardOp = {
+        type: 'edge.patch',
+        clientOpId: randomUUID(),
+        id: edgeId,
+        patch: { targetItemId: randomUUID() },
+      };
+
+      expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+    });
+
+    it('отклоняет перецепление, создающее самопетлю', () => {
+      const { state, a, b } = withTwoItems();
+      const edgeId = randomUUID();
+      applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+      const op: BoardOp = {
+        type: 'edge.patch',
+        clientOpId: randomUUID(),
+        id: edgeId,
+        // targetItemId переносим на текущий источник — оба конца схлопнутся на a
+        patch: { targetItemId: a },
+      };
+
+      expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+    });
+  });
 });
 
 describe('applyBoardOp — батч операций подряд', () => {
