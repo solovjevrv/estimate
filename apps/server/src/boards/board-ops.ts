@@ -633,9 +633,12 @@ export function applyBoardOp(
       }
       const sourceItemId = requireUuid(op.edge.sourceItemId, 'исходного элемента');
       const targetItemId = requireUuid(op.edge.targetItemId, 'целевого элемента');
-      if (sourceItemId === targetItemId) {
-        throw new ValidationError('Связь не может соединять элемент с самим собой');
-      }
+      // Самопетля (sourceItemId === targetItemId) разрешена (12.21) — легитимный
+      // диаграммный приём (элемент ссылается сам на себя); раньше отклонялась
+      // (12.8), но пользователь при ручной проверке 08.08.2026 создал именно
+      // такую связь — запрет отменён, вместо этого поправлен z-index рендера
+      // (см. `toFlowEdges` в vue-flow-adapter.ts), чтобы дуга не пряталась под
+      // своей же карточкой.
       if (!state.items.has(sourceItemId) || !state.items.has(targetItemId)) {
         throw new ValidationError('Элемент связи не найден на доске');
       }
@@ -648,6 +651,7 @@ export function applyBoardOp(
         targetHandle: op.edge.targetHandle ?? null,
         label: validateEdgeLabel(op.edge.label),
         style: validateEdgeStyle(op.edge.style),
+        zIndex: requireFinite(op.edge.zIndex, 'zIndex', -1_000_000, 1_000_000),
       });
       break;
     }
@@ -659,7 +663,9 @@ export function applyBoardOp(
       // Ручное перецепление конца связи (12.20) — sourceItemId/targetItemId патчатся
       // вместе с sourceHandle/targetHandle одним атомарным батчем от клиента, но
       // валидируются тут теми же правилами, что и при edge.create: элемент должен
-      // существовать на доске, самопетля запрещена.
+      // существовать на доске. Самопетля (schema — sourceItemId === targetItemId)
+      // разрешена (12.21, см. edge.create выше) — перецепление можно завести и на
+      // собственную карточку связи.
       const sourceItemId =
         op.patch.sourceItemId !== undefined
           ? requireUuid(op.patch.sourceItemId, 'исходного элемента')
@@ -668,9 +674,6 @@ export function applyBoardOp(
         op.patch.targetItemId !== undefined
           ? requireUuid(op.patch.targetItemId, 'целевого элемента')
           : existing.targetItemId;
-      if (sourceItemId === targetItemId) {
-        throw new ValidationError('Связь не может соединять элемент с самим собой');
-      }
       if (!state.items.has(sourceItemId) || !state.items.has(targetItemId)) {
         throw new ValidationError('Элемент связи не найден на доске');
       }
@@ -686,6 +689,11 @@ export function applyBoardOp(
           op.patch.style !== undefined && op.patch.style !== null
             ? validateEdgeStyle({ ...existing.style, ...op.patch.style })
             : existing.style,
+        // Передний/задний план связи (12.21) — та же операция, что уже есть у карточек
+        zIndex:
+          op.patch.zIndex !== undefined
+            ? requireFinite(op.patch.zIndex, 'zIndex', -1_000_000, 1_000_000)
+            : existing.zIndex,
       });
       break;
     }

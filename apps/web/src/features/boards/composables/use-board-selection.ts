@@ -611,24 +611,50 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     if (ops.length) void options.applyOps(ops);
   }
 
+  /**
+   * Карточки и связи делят одно пространство порядка (12.21) — правым кликом
+   * по связи (`target: 'edge'`) выделена связь, не карточка, поэтому обе
+   * функции ниже должны уметь патчить оба вида выделения, а не только узлы,
+   * как раньше (до появления `zIndex` у связи бринг-ту-фронт по факту
+   * работал только для карточек). База (`max`/`min`) общая на весь батч —
+   * `patchSelected`/`patchSelectedEdge` тут не подходят (нужен один общий
+   * индекс на оба списка, не раздельные с 0), поэтому ops собираются вручную.
+   */
   function bringSelectedToFront(): void {
     const base = options.getBoardZIndex().max + 1;
-    patchSelected((node, index) => ({
+    const nodeOps: BoardOp[] = selectedNodes.value.map((node, index) => ({
       type: 'item.patch',
       clientOpId: uuid(),
       id: node.id,
       patch: { zIndex: base + index },
     }));
+    const edgeOps: BoardOp[] = selectedEdges.value.map((edge, index) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { zIndex: base + nodeOps.length + index },
+    }));
+    const ops = [...nodeOps, ...edgeOps];
+    if (ops.length) options.applyOps(ops);
   }
 
   function sendSelectedToBack(): void {
-    const base = options.getBoardZIndex().min - selectedNodes.value.length;
-    patchSelected((node, index) => ({
+    const total = selectedNodes.value.length + selectedEdges.value.length;
+    const base = options.getBoardZIndex().min - total;
+    const nodeOps: BoardOp[] = selectedNodes.value.map((node, index) => ({
       type: 'item.patch',
       clientOpId: uuid(),
       id: node.id,
       patch: { zIndex: base + index },
     }));
+    const edgeOps: BoardOp[] = selectedEdges.value.map((edge, index) => ({
+      type: 'edge.patch',
+      clientOpId: uuid(),
+      id: edge.id,
+      patch: { zIndex: base + nodeOps.length + index },
+    }));
+    const ops = [...nodeOps, ...edgeOps];
+    if (ops.length) options.applyOps(ops);
   }
 
   function deleteSelected(): void {

@@ -73,6 +73,7 @@ function boardEdge(id: string, overrides: Partial<BoardEdge> = {}): BoardEdge {
     targetHandle: null,
     label: null,
     style: { line: 'curved', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
+    zIndex: 1,
     ...overrides,
   };
 }
@@ -535,6 +536,46 @@ describe('useBoardSelection — layer ops', () => {
     api.sendSelectedToBack();
     const ops = lastOps(applyOps);
     expect(ops.map((op) => op.patch.zIndex ?? 0).sort((x, y) => x - y)).toEqual([-2, -1]);
+  });
+
+  it('bringSelectedToFront on a selected edge emits edge.patch, not item.patch (12.21)', () => {
+    const edge = flowEdge(boardEdge('e1'));
+    const { api, applyOps } = makeSelection({
+      selectedEdges: [edge],
+      getBoardZIndex: () => ({ max: 10, min: 0 }),
+    });
+    api.bringSelectedToFront();
+    const ops = lastOps(applyOps);
+    expect(ops).toEqual([
+      { type: 'edge.patch', clientOpId: expect.any(String), id: 'e1', patch: { zIndex: 11 } },
+    ]);
+  });
+
+  it('sendSelectedToBack on a selected edge emits edge.patch below current min (12.21)', () => {
+    const edge = flowEdge(boardEdge('e1'));
+    const { api, applyOps } = makeSelection({
+      selectedEdges: [edge],
+      getBoardZIndex: () => ({ max: 10, min: 0 }),
+    });
+    api.sendSelectedToBack();
+    const ops = lastOps(applyOps);
+    expect(ops).toEqual([
+      { type: 'edge.patch', clientOpId: expect.any(String), id: 'e1', patch: { zIndex: -1 } },
+    ]);
+  });
+
+  it('bringSelectedToFront with a mixed node+edge selection shares one contiguous zIndex range (12.21)', () => {
+    const a = flowNode(item('a'));
+    const edge = flowEdge(boardEdge('e1'));
+    const { api, applyOps } = makeSelection({
+      selectedNodes: [a],
+      selectedEdges: [edge],
+      getBoardZIndex: () => ({ max: 10, min: 0 }),
+    });
+    api.bringSelectedToFront();
+    const ops = lastOps(applyOps);
+    expect(ops.map((op) => op.patch.zIndex)).toEqual([11, 12]);
+    expect(ops.map((op) => op.type)).toEqual(['item.patch', 'edge.patch']);
   });
 });
 

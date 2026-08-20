@@ -102,6 +102,7 @@ describe('useBoardClipboard duplicateSelection', () => {
       targetHandle: null,
       label: null,
       style: { line: 'straight', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
+      zIndex: 1,
     };
     const { api, applyOps } = clipboard([frame, child], [node(frame)], [edge]);
 
@@ -117,6 +118,33 @@ describe('useBoardClipboard duplicateSelection', () => {
     expect(copiedEdge).toMatchObject({
       edge: { sourceItemId: copiedFrame?.item.id, targetItemId: copiedChild?.item.id },
     });
+  });
+
+  it('копия связи получает zIndex выше и своих скопированных карточек, и других связей доски (12.21)', () => {
+    // frame/child — zIndex 0 (дефолт item()), исходная edge — zIndex 1, других
+    // связей на доске нет. Копий карточек будет 2 (frame + child), поэтому
+    // копия связи обязана оказаться выше их обеих: 0+1 (baseZIndex) + 2 (число
+    // копируемых карточек) = 3, а не просто выше старой связи (1+1=2).
+    const frame = item('frame', { content: { type: 'frame', title: 'Frame' } });
+    const child = item('child', { parentId: frame.id });
+    const edge: BoardEdge = {
+      id: 'edge',
+      boardId: 'board-1',
+      sourceItemId: frame.id,
+      targetItemId: child.id,
+      sourceHandle: null,
+      targetHandle: null,
+      label: null,
+      style: { line: 'straight', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
+      zIndex: 1,
+    };
+    const { api, applyOps } = clipboard([frame, child], [node(frame)], [edge]);
+
+    api.duplicateSelection();
+
+    const ops = applyOps.mock.calls[0]?.[0] ?? [];
+    const copiedEdge = ops.find((op) => op.type === 'edge.create');
+    expect(copiedEdge).toMatchObject({ edge: { zIndex: 3 } });
   });
 });
 

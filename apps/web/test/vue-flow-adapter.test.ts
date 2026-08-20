@@ -49,6 +49,7 @@ const straightEdge: BoardEdge = {
     markerStart: 'none',
     markerEnd: 'none',
   },
+  zIndex: 4,
 };
 
 const frameItem: BoardItem = {
@@ -179,7 +180,26 @@ describe('boardEdgeToFlowEdge', () => {
   });
 
   it('toFlowEdges переносит список поэлементно', () => {
-    expect(toFlowEdges([straightEdge, curvedEdge]).map((e) => e.id)).toEqual(['e1', 'e2']);
+    const edges = toFlowEdges([straightEdge, curvedEdge]);
+    expect(edges.map((e) => e.id)).toEqual(['e1', 'e2']);
+  });
+
+  describe('zIndex связи — персистентное поле, общее пространство с карточками (12.21)', () => {
+    // Раньше (в рамках этой же задачи) zIndex связи ВЫЧИСЛЯЛСЯ на лету от
+    // подключённых карточек (max(source, target) + 1) — годилось, пока порядок
+    // был только «выше своих двух карточек». С появлением ручного
+    // передний/задний план для связи (контекстное меню, как у карточек) это
+    // больше не работает — стало обычным патчибельным полем самой связи,
+    // дефолт при создании считает вызывающий код (`use-board-edges.ts`).
+    it('boardEdgeToFlowEdge переносит edge.zIndex как есть', () => {
+      expect(boardEdgeToFlowEdge(straightEdge).zIndex).toBe(straightEdge.zIndex);
+    });
+
+    it('toFlowEdges переносит zIndex каждой связи независимо', () => {
+      const higher: BoardEdge = { ...curvedEdge, zIndex: 99 };
+      const edges = toFlowEdges([straightEdge, higher]);
+      expect(edges.map((e) => e.zIndex)).toEqual([straightEdge.zIndex, 99]);
+    });
   });
 
   describe('цвет связи не задан (12.9) — резолвится от темы зрителя', () => {

@@ -61,7 +61,10 @@ export interface BoardEdgePatchOp extends BoardOpBase {
   type: 'edge.patch';
   id: string;
   patch: Partial<
-    Pick<BoardEdge, 'sourceItemId' | 'targetItemId' | 'sourceHandle' | 'targetHandle' | 'label'>
+    Pick<
+      BoardEdge,
+      'sourceItemId' | 'targetItemId' | 'sourceHandle' | 'targetHandle' | 'label' | 'zIndex'
+    >
   > & {
     style?: Partial<BoardEdgeStyle>;
   };

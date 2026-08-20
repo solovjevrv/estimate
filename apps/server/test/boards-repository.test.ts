@@ -82,6 +82,7 @@ describeDb('BoardsRepository.updateEdge', () => {
       targetHandle: 'left',
       label: null,
       style: { line: 'straight', dash: 'solid', markerStart: 'none', markerEnd: 'none' },
+      zIndex: 1,
     });
 
     const updated = await repository.updateEdge(boardId, edge.id, {
@@ -91,9 +92,15 @@ describeDb('BoardsRepository.updateEdge', () => {
       targetHandle: 'top',
       label: edge.label,
       style: edge.style,
+      zIndex: 42,
     });
 
-    expect(updated).toMatchObject({ sourceItemId: a, targetItemId: c, targetHandle: 'top' });
+    expect(updated).toMatchObject({
+      sourceItemId: a,
+      targetItemId: c,
+      targetHandle: 'top',
+      zIndex: 42,
+    });
 
     // Перечитываем отдельным select — подтверждает, что значение реально
     // сохранилось в БД, а не только в возвращённой repository строке.
@@ -104,5 +111,6 @@ describeDb('BoardsRepository.updateEdge', () => {
     expect(row?.sourceItemId).toBe(a);
     expect(row?.targetItemId).toBe(c);
     expect(row?.targetHandle).toBe('top');
+    expect(row?.zIndex).toBe(42);
   });
 });

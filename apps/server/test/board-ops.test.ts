@@ -793,6 +793,7 @@ describe('applyBoardOp — item.delete', () => {
             markerStart: 'none',
             markerEnd: 'none',
           },
+          zIndex: 1,
         },
       },
       BOARD_ID,
@@ -970,6 +971,7 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
           markerStart: 'none',
           markerEnd: 'none',
         },
+        zIndex: 1,
       },
     };
   }
@@ -983,6 +985,17 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
     expect(state.edges.get(edgeId)).toMatchObject({ sourceItemId: a, targetItemId: b });
   });
 
+  it('сохраняет zIndex связи как есть (12.21) — дефолт считает клиент, сервер только валидирует диапазон', () => {
+    const { state, a, b } = withTwoItems();
+    const edgeId = randomUUID();
+    const op = edgeCreateOp(edgeId, a, b);
+    (op as { edge: { zIndex: number } }).edge.zIndex = 42;
+
+    applyBoardOp(state, op, BOARD_ID, ACTOR);
+
+    expect(state.edges.get(edgeId)?.zIndex).toBe(42);
+  });
+
   it('отклоняет связь на несуществующий элемент', () => {
     const { state, a } = withTwoItems();
 
@@ -991,12 +1004,17 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
     ).toThrow(ValidationError);
   });
 
-  it('отклоняет связь элемента с самим собой', () => {
+  it('разрешает связь элемента с самим собой (самопетля, 12.21)', () => {
+    // Раньше отклонялась (12.8), но пользователь при ручной проверке создал
+    // именно такую связь на живой доске — запрет снят, вместо него поправлен
+    // z-index рендера (см. vue-flow-adapter.test.ts), чтобы дуга не пряталась
+    // под своей же карточкой.
     const { state, a } = withTwoItems();
+    const edgeId = randomUUID();
 
-    expect(() => applyBoardOp(state, edgeCreateOp(randomUUID(), a, a), BOARD_ID, ACTOR)).toThrow(
-      ValidationError,
-    );
+    applyBoardOp(state, edgeCreateOp(edgeId, a, a), BOARD_ID, ACTOR);
+
+    expect(state.edges.get(edgeId)).toMatchObject({ sourceItemId: a, targetItemId: a });
   });
 
   it('отклоняет недопустимый тип линии', () => {
@@ -1766,6 +1784,42 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
       expect(state.edges.get(edgeId)).toMatchObject({ sourceItemId: a, targetItemId: b });
     });
 
+    it('патчит zIndex связи — передний/задний план (12.21)', () => {
+      const { state, a, b } = withTwoItems();
+      const edgeId = randomUUID();
+      applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+
+      applyBoardOp(
+        state,
+        { type: 'edge.patch', clientOpId: randomUUID(), id: edgeId, patch: { zIndex: 99 } },
+        BOARD_ID,
+        ACTOR,
+      );
+
+      expect(state.edges.get(edgeId)?.zIndex).toBe(99);
+    });
+
+    it('без zIndex в патче — zIndex связи не меняется', () => {
+      const { state, a, b } = withTwoItems();
+      const edgeId = randomUUID();
+      applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
+      const before = state.edges.get(edgeId)?.zIndex;
+
+      applyBoardOp(
+        state,
+        {
+          type: 'edge.patch',
+          clientOpId: randomUUID(),
+          id: edgeId,
+          patch: { sourceHandle: 'top' },
+        },
+        BOARD_ID,
+        ACTOR,
+      );
+
+      expect(state.edges.get(edgeId)?.zIndex).toBe(before);
+    });
+
     it('отклоняет перецепление на несуществующий элемент', () => {
       const { state, a, b } = withTwoItems();
       const edgeId = randomUUID();
@@ -1781,7 +1835,7 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
       expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
     });
 
-    it('отклоняет перецепление, создающее самопетлю', () => {
+    it('разрешает перецепление, создающее самопетлю (12.21)', () => {
       const { state, a, b } = withTwoItems();
       const edgeId = randomUUID();
       applyBoardOp(state, edgeCreateOp(edgeId, a, b), BOARD_ID, ACTOR);
@@ -1794,7 +1848,9 @@ describe('applyBoardOp — edge.create/patch/delete', () => {
         patch: { targetItemId: a },
       };
 
-      expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+      applyBoardOp(state, op, BOARD_ID, ACTOR);
+
+      expect(state.edges.get(edgeId)).toMatchObject({ sourceItemId: a, targetItemId: a });
     });
   });
 });

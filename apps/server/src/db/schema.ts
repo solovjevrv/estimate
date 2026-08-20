@@ -261,6 +261,8 @@ export const boardEdges = pgTable(
     targetHandle: text('target_handle'),
     label: text('label'),
     style: jsonb('style').notNull().$type<BoardEdgeStyle>(),
+    // Общее пространство порядка со z_index карточек (12.21) — см. BoardEdge.zIndex
+    zIndex: integer('z_index').notNull().default(0),
   },
   (t) => [index('board_edges_board_id_idx').on(t.boardId)],
 );

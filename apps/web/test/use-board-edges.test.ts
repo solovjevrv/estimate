@@ -37,6 +37,7 @@ function boardEdge(id: string, overrides: Partial<BoardEdge> = {}): BoardEdge {
     targetHandle: null,
     label: null,
     style: { line: 'curved', dash: 'solid', markerStart: 'none', markerEnd: 'arrow' },
+    zIndex: 1,
     ...overrides,
   };
 }
@@ -71,6 +72,7 @@ function makeEdges(
     activeTool?: () => string;
     getViewport?: () => { x: number; y: number; zoom: number };
     resolveEdgeColor?: (color: BoardColorHex | undefined) => BoardColorHex;
+    getBoardZIndex?: () => { max: number; min: number };
   } = {},
 ) {
   const applyOps = vi.fn<(ops: BoardOp[]) => void>();
@@ -91,6 +93,7 @@ function makeEdges(
     setActiveTool: vi.fn(),
     resolveEdgeColor: opts.resolveEdgeColor ?? ((c) => c ?? '#222222'),
     breakFollowOnEdit,
+    getBoardZIndex: opts.getBoardZIndex ?? (() => ({ max: 0, min: 0 })),
   });
 
   return {
@@ -119,6 +122,7 @@ type InspectedBoardOp = {
     targetHandle: string | null;
     label: string | null;
     style: BoardEdgeStyle;
+    zIndex: number;
   };
   patch: { style: BoardEdgeStyle };
 };
@@ -155,6 +159,15 @@ describe('useBoardEdges — onConnect', () => {
       markerStart: 'none',
       markerEnd: 'arrow',
     });
+  });
+
+  it('new edge zIndex is one above the current board max, so it renders on top of everything (12.21)', () => {
+    const { edges, applyOps } = makeEdges({ getBoardZIndex: () => ({ max: 41, min: -3 }) });
+
+    edges.onConnect({ source: 's1', target: 't1', sourceHandle: null, targetHandle: null });
+
+    const ops = lastOps(applyOps);
+    expect(ops[0]!.edge.zIndex).toBe(42);
   });
 
   it('is a no-op when not in edit mode', () => {
