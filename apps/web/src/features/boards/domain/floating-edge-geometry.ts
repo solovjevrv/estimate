@@ -124,6 +124,31 @@ export function lerpEdgeAnchorParams(
 }
 
 /**
+ * Ближайшая к точке сторона карточки (12.20) — используется при ручном
+ * перецеплении конца связи: во время драга курсор редко попадает точно на
+ * 10px-хендл, поэтому сторона крепления на карточке-цели определяется
+ * геометрией (какая из 4 середин сторон ближе), а не требует точного клика.
+ */
+export function nearestSide(
+  node: EdgeGeometryNode,
+  point: { x: number; y: number },
+): EdgeAnchorSide {
+  const rect = nodeRect(node);
+  const sides: EdgeAnchorSide[] = ['top', 'right', 'bottom', 'left'];
+  let closest: EdgeAnchorSide = sides[0]!;
+  let closestDistance = Infinity;
+  for (const side of sides) {
+    const mid = sideMidpoint(rect, side);
+    const distance = Math.hypot(mid.x - point.x, mid.y - point.y);
+    if (distance < closestDistance) {
+      closestDistance = distance;
+      closest = side;
+    }
+  }
+  return closest;
+}
+
+/**
  * Кривая связь (line: 'curved') с пользовательским смещением изгиба (12.17).
  * `curveOffset` — смещение апекса (видимой точки изгиба) от геометрической
  * середины прямой между точками крепления. Чтобы точка на квадратичной

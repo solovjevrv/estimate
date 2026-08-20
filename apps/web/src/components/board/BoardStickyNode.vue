@@ -397,21 +397,6 @@ watch(
     0 6px 14px -6px rgb(0 0 0 / 18%);
 }
 
-/* Невидимы по умолчанию — появляются только при наведении на карточку, иначе
-   маленькие точки по краям каждой карточки захламляли бы весь холст */
-.board-connect-handle {
-  width: 10px;
-  height: 10px;
-  background: var(--ui-primary);
-  border: 2px solid var(--ui-bg);
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.vue-flow__node:hover .board-connect-handle {
-  opacity: 1;
-}
-
 /* Кнопка «поставить реакцию» — как коннект-хендлы, невидима по умолчанию,
    иначе на плотной доске захламляла бы каждую карточку */
 .board-reaction-trigger {

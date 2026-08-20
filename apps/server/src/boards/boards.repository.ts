@@ -265,16 +265,20 @@ export class BoardsRepository {
     return this.toEdge(row);
   }
 
-  /** Принимает провалидированную запись целиком — та же причина, что у `updateItem` выше */
+  /** Принимает провалидированную запись целиком — та же причина, что у `updateItem` выше.
+   *  sourceItemId/targetItemId — ручное перецепление конца связи (12.20). */
   async updateEdge(
     boardId: string,
     edgeId: string,
-    edge: Pick<BoardEdge, 'sourceHandle' | 'targetHandle' | 'label' | 'style'>,
+    edge: Pick<
+      BoardEdge,
+      'sourceItemId' | 'targetItemId' | 'sourceHandle' | 'targetHandle' | 'label' | 'style'
+    >,
   ): Promise<BoardEdge | null> {
-    const { sourceHandle, targetHandle, label, style } = edge;
+    const { sourceItemId, targetItemId, sourceHandle, targetHandle, label, style } = edge;
     const [row] = await this.db
       .update(schema.boardEdges)
-      .set({ sourceHandle, targetHandle, label, style })
+      .set({ sourceItemId, targetItemId, sourceHandle, targetHandle, label, style })
       .where(and(eq(schema.boardEdges.id, edgeId), eq(schema.boardEdges.boardId, boardId)))
       .returning();
     return row ? this.toEdge(row) : null;

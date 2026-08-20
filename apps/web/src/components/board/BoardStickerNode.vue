@@ -123,19 +123,6 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 
 /* Стикер-элемент — без фона/заливки/рамки, просто картинка */
 
-.board-connect-handle {
-  width: 10px;
-  height: 10px;
-  background: var(--ui-primary);
-  border: 2px solid var(--ui-bg);
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.vue-flow__node:hover .board-connect-handle {
-  opacity: 1;
-}
-
 .board-sticker-placeholder {
   background: var(--ui-bg-elevated);
   border: 1px dashed var(--ui-border);

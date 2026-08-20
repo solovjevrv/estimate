@@ -49,11 +49,20 @@ export interface BoardEdgeCreateOp extends BoardOpBase {
   edge: Omit<BoardEdge, 'boardId'>;
 }
 
-/** Переподключить связь к другим элементам — не нужно: проще удалить и создать заново */
+/**
+ * `sourceItemId`/`targetItemId` — ручное перецепление конца связи на другой
+ * элемент (12.20, Miro/Figma-приём: перетащить конец существующей стрелки на
+ * другой хендл). Приходят вместе с `sourceHandle`/`targetHandle` одним атомарным
+ * патчем — Vue Flow отдаёт оба конца и обе стороны крепления сразу в одном
+ * событии `connection`, отдельного протокола на "только сторона" vs "элемент
+ * целиком" не заводим.
+ */
 export interface BoardEdgePatchOp extends BoardOpBase {
   type: 'edge.patch';
   id: string;
-  patch: Partial<Pick<BoardEdge, 'sourceHandle' | 'targetHandle' | 'label'>> & {
+  patch: Partial<
+    Pick<BoardEdge, 'sourceItemId' | 'targetItemId' | 'sourceHandle' | 'targetHandle' | 'label'>
+  > & {
     style?: Partial<BoardEdgeStyle>;
   };
 }
