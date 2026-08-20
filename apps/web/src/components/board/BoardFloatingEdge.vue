@@ -28,6 +28,7 @@ import {
   getOffsetCurvePath,
   lerpEdgeAnchorParams,
   offsetAlongNormal,
+  outwardGapPoint,
   type PathSample,
   tangentAtSample,
 } from '../../features/boards/domain/floating-edge-geometry';
@@ -178,8 +179,7 @@ const {
  * Точки крепления с учётом активного локального перецепления конца —
  * во время такого драга перетаскиваемый конец должен мгновенно следовать за
  * курсором (не за `renderedAnchor`, который реагирует на реальную позицию
- * карточки), не дожидаясь коммита. Всё остальное (path/mid/точки-маркеры)
- * читает именно это значение, а не `renderedAnchor` напрямую.
+ * карточки), не дожидаясь коммита.
  */
 const activeAnchor = computed<EdgeAnchorParams>(() => {
   const preview = dragReconnectPreview.value;
@@ -190,48 +190,56 @@ const activeAnchor = computed<EdgeAnchorParams>(() => {
 });
 
 /**
- * Ручки перецепления (12.20) в состоянии покоя вынесены на несколько px
- * НАРУЖУ от точки крепления той же стороны, а не сидят ровно на ней — Vue Flow
- * рендерит `.vue-flow__nodes` НАД `.vue-flow__edges` в дефолтном стеке
- * слоёв, поэтому ручка ровно на границе карточки физически перекрывается
- * содержимым самой карточки и не ловит клик/драг (найдено вживую: pointerdown
- * молча не долетал до обработчика). Тот же приём смещения наружу, что уже
- * применён для `.board-connect-handle` (`board-connect-handle.css`, 6px).
- * Во время АКТИВНОГО драга СВОЕГО конца смещение снимается — ручка должна
- * сидеть точно под курсором, а не с постоянным оффсетом от него.
+ * Зазор перед карточкой (12.20, Miro-приём, решение пользователя 20.08.2026) —
+ * линия связи не идёт вплотную до границы карточки, а останавливается на
+ * `EDGE_ANCHOR_GAP` px раньше. Раньше линия шла точно до границы, а отдельная
+ * ручка переподключения сдвигалась декоративно поверх нее по касательной
+ * кривой — на заметно изогнутой связи (12.17) ручка визуально «съезжала» с
+ * линии, и было неочевидно, что связь вообще можно перецепить за неё. Зазор
+ * задаётся ДО построения кривой (сдвигаются сами точки, которые видит
+ * `pathData` ниже) — линия и ручка переподключения (шаблон, ниже) СОВПАДАЮТ
+ * по построению, без отдельной геометрии. Во время АКТИВНОГО драга своего
+ * конца зазор снимается — конец должен идти точно за курсором.
  */
-const RECONNECT_HANDLE_OFFSET = 20;
+const EDGE_ANCHOR_GAP = 8;
 
-function nudgeOutward(x: number, y: number, side: EdgeAnchorSide): { x: number; y: number } {
-  switch (side) {
-    case 'top':
-      return { x, y: y - RECONNECT_HANDLE_OFFSET };
-    case 'bottom':
-      return { x, y: y + RECONNECT_HANDLE_OFFSET };
-    case 'left':
-      return { x: x - RECONNECT_HANDLE_OFFSET, y };
-    case 'right':
-      return { x: x + RECONNECT_HANDLE_OFFSET, y };
-  }
+function gappedAnchor(anchor: EdgeAnchorParams, gap: number): EdgeAnchorParams {
+  const preview = dragReconnectPreview.value;
+  const source =
+    preview?.end === 'source'
+      ? { x: anchor.sx, y: anchor.sy }
+      : outwardGapPoint({ x: anchor.sx, y: anchor.sy }, anchor.sourceSide, gap);
+  const target =
+    preview?.end === 'target'
+      ? { x: anchor.tx, y: anchor.ty }
+      : outwardGapPoint({ x: anchor.tx, y: anchor.ty }, anchor.targetSide, gap);
+  return { ...anchor, sx: source.x, sy: source.y, tx: target.x, ty: target.y };
 }
 
-const sourceHandlePosition = computed(() => {
-  if (dragReconnectPreview.value?.end === 'source') {
-    return { x: activeAnchor.value.sx, y: activeAnchor.value.sy };
-  }
-  return nudgeOutward(activeAnchor.value.sx, activeAnchor.value.sy, activeAnchor.value.sourceSide);
-});
+const renderAnchor = computed<EdgeAnchorParams>(() =>
+  gappedAnchor(activeAnchor.value, EDGE_ANCHOR_GAP),
+);
 
-const targetHandlePosition = computed(() => {
-  if (dragReconnectPreview.value?.end === 'target') {
-    return { x: activeAnchor.value.tx, y: activeAnchor.value.ty };
-  }
-  return nudgeOutward(activeAnchor.value.tx, activeAnchor.value.ty, activeAnchor.value.targetSide);
-});
+/**
+ * Ручка переподключения (кружок в шаблоне ниже) сидит ДАЛЬШЕ от карточки, чем
+ * сам видимый конец линии (`renderAnchor`) — увеличенный до 14px
+ * `.board-connect-handle` (тот же приём, что и здесь, только для НОВЫХ связей)
+ * при `EDGE_ANCHOR_GAP` перекрывался с ним физически и перехватывал
+ * pointerdown раньше, чем событие долетало до нашего кружка (найдено
+ * вживую — драг молча не начинался). Отдельный, больший зазор для интерактива
+ * не портит Miro-эффект «линия чуть не доходит до карточки» — сама ЛИНИЯ
+ * по-прежнему рисуется с `EDGE_ANCHOR_GAP`, ручка просто отстоит от её конца
+ * на несколько px дальше в том же направлении.
+ */
+const RECONNECT_HANDLE_GAP = 20;
+
+const handleAnchor = computed<EdgeAnchorParams>(() =>
+  gappedAnchor(activeAnchor.value, RECONNECT_HANDLE_GAP),
+);
 
 const straightMid = computed(() => ({
-  x: (activeAnchor.value.sx + activeAnchor.value.tx) / 2,
-  y: (activeAnchor.value.sy + activeAnchor.value.ty) / 2,
+  x: (renderAnchor.value.sx + renderAnchor.value.tx) / 2,
+  y: (renderAnchor.value.sy + renderAnchor.value.ty) / 2,
 }));
 
 /**
@@ -259,7 +267,7 @@ const {
 } = curveOffset;
 
 const pathData = computed(() => {
-  const { sx, sy, tx, ty, sourceSide, targetSide } = activeAnchor.value;
+  const { sx, sy, tx, ty, sourceSide, targetSide } = renderAnchor.value;
   const line = props.data.style.line;
 
   if (line === 'orthogonal') {
@@ -734,15 +742,15 @@ onUnmounted(() => {
          рисуем сами поверх пути -->
     <circle
       v-if="data.style.markerStart === 'dot'"
-      :cx="activeAnchor.sx"
-      :cy="activeAnchor.sy"
+      :cx="renderAnchor.sx"
+      :cy="renderAnchor.sy"
       r="4"
       :fill="dotColor"
     />
     <circle
       v-if="data.style.markerEnd === 'dot'"
-      :cx="activeAnchor.tx"
-      :cy="activeAnchor.ty"
+      :cx="renderAnchor.tx"
+      :cy="renderAnchor.ty"
       r="4"
       :fill="dotColor"
     />
@@ -759,17 +767,17 @@ onUnmounted(() => {
       @dblclick.stop="resetCurveOffset"
     />
     <!-- Ручное перецепление конца связи на другую сторону/карточку (12.20) —
-         видимы только когда связь выделена (клик по линии), по образцу
-         ручки изгиба выше: пользователь иначе не понимал, что за конец
-         стрелки можно ухватиться и потянуть на другую грань (было заметно
-         только при наведении ровно на невидимую точку крепления). -->
+         видимы только когда связь выделена (клик по линии), по образцу ручки
+         изгиба выше. Позиция — handleAnchor (см. докблок выше), не
+         renderAnchor: сидит дальше от карточки, чем сама линия — иначе
+         перекрывается увеличенным .board-connect-handle и не ловит клик. -->
     <circle
       v-if="canEdit && selected"
       data-testid="board-edge-reconnect-handle"
       data-endpoint="source"
       class="board-edge-reconnect-handle nodrag nopan"
-      :cx="sourceHandlePosition.x"
-      :cy="sourceHandlePosition.y"
+      :cx="handleAnchor.sx"
+      :cy="handleAnchor.sy"
       r="6"
       @pointerdown.stop="onReconnectPointerDown('source', $event)"
       @pointermove.stop="onReconnectPointerMove"
@@ -780,8 +788,8 @@ onUnmounted(() => {
       data-testid="board-edge-reconnect-handle"
       data-endpoint="target"
       class="board-edge-reconnect-handle nodrag nopan"
-      :cx="targetHandlePosition.x"
-      :cy="targetHandlePosition.y"
+      :cx="handleAnchor.tx"
+      :cy="handleAnchor.ty"
       r="6"
       @pointerdown.stop="onReconnectPointerDown('target', $event)"
       @pointermove.stop="onReconnectPointerMove"
@@ -868,20 +876,18 @@ g:hover .board-edge-curve-handle {
    изгиба (полая, не залитая), чтобы не смешивать «двигает форму кривой» и
    «двигает КУДА стрелка крепится». pointer-events: all — та же ловушка
    .vue-flow__edge, что и у ручки изгиба выше. */
+/* Видима всегда, пока связь выделена (рендерится только тогда — v-if в
+   шаблоне), БЕЗ дополнительного скрытия по :hover — иначе, как только курсор
+   уходит с самой линии по пути к ручке (она вынесена наружу от карточки),
+   ручка гаснет раньше, чем пользователь успевает её схватить (баг, найден
+   пользователем 20.08.2026: «вижу точки только пока не увожу мышку»). */
 .board-edge-reconnect-handle {
   fill: var(--brand-surface, #fff);
   stroke: var(--ui-color-primary-500);
   stroke-width: 2px;
   cursor: grab;
-  opacity: 0;
-  transition:
-    opacity 0.12s ease,
-    stroke-width 0.12s ease;
+  transition: stroke-width 0.12s ease;
   pointer-events: all;
-}
-.board-edge-reconnect-handle:hover,
-g:hover .board-edge-reconnect-handle {
-  opacity: 1;
 }
 .board-edge-reconnect-handle:hover {
   stroke-width: 3px;

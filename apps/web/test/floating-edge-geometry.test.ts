@@ -11,6 +11,7 @@ import {
   lerpEdgeAnchorParams,
   nearestSide,
   offsetAlongNormal,
+  outwardGapPoint,
   tangentAtSample,
 } from '../src/features/boards/domain/floating-edge-geometry';
 
@@ -289,5 +290,20 @@ describe('nearestSide', () => {
   it('точка ровно в центре карточки — детерминированно выбирает одну сторону (без разброса при равных расстояниях)', () => {
     const square = node({ x: 0, y: 0 }, { width: 100, height: 100 });
     expect(nearestSide(square, { x: 50, y: 50 })).toBe('top');
+  });
+});
+
+describe('outwardGapPoint', () => {
+  const anchor = { x: 100, y: 200 };
+
+  it('сдвигает точку наружу вдоль стороны карточки на gap px', () => {
+    expect(outwardGapPoint(anchor, 'top', 8)).toEqual({ x: 100, y: 192 });
+    expect(outwardGapPoint(anchor, 'bottom', 8)).toEqual({ x: 100, y: 208 });
+    expect(outwardGapPoint(anchor, 'left', 8)).toEqual({ x: 92, y: 200 });
+    expect(outwardGapPoint(anchor, 'right', 8)).toEqual({ x: 108, y: 200 });
+  });
+
+  it('нулевой gap не меняет точку', () => {
+    expect(outwardGapPoint(anchor, 'right', 0)).toEqual(anchor);
   });
 });
