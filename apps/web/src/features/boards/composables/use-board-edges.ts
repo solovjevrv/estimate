@@ -7,6 +7,7 @@ import type {
 } from '@poker/shared';
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
 
+import { getEdgeAnchorParams } from '../../../features/boards/domain/floating-edge-geometry';
 import { uuid } from '../../../features/boards/infrastructure/uuid';
 import type {
   BoardFlowEdge,
@@ -106,9 +107,14 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
   /* ----------------------- Позиция тулбара связи ----------------------- */
 
   /**
-   * Плавающий тулбар над выделенной связью (12.9): midpoint между позициями source
-   * и target узлов, затем проецируется через viewport. Если нет edit-доступа,
-   * выделения или одной из нод — `null` (тулбар не рисуется).
+   * Плавающий тулбар над выделенной связью (12.9): midpoint между реальными
+   * точками крепления связи (та же сторона карточки, что рисует
+   * `BoardFloatingEdge.vue` через `getEdgeAnchorParams`), затем проецируется
+   * через viewport. Раньше брался midpoint между `node.position` (левый
+   * верхний угол карточки, а не точка на её границе) — для крупных карточек
+   * это уводило тулбар далеко от реальной стрелки (баг, найден пользователем
+   * 20.08.2026). Если нет edit-доступа, выделения или одной из нод — `null`
+   * (тулбар не рисуется).
    */
   const edgeToolbarPosition = computed(() => {
     const selected = selectedEdges.value;
@@ -118,8 +124,14 @@ export function useBoardEdges(options: UseBoardEdgesOptions): UseBoardEdgesResul
     const sourceNode = nodeMap.get(edge.source);
     const targetNode = nodeMap.get(edge.target);
     if (!sourceNode || !targetNode) return null;
-    const x = (sourceNode.position.x + targetNode.position.x) / 2;
-    const y = (sourceNode.position.y + targetNode.position.y) / 2;
+    const { sx, sy, tx, ty } = getEdgeAnchorParams(
+      sourceNode,
+      targetNode,
+      edge.sourceHandle,
+      edge.targetHandle,
+    );
+    const x = (sx + tx) / 2;
+    const y = (sy + ty) / 2;
     const viewport = options.getViewport();
     return {
       left: viewport.x + x * viewport.zoom,

@@ -78,3 +78,14 @@ function isActive(key: FormatMarkKey): boolean {
     </template>
   </UPopover>
 </template>
+
+<style scoped>
+/* `<style scoped>` не расшаривается между компонентами даже при одинаковых
+ * классах — родительские тулбары (`BoardSelectionToolbar.vue`,
+ * `BoardEdgeToolbar.vue`) импортируют этот же файл в СВОИ scoped-блоки, но их
+ * scope-атрибут не попадает на элементы, которые рендерит дочерний компонент
+ * (этот файл). Без собственного импорта здесь классы `.board-form-menu*` не
+ * матчились ни с одним из них — попап рендерился вообще без стилей (баг,
+ * найден пользователем 20.08.2026). */
+@import './shared/board-toolbar.css';
+</style>

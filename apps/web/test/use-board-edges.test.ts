@@ -12,6 +12,7 @@ interface MockNode {
   id: string;
   data: BoardFlowNode['data'];
   position: { x: number; y: number };
+  computedPosition: { x: number; y: number };
   dimensions: { width: number; height: number };
   selected: boolean;
   source?: string;
@@ -54,6 +55,7 @@ function flowNode(id: string, x = 0, y = 0): MockNode {
   return {
     id,
     position: { x, y },
+    computedPosition: { x, y },
     dimensions: { width: 100, height: 100 },
     selected: false,
     data: {} as BoardFlowNode['data'],
@@ -237,7 +239,11 @@ describe('useBoardEdges — deleteSelectedEdges', () => {
 });
 
 describe('useBoardEdges — edgeToolbarPosition', () => {
-  it('projects the midpoint between source and target nodes via viewport', () => {
+  it('projects the midpoint between the real anchor points (node border, not top-left corner) via viewport', () => {
+    // Узлы 100x100, дефолтные стороны крепления right/left (sourceHandle/targetHandle
+    // не заданы) — точка на границе `s` смещена от его position на (+100, +50), а не
+    // берётся напрямую из position (баг: тулбар уезжал далеко от крупных карточек,
+    // найден пользователем 20.08.2026).
     const src = flowNode('s', 0, 0);
     const tgt = flowNode('t', 200, 100);
     const e = flowEdge(boardEdge('e', { sourceItemId: 's', targetItemId: 't' }));
@@ -250,8 +256,10 @@ describe('useBoardEdges — edgeToolbarPosition', () => {
     setSelected([e]);
 
     const pos = edges.edgeToolbarPosition.value!;
-    expect(pos.left).toBe(100); // (0 + 200) / 2
-    expect(pos.top).toBe(50); // (0 + 100) / 2
+    // anchor(s) = right midpoint of {0,0,100,100} = (100, 50)
+    // anchor(t) = left midpoint of {200,100,100,100} = (200, 150)
+    expect(pos.left).toBe(150); // (100 + 200) / 2
+    expect(pos.top).toBe(100); // (50 + 150) / 2
   });
 
   it('is null when no edge is selected', () => {
