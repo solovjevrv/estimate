@@ -192,50 +192,35 @@ const activeAnchor = computed<EdgeAnchorParams>(() => {
 /**
  * Зазор перед карточкой (12.20, Miro-приём, решение пользователя 20.08.2026) —
  * линия связи не идёт вплотную до границы карточки, а останавливается на
- * `EDGE_ANCHOR_GAP` px раньше. Раньше линия шла точно до границы, а отдельная
- * ручка переподключения сдвигалась декоративно поверх нее по касательной
- * кривой — на заметно изогнутой связи (12.17) ручка визуально «съезжала» с
- * линии, и было неочевидно, что связь вообще можно перецепить за неё. Зазор
- * задаётся ДО построения кривой (сдвигаются сами точки, которые видит
- * `pathData` ниже) — линия и ручка переподключения (шаблон, ниже) СОВПАДАЮТ
- * по построению, без отдельной геометрии. Во время АКТИВНОГО драга своего
- * конца зазор снимается — конец должен идти точно за курсором.
+ * `EDGE_ANCHOR_GAP` px раньше, и ручка переподключения (шаблон ниже) сидит
+ * РОВНО в этой же точке — не отдельной геометрией поверх линии (была версия,
+ * где линия и ручка считались по разным зазорам — 8px у линии против 20px у
+ * ручки, чтобы обойти перекрытие с `.board-connect-handle`; по факту ручка
+ * визуально отрывалась от конца линии, найдено пользователем на скриншотах
+ * 20.08.2026). Единое значение достаточно большое (20px), чтобы: 1) самого
+ * перекрытия с `.board-connect-handle` не было в принципе (тот при `:hover`
+ * карточки простирается максимум на ~7px наружу от границы); 2) было легко
+ * попасть курсором и потянуть — тот самый Miro-эффект «край карточки
+ * заметно свободен под захват». Зазор задаётся ДО построения кривой
+ * (сдвигаются сами точки, которые видит `pathData` ниже). Во время
+ * АКТИВНОГО драга своего конца зазор снимается — конец должен идти точно
+ * за курсором.
  */
-const EDGE_ANCHOR_GAP = 8;
+const EDGE_ANCHOR_GAP = 20;
 
-function gappedAnchor(anchor: EdgeAnchorParams, gap: number): EdgeAnchorParams {
+const renderAnchor = computed<EdgeAnchorParams>(() => {
+  const anchor = activeAnchor.value;
   const preview = dragReconnectPreview.value;
   const source =
     preview?.end === 'source'
       ? { x: anchor.sx, y: anchor.sy }
-      : outwardGapPoint({ x: anchor.sx, y: anchor.sy }, anchor.sourceSide, gap);
+      : outwardGapPoint({ x: anchor.sx, y: anchor.sy }, anchor.sourceSide, EDGE_ANCHOR_GAP);
   const target =
     preview?.end === 'target'
       ? { x: anchor.tx, y: anchor.ty }
-      : outwardGapPoint({ x: anchor.tx, y: anchor.ty }, anchor.targetSide, gap);
+      : outwardGapPoint({ x: anchor.tx, y: anchor.ty }, anchor.targetSide, EDGE_ANCHOR_GAP);
   return { ...anchor, sx: source.x, sy: source.y, tx: target.x, ty: target.y };
-}
-
-const renderAnchor = computed<EdgeAnchorParams>(() =>
-  gappedAnchor(activeAnchor.value, EDGE_ANCHOR_GAP),
-);
-
-/**
- * Ручка переподключения (кружок в шаблоне ниже) сидит ДАЛЬШЕ от карточки, чем
- * сам видимый конец линии (`renderAnchor`) — увеличенный до 14px
- * `.board-connect-handle` (тот же приём, что и здесь, только для НОВЫХ связей)
- * при `EDGE_ANCHOR_GAP` перекрывался с ним физически и перехватывал
- * pointerdown раньше, чем событие долетало до нашего кружка (найдено
- * вживую — драг молча не начинался). Отдельный, больший зазор для интерактива
- * не портит Miro-эффект «линия чуть не доходит до карточки» — сама ЛИНИЯ
- * по-прежнему рисуется с `EDGE_ANCHOR_GAP`, ручка просто отстоит от её конца
- * на несколько px дальше в том же направлении.
- */
-const RECONNECT_HANDLE_GAP = 20;
-
-const handleAnchor = computed<EdgeAnchorParams>(() =>
-  gappedAnchor(activeAnchor.value, RECONNECT_HANDLE_GAP),
-);
+});
 
 const straightMid = computed(() => ({
   x: (renderAnchor.value.sx + renderAnchor.value.tx) / 2,
@@ -768,16 +753,16 @@ onUnmounted(() => {
     />
     <!-- Ручное перецепление конца связи на другую сторону/карточку (12.20) —
          видимы только когда связь выделена (клик по линии), по образцу ручки
-         изгиба выше. Позиция — handleAnchor (см. докблок выше), не
-         renderAnchor: сидит дальше от карточки, чем сама линия — иначе
-         перекрывается увеличенным .board-connect-handle и не ловит клик. -->
+         изгиба выше. Позиция — та же точка, что и видимый конец линии
+         (renderAnchor, зазор перед карточкой выше) — ручка и линия физически
+         совпадают, а не расходятся на изогнутой связи. -->
     <circle
       v-if="canEdit && selected"
       data-testid="board-edge-reconnect-handle"
       data-endpoint="source"
       class="board-edge-reconnect-handle nodrag nopan"
-      :cx="handleAnchor.sx"
-      :cy="handleAnchor.sy"
+      :cx="renderAnchor.sx"
+      :cy="renderAnchor.sy"
       r="6"
       @pointerdown.stop="onReconnectPointerDown('source', $event)"
       @pointermove.stop="onReconnectPointerMove"
@@ -788,8 +773,8 @@ onUnmounted(() => {
       data-testid="board-edge-reconnect-handle"
       data-endpoint="target"
       class="board-edge-reconnect-handle nodrag nopan"
-      :cx="handleAnchor.tx"
-      :cy="handleAnchor.ty"
+      :cx="renderAnchor.tx"
+      :cy="renderAnchor.ty"
       r="6"
       @pointerdown.stop="onReconnectPointerDown('target', $event)"
       @pointermove.stop="onReconnectPointerMove"
