@@ -589,6 +589,53 @@ describe('useBoardSelection — delete ops', () => {
     expect(ops.map((op) => op.type)).toEqual(['item.delete', 'item.delete']);
     expect(ops.map((op) => op.id).sort()).toEqual(['a', 'b']);
   });
+
+  describe('deleteSelection — mixed node+edge (12.22)', () => {
+    it('unrelated node and edge — both get an explicit delete op', () => {
+      const a = flowNode(item('a'));
+      const edge = flowEdge(boardEdge('e1', { sourceItemId: 'src', targetItemId: 'tgt' }));
+      const { api, applyOps } = makeSelection({ selectedNodes: [a], selectedEdges: [edge] });
+      api.deleteSelection();
+      const ops = lastOps(applyOps);
+      expect(ops.map((op) => op.type)).toEqual(['item.delete', 'edge.delete']);
+      expect(ops.map((op) => op.id).sort()).toEqual(['a', 'e1']);
+    });
+
+    it('edge connecting two selected cards is skipped — server cascades it with its item.delete', () => {
+      // Регрессия 12.22: явный edge.delete тут получил бы «Связь не найдена»,
+      // т.к. сервер уже удалит связь каскадом вместе с первой же карточкой
+      // в том же батче.
+      const a = flowNode(item('a'));
+      const b = flowNode(item('b'));
+      const edge = flowEdge(boardEdge('e1', { sourceItemId: 'a', targetItemId: 'b' }));
+      const { api, applyOps } = makeSelection({
+        selectedNodes: [a, b],
+        selectedEdges: [edge],
+      });
+      api.deleteSelection();
+      const ops = lastOps(applyOps);
+      expect(ops.map((op) => op.type)).toEqual(['item.delete', 'item.delete']);
+      expect(ops.map((op) => op.id).sort()).toEqual(['a', 'b']);
+    });
+
+    it('edge with only ONE endpoint selected is also skipped', () => {
+      const a = flowNode(item('a'));
+      const edge = flowEdge(boardEdge('e1', { sourceItemId: 'a', targetItemId: 'other' }));
+      const { api, applyOps } = makeSelection({
+        selectedNodes: [a],
+        selectedEdges: [edge],
+      });
+      api.deleteSelection();
+      const ops = lastOps(applyOps);
+      expect(ops).toEqual([{ type: 'item.delete', clientOpId: expect.any(String), id: 'a' }]);
+    });
+
+    it('no-op when nothing is selected', () => {
+      const { api, applyOps } = makeSelection({});
+      api.deleteSelection();
+      expect(applyOps).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('useBoardSelection — selection toggle', () => {

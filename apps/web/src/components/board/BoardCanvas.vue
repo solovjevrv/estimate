@@ -717,10 +717,7 @@ function textDefaultDimensions(
 
 useBoardHotkeys({
   canEdit: computed(() => props.canEdit),
-  deleteSelection: () => {
-    selection.deleteSelected();
-    edges.deleteSelectedEdges();
-  },
+  deleteSelection: selection.deleteSelection,
   duplicateSelection: duplicateSelected,
   selectAll: selection.selectAllElements,
   clearSelection: () => {
