@@ -4,26 +4,9 @@ import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import { teamAvatarColor } from '../../lib/team-roles';
+import type { FlyingReaction, ReceivedReaction } from './participant-reactions';
 
-/**
- * Одна и та же реакция от нескольких участников схлопнута в одну запись со
- * счётчиком (как реакции на сообщение в Telegram) — иначе бейджи не
- * помещались бы под карточкой при десятке участников.
- */
-export interface ReceivedReaction {
-  emoji: ReactionEmoji;
-  count: number;
-  /** Имена отправителей — для подсказки при наведении */
-  fromNames: string[];
-  /** Среди отправителей — сам смотрящий: клик по бейджу снимет реакцию, а не добавит вторую */
-  reactedByMe: boolean;
-}
-
-/** Одноразовый «вылет» эмодзи над карточкой в момент простановки реакции (10.12, Meet-style) */
-export interface FlyingReaction {
-  id: string;
-  emoji: ReactionEmoji;
-}
+export type { FlyingReaction, ReceivedReaction } from './participant-reactions';
 
 const props = withDefaults(
   defineProps<{
