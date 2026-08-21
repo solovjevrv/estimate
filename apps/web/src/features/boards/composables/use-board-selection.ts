@@ -665,6 +665,38 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     }));
   }
 
+  /**
+   * Удаление смешанного выделения — карточки И связи разом (12.22, хоткей
+   * Delete/Backspace). Раньше это были два независимых батча (`deleteSelected`
+   * + `deleteSelectedEdges` из use-board-edges.ts): если в выделении были обе
+   * карточки связи И сама связь, сервер каскадно удалял связь вместе с первой
+   * же удалённой карточкой в её батче, а второй батч с явным `edge.delete`
+   * этой же связи получал «Связь не найдена» — необработанное исключение
+   * (void-вызов без catch) плюс вводящий в заблуждение общий тост об ошибке
+   * (реальных расхождений в состоянии при этом не было).
+   *
+   * Фикс — один общий батч: явный `edge.delete` шлём только для связей, ОБА
+   * конца которых не входят в удаляемые карточки — такую связь сервер и так
+   * удалит каскадом вместе с её карточкой в этом же батче.
+   */
+  function deleteSelection(): void {
+    const deletedItemIds = new Set(selectedNodes.value.map((node) => node.id));
+    const itemOps: BoardOp[] = selectedNodes.value.map((node) => ({
+      type: 'item.delete',
+      clientOpId: uuid(),
+      id: node.id,
+    }));
+    const edgeOps: BoardOp[] = selectedEdges.value
+      .filter((edge) => !deletedItemIds.has(edge.source) && !deletedItemIds.has(edge.target))
+      .map((edge) => ({
+        type: 'edge.delete',
+        clientOpId: uuid(),
+        id: edge.id,
+      }));
+    const ops = [...itemOps, ...edgeOps];
+    if (ops.length) void options.applyOps(ops);
+  }
+
   /* ----------------------- Выделение и контекстное меню ----------------------- */
 
   interface ContextMenuState {
@@ -818,6 +850,7 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     bringSelectedToFront,
     sendSelectedToBack,
     deleteSelected,
+    deleteSelection,
     previewSelectedColor,
     cancelSelectedColorPreview,
     previewSelectedTextColor,
