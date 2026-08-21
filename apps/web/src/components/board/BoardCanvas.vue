@@ -83,6 +83,7 @@ import {
   BOARD_PENDING_EDIT_ID_KEY,
 } from '../../features/boards/context/board-canvas-keys';
 import { readableTextColor } from '../../features/boards/domain/board-colors';
+import { selectionEscapedActiveEditor } from '../../features/boards/domain/board-text-editing';
 import type { BoardTextEditorHandle } from '../../features/boards/rich-text/board-rich-text';
 import { useBoardHotkeys } from '../../features/boards/composables/use-board-hotkeys';
 import type {
@@ -572,6 +573,29 @@ provide(BOARD_PENDING_EDGE_EDIT_ID_KEY, edges.pendingEdgeEditId);
  */
 const activeTextEditor = shallowRef<BoardTextEditorHandle | null>(null);
 provide(BOARD_ACTIVE_TEXT_EDITOR_KEY, activeTextEditor);
+
+/**
+ * Мультивыбор во время редактирования текста (12.23) — shift-клик добавляет в
+ * выделение ДРУГОЙ узел, не снимая выделения с редактируемого. `watch(isSelected)`
+ * в `use-rich-text-editing.ts` при этом не срабатывает — сам редактируемый узел
+ * остаётся `selected`, — а тулбар начинает целиться в разные элементы:
+ * заливка/форма/шрифт (`selectedNodes[0]`) могут указывать на только что
+ * добавленный узел, тогда как начертание/ссылка (`activeTextEditor`) — всё ещё
+ * на исходный. Форсируем коммит редактирования, как только выделение включает
+ * кого-то кроме самого редактируемого узла.
+ */
+watch(selection.selectedNodes, (nodes) => {
+  const editor = activeTextEditor.value;
+  if (
+    editor &&
+    selectionEscapedActiveEditor(
+      editor.itemId,
+      nodes.map((node) => node.id),
+    )
+  ) {
+    editor.commit();
+  }
+});
 
 /** Клик по пустому холсту завершает ввод текста до обработки выбранного инструмента. */
 function onPaneClick(event: MouseEvent): void {
