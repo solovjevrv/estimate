@@ -2,6 +2,7 @@ import {
   GUEST_NAME_MAX_LENGTH,
   isHttpUrl,
   isTextLengthInRange,
+  isValidUuid,
   ROOM_LINK_MAX_LENGTH,
   ROOM_NAME_MAX_LENGTH,
   trimOptionalText,
@@ -62,8 +63,6 @@ export interface JoinResult {
 
 /** Верхняя граница оценки: защищает от переполнения integer в базе */
 const MAX_VOTE_VALUE = 1000;
-
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /** Хватает с большим запасом на реальные сценарии; пейджинг пока не нужен */
 const ROUND_HISTORY_LIMIT = 50;
@@ -592,7 +591,7 @@ export class RoomsService {
 
   /** Идентификаторы приходят по сокету без схем — проверяем формат до похода в базу */
   private requireUuid(value: string, what: string): string {
-    if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+    if (typeof value !== 'string' || !isValidUuid(value)) {
       throw new ValidationError(`Некорректный идентификатор ${what}`);
     }
     return value;
