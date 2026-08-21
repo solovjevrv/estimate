@@ -1,5 +1,5 @@
 import type { Board, BoardItem, BoardStickyContent, JoinBoardResult } from '@poker/shared';
-import { BOARD_WS_EVENTS } from '@poker/shared';
+import { BOARD_ITEM_TEXT_MAX_LENGTH, BOARD_WS_EVENTS } from '@poker/shared';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -471,6 +471,91 @@ describe('useRichTextEditing — форматирование без выдел�
     // Ссылка не должна примениться — нет выделения
     const runs = serializeRuns(el);
     expect(runs).toEqual([{ text: 'Hello world' }]);
+
+    wrapper.unmount();
+  });
+});
+
+describe('useRichTextEditing — IME-композиция на границе лимита длины (12.24)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    socket.reset();
+    toastAdd.mockClear();
+
+    const session = useSessionStore();
+    session.setUser({
+      id: 'me',
+      provider: 'google',
+      email: 'me@example.com',
+      name: 'Я',
+      jobTitle: null,
+      avatarUrl: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('insertCompositionText на границе лимита БЕЗ активной композиции блокируется как раньше', () => {
+    const wrapper = mountEditor();
+    const el = wrapper.find('[contenteditable="true"]').element as HTMLElement;
+    el.textContent = 'x'.repeat(BOARD_ITEM_TEXT_MAX_LENGTH);
+
+    const event = new InputEvent('beforeinput', {
+      inputType: 'insertCompositionText',
+      cancelable: true,
+    });
+    wrapper.vm.onEditableBeforeInput(event);
+
+    expect(event.defaultPrevented).toBe(true);
+
+    wrapper.unmount();
+  });
+
+  it('insertCompositionText на границе лимита ВО ВРЕМЯ активной композиции не блокируется (12.24)', () => {
+    // Отмена beforeinput посреди IME-композиции — известная особенность
+    // Chromium/WebKit, способная испортить UI самой композиции. Лимит
+    // применяется постфактум, в onEditableCompositionEnd (тест ниже).
+    const wrapper = mountEditor();
+    const el = wrapper.find('[contenteditable="true"]').element as HTMLElement;
+    el.textContent = 'x'.repeat(BOARD_ITEM_TEXT_MAX_LENGTH);
+
+    wrapper.vm.onEditableCompositionStart();
+    const event = new InputEvent('beforeinput', {
+      inputType: 'insertCompositionText',
+      cancelable: true,
+    });
+    wrapper.vm.onEditableBeforeInput(event);
+
+    expect(event.defaultPrevented).toBe(false);
+
+    wrapper.unmount();
+  });
+
+  it('onEditableCompositionEnd обрезает результат композиции до лимита постфактум', () => {
+    const wrapper = mountEditor();
+    const el = wrapper.find('[contenteditable="true"]').element as HTMLElement;
+    el.textContent = 'x'.repeat(BOARD_ITEM_TEXT_MAX_LENGTH + 5);
+
+    wrapper.vm.onEditableCompositionStart();
+    wrapper.vm.onEditableCompositionEnd();
+
+    expect(el.textContent).toBe('x'.repeat(BOARD_ITEM_TEXT_MAX_LENGTH));
+    expect(wrapper.vm.liveText).toBe('x'.repeat(BOARD_ITEM_TEXT_MAX_LENGTH));
+
+    wrapper.unmount();
+  });
+
+  it('onEditableCompositionEnd — не трогает текст в пределах лимита', () => {
+    const wrapper = mountEditor();
+    const el = wrapper.find('[contenteditable="true"]').element as HTMLElement;
+    el.textContent = 'привет';
+
+    wrapper.vm.onEditableCompositionStart();
+    wrapper.vm.onEditableCompositionEnd();
+
+    expect(el.textContent).toBe('привет');
 
     wrapper.unmount();
   });

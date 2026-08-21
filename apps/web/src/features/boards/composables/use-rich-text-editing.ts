@@ -144,6 +144,8 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
   const editing = ref(false);
   /** Только триггер для авто-fit (см. use-fit-font-size.ts) — источник правды в момент редактирования сам DOM */
   const liveText = ref('');
+  /** Идёт ли сейчас IME-композиция (12.24) — см. `onEditableCompositionStart`/`onEditableBeforeInput` */
+  const isComposing = ref(false);
   /** `ref="editable"` в шаблоне компонента, вызвавшего этот composable — регистрация
    *  привязана к текущему инстансу компонента, а не лексически к этому файлу */
   const editableEl = useTemplateRef<HTMLElement>('editable');
@@ -451,11 +453,35 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
       event.preventDefault();
       return;
     }
+    // Во время активной IME-композиции (12.24, иероглифический ввод) лимит НЕ
+    // проверяем здесь: отмена `beforeinput` посреди композиции — известная
+    // особенность Chromium/WebKit — может испортить/рассинхронизировать саму
+    // композицию (кандидаты IME, подчёркивание и т.п.). Лимит применяется по
+    // факту `compositionend` в `onEditableCompositionEnd` ниже — тем же
+    // приёмом, что `onEditablePaste` использует для вставки, только пост-фактум
+    // вместо предварительного бюджета (композицию нельзя обрезать заранее).
+    if (isComposing.value) return;
     const selection = window.getSelection();
     const selectedLength = selection && !selection.isCollapsed ? selection.toString().length : 0;
     if ((el.textContent ?? '').length - selectedLength >= BOARD_ITEM_TEXT_MAX_LENGTH) {
       event.preventDefault();
     }
+  }
+
+  function onEditableCompositionStart(): void {
+    isComposing.value = true;
+  }
+
+  function onEditableCompositionEnd(): void {
+    isComposing.value = false;
+    const el = editableEl.value;
+    if (!el) return;
+    const runs = serializeRuns(el);
+    if (runsPlainText(runs).length <= BOARD_ITEM_TEXT_MAX_LENGTH) return;
+    const truncated = truncateRuns(runs, BOARD_ITEM_TEXT_MAX_LENGTH);
+    renderRunsInto(el, truncated);
+    selectRange(el, BOARD_ITEM_TEXT_MAX_LENGTH, BOARD_ITEM_TEXT_MAX_LENGTH);
+    onEditableInput();
   }
 
   function onEditablePaste(event: ClipboardEvent): void {
@@ -489,6 +515,8 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
     onEditableInput,
     onEditableKeydownEnter,
     onEditableBeforeInput,
+    onEditableCompositionStart,
+    onEditableCompositionEnd,
     onEditablePaste,
   };
 }

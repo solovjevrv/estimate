@@ -55,6 +55,8 @@ const {
   onEditableInput,
   onEditableKeydownEnter,
   onEditableBeforeInput,
+  onEditableCompositionStart,
+  onEditableCompositionEnd,
   onEditablePaste,
 } = useRichTextEditing({
   itemId: props.id,
@@ -158,6 +160,8 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
           @keydown.esc.stop.prevent="cancelEditing"
           @keydown.enter.prevent="onEditableKeydownEnter"
           @beforeinput="onEditableBeforeInput"
+          @compositionstart="onEditableCompositionStart"
+          @compositionend="onEditableCompositionEnd"
           @input="onEditableInput"
           @paste="onEditablePaste"
           @mouseup="refreshActiveMarks"
