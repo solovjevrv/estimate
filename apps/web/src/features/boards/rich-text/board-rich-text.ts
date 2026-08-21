@@ -417,6 +417,35 @@ export function selectRange(el: HTMLElement, start: number, end: number): void {
   selection.addRange(range);
 }
 
+/**
+ * Точка вставки для drag&drop (12.25) — в отличие от paste/Enter, вставка
+ * происходит НЕ в текущем `window.getSelection()` (браузер не переносит туда
+ * cursor сам, раз мы полностью берём `drop` под свой контроль через
+ * `preventDefault()`), а в точке физического дропа (`event.clientX/clientY`).
+ * `caretPositionFromPoint` — стандартный API (Firefox/новый Chromium),
+ * `caretRangeFromPoint` — более старый, но всё ещё нужный fallback (Safari/
+ * старые движки Chromium). Ни один из двух в TS lib.dom.d.ts официально не
+ * покрыт единообразно во всех таргетах — оба вызываются через локальный тип.
+ */
+export function caretRangeFromPoint(x: number, y: number): Range | null {
+  const doc = document as Document & {
+    caretPositionFromPoint?: (
+      px: number,
+      py: number,
+    ) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (px: number, py: number) => Range | null;
+  };
+  if (doc.caretPositionFromPoint) {
+    const pos = doc.caretPositionFromPoint(x, y);
+    if (!pos) return null;
+    const range = document.createRange();
+    range.setStart(pos.offsetNode, pos.offset);
+    range.collapse(true);
+    return range;
+  }
+  return doc.caretRangeFromPoint?.(x, y) ?? null;
+}
+
 /** Вставка простого текста в точке курсора вручную (Enter/paste) — DOM всегда остаётся под нашим контролем */
 export function insertPlainTextAtCaret(text: string): void {
   const selection = window.getSelection();

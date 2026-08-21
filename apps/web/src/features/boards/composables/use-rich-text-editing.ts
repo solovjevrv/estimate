@@ -93,6 +93,7 @@ import {
 import {
   applyMarkToRange,
   BOARD_TEXT_TOOLBAR_SELECTOR,
+  caretRangeFromPoint,
   getActiveMarks,
   getSelectionOffsets,
   insertPlainTextAtCaret,
@@ -500,6 +501,39 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
     onEditableInput();
   }
 
+  /**
+   * Drag&drop чужого текста в contenteditable (12.25) — до сих пор блокировался
+   * ТОЛЬКО через `onEditableBeforeInput` (тип `insertFromDrop` не входит в
+   * `GROWING_INPUT_TYPES`, значит блокируется). На движках/версиях, где
+   * `beforeinput` не летит для перетаскивания (не Chromium — целевой браузер
+   * проекта, но подстраховка не помешает), это единственная линия защиты
+   * пропадает — браузер мог бы вставить неотформатированный текст в обход
+   * лимита длины/структуры DOM. Явный `@drop`-перехватчик — та же логика
+   * бюджета, что и `onEditablePaste` выше, только точка вставки — не текущее
+   * выделение, а физическая точка дропа (`caretRangeFromPoint`), так как
+   * браузер сам туда курсор не переносит при перехваченном `drop`.
+   */
+  function onEditableDrop(event: DragEvent): void {
+    event.preventDefault();
+    const el = editableEl.value;
+    if (!el) return;
+    const range = caretRangeFromPoint(event.clientX, event.clientY);
+    if (!range || !el.contains(range.startContainer)) return;
+    const selection = window.getSelection();
+    if (!selection) return;
+    selection.removeAllRanges();
+    selection.addRange(range);
+    const selectedLength = !range.collapsed ? range.toString().length : 0;
+    const budget = Math.max(
+      0,
+      BOARD_ITEM_TEXT_MAX_LENGTH - (el.textContent ?? '').length + selectedLength,
+    );
+    const text = (event.dataTransfer?.getData('text/plain') ?? '').slice(0, budget);
+    if (text.length === 0) return;
+    insertPlainTextAtCaret(text);
+    onEditableInput();
+  }
+
   return {
     displayRuns,
     editing,
@@ -518,5 +552,6 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
     onEditableCompositionStart,
     onEditableCompositionEnd,
     onEditablePaste,
+    onEditableDrop,
   };
 }

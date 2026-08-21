@@ -561,6 +561,128 @@ describe('useRichTextEditing — IME-композиция на границе л
   });
 });
 
+describe('useRichTextEditing — drag&drop чужого текста в contenteditable (12.25)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    socket.reset();
+    toastAdd.mockClear();
+
+    const session = useSessionStore();
+    session.setUser({
+      id: 'me',
+      provider: 'google',
+      email: 'me@example.com',
+      name: 'Я',
+      jobTitle: null,
+      avatarUrl: null,
+    });
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- тестовый мок нестандартного DOM API
+    delete (document as any).caretRangeFromPoint;
+  });
+
+  function makeDropEvent(text: string): DragEvent {
+    return {
+      preventDefault: vi.fn(),
+      clientX: 0,
+      clientY: 0,
+      dataTransfer: { getData: () => text },
+    } as unknown as DragEvent;
+  }
+
+  /**
+   * Мок недоступного в jsdom `document.caretRangeFromPoint` — точка дропа в
+   * конце текста узла. Дополнительно мокает `window.getSelection()` — jsdom
+   * внутри Vue Test Utils не поддерживает `Selection.addRange()` на
+   * contenteditable по-настоящему (та же гоча, что уже задокументирована в
+   * тестах 18.7 выше в этом файле), поэтому `insertPlainTextAtCaret` не нашёл
+   * бы вставленный `range` без стаба, backed тем же объектом Range.
+   */
+  function mockCaretAtEnd(el: HTMLElement): void {
+    const textNode = el.firstChild;
+    const range = document.createRange();
+    if (textNode) {
+      range.setStart(textNode, textNode.textContent?.length ?? 0);
+    } else {
+      range.selectNodeContents(el);
+    }
+    range.collapse(true);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- нестандартный DOM API, вне lib.dom.d.ts
+    (document as any).caretRangeFromPoint = vi.fn(() => range);
+    vi.spyOn(window, 'getSelection').mockReturnValue({
+      rangeCount: 1,
+      isCollapsed: range.collapsed,
+      getRangeAt: () => range,
+      removeAllRanges: () => {},
+      addRange: () => {},
+    } as unknown as Selection);
+  }
+
+  it('вставляет текст в точку дропа (не в текущее выделение) и вызывает preventDefault', () => {
+    const wrapper = mountEditor();
+    const el = wrapper.find('[contenteditable="true"]').element as HTMLElement;
+    el.textContent = 'Hello';
+    mockCaretAtEnd(el);
+
+    const event = makeDropEvent(' world');
+    wrapper.vm.onEditableDrop(event);
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(el.textContent).toBe('Hello world');
+
+    wrapper.unmount();
+  });
+
+  it('уважает лимит длины — обрезает вставляемый текст по бюджету, как и paste (12.13)', () => {
+    const wrapper = mountEditor();
+    const el = wrapper.find('[contenteditable="true"]').element as HTMLElement;
+    el.textContent = 'x'.repeat(BOARD_ITEM_TEXT_MAX_LENGTH - 3);
+    mockCaretAtEnd(el);
+
+    wrapper.vm.onEditableDrop(makeDropEvent('abcdefghij'));
+
+    expect(el.textContent).toBe('x'.repeat(BOARD_ITEM_TEXT_MAX_LENGTH - 3) + 'abc');
+    expect((el.textContent ?? '').length).toBe(BOARD_ITEM_TEXT_MAX_LENGTH);
+
+    wrapper.unmount();
+  });
+
+  it('точка дропа вне contenteditable — ничего не вставляется', () => {
+    const wrapper = mountEditor();
+    const el = wrapper.find('[contenteditable="true"]').element as HTMLElement;
+    el.textContent = 'Hello';
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- нестандартный DOM API
+    (document as any).caretRangeFromPoint = vi.fn(() => {
+      const range = document.createRange();
+      range.selectNodeContents(document.body);
+      range.collapse(true);
+      return range;
+    });
+
+    wrapper.vm.onEditableDrop(makeDropEvent('injected'));
+
+    expect(el.textContent).toBe('Hello');
+
+    wrapper.unmount();
+  });
+
+  it('caretRangeFromPoint/caretPositionFromPoint недоступны в браузере — молча ничего не вставляет', () => {
+    const wrapper = mountEditor();
+    const el = wrapper.find('[contenteditable="true"]').element as HTMLElement;
+    el.textContent = 'Hello';
+    // jsdom по умолчанию не реализует ни один из двух API — не мокаем ничего
+
+    wrapper.vm.onEditableDrop(makeDropEvent('injected'));
+
+    expect(el.textContent).toBe('Hello');
+
+    wrapper.unmount();
+  });
+});
+
 describe('useRichTextEditing — автопереход по pendingEditId при mount (12.26)', () => {
   beforeEach(() => {
     setActivePinia(createPinia());
