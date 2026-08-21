@@ -4,9 +4,11 @@ import {
   HTTP_URL_PATTERN,
   isHttpUrl,
   isTextLengthInRange,
+  isValidUuid,
   TEXT_INPUT_TRIM_ALLOWANCE,
   trimOptionalText,
   trimText,
+  UUID_PATTERN,
 } from '../src/index';
 
 describe('общая текстовая валидация', () => {
@@ -37,5 +39,14 @@ describe('общая текстовая валидация', () => {
 
   it('явно фиксирует запас HTTP-схемы на trim', () => {
     expect(TEXT_INPUT_TRIM_ALLOWANCE).toBe(100);
+  });
+
+  it('принимает только валидный UUID (16.3 — единая реализация для board-ops/boards.service/rooms.service)', () => {
+    expect(isValidUuid('550e8400-e29b-41d4-a716-446655440000')).toBe(true);
+    expect(isValidUuid('550E8400-E29B-41D4-A716-446655440000')).toBe(true);
+    expect(isValidUuid('not-a-uuid')).toBe(false);
+    expect(isValidUuid('550e8400-e29b-41d4-a716-44665544000')).toBe(false);
+    expect(isValidUuid('')).toBe(false);
+    expect(UUID_PATTERN.test('550e8400-e29b-41d4-a716-446655440000')).toBe(true);
   });
 });

@@ -28,6 +28,7 @@ import {
   BOARD_TEXT_LINK_MAX_LENGTH,
   BOARD_TEXT_LINK_PATTERN,
   isBoardImageUrl,
+  isValidUuid,
   REACTION_EMOJIS,
   toggleItemReaction,
   isBoardContainer,
@@ -48,10 +49,8 @@ export interface BoardOpState {
   edges: Map<string, BoardEdge>;
 }
 
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
 function requireUuid(id: unknown, what: string): string {
-  if (typeof id !== 'string' || !UUID_PATTERN.test(id)) {
+  if (typeof id !== 'string' || !isValidUuid(id)) {
     throw new ValidationError(`Некорректный id ${what}`);
   }
   return id;

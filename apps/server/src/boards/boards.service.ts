@@ -4,6 +4,7 @@ import {
   BOARD_TITLE_MIN_LENGTH,
   GUEST_NAME_MAX_LENGTH,
   isTextLengthInRange,
+  isValidUuid,
   trimText,
   type Board,
   type BoardAccessLevel,
@@ -32,9 +33,6 @@ import {
 } from './boards.policy';
 import { BoardsRepository, type DbExecutor as BoardsDbExecutor } from './boards.repository';
 import type { BoardParticipantIdentity } from './presence';
-
-/** UUID-проверка для boardId, пришедшего из WS-или REST-payload без схемы */
-const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type BoardsLogger = Pick<FastifyBaseLogger, 'warn'>;
 
@@ -493,7 +491,7 @@ export class BoardsService {
 
   /** Идентификаторы приходят по сокету без схем — проверяем формат до похода в базу */
   private requireUuid(value: string, what: string): string {
-    if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
+    if (typeof value !== 'string' || !isValidUuid(value)) {
       throw new ValidationError(`Некорректный идентификатор ${what}`);
     }
     return value;
