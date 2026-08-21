@@ -1,26 +1,39 @@
 <script setup lang="ts">
-import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
 import {
+  BOARD_TITLE_MAX_LENGTH,
   hasTeamRole,
   ROOM_NAME_MAX_LENGTH,
   TEAM_NAME_MAX_LENGTH,
   TEAM_ROLES,
+  type BoardSummary,
   type Room,
   type TeamMember,
   type TeamRole,
 } from '@poker/shared';
-import { computed, reactive, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
+import EntityTextModal from '../components/EntityTextModal.vue';
+import { useArchiveTab } from '../composables/use-archive-tab';
 import { usePagedList } from '../composables/use-paged-list';
+import { useAsyncAction } from '../composables/use-async-action';
+import { useEntityModal } from '../composables/use-entity-modal';
 import { ApiError } from '../lib/api';
-import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
-import { useRoomsStore } from '../stores/rooms';
+import {
+  createBoard as createBoardRequest,
+  deleteBoard as deleteBoardRequest,
+  unarchiveBoard as unarchiveBoardRequest,
+} from '../features/boards/api/boards-api';
+import {
+  createRoom as createRoomRequest,
+  deleteRoom as deleteRoomRequest,
+} from '../features/rooms/api/rooms-api';
 import { useSessionStore } from '../stores/session';
+import { useTeamBoardsStore } from '../stores/team-boards';
 import { useTeamRoomsStore } from '../stores/team-rooms';
 import { useTeamsStore } from '../stores/teams';
 
@@ -31,7 +44,7 @@ const toast = useToast();
 const router = useRouter();
 const teams = useTeamsStore();
 const teamRooms = useTeamRoomsStore();
-const rooms = useRoomsStore();
+const teamBoards = useTeamBoardsStore();
 const session = useSessionStore();
 
 const loading = ref(true);
@@ -39,6 +52,8 @@ const notFound = ref(false);
 const loadFailed = ref(false);
 /** Комнаты грузятся отдельно: их сбой не должен прятать саму команду */
 const roomsFailed = ref(false);
+/** Доски грузятся отдельно: их сбой не должен прятать саму команду */
+const boardsFailed = ref(false);
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(locale.value);
@@ -51,6 +66,19 @@ const currentUserId = computed(() => session.user?.id ?? null);
  * роли, переименование, удаление команды). Администраторов может быть несколько.
  */
 const canManageTeam = computed(() => !!overview.value && hasTeamRole(overview.value.role, 'admin'));
+/** Заводить доски команды может участник или администратор, не гость (12.1) */
+const canCreateBoard = computed(
+  () => !!overview.value && hasTeamRole(overview.value.role, 'member'),
+);
+
+function canManageBoard(board: BoardSummary): boolean {
+  return canManageTeam.value || board.ownerId === currentUserId.value;
+}
+
+const roomTabs = computed(() => [
+  { key: 'active' as const, label: t('team.roomsActive') },
+  { key: 'archive' as const, label: t('team.tabArchive') },
+]);
 
 /** Пока идёт запрос по участнику — блокируем его элементы управления. Набор, а
  * не один id: операции по разным участникам могут идти внахлёст. */
@@ -72,11 +100,6 @@ const roleItems = computed(() =>
   TEAM_ROLES.map((role) => ({ label: t(`role.${role}`), value: role })),
 );
 
-const roomTabs = computed(() => [
-  { key: 'active' as const, label: t('team.roomsActive') },
-  { key: 'archive' as const, label: t('team.tabArchive') },
-]);
-
 /** «Архив» объединяет завершённые (видны всем) и по-настоящему заархивированные
  * (видны только администратору) — они не пересекаются на бэкенде: список
  * `teamRooms.list` вообще не включает заархивированные комнаты. */
@@ -85,9 +108,15 @@ const archiveTabRooms = computed(() =>
     b.createdAt.localeCompare(a.createdAt),
   ),
 );
-
 const activeRoomsPaging = usePagedList(computed(() => teamRooms.active));
 const archiveTabPaging = usePagedList(archiveTabRooms);
+
+const boardTabs = computed(() => [
+  { key: 'active' as const, label: t('team.boardsActive') },
+  { key: 'archive' as const, label: t('team.tabArchive') },
+]);
+const activeBoardsPaging = usePagedList(computed(() => teamBoards.active));
+const archiveBoardsPaging = usePagedList(computed(() => teamBoards.archived));
 
 /** Код приходит только администратору — по нему и показываем блок приглашения */
 const inviteUrl = computed(() =>
@@ -99,9 +128,12 @@ const inviteUrl = computed(() =>
 // --- Таб «Архив»: заархивированная часть видна только администратору, грузится
 // по требованию — обычный участник видит в этом табе только завершённые комнаты ---
 const roomsTab = ref<'active' | 'archive'>('active');
-const archiveLoading = ref(false);
-const archiveFailed = ref(false);
-let archiveLoaded = false;
+const boardsTab = ref<'active' | 'archive'>('active');
+const roomArchive = useArchiveTab(() => teamRooms.loadArchived(props.id), archiveTabPaging.reset);
+const boardArchive = useArchiveTab(
+  () => teamBoards.loadArchived(props.id),
+  archiveBoardsPaging.reset,
+);
 
 // immediate — грузим при заходе; watch — на случай перехода между командами,
 // когда vue-router переиспользует компонент и onMounted повторно не срабатывает
@@ -113,15 +145,20 @@ async function load(): Promise<void> {
   loadFailed.value = false;
   roomsFailed.value = false;
   roomsTab.value = 'active';
-  archiveLoaded = false;
-  archiveFailed.value = false;
+  roomArchive.reset();
   teamRooms.reset();
   activeRoomsPaging.reset();
   archiveTabPaging.reset();
+  boardsFailed.value = false;
+  boardsTab.value = 'active';
+  boardArchive.reset();
+  teamBoards.reset();
+  activeBoardsPaging.reset();
+  archiveBoardsPaging.reset();
   try {
     await teams.loadTeam(props.id);
-    // Дашборд команды: комнаты тянем следом, их ошибку ловим отдельно ниже
-    await loadRooms();
+    // Дашборд команды: комнаты и доски тянем следом, их ошибки ловим отдельно ниже
+    await Promise.all([loadRooms(), loadBoards()]);
   } catch (err) {
     // Посторонним и на несуществующую команду сервер отвечает одинаково — 404
     if (err instanceof ApiError && err.status === 404) {
@@ -142,79 +179,131 @@ async function loadRooms(): Promise<void> {
   }
 }
 
+async function loadBoards(): Promise<void> {
+  try {
+    await teamBoards.load(props.id);
+  } catch {
+    boardsFailed.value = true;
+  }
+}
+
 async function selectRoomsTab(tab: 'active' | 'archive'): Promise<void> {
   roomsTab.value = tab;
-  if (tab === 'archive' && canManageTeam.value && !archiveLoaded) {
-    archiveLoading.value = true;
-    archiveFailed.value = false;
-    try {
-      await teamRooms.loadArchived(props.id);
-      archiveTabPaging.reset();
-      archiveLoaded = true;
-    } catch {
-      archiveFailed.value = true;
-    } finally {
-      archiveLoading.value = false;
-    }
-  }
+  if (tab === 'archive' && canManageTeam.value) await roomArchive.activate();
+}
+
+// Архив досок, в отличие от архива комнат, доступен на чтение любому участнику
+// команды — сервер (`listForTeam`) не сужает его до администратора (12.1)
+async function selectBoardsTab(tab: 'active' | 'archive'): Promise<void> {
+  boardsTab.value = tab;
+  if (tab === 'archive') await boardArchive.activate();
 }
 
 const deleteRoomTarget = ref<Room | null>(null);
 const deleteRoomOpen = ref(false);
-const deletingRoom = ref(false);
 
 function askDeleteRoom(room: Room): void {
   deleteRoomTarget.value = room;
   deleteRoomOpen.value = true;
 }
 
-async function confirmDeleteRoom(): Promise<void> {
-  const target = deleteRoomTarget.value;
-  if (!target) return;
-  deletingRoom.value = true;
-  try {
-    await rooms.remove(target.id);
+const { pending: deletingRoom, execute: deleteRoom } = useAsyncAction({
+  run: (target: Room) => deleteRoomRequest(target.id),
+  success: async () => {
     await teamRooms.loadArchived(props.id);
     toast.add({ title: t('team.archiveDeleted'), color: 'success', icon: 'i-lucide-check' });
     deleteRoomOpen.value = false;
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('team.archiveDeleteError'), color: 'error' });
-  } finally {
-    deletingRoom.value = false;
-  }
+  },
+});
+
+async function confirmDeleteRoom(): Promise<void> {
+  const target = deleteRoomTarget.value;
+  if (!target) return;
+  await deleteRoom(target);
 }
 
 // --- Создание комнаты от лица команды ---
-const createRoomOpen = ref(false);
-const creatingRoom = ref(false);
-const createRoomState = reactive({ name: '' });
+const createRoomModal = useEntityModal();
 
-watch(createRoomOpen, (isOpen) => {
-  if (!isOpen) createRoomState.name = '';
+const { pending: creatingRoom, execute: createTeamRoom } = useAsyncAction({
+  run: (name: string) => createRoomRequest(name, props.id),
+  success: async (room) => {
+    createRoomModal.close();
+    await router.push({ name: 'room', params: { id: room.id } });
+  },
+  error: () => {
+    toast.add({ title: t('room.createError'), color: 'error' });
+  },
 });
 
-function validateRoomName(s: { name: string }): FormError[] {
-  const errors: FormError[] = [];
-  const name = s.name.trim();
-  if (!name) {
-    errors.push({ name: 'name', message: t('teams.nameRequired') });
-  } else if (name.length > ROOM_NAME_MAX_LENGTH) {
-    errors.push({ name: 'name', message: t('teams.nameTooLong', { max: ROOM_NAME_MAX_LENGTH }) });
-  }
-  return errors;
+async function onCreateRoom(name: string): Promise<void> {
+  await createTeamRoom(name);
 }
 
-async function onCreateRoom(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  creatingRoom.value = true;
+// --- Создание доски от лица команды ---
+const createBoardModal = useEntityModal();
+
+const { pending: creatingBoard, execute: createTeamBoard } = useAsyncAction({
+  run: (title: string) => createBoardRequest(title, props.id),
+  success: async (board) => {
+    createBoardModal.close();
+    await router.push({ name: 'board', params: { id: board.id } });
+  },
+  error: () => {
+    toast.add({ title: t('board.createError'), color: 'error' });
+  },
+});
+
+async function onCreateBoard(title: string): Promise<void> {
+  await createTeamBoard(title);
+}
+
+const unarchivingBoardId = ref<string | null>(null);
+
+async function unarchiveBoard(board: BoardSummary): Promise<void> {
+  unarchivingBoardId.value = board.id;
   try {
-    const room = await rooms.create(event.data.name.trim(), props.id);
-    createRoomOpen.value = false;
-    await router.push({ name: 'room', params: { id: room.id } });
+    await unarchiveBoardRequest(board.id);
+    await Promise.all([teamBoards.load(props.id), teamBoards.loadArchived(props.id)]);
+    toast.add({
+      title: t('team.archiveBoardUnarchived'),
+      color: 'success',
+      icon: 'i-lucide-check',
+    });
   } catch {
-    toast.add({ title: t('room.createError'), color: 'error' });
+    toast.add({ title: t('team.archiveBoardUnarchiveError'), color: 'error' });
   } finally {
-    creatingRoom.value = false;
+    unarchivingBoardId.value = null;
   }
+}
+
+const deleteBoardTarget = ref<BoardSummary | null>(null);
+const deleteBoardOpen = ref(false);
+
+function askDeleteBoard(board: BoardSummary): void {
+  deleteBoardTarget.value = board;
+  deleteBoardOpen.value = true;
+}
+
+const { pending: deletingBoard, execute: deleteTeamBoard } = useAsyncAction({
+  run: (target: BoardSummary) => deleteBoardRequest(target.id),
+  success: async () => {
+    await teamBoards.loadArchived(props.id);
+    toast.add({ title: t('team.archiveBoardDeleted'), color: 'success', icon: 'i-lucide-check' });
+    deleteBoardOpen.value = false;
+  },
+  error: () => {
+    toast.add({ title: t('team.archiveBoardDeleteError'), color: 'error' });
+  },
+});
+
+async function confirmDeleteBoard(): Promise<void> {
+  const target = deleteBoardTarget.value;
+  if (!target) return;
+  await deleteTeamBoard(target);
 }
 
 async function copyInvite(): Promise<void> {
@@ -228,19 +317,20 @@ async function copyInvite(): Promise<void> {
 }
 
 const rotateOpen = ref(false);
-const rotating = ref(false);
 
-async function rotate(): Promise<void> {
-  rotating.value = true;
-  try {
-    await teams.rotateInvite(props.id);
+const { pending: rotating, execute: rotateInvite } = useAsyncAction({
+  run: () => teams.rotateInvite(props.id),
+  success: () => {
     toast.add({ title: t('team.rotated'), color: 'success', icon: 'i-lucide-check' });
     rotateOpen.value = false;
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('team.rotateError'), color: 'error' });
-  } finally {
-    rotating.value = false;
-  }
+  },
+});
+
+async function rotate(): Promise<void> {
+  await rotateInvite();
 }
 
 // --- Смена роли ---
@@ -287,76 +377,62 @@ async function confirmRemove(): Promise<void> {
 
 // --- Собственный выход из команды ---
 const leaveOpen = ref(false);
-const leaving = ref(false);
+
+const { pending: leaving, execute: leave } = useAsyncAction<[string], void>({
+  run: (userId: string) => teams.removeMember(props.id, userId),
+  success: async () => {
+    toast.add({ title: t('team.left'), color: 'success', icon: 'i-lucide-check' });
+    leaveOpen.value = false;
+    await router.push({ name: 'teams' });
+  },
+  error: (err) => {
+    // Единственному администратору бэкенд отвечает 409 — сначала назначить другого
+    const key = err instanceof ApiError && err.status === 409 ? 'leaveLastAdmin' : 'leaveError';
+    toast.add({ title: t(`team.${key}`), color: 'error' });
+  },
+});
 
 async function confirmLeave(): Promise<void> {
   const userId = currentUserId.value;
   if (!userId) return;
-  leaving.value = true;
-  try {
-    await teams.removeMember(props.id, userId);
-    toast.add({ title: t('team.left'), color: 'success', icon: 'i-lucide-check' });
-    leaveOpen.value = false;
-    await router.push({ name: 'teams' });
-  } catch (err) {
-    // Единственному администратору бэкенд отвечает 409 — сначала назначить другого
-    const key = err instanceof ApiError && err.status === 409 ? 'leaveLastAdmin' : 'leaveError';
-    toast.add({ title: t(`team.${key}`), color: 'error' });
-  } finally {
-    leaving.value = false;
-  }
+  await leave(userId);
 }
 
 // --- Переименование ---
-const renameOpen = ref(false);
-const renaming = ref(false);
-const renameState = reactive({ name: '' });
+const renameModal = useEntityModal();
 
-// Открыли — подставляем текущее имя; закрыли — очищаем, чтобы не мигало старое
-watch(renameOpen, (open) => {
-  renameState.name = open ? (overview.value?.team.name ?? '') : '';
+const { pending: renaming, execute: renameTeam } = useAsyncAction({
+  run: (name: string) => teams.rename(props.id, name),
+  success: () => {
+    toast.add({ title: t('team.renamed'), color: 'success', icon: 'i-lucide-check' });
+    renameModal.close();
+  },
+  error: () => {
+    toast.add({ title: t('team.renameError'), color: 'error' });
+  },
 });
 
-function validateName(s: { name: string }): FormError[] {
-  const errors: FormError[] = [];
-  const name = s.name.trim();
-  if (!name) {
-    errors.push({ name: 'name', message: t('teams.nameRequired') });
-  } else if (name.length > TEAM_NAME_MAX_LENGTH) {
-    errors.push({ name: 'name', message: t('teams.nameTooLong', { max: TEAM_NAME_MAX_LENGTH }) });
-  }
-  return errors;
-}
-
-async function onRename(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  renaming.value = true;
-  try {
-    await teams.rename(props.id, event.data.name.trim());
-    toast.add({ title: t('team.renamed'), color: 'success', icon: 'i-lucide-check' });
-    renameOpen.value = false;
-  } catch {
-    toast.add({ title: t('team.renameError'), color: 'error' });
-  } finally {
-    renaming.value = false;
-  }
+async function onRename(name: string): Promise<void> {
+  await renameTeam(name);
 }
 
 // --- Удаление команды ---
 const deleteOpen = ref(false);
-const deleting = ref(false);
 
-async function confirmDelete(): Promise<void> {
-  deleting.value = true;
-  try {
-    await teams.remove(props.id);
+const { pending: deleting, execute: deleteTeam } = useAsyncAction({
+  run: () => teams.remove(props.id),
+  success: async () => {
     toast.add({ title: t('team.deleted'), color: 'success', icon: 'i-lucide-check' });
     deleteOpen.value = false;
     await router.push({ name: 'teams' });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('team.deleteError'), color: 'error' });
-  } finally {
-    deleting.value = false;
-  }
+  },
+});
+
+async function confirmDelete(): Promise<void> {
+  await deleteTeam();
 }
 </script>
 
@@ -415,7 +491,7 @@ async function confirmDelete(): Promise<void> {
             v-if="canManageTeam"
             icon="i-lucide-plus"
             class="rounded-[11px] px-[18px] py-[11px] text-sm font-bold"
-            @click="createRoomOpen = true"
+            @click="createRoomModal.show"
           >
             {{ t('room.create') }}
           </UButton>
@@ -480,13 +556,13 @@ async function confirmDelete(): Promise<void> {
                уже загруженные завершённые комнаты всё равно показываем ниже, не прячем их
                за баннером. -->
           <UAlert
-            v-if="archiveFailed"
+            v-if="roomArchive.failed"
             color="error"
             variant="subtle"
             class="mx-4 mb-5 sm:mx-[30px]"
             :description="t('team.archiveError')"
           />
-          <div v-if="archiveLoading" class="text-muted flex justify-center pb-5">
+          <div v-if="roomArchive.loading" class="text-muted flex justify-center pb-5">
             <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
           </div>
           <template v-else>
@@ -530,6 +606,138 @@ async function confirmDelete(): Promise<void> {
                 v-model:page="archiveTabPaging.page.value"
                 :total="archiveTabPaging.total.value"
                 :items-per-page="archiveTabPaging.pageSize"
+              />
+            </div>
+          </template>
+        </template>
+      </div>
+
+      <div class="surface-card overflow-hidden">
+        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-5 sm:px-[30px]">
+          <h2 class="text-[17px] font-bold">{{ t('team.boardsTitle') }}</h2>
+          <UButton
+            v-if="canCreateBoard"
+            icon="i-lucide-plus"
+            class="rounded-[11px] px-[18px] py-[11px] text-sm font-bold"
+            @click="createBoardModal.show"
+          >
+            {{ t('board.create') }}
+          </UButton>
+        </div>
+
+        <div class="flex items-center gap-2 px-4 pb-4 sm:px-[30px]">
+          <button
+            v-for="tab in boardTabs"
+            :key="tab.key"
+            type="button"
+            class="rounded-full px-4 py-1.5 text-[13px] font-bold transition-colors"
+            :class="
+              boardsTab === tab.key
+                ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)]'
+                : 'text-muted hover:text-default cursor-pointer'
+            "
+            @click="selectBoardsTab(tab.key)"
+          >
+            {{ tab.label }}
+          </button>
+        </div>
+
+        <UAlert
+          v-if="boardsFailed"
+          color="error"
+          variant="subtle"
+          class="mx-4 mb-5 sm:mx-[30px]"
+          :description="t('team.boardsError')"
+        />
+        <template v-else-if="boardsTab === 'active'">
+          <p
+            v-if="activeBoardsPaging.total.value === 0"
+            class="text-muted px-4 pb-5 sm:px-[30px] text-sm"
+          >
+            {{ t('team.boardsEmpty') }}
+          </p>
+          <RouterLink
+            v-for="board in activeBoardsPaging.items.value"
+            :key="board.id"
+            :to="{ name: 'board', params: { id: board.id } }"
+            class="border-default hover:bg-elevated/50 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
+          >
+            <span class="min-w-28 flex-1 truncate text-base font-bold">{{ board.title }}</span>
+            <span class="text-muted text-sm">{{ formatDate(board.createdAt) }}</span>
+          </RouterLink>
+          <div
+            v-if="activeBoardsPaging.total.value > activeBoardsPaging.pageSize"
+            class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
+          >
+            <UPagination
+              v-model:page="activeBoardsPaging.page.value"
+              :total="activeBoardsPaging.total.value"
+              :items-per-page="activeBoardsPaging.pageSize"
+            />
+          </div>
+        </template>
+        <template v-else>
+          <UAlert
+            v-if="boardArchive.failed"
+            color="error"
+            variant="subtle"
+            class="mx-4 mb-5 sm:mx-[30px]"
+            :description="t('team.boardsError')"
+          />
+          <div v-if="boardArchive.loading" class="text-muted flex justify-center pb-5">
+            <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
+          </div>
+          <template v-else>
+            <p
+              v-if="archiveBoardsPaging.total.value === 0"
+              class="text-muted px-4 pb-5 sm:px-[30px] text-sm"
+            >
+              {{ t('team.archiveBoardsEmpty') }}
+            </p>
+            <div
+              v-for="board in archiveBoardsPaging.items.value"
+              :key="board.id"
+              class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
+            >
+              <RouterLink
+                :to="{ name: 'board', params: { id: board.id } }"
+                class="min-w-28 flex-1 truncate text-base font-bold"
+              >
+                {{ board.title }}
+              </RouterLink>
+              <div class="flex shrink-0 items-center gap-3.5">
+                <span class="text-muted text-sm">{{ formatDate(board.createdAt) }}</span>
+                <template v-if="canManageBoard(board)">
+                  <UButton
+                    icon="i-lucide-rotate-ccw"
+                    color="neutral"
+                    variant="ghost"
+                    size="sm"
+                    :loading="unarchivingBoardId === board.id"
+                    @click="unarchiveBoard(board)"
+                  >
+                    {{ t('team.archiveUnarchiveBoard') }}
+                  </UButton>
+                  <UButton
+                    icon="i-lucide-trash-2"
+                    color="error"
+                    variant="ghost"
+                    size="sm"
+                    @click="askDeleteBoard(board)"
+                  >
+                    {{ t('team.archiveDeleteBoard') }}
+                  </UButton>
+                </template>
+              </div>
+            </div>
+            <div
+              v-if="archiveBoardsPaging.total.value > archiveBoardsPaging.pageSize"
+              class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
+            >
+              <UPagination
+                v-model:page="archiveBoardsPaging.page.value"
+                :total="archiveBoardsPaging.total.value"
+                :items-per-page="archiveBoardsPaging.pageSize"
               />
             </div>
           </template>
@@ -639,7 +847,7 @@ async function confirmDelete(): Promise<void> {
             color="neutral"
             variant="outline"
             class="w-full justify-center rounded-[10px] px-[18px] py-[11px] text-sm font-bold sm:w-auto"
-            @click="renameOpen = true"
+            @click="renameModal.show"
           >
             {{ t('team.rename') }}
           </UButton>
@@ -704,72 +912,59 @@ async function confirmDelete(): Promise<void> {
       @confirm="confirmDeleteRoom"
     />
 
-    <UModal v-model:open="createRoomOpen" :title="t('room.createTitle')" :ui="MODAL_UI">
-      <template #body>
-        <UForm
-          :state="createRoomState"
-          :validate="validateRoomName"
-          class="space-y-4"
-          @submit="onCreateRoom"
-        >
-          <UFormField :label="t('teams.nameLabel')" name="name">
-            <UInput
-              v-model="createRoomState.name"
-              :placeholder="t('room.createNamePlaceholder')"
-              :maxlength="ROOM_NAME_MAX_LENGTH"
-              autofocus
-              class="w-full"
-              :ui="MODAL_INPUT_UI"
-            />
-          </UFormField>
+    <ConfirmModal
+      v-model:open="deleteBoardOpen"
+      :title="t('team.archiveDeleteBoardConfirmTitle')"
+      :description="
+        t('team.archiveDeleteBoardConfirmText', { name: deleteBoardTarget?.title ?? '' })
+      "
+      :confirm-label="t('team.archiveDeleteBoardConfirm')"
+      :loading="deletingBoard"
+      @confirm="confirmDeleteBoard"
+    />
 
-          <div class="flex justify-end gap-2.5">
-            <UButton
-              color="neutral"
-              variant="outline"
-              :ui="MODAL_BUTTON_UI"
-              @click="createRoomOpen = false"
-            >
-              {{ t('teams.cancel') }}
-            </UButton>
-            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="creatingRoom">
-              {{ creatingRoom ? t('room.creating') : t('room.create') }}
-            </UButton>
-          </div>
-        </UForm>
-      </template>
-    </UModal>
+    <EntityTextModal
+      v-model:open="createRoomModal.open"
+      :title="t('room.createTitle')"
+      :label="t('common.nameLabel')"
+      :placeholder="t('room.createNamePlaceholder')"
+      :max-length="ROOM_NAME_MAX_LENGTH"
+      :required-message="t('common.nameRequired')"
+      :too-long-message="t('common.nameTooLong', { max: ROOM_NAME_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="creatingRoom ? t('room.creating') : t('room.create')"
+      :pending="creatingRoom"
+      @submit="onCreateRoom"
+    />
 
-    <UModal v-model:open="renameOpen" :title="t('team.renameTitle')" :ui="MODAL_UI">
-      <template #body>
-        <UForm :state="renameState" :validate="validateName" class="space-y-4" @submit="onRename">
-          <UFormField :label="t('teams.nameLabel')" name="name">
-            <UInput
-              v-model="renameState.name"
-              :placeholder="t('teams.namePlaceholder')"
-              :maxlength="TEAM_NAME_MAX_LENGTH"
-              autofocus
-              class="w-full"
-              :ui="MODAL_INPUT_UI"
-            />
-          </UFormField>
+    <EntityTextModal
+      v-model:open="createBoardModal.open"
+      :title="t('board.createTitle')"
+      :label="t('common.nameLabel')"
+      :placeholder="t('board.createNamePlaceholder')"
+      :max-length="BOARD_TITLE_MAX_LENGTH"
+      :required-message="t('common.nameRequired')"
+      :too-long-message="t('common.nameTooLong', { max: BOARD_TITLE_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="creatingBoard ? t('board.creating') : t('board.create')"
+      :pending="creatingBoard"
+      @submit="onCreateBoard"
+    />
 
-          <div class="flex justify-end gap-2.5">
-            <UButton
-              color="neutral"
-              variant="outline"
-              :ui="MODAL_BUTTON_UI"
-              @click="renameOpen = false"
-            >
-              {{ t('teams.cancel') }}
-            </UButton>
-            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="renaming">
-              {{ t('team.rename') }}
-            </UButton>
-          </div>
-        </UForm>
-      </template>
-    </UModal>
+    <EntityTextModal
+      v-model:open="renameModal.open"
+      :title="t('team.renameTitle')"
+      :label="t('common.nameLabel')"
+      :placeholder="t('teams.namePlaceholder')"
+      :initial-value="overview?.team.name ?? ''"
+      :max-length="TEAM_NAME_MAX_LENGTH"
+      :required-message="t('common.nameRequired')"
+      :too-long-message="t('common.nameTooLong', { max: TEAM_NAME_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="t('team.rename')"
+      :pending="renaming"
+      @submit="onRename"
+    />
 
     <ConfirmModal
       v-model:open="deleteOpen"

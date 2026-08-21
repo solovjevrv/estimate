@@ -7,8 +7,11 @@ import {
   type TeamRole,
   type TeamWithRole,
   hasTeamRole,
+  isTextLengthInRange,
+  trimText,
 } from '@poker/shared';
 
+import { requireRole } from '../access';
 import { type Db, isForeignKeyViolation, isUniqueViolation } from '../db';
 import {
   ConflictError,
@@ -84,10 +87,7 @@ export class TeamsService {
   }
 
   async getOverview(actorId: string, teamId: string): Promise<TeamOverview> {
-    const membership = this.ensureRole(
-      await this.repository.findMembership(teamId, actorId),
-      'guest',
-    );
+    const membership = requireRole(await this.repository.findMembership(teamId, actorId), 'guest');
     const team = await this.repository.findTeamWithInvite(teamId);
     if (!team) {
       throw new NotFoundError('Команда не найдена');
@@ -103,10 +103,7 @@ export class TeamsService {
   }
 
   async listMembers(actorId: string, teamId: string): Promise<TeamMember[]> {
-    const membership = this.ensureRole(
-      await this.repository.findMembership(teamId, actorId),
-      'guest',
-    );
+    const membership = requireRole(await this.repository.findMembership(teamId, actorId), 'guest');
     return this.visibleMembers(await this.repository.listMembers(teamId), membership.role);
   }
 
@@ -116,10 +113,7 @@ export class TeamsService {
     teamId: string,
     targetUserId: string,
   ): Promise<TeamMemberProfile> {
-    const membership = this.ensureRole(
-      await this.repository.findMembership(teamId, actorId),
-      'guest',
-    );
+    const membership = requireRole(await this.repository.findMembership(teamId, actorId), 'guest');
     const member = await this.repository.findMemberProfile(teamId, targetUserId);
     if (!member) {
       throw new NotFoundError('Участник не найден');
@@ -285,7 +279,7 @@ export class TeamsService {
     return this.db.transaction(async (tx) => {
       const repo = new TeamsRepository(tx);
       const members = await repo.lockMemberships(teamId);
-      const actor = this.ensureRole(
+      const actor = requireRole(
         members.find((member) => member.userId === actorId) ?? null,
         required,
       );
@@ -306,17 +300,6 @@ export class TeamsService {
     }
   }
 
-  /** Чужим и несуществующим командам отвечаем одинаково — иначе id можно перебирать */
-  private ensureRole(membership: Membership | null, required: TeamRole): Membership {
-    if (!membership) {
-      throw new NotFoundError('Команда не найдена');
-    }
-    if (!hasTeamRole(membership.role, required)) {
-      throw new ForbiddenError('Недостаточно прав в команде');
-    }
-    return membership;
-  }
-
   /** Гостю адреса участников не показываем — ему хватает имён */
   private visibleMembers(members: TeamMember[], viewerRole: TeamRole): TeamMember[] {
     if (hasTeamRole(viewerRole, 'member')) {
@@ -330,8 +313,8 @@ export class TeamsService {
   }
 
   private normalizeName(raw: string): string {
-    const name = raw.trim();
-    if (name.length < TEAM_NAME_MIN_LENGTH || name.length > TEAM_NAME_MAX_LENGTH) {
+    const name = trimText(raw);
+    if (!isTextLengthInRange(name, { min: TEAM_NAME_MIN_LENGTH, max: TEAM_NAME_MAX_LENGTH })) {
       throw new ValidationError(
         `Название команды должно быть от ${TEAM_NAME_MIN_LENGTH} до ${TEAM_NAME_MAX_LENGTH} символов`,
       );

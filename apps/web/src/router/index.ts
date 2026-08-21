@@ -15,11 +15,13 @@ type TitleKey =
   | 'login.title'
   | 'teams.title'
   | 'myRooms.title'
+  | 'boards.title'
   | 'nav.profile'
   | 'team.pageTitle'
   | 'teamMember.pageTitle'
   | 'invite.pageTitle'
   | 'room.pageTitle'
+  | 'board.pageTitle'
   | 'notFound.title';
 
 declare module 'vue-router' {
@@ -30,6 +32,12 @@ declare module 'vue-router' {
     guestOnly?: boolean;
     /** Заголовок вкладки: `EstiMate | ${t(titleKey)}` — см. App.vue */
     titleKey: TitleKey;
+    /**
+     * Заголовок и кнопки страницы остаются в обычном контейнере, но сама страница
+     * занимает весь остаток экрана без скролла — холст сам владеет своим пространством
+     * и прокруткой (холст доски, 12.5)
+     */
+    fullBleedCanvas?: boolean;
   }
 }
 
@@ -57,6 +65,12 @@ export const routes: RouteRecordRaw[] = [
     name: 'my-rooms',
     component: () => import('../pages/MyRoomsPage.vue'),
     meta: { requiresAuth: true, titleKey: 'myRooms.title' },
+  },
+  {
+    path: '/boards',
+    name: 'boards',
+    component: () => import('../pages/MyBoardsPage.vue'),
+    meta: { requiresAuth: true, titleKey: 'boards.title' },
   },
   {
     path: '/profile',
@@ -94,6 +108,15 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('../pages/RoomPage.vue'),
     props: true,
     meta: { titleKey: 'room.pageTitle' },
+  },
+  {
+    // Вход по прямой ссылке доступен и гостю, если владелец включил шаринг (14.4) —
+    // в отличие от раньше доска не требует обязательной авторизации
+    path: '/boards/:id',
+    name: 'board',
+    component: () => import('../pages/BoardPage.vue'),
+    props: true,
+    meta: { titleKey: 'board.pageTitle', fullBleedCanvas: true },
   },
   {
     path: '/:pathMatch(.*)*',

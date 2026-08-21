@@ -9,9 +9,9 @@ coverage/
 .vite/
 .eslintcache
 
-# Загруженные аватарки (10.15) — локальное хранилище для dev/e2e, на проде отдельный volume
+# Загруженные аватарки (10.15) и картинки досок (13.2) — локальное хранилище
+# для dev/e2e, на проде отдельный volume
 apps/server/avatars/
-# Картинки, загруженные на доски в дев-режиме (13.2) — рантайм-данные, не код
 apps/server/board-assets/
 
 # Типы, которые генерирует плагин Nuxt UI при каждой сборке
@@ -35,9 +35,9 @@ CLAUDE.md
 AGENTS.md
 .agents/
 PROGRESS.md
+PROGRESS_BUGS.md
 PROGRESS_ARCHIVE.md
 PROGRESS_ARCHIVE/
-PROGRESS_BUGS.md
 REFACTORING_PLAN.md
 REVIEW_*.md
 

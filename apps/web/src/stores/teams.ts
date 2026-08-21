@@ -3,7 +3,20 @@ import type { Team, TeamMember, TeamMemberProfile, TeamRole, TeamWithRole } from
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 
-import { api } from '../lib/api';
+import {
+  changeTeamMemberRole,
+  createTeam,
+  deleteTeam,
+  getTeam,
+  getTeamMember,
+  joinInvite,
+  listTeams,
+  previewInvite,
+  removeTeamMember,
+  renameTeam,
+  rotateTeamInvite,
+  type TeamOverviewResponse,
+} from '../features/teams/api/teams-api';
 
 /** Карточка команды: состав, роль текущего пользователя и код приглашения. */
 export interface TeamOverview {
@@ -19,73 +32,57 @@ export const useTeamsStore = defineStore('teams', () => {
   const current = ref<TeamOverview | null>(null);
 
   async function loadList(): Promise<void> {
-    const res = await api.get<{ teams: TeamWithRole[] }>('/api/teams');
-    list.value = res.teams;
+    list.value = await listTeams();
   }
 
   async function create(name: string): Promise<TeamWithRole> {
-    const res = await api.post<{ team: TeamWithRole }>('/api/teams', { name });
+    const team = await createTeam(name);
     // Кладём новую команду в начало списка, чтобы не перезапрашивать его
-    list.value = [res.team, ...list.value];
-    return res.team;
+    list.value = [team, ...list.value];
+    return team;
   }
 
   async function loadTeam(id: string): Promise<TeamOverview> {
-    const res = await api.get<{
-      team: Team;
-      role: TeamRole;
-      members: TeamMember[];
-      inviteCode?: string;
-    }>(`/api/teams/${encodeURIComponent(id)}`);
+    const res: TeamOverviewResponse = await getTeam(id);
     const overview: TeamOverview = {
       team: res.team,
       role: res.role,
       members: res.members,
-      inviteCode: res.inviteCode ?? null,
+      inviteCode: res.inviteCode,
     };
     current.value = overview;
     return overview;
   }
 
   async function rotateInvite(id: string): Promise<string> {
-    const res = await api.post<{ inviteCode: string }>(
-      `/api/teams/${encodeURIComponent(id)}/invite/rotate`,
-    );
+    const inviteCode = await rotateTeamInvite(id);
     // Если открыта та же команда — сразу показываем новый код
     if (current.value && current.value.team.id === id) {
-      current.value.inviteCode = res.inviteCode;
+      current.value.inviteCode = inviteCode;
     }
-    return res.inviteCode;
+    return inviteCode;
   }
 
   /** Предпросмотр открыт без входа: по коду видно, в какую команду зовут. */
-  async function previewInvite(code: string): Promise<{ id: string; name: string }> {
-    const res = await api.get<{ team: { id: string; name: string } }>(
-      `/api/invites/${encodeURIComponent(code)}`,
-    );
-    return res.team;
+  async function previewInviteCode(code: string): Promise<{ id: string; name: string }> {
+    return previewInvite(code);
   }
 
   /** Идемпотентно: повторный переход по коду не меняет уже выданную роль. */
   async function joinByInvite(code: string): Promise<{ team: Team; role: TeamRole }> {
-    return api.post<{ team: Team; role: TeamRole }>(
-      `/api/invites/${encodeURIComponent(code)}/join`,
-    );
+    return joinInvite(code);
   }
 
   /**
    * Сменить роль участника (только администратор). `actorRole` в ответе
    * меняется только когда админ меняет роль сам себе.
    */
-  async function changeMemberRole(
+  async function changeRole(
     teamId: string,
     userId: string,
     role: TeamRole,
   ): Promise<{ member: { userId: string; role: TeamRole }; actorRole: TeamRole }> {
-    const res = await api.patch<{
-      member: { userId: string; role: TeamRole };
-      actorRole: TeamRole;
-    }>(`/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`, { role });
+    const res = await changeTeamMemberRole(teamId, userId, role);
 
     const cur = current.value;
     if (cur && cur.team.id === teamId) {
@@ -99,9 +96,7 @@ export const useTeamsStore = defineStore('teams', () => {
 
   /** Исключить участника (администратор) или выйти самому (любой участник). */
   async function removeMember(teamId: string, userId: string): Promise<void> {
-    await api.delete(
-      `/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
-    );
+    await removeTeamMember(teamId, userId);
     const cur = current.value;
     if (cur && cur.team.id === teamId) {
       cur.members = cur.members.filter((m) => m.userId !== userId);
@@ -110,26 +105,21 @@ export const useTeamsStore = defineStore('teams', () => {
 
   /** Переименовать команду (только администратор). */
   async function rename(teamId: string, name: string): Promise<Team> {
-    const res = await api.patch<{ team: Team }>(`/api/teams/${encodeURIComponent(teamId)}`, {
-      name,
-    });
+    const team = await renameTeam(teamId, name);
     const cur = current.value;
-    if (cur && cur.team.id === teamId) cur.team = res.team;
-    list.value = list.value.map((t) => (t.id === teamId ? { ...t, name: res.team.name } : t));
-    return res.team;
+    if (cur && cur.team.id === teamId) cur.team = team;
+    list.value = list.value.map((t) => (t.id === teamId ? { ...t, name: team.name } : t));
+    return team;
   }
 
   /** Карточка одного участника (10.14) — доступна только участникам той же команды. */
   async function loadMember(teamId: string, userId: string): Promise<TeamMemberProfile> {
-    const res = await api.get<{ member: TeamMemberProfile }>(
-      `/api/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
-    );
-    return res.member;
+    return getTeamMember(teamId, userId);
   }
 
   /** Удалить команду (только администратор). Комнаты команды на бэкенде сохраняются. */
   async function remove(teamId: string): Promise<void> {
-    await api.delete(`/api/teams/${encodeURIComponent(teamId)}`);
+    await deleteTeam(teamId);
     list.value = list.value.filter((t) => t.id !== teamId);
     if (current.value?.team.id === teamId) current.value = null;
   }
@@ -142,9 +132,9 @@ export const useTeamsStore = defineStore('teams', () => {
     loadTeam,
     loadMember,
     rotateInvite,
-    previewInvite,
+    previewInvite: previewInviteCode,
     joinByInvite,
-    changeMemberRole,
+    changeMemberRole: changeRole,
     removeMember,
     rename,
     remove,

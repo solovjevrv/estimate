@@ -6,12 +6,14 @@ import {
   AVATAR_MAX_BYTES,
   USER_JOB_TITLE_MAX_LENGTH,
   USER_NAME_MAX_LENGTH,
+  trimText,
 } from '@poker/shared';
 import { reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import AvatarCropModal from '../components/AvatarCropModal.vue';
 import { providerLabel } from '../lib/auth-provider';
+import { useAsyncAction } from '../composables/use-async-action';
 import { useSessionStore } from '../stores/session';
 
 const { t } = useI18n();
@@ -19,13 +21,11 @@ const toast = useToast();
 const session = useSessionStore();
 
 const form = reactive({ name: '', jobTitle: '' });
-const saving = ref(false);
 
 // --- Аватарка (10.15) ---
 const fileInput = ref<HTMLInputElement | null>(null);
 const cropFile = ref<File | null>(null);
 const cropOpen = ref(false);
-const uploadingAvatar = ref(false);
 
 function pickAvatar(): void {
   fileInput.value?.click();
@@ -50,16 +50,18 @@ function onAvatarSelected(event: Event): void {
   cropOpen.value = true;
 }
 
-async function onCropConfirm(blob: Blob): Promise<void> {
-  uploadingAvatar.value = true;
-  try {
-    await session.uploadAvatar(blob);
+const { pending: uploadingAvatar, execute: uploadAvatar } = useAsyncAction({
+  run: (blob: Blob) => session.uploadAvatar(blob),
+  success: () => {
     toast.add({ title: t('profile.avatar.saved'), color: 'success', icon: 'i-lucide-check' });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('profile.avatar.saveError'), color: 'error' });
-  } finally {
-    uploadingAvatar.value = false;
-  }
+  },
+});
+
+async function onCropConfirm(blob: Blob): Promise<void> {
+  await uploadAvatar(blob);
 }
 
 watch(
@@ -73,13 +75,13 @@ watch(
 
 function validate(state: { name: string; jobTitle: string }): FormError[] {
   const errors: FormError[] = [];
-  const name = state.name.trim();
+  const name = trimText(state.name);
   if (!name) {
     errors.push({ name: 'name', message: t('profile.nameRequired') });
   } else if (name.length > USER_NAME_MAX_LENGTH) {
     errors.push({ name: 'name', message: t('profile.nameTooLong', { max: USER_NAME_MAX_LENGTH }) });
   }
-  if (state.jobTitle.trim().length > USER_JOB_TITLE_MAX_LENGTH) {
+  if (trimText(state.jobTitle).length > USER_JOB_TITLE_MAX_LENGTH) {
     errors.push({
       name: 'jobTitle',
       message: t('profile.jobTitleTooLong', { max: USER_JOB_TITLE_MAX_LENGTH }),
@@ -88,19 +90,19 @@ function validate(state: { name: string; jobTitle: string }): FormError[] {
   return errors;
 }
 
-async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string }>): Promise<void> {
-  saving.value = true;
-  try {
-    await session.updateProfile({
-      name: event.data.name.trim(),
-      jobTitle: event.data.jobTitle.trim(),
-    });
+const { pending: saving, execute: saveProfile } = useAsyncAction({
+  run: ({ name, jobTitle }: { name: string; jobTitle: string }) =>
+    session.updateProfile({ name: trimText(name), jobTitle: trimText(jobTitle) }),
+  success: () => {
     toast.add({ title: t('profile.saved'), color: 'success', icon: 'i-lucide-check' });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('profile.saveError'), color: 'error' });
-  } finally {
-    saving.value = false;
-  }
+  },
+});
+
+async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string }>): Promise<void> {
+  await saveProfile(event.data);
 }
 </script>
 

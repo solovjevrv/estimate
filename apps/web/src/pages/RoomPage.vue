@@ -4,12 +4,15 @@ import { useToast } from '@nuxt/ui/composables';
 import {
   DECK_CARDS,
   GUEST_NAME_MAX_LENGTH,
+  isHttpUrl,
   ROOM_NAME_MAX_LENGTH,
+  trimText,
   type DeckType,
   type Participant,
   type Reaction,
   type ReactionEmoji,
   type Room,
+  type Round,
   type RoundHistoryEntry,
   tshirtLabel,
 } from '@poker/shared';
@@ -17,16 +20,19 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
+import EntityTextModal from '../components/EntityTextModal.vue';
 import DeckBar from '../components/room/DeckBar.vue';
 import ParticipantCard from '../components/room/ParticipantCard.vue';
 import type { FlyingReaction, ReceivedReaction } from '../components/room/ParticipantCardBody.vue';
 import RoomTimerCard from '../components/room/RoomTimerCard.vue';
 import RoomTopBar from '../components/room/RoomTopBar.vue';
 import RoundResultPanel from '../components/room/RoundResultPanel.vue';
-import { ApiError, api } from '../lib/api';
-import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
+import { ApiError } from '../lib/api';
+import { useAsyncAction } from '../composables/use-async-action';
+import { useEntityModal } from '../composables/use-entity-modal';
+import { useGuestIdentity } from '../composables/use-guest-identity';
+import { archiveRoom, getRoom, getRoundHistory, renameRoom } from '../features/rooms/api/rooms-api';
 import { useRoomStore } from '../stores/room';
-import { useRoomsStore } from '../stores/rooms';
 import { useSessionStore } from '../stores/session';
 
 const props = defineProps<{ id: string }>();
@@ -35,11 +41,9 @@ const { t } = useI18n();
 const toast = useToast();
 const session = useSessionStore();
 const room = useRoomStore();
-const roomsStore = useRoomsStore();
 
 const isArchived = computed(() => room.room?.archivedAt != null);
 const archiveOpen = ref(false);
-const archiving = ref(false);
 
 async function copyInviteLink(): Promise<void> {
   try {
@@ -50,92 +54,76 @@ async function copyInviteLink(): Promise<void> {
   }
 }
 
-async function onArchive(): Promise<void> {
-  archiving.value = true;
-  try {
-    const archivedRoom = await roomsStore.archive(props.id);
+const { pending: archiving, execute: archive } = useAsyncAction({
+  run: () => archiveRoom(props.id),
+  success: (archivedRoom) => {
     const current = room.state;
     if (current) {
       room.applyState({ ...current, room: archivedRoom });
     }
     archiveOpen.value = false;
     toast.add({ title: t('room.archivedToast'), color: 'success', icon: 'i-lucide-check' });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('room.archiveError'), color: 'error' });
-  } finally {
-    archiving.value = false;
-  }
+  },
+});
+
+async function onArchive(): Promise<void> {
+  await archive();
 }
 
 // --- Переименование комнаты (7.20) ---
-const renameOpen = ref(false);
-const renaming = ref(false);
-const renameState = reactive({ name: '' });
+const renameModal = useEntityModal();
 
-// Открыли — подставляем текущее имя; закрыли — очищаем, чтобы не мигало старое
-watch(renameOpen, (open) => {
-  renameState.name = open ? (roomInfo.value?.name ?? '') : '';
-});
-
-function validateRoomName(s: { name: string }): FormError[] {
-  const errors: FormError[] = [];
-  const name = s.name.trim();
-  if (!name) {
-    errors.push({ name: 'name', message: t('room.renameNameRequired') });
-  } else if (name.length > ROOM_NAME_MAX_LENGTH) {
-    errors.push({
-      name: 'name',
-      message: t('room.renameNameTooLong', { max: ROOM_NAME_MAX_LENGTH }),
-    });
-  }
-  return errors;
-}
-
-async function onRename(event: FormSubmitEvent<{ name: string }>): Promise<void> {
-  renaming.value = true;
-  try {
-    const renamed = await roomsStore.rename(props.id, event.data.name.trim());
+const { pending: renaming, execute: rename } = useAsyncAction({
+  run: (name: string) => renameRoom(props.id, name),
+  success: (renamed) => {
     roomInfo.value = renamed;
     const current = room.state;
     if (current) {
       room.applyState({ ...current, room: renamed });
     }
-    renameOpen.value = false;
+    renameModal.close();
     toast.add({ title: t('room.renamed'), color: 'success', icon: 'i-lucide-check' });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('room.renameError'), color: 'error' });
-  } finally {
-    renaming.value = false;
-  }
+  },
+});
+
+async function onRename(name: string): Promise<void> {
+  await rename(name);
 }
 
 // --- Исключение участника скрам-мастером (5.8) ---
 const kickTarget = ref<Participant | null>(null);
 const kickConfirmOpen = ref(false);
-const kicking = ref(false);
 
 function onKickClick(participant: Participant): void {
   kickTarget.value = participant;
   kickConfirmOpen.value = true;
 }
 
-async function onKickConfirm(): Promise<void> {
-  const target = kickTarget.value;
-  if (!target) return;
-  kicking.value = true;
-  try {
-    await room.kickParticipant(target.participantId);
+const { pending: kicking, execute: kick } = useAsyncAction<[Participant], void>({
+  run: (target) => room.kickParticipant(target.participantId),
+  success: (_, target) => {
     kickConfirmOpen.value = false;
     toast.add({
       title: t('room.kickedParticipantToast', { name: target.name }),
       color: 'success',
       icon: 'i-lucide-check',
     });
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('room.kickError'), color: 'error' });
-  } finally {
-    kicking.value = false;
-  }
+  },
+});
+
+async function onKickConfirm(): Promise<void> {
+  const target = kickTarget.value;
+  if (!target) return;
+  await kick(target);
 }
 
 // --- Реакции-эмодзи на карточке участника (10.10) ---
@@ -228,39 +216,33 @@ watch(
  * проверяем, сервер тоже их не проверяет. Актуальное состояние приходит
  * рассылкой `room_state`, поэтому здесь только флаг «идёт запрос».
  */
-const timerPending = ref(false);
+/**
+ * Таймером управляет любой участник (решение 27.07.2026) — прав здесь не
+ * проверяем, сервер тоже их не проверяет. Три команды (start/pause/reset)
+ * разделяют один флаг «идёт запрос»: пока одна в полёте, остальные не уходят
+ * на сервер (single-flight в useAsyncAction). Актуальное состояние приходит
+ * рассылкой `room_state`, поэтому здесь только флаг «идёт запрос».
+ */
+const { pending: timerPending, execute: runTimerOperation } = useAsyncAction<
+  [() => Promise<void>],
+  void
+>({
+  run: (operation) => operation(),
+  error: () => {
+    toast.add({ title: t('room.timerError'), color: 'error' });
+  },
+});
 
 async function onTimerStart(): Promise<void> {
-  timerPending.value = true;
-  try {
-    await room.startTimer();
-  } catch {
-    toast.add({ title: t('room.timerError'), color: 'error' });
-  } finally {
-    timerPending.value = false;
-  }
+  await runTimerOperation(() => room.startTimer());
 }
 
 async function onTimerPause(): Promise<void> {
-  timerPending.value = true;
-  try {
-    await room.pauseTimer();
-  } catch {
-    toast.add({ title: t('room.timerError'), color: 'error' });
-  } finally {
-    timerPending.value = false;
-  }
+  await runTimerOperation(() => room.pauseTimer());
 }
 
 async function onTimerReset(durationSec: number): Promise<void> {
-  timerPending.value = true;
-  try {
-    await room.resetTimer(durationSec);
-  } catch {
-    toast.add({ title: t('room.timerError'), color: 'error' });
-  } finally {
-    timerPending.value = false;
-  }
+  await runTimerOperation(() => room.resetTimer(durationSec));
 }
 
 const deckOptions = computed<Array<{ label: string; value: DeckType }>>(() => [
@@ -269,8 +251,6 @@ const deckOptions = computed<Array<{ label: string; value: DeckType }>>(() => [
   { label: t('room.deckTshirt'), value: 'tshirt' },
 ]);
 const selectedDeck = ref<DeckType>('fibonacci');
-const starting = ref(false);
-const revealing = ref(false);
 
 /**
  * Пока раунд идёт (или уже вскрыт), «Шкала оценки» выбирает не заготовку для
@@ -400,12 +380,10 @@ async function loadHistory(): Promise<void> {
   historyLoading.value = true;
   historyFailed.value = false;
   try {
-    const res = await api.get<{ rounds: RoundHistoryEntry[] }>(
-      `/api/rooms/${encodeURIComponent(roomId)}/rounds`,
-    );
+    const rounds = await getRoundHistory(roomId);
     // Пока запрос летел, могли перейти в другую комнату — её историю не подменяем
     if (token !== currentToken) return;
-    historyEntries.value = res.rounds;
+    historyEntries.value = rounds;
   } catch {
     if (token !== currentToken) return;
     historyFailed.value = true;
@@ -469,24 +447,29 @@ watch(cancelConfirmOpen, (open) => {
 });
 
 /** Смена раунда переиспользует один и тот же WS-запрос — сервер и отменяет текущий, и начинает следующий */
-async function onStartRound(options?: {
-  silentRestart?: boolean;
-  deckType?: DeckType;
-}): Promise<void> {
-  starting.value = true;
-  try {
-    await room.startNewRound(options?.deckType ?? selectedDeck.value);
+const { pending: starting, execute: startRound } = useAsyncAction<
+  [{ silentRestart?: boolean; deckType?: DeckType }],
+  Round
+>({
+  run: (options) => room.startNewRound(options?.deckType ?? selectedDeck.value),
+  success: (_, options) => {
     cancelConfirmOpen.value = false;
     // Без голосов раунд перезапускается без вопроса (см. onDeckActionClick) — новый раунд
     // визуально неотличим от старого, поэтому без тоста клик выглядит так, будто ничего не произошло
     if (options?.silentRestart) {
       toast.add({ title: t('room.roundRestarted'), color: 'success', icon: 'i-lucide-refresh-cw' });
     }
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('room.startRoundError'), color: 'error' });
-  } finally {
-    starting.value = false;
-  }
+  },
+});
+
+async function onStartRound(options?: {
+  silentRestart?: boolean;
+  deckType?: DeckType;
+}): Promise<void> {
+  await startRound(options ?? {});
 }
 
 /** Раунд ещё не начат или уже вскрыт — терять нечего, спрашивать не о чем */
@@ -536,16 +519,18 @@ async function onVote(value: number): Promise<void> {
   }
 }
 
-async function onReveal(): Promise<void> {
-  revealing.value = true;
-  try {
-    await room.revealCards();
+const { pending: revealing, execute: reveal } = useAsyncAction({
+  run: () => room.revealCards(),
+  success: () => {
     revealConfirmOpen.value = false;
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('room.revealError'), color: 'error' });
-  } finally {
-    revealing.value = false;
-  }
+  },
+});
+
+async function onReveal(): Promise<void> {
+  await reveal();
 }
 
 /** Если проголосовали все — вскрываем сразу, иначе сперва спрашиваем подтверждение */
@@ -566,7 +551,6 @@ const linksDirty = ref(false);
  * а не отсюда, оно бы прошло поверх чужой правки, не заметив её.
  */
 const linksBaseVersion = ref<number | null>(null);
-const savingLinks = ref(false);
 
 watch(
   () => room.room,
@@ -586,31 +570,32 @@ watch(
 
 function validateLinks(state: { jiraUrl: string; confluenceUrl: string }): FormError[] {
   const errors: FormError[] = [];
-  if (state.jiraUrl.trim() && !/^https?:\/\//i.test(state.jiraUrl.trim())) {
+  if (trimText(state.jiraUrl) && !isHttpUrl(trimText(state.jiraUrl))) {
     errors.push({ name: 'jiraUrl', message: t('room.linksInvalid') });
   }
-  if (state.confluenceUrl.trim() && !/^https?:\/\//i.test(state.confluenceUrl.trim())) {
+  if (trimText(state.confluenceUrl) && !isHttpUrl(trimText(state.confluenceUrl))) {
     errors.push({ name: 'confluenceUrl', message: t('room.linksInvalid') });
   }
   return errors;
 }
 
-async function onSaveLinks(
-  event: FormSubmitEvent<{ jiraUrl: string; confluenceUrl: string }>,
-): Promise<void> {
-  savingLinks.value = true;
-  try {
-    await room.updateLinks({
-      jiraUrl: event.data.jiraUrl.trim(),
-      confluenceUrl: event.data.confluenceUrl.trim(),
+const { pending: savingLinks, execute: saveLinks } = useAsyncAction({
+  run: () =>
+    room.updateLinks({
+      jiraUrl: trimText(linksForm.jiraUrl),
+      confluenceUrl: trimText(linksForm.confluenceUrl),
       version: linksBaseVersion.value,
-    });
+    }),
+  success: () => {
     linksDirty.value = false;
-  } catch {
+  },
+  error: () => {
     toast.add({ title: t('room.linksError'), color: 'error' });
-  } finally {
-    savingLinks.value = false;
-  }
+  },
+});
+
+async function onSaveLinks(): Promise<void> {
+  await saveLinks();
 }
 
 type Phase =
@@ -618,7 +603,8 @@ type Phase =
 
 const phase = ref<Phase>('loading');
 const roomInfo = ref<Room | null>(null);
-const guestState = reactive({ name: readStoredGuestName() });
+const guestIdentity = useGuestIdentity('room');
+const guestState = reactive({ name: guestIdentity.name.value });
 
 /**
  * Растёт при каждом `load()`/размонтировании: асинхронные продолжения (запрос
@@ -628,23 +614,6 @@ const guestState = reactive({ name: readStoredGuestName() });
  * побеждала бы независимо от того, к какой комнате она относится.
  */
 let currentToken = 0;
-
-/** Гость называет имя один раз за вкладку — переживает перезагрузку, не переживает закрытие */
-function readStoredGuestName(): string {
-  try {
-    return sessionStorage.getItem('poker:guest-name') ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function storeGuestName(name: string): void {
-  try {
-    sessionStorage.setItem('poker:guest-name', name);
-  } catch {
-    // Приватный режим браузера может запрещать хранилище — в рамках вкладки не критично
-  }
-}
 
 watch(() => props.id, load, { immediate: true });
 
@@ -659,8 +628,7 @@ async function load(): Promise<void> {
   room.leave();
   let loadedRoom: Room;
   try {
-    const res = await api.get<{ room: Room }>(`/api/rooms/${encodeURIComponent(props.id)}`);
-    loadedRoom = res.room;
+    loadedRoom = await getRoom(props.id);
   } catch (err) {
     if (token !== currentToken) return; // уже перешли дальше — этот ответ не наш
     phase.value = err instanceof ApiError && err.status === 404 ? 'notFound' : 'loadError';
@@ -737,7 +705,7 @@ async function recoverAuthenticatedJoin(): Promise<void> {
 
 function validateName(s: { name: string }): FormError[] {
   const errors: FormError[] = [];
-  const name = s.name.trim();
+  const name = trimText(s.name);
   if (!name) {
     errors.push({ name: 'name', message: t('room.nameRequired') });
   } else if (name.length > GUEST_NAME_MAX_LENGTH) {
@@ -748,8 +716,8 @@ function validateName(s: { name: string }): FormError[] {
 
 async function onJoinAsGuest(event: FormSubmitEvent<{ name: string }>): Promise<void> {
   const token = currentToken;
-  const name = event.data.name.trim();
-  storeGuestName(name);
+  const name = trimText(event.data.name);
+  guestIdentity.remember(name);
   phase.value = 'joining';
   try {
     await room.join(props.id, name);
@@ -866,7 +834,7 @@ function retry(): void {
           :can-archive="room.isScrumMaster && !isArchived"
           :can-rename="room.isScrumMaster"
           @archive="archiveOpen = true"
-          @rename="renameOpen = true"
+          @rename="renameModal.show"
         />
 
         <UAlert
@@ -1107,39 +1075,19 @@ function retry(): void {
       @confirm="onArchive"
     />
 
-    <UModal v-model:open="renameOpen" :title="t('room.renameTitle')" :ui="MODAL_UI">
-      <template #body>
-        <UForm
-          :state="renameState"
-          :validate="validateRoomName"
-          class="space-y-4"
-          @submit="onRename"
-        >
-          <UFormField :label="t('room.roomNameLabel')" name="name">
-            <UInput
-              v-model="renameState.name"
-              :maxlength="ROOM_NAME_MAX_LENGTH"
-              autofocus
-              class="w-full"
-              :ui="MODAL_INPUT_UI"
-            />
-          </UFormField>
-          <div class="flex justify-end gap-2.5">
-            <UButton
-              color="neutral"
-              variant="outline"
-              :ui="MODAL_BUTTON_UI"
-              @click="renameOpen = false"
-            >
-              {{ t('teams.cancel') }}
-            </UButton>
-            <UButton type="submit" :ui="MODAL_BUTTON_UI" :loading="renaming">
-              {{ t('room.rename') }}
-            </UButton>
-          </div>
-        </UForm>
-      </template>
-    </UModal>
+    <EntityTextModal
+      v-model:open="renameModal.open"
+      :title="t('room.renameTitle')"
+      :label="t('room.roomNameLabel')"
+      :initial-value="roomInfo?.name ?? ''"
+      :max-length="ROOM_NAME_MAX_LENGTH"
+      :required-message="t('room.renameNameRequired')"
+      :too-long-message="t('room.renameNameTooLong', { max: ROOM_NAME_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="t('room.rename')"
+      :pending="renaming"
+      @submit="onRename"
+    />
 
     <ConfirmModal
       v-model:open="cancelConfirmOpen"

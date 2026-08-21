@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
+import { idParamsSchema, uuidSchema } from '../http/schemas';
 
 import type {
   InviteParams,
@@ -14,14 +15,10 @@ import type {
 import { TeamsController } from './teams.controller';
 import { TeamsService } from './teams.service';
 
-const uuid = { type: 'string', format: 'uuid' } as const;
-
-const teamIdParams = { type: 'object', required: ['id'], properties: { id: uuid } } as const;
-
 const memberParams = {
   type: 'object',
   required: ['id', 'userId'],
-  properties: { id: uuid, userId: uuid },
+  properties: { id: uuidSchema, userId: uuidSchema },
 } as const;
 
 const inviteParams = {
@@ -156,7 +153,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         description:
           'Состав, роль текущего пользователя и код приглашения (только для администратора). Посторонним отвечаем 404.',
         security: [{ session: [] }],
-        params: teamIdParams,
+        params: idParamsSchema,
         response: {
           200: {
             description: 'Команда и её состав',
@@ -185,7 +182,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         summary: 'Переименовать команду',
         description: 'Доступно администратору.',
         security: [{ session: [] }],
-        params: teamIdParams,
+        params: idParamsSchema,
         body: nameBody,
         response: {
           200: {
@@ -212,7 +209,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         summary: 'Удалить команду',
         description: 'Доступно администратору. Комнаты команды сохраняются и остаются без команды.',
         security: [{ session: [] }],
-        params: teamIdParams,
+        params: idParamsSchema,
         response: {
           204: { description: 'Команда удалена', type: 'null' },
           401: { description: 'Требуется вход', ...errorResponse },
@@ -233,7 +230,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         summary: 'Состав команды',
         description: 'Гостю команды адреса участников не показываются.',
         security: [{ session: [] }],
-        params: teamIdParams,
+        params: idParamsSchema,
         response: {
           200: { description: 'Участники', ...membersResponse },
           401: { description: 'Требуется вход', ...errorResponse },
@@ -347,7 +344,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         summary: 'Перевыпустить код приглашения',
         description: 'Доступно администратору. Старая ссылка перестаёт работать.',
         security: [{ session: [] }],
-        params: teamIdParams,
+        params: idParamsSchema,
         response: {
           200: {
             description: 'Новый код',

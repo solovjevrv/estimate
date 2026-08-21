@@ -1,6 +1,11 @@
 import {
   GUEST_NAME_MAX_LENGTH,
+  isHttpUrl,
+  isTextLengthInRange,
+  ROOM_LINK_MAX_LENGTH,
   ROOM_NAME_MAX_LENGTH,
+  trimOptionalText,
+  trimText,
   type Participant,
   type Reaction,
   type Room,
@@ -19,23 +24,20 @@ import {
   DECK_TYPES,
   TIMER_DEFAULT_DURATION_SEC,
   TSHIRT_DECK,
-  hasTeamRole,
 } from '@poker/shared';
 
+import { TeamAccess } from '../access';
 import { UsersRepository } from '../auth';
+import type { DbExecutor } from '../common/db-executor';
 import type { Db } from '../db';
 import { isForeignKeyViolation, isUniqueViolation } from '../db/errors';
 import { ConflictError, ForbiddenError, NotFoundError, ValidationError } from '../errors';
-import { TeamsRepository } from '../teams';
-import type { DbExecutor as TeamsDbExecutor } from '../teams/teams.repository';
+import { GuestSessions } from '../platform/realtime';
 
-import { GuestSessions } from './guest-sessions';
 import type { ParticipantIdentity } from './presence';
-import {
-  type DbExecutor as RoomsDbExecutor,
-  RoomsRepository,
-  type VoteRecord,
-} from './rooms.repository';
+import { resolveRoomRole } from './rooms.policy';
+import { summarizeRound } from './round-scoring';
+import { type DbExecutor as RoomsDbExecutor, RoomsRepository } from './rooms.repository';
 
 export interface CreateRoomInput {
   name: string;
@@ -60,7 +62,6 @@ export interface JoinResult {
 
 /** Верхняя граница оценки: защищает от переполнения integer в базе */
 const MAX_VOTE_VALUE = 1000;
-const MAX_LINK_LENGTH = 2000;
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -80,7 +81,7 @@ export class RoomsService {
   constructor(
     private readonly db: Db,
     private readonly repository: RoomsRepository,
-    private readonly teams: TeamsRepository,
+    private readonly teams: TeamAccess,
     private readonly users: UsersRepository,
     private readonly guests: GuestSessions,
     /**
@@ -91,18 +92,17 @@ export class RoomsService {
     private readonly createRoomsRepository: (executor: RoomsDbExecutor) => RoomsRepository = (
       executor,
     ) => new RoomsRepository(executor),
-    private readonly createTeamsRepository: (executor: TeamsDbExecutor) => TeamsRepository = (
-      executor,
-    ) => new TeamsRepository(executor),
+    private readonly createTeamAccess: (executor: DbExecutor) => TeamAccess = (executor) =>
+      TeamAccess.forExecutor(executor),
   ) {}
 
   static forDatabase(db: Db, guestSecret: string): RoomsService {
     return new RoomsService(
       db,
       new RoomsRepository(db),
-      new TeamsRepository(db),
+      TeamAccess.forExecutor(db),
       new UsersRepository(db),
-      new GuestSessions(guestSecret),
+      new GuestSessions(guestSecret, 'guest'),
     );
   }
 
@@ -112,13 +112,12 @@ export class RoomsService {
 
     if (teamId) {
       // Комнату от лица команды заводит администратор
-      const membership = await this.teams.findMembership(teamId, actorId);
-      if (!membership) {
-        throw new NotFoundError('Команда не найдена');
-      }
-      if (!hasTeamRole(membership.role, 'admin')) {
-        throw new ForbiddenError('Создавать комнаты команды может администратор');
-      }
+      await this.teams.require(
+        teamId,
+        actorId,
+        'admin',
+        'Создавать комнаты команды может администратор',
+      );
     }
 
     return this.repository.insertRoom(name, teamId, actorId);
@@ -134,14 +133,15 @@ export class RoomsService {
   }
 
   async listTeamRooms(actorId: string, teamId: string, archived = false): Promise<Room[]> {
-    const membership = await this.teams.findMembership(teamId, actorId);
-    if (!membership) {
-      throw new NotFoundError('Команда не найдена');
-    }
-    // Архив команды видит только администратор — обычный список открыт всем участникам
-    if (archived && !hasTeamRole(membership.role, 'admin')) {
-      throw new ForbiddenError('Архив комнат команды видит только администратор');
-    }
+    // Обычный список открыт любому участнику команды, архив — только администратору.
+    // `guest` — младшая роль, на этой ветке проверка сводится к самому членству
+    // и текстом про архив ответить не может.
+    await this.teams.require(
+      teamId,
+      actorId,
+      archived ? 'admin' : 'guest',
+      'Архив комнат команды видит только администратор',
+    );
     return this.repository.listRoomsByTeam(teamId, archived);
   }
 
@@ -157,21 +157,16 @@ export class RoomsService {
   async listRoundHistory(roomId: string): Promise<RoundHistoryEntry[]> {
     await this.getRoom(roomId);
     const rounds = await this.repository.listRevealedRounds(roomId, ROUND_HISTORY_LIMIT);
-    const entries = await Promise.all(
-      rounds.map(async (round) => {
-        const votes = await this.repository.listVotes(round.id);
-        return { round, votes };
-      }),
-    );
+    const votesByRound = await this.repository.listVotesForRounds(rounds.map((round) => round.id));
     // Раунд без единого голоса при вскрытии невозможен (revealCards это проверяет),
     // но со временем голос мог уйти каскадом вместе с удалённым аккаунтом (7.10) —
     // summarize() на пустом массиве даёт NaN/Infinity, такой раунд лучше пропустить
-    return entries
-      .filter((entry) => entry.votes.length > 0)
-      .map((entry) => ({
-        round: entry.round,
-        result: this.summarize(entry.votes, entry.round, entry.round.average),
-      }));
+    return rounds.flatMap((round) => {
+      const votes = votesByRound.get(round.id) ?? [];
+      return votes.length === 0
+        ? []
+        : [{ round, result: summarizeRound(votes, round.deckType, round.average) }];
+    });
   }
 
   /** Раундов сыграно, задач оценено и среднее время раунда — по всем комнатам пользователя */
@@ -265,21 +260,13 @@ export class RoomsService {
   async resolveRole(
     room: Room,
     userId: string | null,
-    teams: TeamsRepository = this.teams,
+    teams: TeamAccess = this.teams,
   ): Promise<RoomRole> {
-    if (!userId) {
-      return 'voter';
-    }
-    if (room.creatorId === userId) {
-      return 'scrum_master';
-    }
-    if (room.teamId) {
-      const membership = await teams.findMembership(room.teamId, userId);
-      if (membership && hasTeamRole(membership.role, 'admin')) {
-        return 'scrum_master';
-      }
-    }
-    return 'voter';
+    const teamRole =
+      room.teamId && userId && room.creatorId !== userId
+        ? ((await teams.membershipOf(room.teamId, userId))?.role ?? null)
+        : null;
+    return resolveRoomRole(room.creatorId, userId, teamRole);
   }
 
   /** Готовит участника к посадке за стол: проверяет комнату и собирает личность */
@@ -309,10 +296,7 @@ export class RoomsService {
     // Идентификатор гостя виден всем за столом, поэтому личность подтверждает
     // подписанный токен, а не сам идентификатор. Токен проверяется именно на
     // эту комнату — токен другой комнаты сюда не подходит.
-    const returning = this.guests.verify(room.id, request.guestToken);
-    const session = returning
-      ? { guestId: returning, token: this.guests.issue(room.id, returning) }
-      : this.guests.create(room.id);
+    const session = this.guests.resume(room.id, request.guestToken);
 
     return {
       room,
@@ -374,7 +358,8 @@ export class RoomsService {
         hasVoted: voted.has(identity.participantId),
       })),
       // Оценки видны только после вскрытия карт
-      result: round?.status === 'revealed' ? this.summarize(votes, round, round.average) : null,
+      result:
+        round?.status === 'revealed' ? summarizeRound(votes, round.deckType, round.average) : null,
       timer,
       reactions,
     };
@@ -449,10 +434,10 @@ export class RoomsService {
       }
       // Карты могли вскрыть, пока запрос ждал блокировки — тогда показываем зафиксированное
       if (round.status !== 'voting') {
-        return this.summarize(votes, round, round.average);
+        return summarizeRound(votes, round.deckType, round.average);
       }
 
-      const result = this.summarize(votes, round);
+      const result = summarizeRound(votes, round.deckType);
       await repo.markRevealed(round.id, result.average);
       await repo.bumpRevision(roomId);
       return result;
@@ -530,7 +515,7 @@ export class RoomsService {
    */
   private async inRoom<T>(
     roomId: string,
-    action: (repo: RoomsRepository, room: Room, teams: TeamsRepository) => Promise<T>,
+    action: (repo: RoomsRepository, room: Room, teams: TeamAccess) => Promise<T>,
   ): Promise<T> {
     return this.withLockedRoom(roomId, async (repo, room, teams) => {
       if (room.archivedAt) {
@@ -550,7 +535,7 @@ export class RoomsService {
    */
   private async withLockedRoom<T>(
     roomId: string,
-    action: (repo: RoomsRepository, room: Room, teams: TeamsRepository) => Promise<T>,
+    action: (repo: RoomsRepository, room: Room, teams: TeamAccess) => Promise<T>,
   ): Promise<T> {
     return this.db.transaction(async (tx) => {
       const repo = this.createRoomsRepository(tx);
@@ -558,7 +543,7 @@ export class RoomsService {
       if (!room) {
         throw new NotFoundError('Комната не найдена');
       }
-      return action(repo, room, this.createTeamsRepository(tx));
+      return action(repo, room, this.createTeamAccess(tx));
     });
   }
 
@@ -585,7 +570,7 @@ export class RoomsService {
     room: Room,
     identity: ParticipantIdentity,
     message: string,
-    teams: TeamsRepository,
+    teams: TeamAccess,
   ): Promise<void> {
     if ((await this.resolveRole(room, identity.userId, teams)) !== 'scrum_master') {
       throw new ForbiddenError(message);
@@ -605,39 +590,6 @@ export class RoomsService {
     }
   }
 
-  /** Если раунд уже вскрыт, показываем зафиксированное среднее, а не пересчитанное */
-  private summarize(votes: VoteRecord[], round: Round, stored: number | null = null): RoundResult {
-    const values = votes.map((vote) => vote.value);
-    const sum = values.reduce((total, value) => total + value, 0);
-    // Для футболочных размеров среднее числового веса не несёт смысла — не считаем
-    const average =
-      round.deckType === 'tshirt'
-        ? null
-        : (stored ?? Math.round((sum / values.length) * 100) / 100);
-
-    return {
-      average,
-      min: Math.min(...values),
-      max: Math.max(...values),
-      agreement: this.calculateAgreement(values),
-      votes: votes.map((vote) => ({
-        participantId: vote.participantId,
-        name: vote.name ?? 'Участник',
-        value: vote.value,
-      })),
-    };
-  }
-
-  /** Доля проголосовавших за самое частое значение — метрика согласия команды */
-  private calculateAgreement(values: number[]): number {
-    const counts = new Map<number, number>();
-    for (const value of values) {
-      counts.set(value, (counts.get(value) ?? 0) + 1);
-    }
-    const maxCount = Math.max(...counts.values());
-    return Math.round((maxCount / values.length) * 100);
-  }
-
   /** Идентификаторы приходят по сокету без схем — проверяем формат до похода в базу */
   private requireUuid(value: string, what: string): string {
     if (typeof value !== 'string' || !UUID_PATTERN.test(value)) {
@@ -654,8 +606,8 @@ export class RoomsService {
   }
 
   private normalizeName(raw: string, maxLength: number, field: string): string {
-    const value = raw.trim();
-    if (value.length === 0 || value.length > maxLength) {
+    const value = trimText(raw);
+    if (!isTextLengthInRange(value, { min: 1, max: maxLength })) {
       throw new ValidationError(`${field}: от 1 до ${maxLength} символов`);
     }
     return value;
@@ -663,14 +615,14 @@ export class RoomsService {
 
   /** Пустая строка означает «ссылку убрали» */
   private normalizeLink(raw: string | null | undefined): string | null {
-    const value = typeof raw === 'string' ? raw.trim() : null;
+    const value = trimOptionalText(raw);
     if (!value) {
       return null;
     }
-    if (value.length > MAX_LINK_LENGTH) {
+    if (value.length > ROOM_LINK_MAX_LENGTH) {
       throw new ValidationError('Ссылка слишком длинная');
     }
-    if (!/^https?:\/\//i.test(value)) {
+    if (!isHttpUrl(value)) {
       throw new ValidationError('Ссылка должна начинаться с http:// или https://');
     }
     return value;

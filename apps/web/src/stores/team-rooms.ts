@@ -4,23 +4,26 @@ import type { Room } from '@poker/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
-import { api } from '../lib/api';
+import { listTeamRooms } from '../features/teams/api/teams-api';
 
 export const useTeamRoomsStore = defineStore('teamRooms', () => {
   const list = ref<Room[]>([]);
   /** Архив команды — виден только владельцу/администратору, грузится отдельно и по требованию */
   const archivedList = ref<Room[]>([]);
+  // При переходе между командами старый HTTP-ответ не должен перезаписать новый список.
+  let listGeneration = 0;
+  let archiveGeneration = 0;
 
   async function load(teamId: string): Promise<void> {
-    const res = await api.get<{ rooms: Room[] }>(`/api/teams/${encodeURIComponent(teamId)}/rooms`);
-    list.value = res.rooms;
+    const requestGeneration = ++listGeneration;
+    const rooms = await listTeamRooms(teamId);
+    if (requestGeneration === listGeneration) list.value = rooms;
   }
 
   async function loadArchived(teamId: string): Promise<void> {
-    const res = await api.get<{ rooms: Room[] }>(
-      `/api/teams/${encodeURIComponent(teamId)}/rooms?archived=true`,
-    );
-    archivedList.value = res.rooms;
+    const requestGeneration = ++archiveGeneration;
+    const rooms = await listTeamRooms(teamId, true);
+    if (requestGeneration === archiveGeneration) archivedList.value = rooms;
   }
 
   // ISO-даты сравниваются лексикографически, поэтому свежие оказываются сверху
@@ -38,6 +41,8 @@ export const useTeamRoomsStore = defineStore('teamRooms', () => {
 
   /** Уходя со страницы команды, не показываем чужой список до новой загрузки */
   function reset(): void {
+    listGeneration += 1;
+    archiveGeneration += 1;
     list.value = [];
     archivedList.value = [];
   }

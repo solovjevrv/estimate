@@ -3,6 +3,9 @@ import {
   type AuthUser,
   USER_JOB_TITLE_MAX_LENGTH,
   USER_NAME_MAX_LENGTH,
+  isTextLengthInRange,
+  trimOptionalText,
+  trimText,
 } from '@poker/shared';
 
 import { UnauthorizedError, ValidationError } from '../errors';
@@ -75,18 +78,16 @@ export class AuthService {
     userId: string,
     fields: { name: string; jobTitle?: string },
   ): Promise<AuthUser> {
-    const name = fields.name.trim();
-    if (name.length < 1 || name.length > USER_NAME_MAX_LENGTH) {
+    const name = trimText(fields.name);
+    if (!isTextLengthInRange(name, { min: 1, max: USER_NAME_MAX_LENGTH })) {
       throw new ValidationError(`Имя должно быть от 1 до ${USER_NAME_MAX_LENGTH} символов`);
     }
 
-    const jobTitleRaw = fields.jobTitle?.trim() ?? '';
-    if (jobTitleRaw.length > USER_JOB_TITLE_MAX_LENGTH) {
+    const jobTitle = trimOptionalText(fields.jobTitle);
+    if (jobTitle !== null && jobTitle.length > USER_JOB_TITLE_MAX_LENGTH) {
       throw new ValidationError(`Должность — не более ${USER_JOB_TITLE_MAX_LENGTH} символов`);
     }
     // Пустая должность — это «не заполнено», а не пустая строка в БД
-    const jobTitle = jobTitleRaw.length > 0 ? jobTitleRaw : null;
-
     return this.users.updateProfile(userId, { name, jobTitle });
   }
 }

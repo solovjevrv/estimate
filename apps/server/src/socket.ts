@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { Server } from 'socket.io';
+import { Server, type Socket } from 'socket.io';
 
+import { BoardsGateway, BoardsService } from './boards';
 import { RoomsGateway, RoomsService } from './rooms';
 
 /** Данные, которые сервер держит на каждом подключении */
@@ -10,6 +11,18 @@ export interface SocketData {
 }
 
 export type PokerServer = Server<
+  Record<string, never>,
+  Record<string, never>,
+  Record<string, never>,
+  SocketData
+>;
+
+/**
+ * Сокет с типизированным `data`. Шлюзы раньше принимали голый `Socket` из
+ * socket.io — у него `data` имеет тип `any`, поэтому `socket.data.userId`
+ * молча превращался в `any` и тёк дальше в вызовы сервисов.
+ */
+export type PokerSocket = Socket<
   Record<string, never>,
   Record<string, never>,
   Record<string, never>,
@@ -28,13 +41,14 @@ export interface SocketGatewayOptions {
 }
 
 /**
- * Socket.io поверх HTTP-сервера Fastify вместе с событиями игрового стола.
- * `RoomsService` приходит готовым снаружи (не строится из `app.db` внутри
- * `attach()`), чтобы шлюз можно было юнит-тестировать без реальной БД (7.31).
+ * Socket.io поверх HTTP-сервера Fastify вместе с событиями игрового стола и
+ * досок. Сервисы приходят готовыми снаружи (не строятся из `app.db` внутри
+ * `attach()`), чтобы шлюзы можно было юнит-тестировать без реальной БД (7.31).
  */
 export class SocketGateway {
   constructor(
-    private readonly service: RoomsService,
+    private readonly roomsService: RoomsService,
+    private readonly boardsService: BoardsService,
     private readonly options: SocketGatewayOptions,
   ) {}
 
@@ -64,15 +78,18 @@ export class SocketGateway {
       next();
     });
 
-    new RoomsGateway(this.service).register(io, app.log);
+    new RoomsGateway(this.roomsService).register(io, app.log);
+    new BoardsGateway(this.boardsService).register(io, app.log);
 
     io.on('connection', (socket) => {
       app.log.info({ socketId: socket.id, userId: socket.data.userId }, 'Socket.io: подключение');
 
-      // Служебное событие для smoke-проверки соединения
+      // Служебное событие для smoke-проверки соединения. Подтверждение приходит
+      // от клиента, поэтому сужаем его до вызываемого типа явно: `typeof === 'function'`
+      // даёт голый `Function`, вызов которого не типизирован вообще.
       socket.on('app:ping', (ack: unknown) => {
         if (typeof ack === 'function') {
-          ack('pong');
+          (ack as (response: string) => void)('pong');
         }
       });
 

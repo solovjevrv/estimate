@@ -1,10 +1,11 @@
 import fastifyRateLimit from '@fastify/rate-limit';
-import { ROOM_NAME_MAX_LENGTH } from '@poker/shared';
+import { ROOM_NAME_MAX_LENGTH, TEXT_INPUT_TRIM_ALLOWANCE } from '@poker/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
 import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
+import { archivedQuerySchema, idParamsSchema, nullableUuidSchema } from '../http/schemas';
 
 import type {
   ArchivedQuery,
@@ -16,17 +17,17 @@ import type {
 import { RoomsController } from './rooms.controller';
 import { RoomsService } from './rooms.service';
 
-const uuid = { type: 'string', format: 'uuid' } as const;
-
-const idParams = { type: 'object', required: ['id'], properties: { id: uuid } } as const;
-
 const createRoomBody = {
   type: 'object',
   required: ['name'],
   properties: {
     // Настоящий предел длины проверяет сервис после обрезки пробелов
-    name: { type: 'string', minLength: 1, maxLength: ROOM_NAME_MAX_LENGTH + 100 },
-    teamId: { type: ['string', 'null'], format: 'uuid' },
+    name: {
+      type: 'string',
+      minLength: 1,
+      maxLength: ROOM_NAME_MAX_LENGTH + TEXT_INPUT_TRIM_ALLOWANCE,
+    },
+    teamId: nullableUuidSchema,
   },
 } as const;
 
@@ -34,7 +35,11 @@ const nameBody = {
   type: 'object',
   required: ['name'],
   properties: {
-    name: { type: 'string', minLength: 1, maxLength: ROOM_NAME_MAX_LENGTH + 100 },
+    name: {
+      type: 'string',
+      minLength: 1,
+      maxLength: ROOM_NAME_MAX_LENGTH + TEXT_INPUT_TRIM_ALLOWANCE,
+    },
   },
 } as const;
 
@@ -112,13 +117,6 @@ const roundHistoryResponse = {
       },
     },
   },
-} as const;
-
-// coerceTypes выключен глобально, поэтому булево из строки запроса не собрать
-// схемой — принимаем строку 'true'/'false' и разбираем её в контроллере
-const archivedQuery = {
-  type: 'object',
-  properties: { archived: { type: 'string', enum: ['true', 'false'] } },
 } as const;
 
 export interface RoomsRateLimitOptions {
@@ -200,7 +198,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
           tags: [DOCS_TAGS.rooms],
           summary: 'Комната по ссылке',
           description: 'Открыта без входа: по прямой ссылке в комнату может зайти и гость.',
-          params: idParams,
+          params: idParamsSchema,
           response: {
             200: { description: 'Комната', type: 'object', properties: { room: roomResponse } },
             404: { description: 'Комната не найдена', ...errorResponse },
@@ -219,7 +217,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
           description:
             'Вскрытые раунды комнаты с итогами, от последнего к первому. Открыта без входа — ' +
             'так же, как и сама комната.',
-          params: idParams,
+          params: idParamsSchema,
           response: {
             200: { description: 'История раундов', ...roundHistoryResponse },
             404: { description: 'Комната не найдена', ...errorResponse },
@@ -240,7 +238,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
             'Все комнаты, которые создал пользователь — личные и командные вместе. ' +
             'По умолчанию без архивных; `archived=true` — только архивные.',
           security: [{ session: [] }],
-          querystring: archivedQuery,
+          querystring: archivedQuerySchema,
           response: {
             200: { description: 'Список комнат', ...roomsResponse },
             401: { description: 'Требуется вход', ...errorResponse },
@@ -285,8 +283,8 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
             'Обычный список доступен любому участнику команды. Архивный (`archived=true`) — ' +
             'только владельцу и администратору.',
           security: [{ session: [] }],
-          params: idParams,
-          querystring: archivedQuery,
+          params: idParamsSchema,
+          querystring: archivedQuerySchema,
           response: {
             200: { description: 'Список комнат', ...roomsResponse },
             401: { description: 'Требуется вход', ...errorResponse },
@@ -313,7 +311,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
             'из основных списков, но остаётся открыта по прямой ссылке для чтения. Настоящее ' +
             'удаление — отдельным действием, только для уже заархивированной комнаты.',
           security: [{ session: [] }],
-          params: idParams,
+          params: idParamsSchema,
           response: {
             200: {
               description: 'Комната заархивирована',
@@ -341,7 +339,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
             'Доступно скрам-мастеру (создателю или админу/владельцу команды). Доступно и для ' +
             'уже заархивированной комнаты.',
           security: [{ session: [] }],
-          params: idParams,
+          params: idParamsSchema,
           body: nameBody,
           response: {
             200: {
@@ -370,7 +368,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
             'Необратимо: удаляет раунды и голоса вместе с комнатой. Доступно только для уже ' +
             'заархивированной комнаты и только скрам-мастеру.',
           security: [{ session: [] }],
-          params: idParams,
+          params: idParamsSchema,
           response: {
             204: { description: 'Комната удалена' },
             401: { description: 'Требуется вход', ...errorResponse },

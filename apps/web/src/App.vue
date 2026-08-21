@@ -16,6 +16,7 @@ const route = useRoute();
 
 const teamsLinkActive = computed(() => route.path.startsWith('/teams'));
 const myRoomsLinkActive = computed(() => route.path.startsWith('/my-rooms'));
+const boardsLinkActive = computed(() => route.path.startsWith('/boards'));
 
 const language = computed({
   get: () => locale.value as Locale,
@@ -65,6 +66,7 @@ const languageMenuItems = computed<DropdownMenuItem[]>(() =>
 const mobileNavItems = computed<DropdownMenuItem[]>(() => [
   { label: t('nav.teams'), icon: 'i-lucide-users', to: '/teams' },
   { label: t('nav.myRooms'), icon: 'i-lucide-layout-grid', to: '/my-rooms' },
+  { label: t('nav.boards'), icon: 'i-lucide-layout-dashboard', to: '/boards' },
 ]);
 
 const userMenuItems = computed<DropdownMenuItem[][]>(() => [
@@ -108,7 +110,10 @@ async function logout(): Promise<void> {
 
 <template>
   <UApp>
-    <div class="min-h-screen flex flex-col bg-default text-highlighted">
+    <div
+      class="flex flex-col bg-default text-highlighted"
+      :class="route.meta.fullBleedCanvas ? 'h-screen overflow-hidden' : 'min-h-screen'"
+    >
       <header class="border-default border-b" style="background-color: var(--brand-surface)">
         <nav
           class="mx-auto flex h-[64px] w-full max-w-[73.75rem] items-center gap-3 px-4 sm:gap-6 sm:px-6 md:h-[76px] md:gap-8 md:px-14"
@@ -154,6 +159,14 @@ async function logout(): Promise<void> {
             :class="myRoomsLinkActive ? 'text-primary' : 'text-muted'"
           >
             {{ t('nav.myRooms') }}
+          </RouterLink>
+          <RouterLink
+            v-if="session.isAuthenticated"
+            to="/boards"
+            class="hidden text-[15px] font-semibold md:inline"
+            :class="boardsLinkActive ? 'text-primary' : 'text-muted'"
+          >
+            {{ t('nav.boards') }}
           </RouterLink>
 
           <div class="ml-auto flex items-center gap-2">
@@ -206,11 +219,22 @@ async function logout(): Promise<void> {
         </nav>
       </header>
 
-      <main class="mx-auto w-full max-w-[73.75rem] flex-1 px-4 py-8 md:py-14">
+      <main
+        class="w-full flex-1"
+        :class="
+          route.meta.fullBleedCanvas
+            ? 'flex min-h-0 flex-col overflow-hidden'
+            : 'mx-auto max-w-[73.75rem] px-4 py-8 md:py-14'
+        "
+      >
         <RouterView />
       </main>
 
-      <footer class="border-default border-t" style="background-color: var(--brand-surface)">
+      <footer
+        v-if="!route.meta.fullBleedCanvas"
+        class="border-default border-t"
+        style="background-color: var(--brand-surface)"
+      >
         <div
           class="text-muted mx-auto flex w-full max-w-[73.75rem] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-6 text-[13px]"
         >
