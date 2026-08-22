@@ -35,8 +35,30 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # Объектное хранилище (Epic 21) — интеграционный тест MinioObjectStorage
+      # (apps/server/test/minio-object-storage.test.ts) гоняется против настоящего
+      # MinIO, не только фейка. bitnami/minio, не minio/minio: у второго нет
+      # дефолтной команды запуска, а служебные контейнеры GitHub Actions не
+      # поддерживают переопределение command — только образ/env/ports/options.
+      # MINIO_DEFAULT_BUCKETS сам создаёт бакет на старте (в CI бакет уже готов
+      # к моменту тестов, отдельный init-job здесь не нужен — в отличие от
+      # docker-compose, где под root-учётку заводится ограниченная app-учётка).
+      minio:
+        image: bitnami/minio:2025.4.8
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin123
+          MINIO_DEFAULT_BUCKETS: poker-assets
+        ports:
+          - 9000:9000
     env:
       DATABASE_URL: postgres://poker:poker@localhost:5432/poker
+      MINIO_ENDPOINT: localhost
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: 'false'
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: poker-assets
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -53,6 +75,15 @@ jobs:
       - name: Установка зависимостей
         run: pnpm install --frozen-lockfile
 
+      - name: Ждать готовности MinIO
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && exit 0
+            sleep 1
+          done
+          echo "MinIO не поднялся за 30с" >&2
+          exit 1
+
       - name: Линтер
         run: pnpm lint
 
@@ -67,7 +98,7 @@ jobs:
       - name: Unit-тесты (без БД)
         run: pnpm test:unit
 
-      - name: Тесты сервера (с PostgreSQL)
+      - name: Тесты сервера (с PostgreSQL и MinIO)
         run: pnpm test:server
 
       - name: Сборка

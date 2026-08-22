@@ -28,6 +28,16 @@ export interface AuthConfig {
   providers: Partial<Record<AuthProvider, OAuthCredentials>>;
 }
 
+export interface ObjectStorageConfig {
+  endpoint: string;
+  port: number;
+  useSSL: boolean;
+  /** Учётная запись уровня приложения — не root MinIO, права только на свой бакет (21.1) */
+  accessKey: string;
+  secretKey: string;
+  bucket: string;
+}
+
 export interface Config {
   port: number;
   host: string;
@@ -43,6 +53,14 @@ export interface Config {
   avatarsDir: string;
   /** Куда пишутся загруженные картинки досок (13.2) */
   boardAssetsDir: string;
+  /**
+   * Не задан — объектное хранилище (MinIO, Epic 21) ещё не подключено: `/health`
+   * его не проверяет, аватарки/картинки досок по-прежнему пишутся на локальный
+   * диск (`avatarsDir`/`boardAssetsDir`). До миграции этих сервисов (21.2/21.5)
+   * MinIO поднимается в Compose сам по себе, конфиг сервера — опциональный шаг
+   * поверх него, а не жёсткая зависимость запуска.
+   */
+  objectStorage?: ObjectStorageConfig;
 }
 
 /**
@@ -108,6 +126,33 @@ function loadAuthConfig(webOrigin: string, port: number): AuthConfig {
   };
 }
 
+/**
+ * Обе учётные части (access/secret) обязаны идти вместе — как у OAuth-провайдеров
+ * выше: одна без другой означает опечатку в конфиге, а не «выключено».
+ */
+function loadObjectStorageConfig(): ObjectStorageConfig | undefined {
+  const accessKey = process.env.MINIO_ACCESS_KEY;
+  const secretKey = process.env.MINIO_SECRET_KEY;
+  if (!accessKey && !secretKey) return undefined;
+  if (!accessKey || !secretKey) {
+    throw new Error('Заданы не обе части MINIO_ACCESS_KEY/MINIO_SECRET_KEY');
+  }
+
+  const port = Number(process.env.MINIO_PORT ?? 9000);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error(`Некорректное значение MINIO_PORT: "${process.env.MINIO_PORT}"`);
+  }
+
+  return {
+    endpoint: process.env.MINIO_ENDPOINT ?? 'minio',
+    port,
+    useSSL: process.env.MINIO_USE_SSL === 'true',
+    accessKey,
+    secretKey,
+    bucket: process.env.MINIO_BUCKET ?? 'poker-assets',
+  };
+}
+
 export function loadConfig(): Config {
   loadDotenv();
 
@@ -135,5 +180,6 @@ export function loadConfig(): Config {
     sentryDsn: process.env.SENTRY_DSN || undefined,
     avatarsDir: process.env.AVATARS_DIR ?? join(process.cwd(), 'avatars'),
     boardAssetsDir: process.env.BOARD_ASSETS_DIR ?? join(process.cwd(), 'board-assets'),
+    objectStorage: loadObjectStorageConfig(),
   };
 }

@@ -8,12 +8,15 @@ import type { AuthConfig } from './config';
 import type { Db } from './db';
 import { ErrorHandler } from './http/error-handler';
 import { healthPlugin } from './http/health.plugin';
+import type { ObjectStorage } from './platform/storage';
 import { roomsPlugin, type RoomsRateLimitOptions } from './rooms';
 import { teamsPlugin } from './teams';
 
 declare module 'fastify' {
   interface FastifyInstance {
     db: Db;
+    /** Не задан — объектное хранилище (Epic 21) ещё не подключено, см. `Config.objectStorage` */
+    storage?: ObjectStorage;
   }
 }
 
@@ -31,6 +34,8 @@ export interface AppDeps {
   avatarsDir?: string;
   /** Каталог для картинок досок (13.2); без auth не используется */
   boardAssetsDir?: string;
+  /** Не задан — MinIO (Epic 21) ещё не подключен; `/health` в этом случае его не проверяет */
+  objectStorage?: ObjectStorage;
 }
 
 export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): FastifyInstance {
@@ -49,6 +54,7 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
   });
 
   app.decorate('db', deps.db);
+  app.decorate('storage', deps.objectStorage);
   new ErrorHandler().register(app);
 
   // Базовая защита заголовками (clickjacking, MIME-sniffing и т.п.). CSP выключена:
