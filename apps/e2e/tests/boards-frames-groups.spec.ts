@@ -362,6 +362,113 @@ test.describe('Доски: фреймы и группы', () => {
     await expect(board.stickyNodes).toHaveCount(2);
   });
 
+  test('группа приклеивается к фрейму при перетаскивании участника внутрь его границ, и переезжает вместе с фреймом (14.8)', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+    const owner = await createUser('board-group-in-frame');
+    const context = await newContext(browser);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}GroupInFrame ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    const board = boardLocators(page);
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(board.pane).toBeVisible();
+
+    // Группа — ДАЛЕКО от места, где появится фрейм, чтобы группировка не
+    // задела его геометрию (фрейм создаём уже после группировки)
+    await board.toolbarButton('Стикер').click();
+    await board.pane.click({ position: { x: 100, y: 300 } });
+    await board.toolbarButton('Стикер').click();
+    await board.pane.click({ position: { x: 250, y: 300 } });
+    await expect(board.stickyNodes).toHaveCount(2);
+
+    // `fit-view-on-init` у `<VueFlow>` подгоняет зум под первый созданный узел —
+    // для одного маленького стикера это может увести зум далеко от 100% (найдено
+    // на этом самом тесте: 200%), а вся геометрия драга ниже считается в
+    // предположении, что boundingBox-пиксели не искажены произвольным зумом
+    await page.keyboard.press('ControlOrMeta+0');
+    await expect(board.zoom).toHaveText('100%');
+
+    await board.pane.click({ position: { x: 700, y: 600 } });
+    await page.keyboard.press('ControlOrMeta+a');
+    await board.stickyNodes.first().click({ button: 'right' });
+    await page.getByRole('button', { name: 'Сгруппировать', exact: true }).click();
+    await expect(board.groupNodes).toHaveCount(1);
+
+    // Фрейм — в стороне от группы
+    await board.toolbarButton('Фрейм').click();
+    await board.pane.click({ position: { x: 950, y: 450 } });
+    await expect(board.frameNodes).toHaveCount(1);
+
+    const sticky1 = board.stickyNodes.first();
+    const sticky2 = board.stickyNodes.last();
+    const frameNode = board.frameNodes;
+    const frameBox = await frameNode.boundingBox();
+    const sticky1Before = await sticky1.boundingBox();
+    expect(frameBox).not.toBeNull();
+
+    // Тащим ОДНОГО участника группы в центр фрейма — группа жёсткая, поэтому
+    // сосед по группе едет тем же каскадом (уже проверено другим тестом);
+    // здесь проверяем НОВОЕ (14.8) — сама группа-обёртка при этом переоценивает
+    // принадлежность фрейму по своей новой (сдвинутой) позиции
+    const dragFrom = {
+      x: sticky1Before!.x + sticky1Before!.width / 2,
+      y: sticky1Before!.y + sticky1Before!.height / 2,
+    };
+    const dragTo = {
+      x: frameBox!.x + frameBox!.width / 2,
+      y: frameBox!.y + frameBox!.height / 2,
+    };
+    await page.mouse.move(dragFrom.x, dragFrom.y);
+    await page.mouse.down();
+    await page.mouse.move(dragTo.x, dragTo.y, { steps: 10 });
+    await page.mouse.up();
+
+    await expect
+      .poll(async () => (await sticky1.boundingBox())!.x)
+      .toBeGreaterThan(sticky1Before!.x + 100);
+
+    // Главная проверка: раз группа теперь приклеена к фрейму, перетаскивание
+    // ФРЕЙМА должно унести за собой ОБА стикера — не только напрямую
+    // перетащенный, но и его соседа по группе (двухуровневый каскад, 14.8)
+    const sticky1AfterGroupDrag = await sticky1.boundingBox();
+    const sticky2AfterGroupDrag = await sticky2.boundingBox();
+    const frameBoxBefore = await frameNode.boundingBox();
+    const frameDragFrom = {
+      x: frameBoxBefore!.x + frameBoxBefore!.width * 0.05,
+      y: frameBoxBefore!.y + frameBoxBefore!.height * 0.5,
+    };
+    const frameDelta = { x: 60, y: 40 };
+    await page.mouse.move(frameDragFrom.x, frameDragFrom.y);
+    await page.mouse.down();
+    await page.mouse.move(frameDragFrom.x + frameDelta.x, frameDragFrom.y + frameDelta.y, {
+      steps: 8,
+    });
+    await page.mouse.up();
+
+    await expect
+      .poll(async () => (await frameNode.boundingBox())!.x - frameBoxBefore!.x)
+      .toBeGreaterThan(frameDelta.x - 20);
+    await expect
+      .poll(async () => (await sticky1.boundingBox())!.x - sticky1AfterGroupDrag!.x)
+      .toBeGreaterThan(frameDelta.x - 20);
+    // Сосед по группе (не то, за что тащили ни в первый, ни во второй раз) —
+    // без исправления 14.8 остался бы на месте, так как parentId группы
+    // не сменился бы на фрейм и cascade фрейма его бы не подхватил
+    await expect
+      .poll(async () => (await sticky2.boundingBox())!.x - sticky2AfterGroupDrag!.x)
+      .toBeGreaterThan(frameDelta.x - 20);
+  });
+
   test('правый клик по мульти-выделению открывает меню доски, не браузера', async ({
     browser,
     createUser,

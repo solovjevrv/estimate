@@ -244,6 +244,20 @@ describe('useBoardSelection — grouping flags', () => {
     expect(makeSelection({ selectedNodes: [orphan] }).api.canUngroupSelection.value).toBe(false);
     expect(makeSelection({ selectedNodes: [child] }).api.canUngroupSelection.value).toBe(true);
   });
+
+  it('canUngroup: a group nested in a frame is also ungroupable when selected directly (14.8)', () => {
+    const topLevelGroup = flowNode(item('g1', { content: { type: 'group' } }));
+    const nestedGroup = flowNode(item('g2', { content: { type: 'group' }, parentId: 'fr' }));
+
+    // Верхнеуровневая группа: parentId всегда null — сама по себе не разгруппировывается
+    expect(makeSelection({ selectedNodes: [topLevelGroup] }).api.canUngroupSelection.value).toBe(
+      false,
+    );
+    // Вложенная во фрейм — её собственный parentId уже не null (14.8)
+    expect(makeSelection({ selectedNodes: [nestedGroup] }).api.canUngroupSelection.value).toBe(
+      true,
+    );
+  });
 });
 
 describe('useBoardSelection — groupSelection', () => {
@@ -311,6 +325,40 @@ describe('useBoardSelection — ungroupSelection', () => {
       ops.some((op) => op.type === 'item.patch' && op.id === 'm' && op.patch.parentId === null),
     ).toBe(true);
     expect(ops.some((op) => op.type === 'item.delete')).toBe(false);
+  });
+
+  it('dissolves a group nested in a frame: members inherit the frame, not null (14.8)', () => {
+    const frame = item('fr', { content: { type: 'frame', title: 'F' } });
+    const group = item('g', { content: { type: 'group' }, parentId: 'fr' });
+    const member = item('m', { parentId: 'g' });
+    const { api, applyOps } = makeSelection({
+      selectedNodes: [flowNode(member)],
+      items: [frame, group, member],
+    });
+
+    api.ungroupSelection();
+    const ops = lastOps(applyOps);
+    expect(
+      ops.some((op) => op.type === 'item.patch' && op.id === 'm' && op.patch.parentId === 'fr'),
+    ).toBe(true);
+    expect(ops.some((op) => op.type === 'item.delete' && op.id === 'g')).toBe(true);
+  });
+
+  it('dissolves a group selected directly (not via a member) — only reachable when nested in a frame (14.8)', () => {
+    const frame = item('fr', { content: { type: 'frame', title: 'F' } });
+    const group = item('g', { content: { type: 'group' }, parentId: 'fr' });
+    const member = item('m', { parentId: 'g' });
+    const { api, applyOps } = makeSelection({
+      selectedNodes: [flowNode(group)],
+      items: [frame, group, member],
+    });
+
+    api.ungroupSelection();
+    const ops = lastOps(applyOps);
+    expect(
+      ops.some((op) => op.type === 'item.patch' && op.id === 'm' && op.patch.parentId === 'fr'),
+    ).toBe(true);
+    expect(ops.some((op) => op.type === 'item.delete' && op.id === 'g')).toBe(true);
   });
 });
 

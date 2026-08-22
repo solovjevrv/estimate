@@ -131,8 +131,9 @@ export function boardItemToNode(
 export function toFlowNodes(items: readonly BoardItem[], canEdit = true): Node<BoardItem>[] {
   // Vue Flow должна увидеть родительский узел (frame/group, 14.3) ДО потомков,
   // чтобы `parentNode`/`extent: 'parent'` корректно сработали при `setNodes`.
-  // Топологическая сортировка по parentId: сначала узлы без родителя, потом
-  // дочерние — глубина ограничена одним уровнем (вложенность запрещена сервером).
+  // Топологическая сортировка по parentId: `visit` рекурсивно поднимается по
+  // всей цепочке родителей, поэтому корректно работает и при вложенности в
+  // два уровня (группа-в-фрейме, 14.8) — единственной, что допускает сервер.
   const byId = new Map(items.map((item) => [item.id, item]));
   const result: Node<BoardItem>[] = [];
   const visited = new Set<string>();

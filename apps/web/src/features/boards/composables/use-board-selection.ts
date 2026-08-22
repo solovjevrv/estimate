@@ -563,22 +563,42 @@ export function useBoardSelection(options: BoardSelectionOptions) {
   function ungroupSelection(): void {
     const ops: BoardOp[] = [];
     const dissolvedGroupIds = new Set<string>();
+
+    /**
+     * Распускает группу: участники наследуют РОДИТЕЛЯ САМОЙ ГРУППЫ (14.8) —
+     * `null`, если группа была верхнеуровневой, либо id фрейма, если группа
+     * была в него вложена. Раньше здесь был жёстко `null` — до 14.8 у группы
+     * не могло быть родителя вообще, так что это давало тот же результат;
+     * теперь жёсткий `null` вытолкнул бы участников из фрейма, из которого их
+     * никто не вынимал.
+     */
+    function dissolveGroup(group: BoardItem): void {
+      if (dissolvedGroupIds.has(group.id)) return;
+      dissolvedGroupIds.add(group.id);
+      for (const member of childrenOf(group.id)) {
+        ops.push({
+          type: 'item.patch',
+          clientOpId: uuid(),
+          id: member.id,
+          patch: { parentId: group.parentId },
+        });
+      }
+      ops.push({ type: 'item.delete', clientOpId: uuid(), id: group.id });
+    }
+
     for (const node of selectedNodes.value) {
+      // Сама группа выделена напрямую — возможно, только когда она вложена во
+      // фрейм (14.8): у верхнеуровневой группы parentId всегда null, и
+      // canUngroupSelection для неё одной не включился бы
+      if (node.data.content.type === 'group') {
+        dissolveGroup(node.data);
+        continue;
+      }
       const parentId = node.data.parentId;
       if (parentId === null) continue;
       const parent = options.getItems().find((candidate) => candidate.id === parentId);
       if (parent?.content.type === 'group') {
-        if (dissolvedGroupIds.has(parentId)) continue;
-        dissolvedGroupIds.add(parentId);
-        for (const member of childrenOf(parentId)) {
-          ops.push({
-            type: 'item.patch',
-            clientOpId: uuid(),
-            id: member.id,
-            patch: { parentId: null },
-          });
-        }
-        ops.push({ type: 'item.delete', clientOpId: uuid(), id: parentId });
+        dissolveGroup(parent);
       } else {
         ops.push({
           type: 'item.patch',

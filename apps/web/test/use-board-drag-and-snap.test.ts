@@ -233,6 +233,51 @@ describe('useBoardDragAndSnap — onNodeDrag (throttled патчи)', () => {
     expect(mate1Patch!.patch).toMatchObject({ x: 5, y: 5 });
   });
 
+  it('перетаскивание фрейма с вложенной группой сдвигает и группу, и её участников (14.8)', () => {
+    const frameItem = item('frame-1', {
+      content: { type: 'frame', title: 'Frame' },
+      x: 100,
+      y: 100,
+      width: 300,
+      height: 200,
+    });
+    const groupItem = item('group-1', { content: { type: 'group' }, parentId: frameItem.id });
+    const memberItem = item('member-1', { parentId: groupItem.id, x: 130, y: 130 });
+    const frameNode = flowNode(frameItem, { x: 100, y: 100 });
+    const groupNode = flowNode(groupItem, { x: 0, y: 0 });
+    const memberNode = flowNode(memberItem, { x: 130, y: 130 });
+
+    const { api, applyOps } = makeDrag({
+      items: [frameItem, groupItem, memberItem],
+      flowNodes: [frameNode, groupNode, memberNode],
+    });
+
+    api.onNodeDragStart(nodeEvent([frameNode]));
+
+    // Сдвигаем фрейм на (20, 30)
+    frameNode.computedPosition.x = 120;
+    frameNode.computedPosition.y = 130;
+    frameNode.position.x = 120;
+    frameNode.position.y = 130;
+
+    api.onNodeDrag(nodeEvent([frameNode]));
+
+    const { ops } = lastApplyOps(applyOps);
+    // Группа (прямой ребёнок фрейма) сдвинута на ту же дельту
+    const groupPatch = ops.find(
+      (o): o is BoardItemPatchOp => o.type === 'item.patch' && o.id === 'group-1',
+    );
+    expect(groupPatch).toBeDefined();
+    expect(groupPatch!.patch).toMatchObject({ x: 20, y: 30 });
+    // Участник группы (косвенный потомок фрейма, parentId указывает на группу,
+    // не на фрейм) — без рекурсивного descendantsOf остался бы на месте
+    const memberPatch = ops.find(
+      (o): o is BoardItemPatchOp => o.type === 'item.patch' && o.id === 'member-1',
+    );
+    expect(memberPatch).toBeDefined();
+    expect(memberPatch!.patch).toMatchObject({ x: 150, y: 160 });
+  });
+
   it('throttle: intermediate ticks deduplicated within wait window', () => {
     vi.useFakeTimers();
     const nodeItem = item('node-1');
@@ -405,6 +450,201 @@ describe('useBoardDragAndSnap — onNodeDragStop (snap + parent reassignment)', 
     );
     expect(patch).toBeDefined();
     expect(patch!.patch.parentId).toBeNull();
+  });
+
+  it('приклеивает ГРУППУ к фрейму, если её центр попадает в его границы (14.8)', () => {
+    const frameItem = item('frame-1', {
+      content: { type: 'frame', title: 'Frame' },
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 200,
+    });
+    const groupItem = item('group-1', { content: { type: 'group' }, x: 300, y: 0 });
+    const frameNode = flowNode(frameItem, { x: 100, y: 100 }, { width: 200, height: 200 });
+    const groupNode = flowNode(groupItem, { x: 300, y: 0 });
+
+    const { api, applyOps } = makeDrag({
+      items: [frameItem, groupItem],
+      flowNodes: [frameNode, groupNode],
+      findFrameAt: vi.fn().mockReturnValue(frameItem),
+    });
+
+    api.onNodeDragStart(nodeEvent([groupNode]));
+    groupNode.computedPosition.x = 200;
+    groupNode.computedPosition.y = 200;
+    groupNode.position.x = 200;
+    groupNode.position.y = 200;
+    api.onNodeDragStop(nodeEvent([groupNode]));
+
+    const { ops } = lastApplyOps(applyOps);
+    const patch = ops.find(
+      (o): o is BoardItemPatchOp => o.type === 'item.patch' && o.id === 'group-1',
+    );
+    expect(patch).toBeDefined();
+    expect(patch!.patch).toMatchObject({ x: 200, y: 200, parentId: 'frame-1' });
+  });
+
+  it('отсоединяет ГРУППУ от фрейма, если её вынесли за пределы (14.8)', () => {
+    const frameItem = item('frame-1', {
+      content: { type: 'frame', title: 'Frame' },
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 200,
+    });
+    const groupItem = item('group-1', {
+      content: { type: 'group' },
+      parentId: frameItem.id,
+      x: 150,
+      y: 150,
+    });
+    const frameNode = flowNode(frameItem, { x: 100, y: 100 }, { width: 200, height: 200 });
+    const groupNode = flowNode(groupItem, { x: 500, y: 500 });
+
+    const { api, applyOps } = makeDrag({
+      items: [frameItem, groupItem],
+      flowNodes: [frameNode, groupNode],
+      findFrameAt: vi.fn().mockReturnValue(undefined),
+    });
+
+    api.onNodeDragStart(nodeEvent([groupNode]));
+    api.onNodeDragStop(nodeEvent([groupNode]));
+
+    const { ops } = lastApplyOps(applyOps);
+    const patch = ops.find(
+      (o): o is BoardItemPatchOp => o.type === 'item.patch' && o.id === 'group-1',
+    );
+    expect(patch).toBeDefined();
+    expect(patch!.patch.parentId).toBeNull();
+  });
+
+  it('драг УЧАСТНИКА группы приклеивает саму группу к фрейму, если её новый центр попадает в границы (14.8)', () => {
+    const frameItem = item('frame-1', {
+      content: { type: 'frame', title: 'Frame' },
+      x: 500,
+      y: 100,
+      width: 200,
+      height: 200,
+    });
+    const groupItem = item('group-1', {
+      content: { type: 'group' },
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 100,
+    });
+    const memberItem = item('member-1', { parentId: groupItem.id, x: 20, y: 20 });
+    const frameNode = flowNode(frameItem, { x: 500, y: 100 }, { width: 200, height: 200 });
+    const groupNode = flowNode(groupItem, { x: 0, y: 0 }, { width: 100, height: 100 });
+    const memberNode = flowNode(memberItem, { x: 20, y: 20 });
+
+    const { api, applyOps } = makeDrag({
+      items: [frameItem, groupItem, memberItem],
+      flowNodes: [frameNode, groupNode, memberNode],
+      // Группа (100x100) сдвинута на (500,100) окажется точно в границах фрейма
+      findFrameAt: vi.fn().mockReturnValue(frameItem),
+    });
+
+    api.onNodeDragStart(nodeEvent([memberNode]));
+    // Тащим участника на (500, 100) — та же дельта сдвигает и группу-обёртку
+    memberNode.computedPosition.x = 520;
+    memberNode.computedPosition.y = 120;
+    memberNode.position.x = 520;
+    memberNode.position.y = 120;
+    api.onNodeDragStop(nodeEvent([memberNode]));
+
+    const { ops } = lastApplyOps(applyOps);
+    const groupPatch = ops.find(
+      (o): o is BoardItemPatchOp => o.type === 'item.patch' && o.id === 'group-1',
+    );
+    expect(groupPatch).toBeDefined();
+    // Позиция сдвинута ТЕМ ЖЕ каскадом, и parentId теперь указывает на фрейм
+    expect(groupPatch!.patch).toMatchObject({ x: 500, y: 100, parentId: 'frame-1' });
+  });
+
+  it('драг УЧАСТНИКА группы отклеивает группу от фрейма, если она вынесена за его пределы (14.8)', () => {
+    const frameItem = item('frame-1', {
+      content: { type: 'frame', title: 'Frame' },
+      x: 100,
+      y: 100,
+      width: 200,
+      height: 200,
+    });
+    const groupItem = item('group-1', {
+      content: { type: 'group' },
+      parentId: frameItem.id,
+      x: 150,
+      y: 150,
+      width: 50,
+      height: 50,
+    });
+    const memberItem = item('member-1', { parentId: groupItem.id, x: 160, y: 160 });
+    const frameNode = flowNode(frameItem, { x: 100, y: 100 }, { width: 200, height: 200 });
+    const groupNode = flowNode(groupItem, { x: 150, y: 150 }, { width: 50, height: 50 });
+    const memberNode = flowNode(memberItem, { x: 160, y: 160 });
+
+    const { api, applyOps } = makeDrag({
+      items: [frameItem, groupItem, memberItem],
+      flowNodes: [frameNode, groupNode, memberNode],
+      // Группа вынесена далеко за пределы фрейма — findFrameAt ничего не находит
+      findFrameAt: vi.fn().mockReturnValue(undefined),
+    });
+
+    api.onNodeDragStart(nodeEvent([memberNode]));
+    memberNode.computedPosition.x = 960;
+    memberNode.computedPosition.y = 960;
+    memberNode.position.x = 960;
+    memberNode.position.y = 960;
+    api.onNodeDragStop(nodeEvent([memberNode]));
+
+    const { ops } = lastApplyOps(applyOps);
+    const groupPatch = ops.find(
+      (o): o is BoardItemPatchOp => o.type === 'item.patch' && o.id === 'group-1',
+    );
+    expect(groupPatch).toBeDefined();
+    expect(groupPatch!.patch.parentId).toBeNull();
+  });
+
+  it('фрейм никогда не приклеивается к другому фрейму, даже если его центр попадает в границы (14.8)', () => {
+    const outerFrame = item('frame-outer', {
+      content: { type: 'frame', title: 'Outer' },
+      x: 0,
+      y: 0,
+      width: 500,
+      height: 500,
+    });
+    const innerFrame = item('frame-inner', {
+      content: { type: 'frame', title: 'Inner' },
+      x: 300,
+      y: 0,
+      width: 100,
+      height: 100,
+    });
+    const outerNode = flowNode(outerFrame, { x: 0, y: 0 }, { width: 500, height: 500 });
+    const innerNode = flowNode(innerFrame, { x: 300, y: 0 }, { width: 100, height: 100 });
+
+    const { api, applyOps } = makeDrag({
+      items: [outerFrame, innerFrame],
+      flowNodes: [outerNode, innerNode],
+      // Даже если findFrameAt (мок) вернул бы контейнер — resolveDragParent
+      // обязан отфильтровать фрейм ДО обращения к findFrameAt
+      findFrameAt: vi.fn().mockReturnValue(outerFrame),
+    });
+
+    api.onNodeDragStart(nodeEvent([innerNode]));
+    innerNode.computedPosition.x = 150;
+    innerNode.computedPosition.y = 150;
+    innerNode.position.x = 150;
+    innerNode.position.y = 150;
+    api.onNodeDragStop(nodeEvent([innerNode]));
+
+    const { ops } = lastApplyOps(applyOps);
+    const patch = ops.find(
+      (o): o is BoardItemPatchOp => o.type === 'item.patch' && o.id === 'frame-inner',
+    );
+    expect(patch).toBeDefined();
+    expect(patch!.patch.parentId).toBeUndefined();
   });
 
   it('не создаёт undo-запись для микродвижка без сдвига', () => {
