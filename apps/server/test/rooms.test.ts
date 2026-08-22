@@ -33,7 +33,7 @@ import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
 import { ConflictError } from '../src/errors';
 import type { ParticipantIdentity } from '../src/rooms';
-import { RoomsRepository, RoomsService } from '../src/rooms';
+import { RoomsGameService, RoomsRepository, RoomsService } from '../src/rooms';
 import { SocketGateway } from '../src/socket';
 import { TeamsRepository, TeamsService } from '../src/teams';
 
@@ -164,7 +164,7 @@ describeDb('комнаты', () => {
       auth: authConfig,
       roomsRateLimit: { max: 10_000, timeWindow: '1 minute' },
     });
-    const roomsService = RoomsService.forDatabase(db, authConfig.guestSecret);
+    const roomsService = RoomsGameService.forDatabase(db, authConfig.guestSecret);
     const boardsService = BoardsService.forDatabase(db, authConfig.guestSecret);
     new SocketGateway(roomsService, boardsService, { corsOrigin: '*' }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
@@ -309,7 +309,7 @@ describeDb('комнаты', () => {
   });
 
   describe('история раундов и статистика — 5.7/3.6', () => {
-    let service: RoomsService;
+    let service: RoomsGameService;
 
     function asMaster(user: AuthUser): ParticipantIdentity {
       return {
@@ -323,7 +323,7 @@ describeDb('комнаты', () => {
     }
 
     beforeAll(() => {
-      service = RoomsService.forDatabase(db, authConfig.guestSecret);
+      service = RoomsGameService.forDatabase(db, authConfig.guestSecret);
     });
 
     it('история отдаёт вскрытые раунды с итогами, от последнего к первому', async () => {
@@ -394,7 +394,11 @@ describeDb('комнаты', () => {
       await service.startNewRound(archivedRoomId, master, { deckType: 'fibonacci' });
       await service.submitVote(archivedRoomId, master, { value: 13 });
       await service.revealCards(archivedRoomId, master);
-      await service.archiveRoom(owner.id, archivedRoomId);
+      await app.inject({
+        method: 'POST',
+        url: `/api/rooms/${archivedRoomId}/archive`,
+        headers: as(owner),
+      });
 
       // Чужая комната не должна попасть в статистику владельца
       const strangerRoomId = await newRoom(stranger, 'Чужая комната');
@@ -1369,7 +1373,7 @@ describeDb('комнаты', () => {
    * уходят в базу параллельно, без очереди одного сокета.
    */
   describe('одновременные действия', () => {
-    let service: RoomsService;
+    let service: RoomsGameService;
 
     function asMaster(user: AuthUser): ParticipantIdentity {
       return {
@@ -1394,7 +1398,7 @@ describeDb('комнаты', () => {
     }
 
     beforeAll(() => {
-      service = RoomsService.forDatabase(db, authConfig.guestSecret);
+      service = RoomsGameService.forDatabase(db, authConfig.guestSecret);
     });
 
     it('голоса в момент вскрытия не расходятся с зафиксированным средним', async () => {
@@ -1449,7 +1453,9 @@ describeDb('комнаты', () => {
     it('одновременная правка ссылок: побеждает один, второй узнаёт о конфликте', async () => {
       const owner = await newUser('race-links-owner');
       const roomId = await newRoom(owner);
-      const room = await service.getRoom(roomId);
+      // Не через REST: linksVersion — внутреннее поле оптимистичной блокировки,
+      // в публичной схеме ответа его нет (сериализатор Fastify его срежет)
+      const room = await RoomsService.forDatabase(db).getRoom(roomId);
 
       const attempts = await Promise.allSettled([
         service.updateLinks(roomId, {
