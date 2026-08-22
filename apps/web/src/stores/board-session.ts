@@ -38,43 +38,12 @@ import {
   regenerateClientOpIds,
   type BoardHistoryEntry,
 } from '../features/boards/domain/board-op-history';
+import { opTargetKey } from '../features/boards/domain/board-op-target';
 import { createRealtimeConnection, GuestTokenStore, type JoinContext } from '../lib/realtime';
 import { emitWithAck, WsError, type PokerSocket } from '../lib/socket';
 import { useSessionStore } from './session';
 
 const guestTokens = new GuestTokenStore('poker:board-guest:');
-
-/** Ключ цели операции — общий для `BoardOp` (клиент → сервер) и `BoardCommittedOp` (рассылка) */
-function opTargetKey(op: BoardOp): string {
-  switch (op.type) {
-    case 'item.create':
-      return `item:${op.item.id}`;
-    case 'item.patch':
-    case 'item.delete':
-    case 'item.react':
-      return `item:${op.id}`;
-    case 'edge.create':
-      return `edge:${op.edge.id}`;
-    case 'edge.patch':
-    case 'edge.delete':
-      return `edge:${op.id}`;
-  }
-}
-
-function committedOpTargetKey(op: BoardCommittedOp): string {
-  switch (op.type) {
-    case 'item.create':
-    case 'item.patch':
-      return `item:${op.item.id}`;
-    case 'item.delete':
-      return `item:${op.id}`;
-    case 'edge.create':
-    case 'edge.patch':
-      return `edge:${op.edge.id}`;
-    case 'edge.delete':
-      return `edge:${op.id}`;
-  }
-}
 
 /**
  * Локальное предсказание закоммиченной операции для оптимистичного применения —
@@ -249,7 +218,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       // улетела более новая (например, следующий кадр перетаскивания), это эхо
       // устарело и откатило бы уже показанный пользователю результат — пропускаем
       if (ownClientOpIds.delete(op.clientOpId)) {
-        const key = committedOpTargetKey(op);
+        const key = opTargetKey(op);
         if (lastOwnOpByTarget.get(key) === op.clientOpId) {
           lastOwnOpByTarget.delete(key);
         } else {
