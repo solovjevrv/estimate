@@ -1585,7 +1585,14 @@ describeDb('комнаты', () => {
       await service.submitVote(roomId, guestA, { value: 3 });
 
       // Тот же порядок запросов, что и в getState, но нарочно на read committed —
-      // без repeatable read каждый запрос внутри транзакции видит свежий коммит
+      // без repeatable read каждый запрос внутри транзакции видит свежий коммит.
+      // Пауза управляется явным сигналом (11.2), а не реальным setTimeout — раньше
+      // конкурирующий submitVote должен был успеть закоммититься за фиксированные 150мс,
+      // и под нагрузкой CI это один раз не уложилось в срок (флаки на PR #78).
+      let releaseRead: () => void;
+      const readGate = new Promise<void>((resolve) => {
+        releaseRead = resolve;
+      });
       const readWithDelay = db.transaction(
         async (tx) => {
           const repo = new RoomsRepository(tx);
@@ -1593,13 +1600,16 @@ describeDb('комнаты', () => {
           if (!round) {
             throw new Error('нет раунда');
           }
-          await new Promise((resolve) => setTimeout(resolve, 150));
+          await readGate;
           return repo.listVotes(round.id);
         },
         { isolationLevel: 'read committed', accessMode: 'read only' },
       );
 
+      // Голос guestB гарантированно закоммичен раньше listVotes — сигнал отпускает
+      // паузу только после этого, без гонки с таймером
       await service.submitVote(roomId, guestB, { value: 5 });
+      releaseRead!();
       const votes = await readWithDelay;
 
       // В отличие от repeatable read, здесь голос guestB виден тому же чтению —
