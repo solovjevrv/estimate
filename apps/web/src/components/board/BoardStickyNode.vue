@@ -6,17 +6,12 @@ import {
   type ReactionEmoji,
 } from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
-import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
-import { computed, inject, onBeforeUnmount, ref, toRef, useTemplateRef, watch } from 'vue';
+import { NodeResizer } from '@vue-flow/node-resizer';
+import { computed, inject, ref, toRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import { BOARD_CAN_EDIT_KEY } from '../../features/boards/context/board-canvas-keys';
 import {
-  BOARD_CAN_EDIT_KEY,
-  BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
-} from '../../features/boards/context/board-canvas-keys';
-import { readableTextColor } from '../../features/boards/domain/board-colors';
-import {
-  boardFontFamilyCss,
   STICKY_MAX_HEIGHT,
   STICKY_MAX_WIDTH,
   STICKY_DEFAULT_HEIGHT,
@@ -24,10 +19,9 @@ import {
   STICKY_MIN_HEIGHT,
   STICKY_MIN_WIDTH,
 } from '../../features/boards/config/board-item-defaults';
-import { FIT_FONT_MAX, useFitFontSize } from '../../features/boards/composables/use-fit-font-size';
-import { useRichTextEditing } from '../../features/boards/composables/use-rich-text-editing';
-import { useBoardSessionStore } from '../../stores/board-session';
+import { useBoardNodeEditing } from '../../features/boards/composables/use-board-node-editing';
 import { useSessionStore } from '../../stores/session';
+import { useBoardSessionStore } from '../../stores/board-session';
 import BoardEditingBadge from './shared/BoardEditingBadge.vue';
 import BoardRichText from './BoardRichText.vue';
 
@@ -37,25 +31,18 @@ const { t } = useI18n();
 const boardSession = useBoardSessionStore();
 const session = useSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
-const effectiveFontSizes = inject(BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY, null);
 
 const content = computed(() => props.data.content as BoardStickyContent);
-const bgColor = computed(() => props.data.style.color);
-const textColor = computed(() => props.data.style.textColor ?? readableTextColor(bgColor.value));
-const fontFamily = computed(() => boardFontFamilyCss(props.data.style.fontFamily));
-const textAlign = computed(() => props.data.style.textAlign ?? 'center');
-const baseFontSize = computed(() => props.data.style.fontSize ?? FIT_FONT_MAX);
-
-const contentBoxEl = useTemplateRef<HTMLDivElement>('contentBox');
-const textEl = useTemplateRef<HTMLSpanElement>('text');
 
 const {
+  bgColor,
+  textColor,
+  fontFamily,
+  textAlign,
+  fontSize,
   displayRuns,
   editing,
   lockedBy,
-  liveText,
-  formatTick,
-  editableEl,
   startEditing,
   cancelEditing,
   refreshActiveMarks,
@@ -67,70 +54,17 @@ const {
   onEditableCompositionEnd,
   onEditablePaste,
   onEditableDrop,
-} = useRichTextEditing({
+  onResizeEnd,
+} = useBoardNodeEditing({
   itemId: props.id,
+  data: toRef(props, 'data'),
   canEdit,
   isSelected: toRef(props, 'selected'),
   content,
   buildContent: (text, runs) => ({ type: 'sticky', text, ...(runs ? { runs } : {}) }),
+  defaultWidth: STICKY_DEFAULT_WIDTH,
+  defaultHeight: STICKY_DEFAULT_HEIGHT,
 });
-
-/**
- * Размер шрифта подбирается под фиксированный бокс карточки (не бокс растёт
- * под текст) — см. `use-fit-font-size.ts`. Один и тот же расчёт для обоих
- * режимов (просмотр/редактирование), чтобы шрифт не «прыгал» при входе в
- * редактирование. `manageHeight: true` — у contenteditable, как и у textarea
- * раньше, нет авторазмера по контенту, высотой в режиме редактирования
- * управляем сами.
- */
-const fitText = computed(() => {
-  // Формат (жирный/зачёркнутый) меняет ширину текста без изменения его длины —
-  // `liveText` в этот момент не поменялась бы сама по себе, поэтому дополнительно
-  // зависим от `formatTick`, чтобы авто-fit пересчитался и после клика по тулбару
-  void formatTick.value;
-  return editing.value ? liveText.value : content.value.text;
-});
-const boxWidth = computed(() => props.data.width);
-const boxHeight = computed(() => props.data.height);
-const measureEl = computed(() => (editing.value ? editableEl.value : textEl.value));
-const fontSize = useFitFontSize(
-  contentBoxEl,
-  measureEl,
-  fitText,
-  boxWidth,
-  boxHeight,
-  editing,
-  baseFontSize,
-  STICKY_DEFAULT_WIDTH,
-  STICKY_DEFAULT_HEIGHT,
-);
-
-/** Тулбар должен показывать отрисованный, а не сохранённый базовый размер. */
-let reportedItemId: string | null = null;
-watch(
-  [() => props.id, fontSize],
-  ([itemId, size]) => {
-    if (!effectiveFontSizes) return;
-    if (reportedItemId && reportedItemId !== itemId) effectiveFontSizes.remove(reportedItemId);
-    effectiveFontSizes.set(itemId, size);
-    reportedItemId = itemId;
-  },
-  { immediate: true },
-);
-onBeforeUnmount(() => {
-  if (reportedItemId) effectiveFontSizes?.remove(reportedItemId);
-});
-
-function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
-  void boardSession.applyOps([
-    {
-      type: 'item.patch',
-      clientOpId: crypto.randomUUID(),
-      id: props.id,
-      patch: { x, y, width, height },
-    },
-  ]);
-}
 
 /**
  * Реакции (12.12) — персистентные, в отличие от эфемерных комнатных: живут
