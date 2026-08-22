@@ -5,6 +5,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   boardEdgeToFlowEdge,
   boardItemToNode,
+  createFlowEdgesConverter,
+  createFlowNodesConverter,
   toFlowEdges,
   toFlowNodes,
 } from '../src/features/boards/adapters/vue-flow-adapter';
@@ -290,5 +292,126 @@ describe('boardItemToNode — фреймы и группы (14.3)', () => {
   it('верхнеуровневый элемент (parentId: null) — position остаётся абсолютной', () => {
     const node = boardItemToNode(stickyItem);
     expect(node.position).toEqual({ x: stickyItem.x, y: stickyItem.y });
+  });
+});
+
+describe('createFlowNodesConverter — мемоизация (17.8)', () => {
+  it('не поменявшийся элемент отдаёт ТОТ ЖЕ объект Node при повторном вызове', () => {
+    const toFlowNodesMemoized = createFlowNodesConverter();
+    const first = toFlowNodesMemoized([stickyItem, shapeItem], true);
+    const second = toFlowNodesMemoized([stickyItem, shapeItem], true);
+    expect(second[0]).toBe(first[0]);
+    expect(second[1]).toBe(first[1]);
+  });
+
+  it('изменённый (новая ссылка) элемент пересобирается — сосед по массиву не трогается', () => {
+    const toFlowNodesMemoized = createFlowNodesConverter();
+    const first = toFlowNodesMemoized([stickyItem, shapeItem], true);
+    const movedSticky: BoardItem = { ...stickyItem, x: stickyItem.x + 50 };
+    const second = toFlowNodesMemoized([movedSticky, shapeItem], true);
+    expect(second[0]).not.toBe(first[0]);
+    expect(second[0]!.position).toEqual({ x: movedSticky.x, y: movedSticky.y });
+    expect(second[1]).toBe(first[1]);
+  });
+
+  it('смена canEdit инвалидирует кэш для всех узлов (draggable зависит от него)', () => {
+    const toFlowNodesMemoized = createFlowNodesConverter();
+    const first = toFlowNodesMemoized([stickyItem], true);
+    const second = toFlowNodesMemoized([stickyItem], false);
+    expect(second[0]).not.toBe(first[0]);
+    expect(second[0]!.draggable).toBe(false);
+  });
+
+  it('родитель сменил ссылку (например, подвинулся) — ребёнок пересобирается с новой относительной позицией', () => {
+    const toFlowNodesMemoized = createFlowNodesConverter();
+    const first = toFlowNodesMemoized([frameItem, childItem], true);
+    const movedFrame: BoardItem = { ...frameItem, x: frameItem.x + 30, y: frameItem.y + 10 };
+    const second = toFlowNodesMemoized([movedFrame, childItem], true);
+    const firstChild = first.find((n) => n.id === 'c1')!;
+    const secondChild = second.find((n) => n.id === 'c1')!;
+    expect(secondChild).not.toBe(firstChild);
+    expect(secondChild.position).toEqual({
+      x: childItem.x - movedFrame.x,
+      y: childItem.y - movedFrame.y,
+    });
+  });
+
+  it('элемент, пропавший из снимка, вычищается из кэша, а не растёт бесконечно', () => {
+    const toFlowNodesMemoized = createFlowNodesConverter();
+    toFlowNodesMemoized([stickyItem, shapeItem], true);
+    const second = toFlowNodesMemoized([shapeItem], true);
+    expect(second.map((n) => n.id)).toEqual(['i2']);
+    // Возвращение того же stickyItem-объекта позже — не должно найти "призрачный"
+    // кэш от первого вызова (он был вычищен) и всё равно строит корректный узел
+    const third = toFlowNodesMemoized([stickyItem], true);
+    expect(third[0]!.id).toBe('i1');
+  });
+
+  it('несколько независимых конвертеров не делят кэш друг с другом', () => {
+    const converterA = createFlowNodesConverter();
+    const converterB = createFlowNodesConverter();
+    const a = converterA([stickyItem], true);
+    const b = converterB([stickyItem], true);
+    expect(a[0]).not.toBe(b[0]);
+    expect(a[0]).toEqual(b[0]);
+  });
+});
+
+describe('createFlowEdgesConverter — мемоизация (17.8)', () => {
+  afterEach(() => {
+    theme.value = 'light';
+  });
+
+  it('не поменявшаяся связь отдаёт ТОТ ЖЕ объект Edge при повторном вызове', () => {
+    const toFlowEdgesMemoized = createFlowEdgesConverter();
+    const first = toFlowEdgesMemoized([straightEdge, curvedEdge]);
+    const second = toFlowEdgesMemoized([straightEdge, curvedEdge]);
+    expect(second[0]).toBe(first[0]);
+    expect(second[1]).toBe(first[1]);
+  });
+
+  it('изменённая (новая ссылка) связь пересобирается — сосед не трогается', () => {
+    const toFlowEdgesMemoized = createFlowEdgesConverter();
+    const first = toFlowEdgesMemoized([straightEdge, curvedEdge]);
+    const relabeled: BoardEdge = { ...straightEdge, label: 'новая подпись' };
+    const second = toFlowEdgesMemoized([relabeled, curvedEdge]);
+    expect(second[0]).not.toBe(first[0]);
+    expect(second[0]!.label).toBe('новая подпись');
+    expect(second[1]).toBe(first[1]);
+  });
+
+  it('смена темы инвалидирует кэш auto-цвета связи, даже если сама связь не изменилась', () => {
+    const toFlowEdgesMemoized = createFlowEdgesConverter();
+    const autoColorEdge: BoardEdge = {
+      ...straightEdge,
+      style: { ...straightEdge.style, color: undefined },
+    };
+    theme.value = 'light';
+    const first = toFlowEdgesMemoized([autoColorEdge]);
+    expect(first[0]!.style).toMatchObject({ stroke: '#1A1A1A' });
+    theme.value = 'dark';
+    const second = toFlowEdgesMemoized([autoColorEdge]);
+    expect(second[0]).not.toBe(first[0]);
+    expect(second[0]!.style).toMatchObject({ stroke: '#FFFFFF' });
+  });
+
+  it('смена темы инвалидирует весь кэш разом — не различает по связи, явный цвет тема не задевает по значению', () => {
+    // Инвалидация по теме простая (весь кэш разом, не точечно по auto-color
+    // связям) — тема переключается редко, не на каждый WS-патч, в отличие от
+    // самих связей; усложнять кэш точечной проверкой ради этого не стоит.
+    const toFlowEdgesMemoized = createFlowEdgesConverter();
+    theme.value = 'light';
+    const first = toFlowEdgesMemoized([straightEdge]);
+    theme.value = 'dark';
+    const second = toFlowEdgesMemoized([straightEdge]);
+    expect(second[0]).not.toBe(first[0]);
+    expect(second[0]!.style).toEqual(first[0]!.style);
+  });
+
+  it('связь, пропавшая из снимка, вычищается из кэша', () => {
+    const toFlowEdgesMemoized = createFlowEdgesConverter();
+    toFlowEdgesMemoized([straightEdge, curvedEdge]);
+    const second = toFlowEdgesMemoized([curvedEdge]);
+    expect(second.map((e) => e.id)).toEqual(['e2']);
   });
 });

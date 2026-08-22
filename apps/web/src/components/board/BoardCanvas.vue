@@ -96,7 +96,10 @@ import type {
   BoardSelectionEdge,
   BoardSelectionNode,
 } from '../../features/boards/adapters/vue-flow-adapter';
-import { toFlowEdges, toFlowNodes } from '../../features/boards/adapters/vue-flow-adapter';
+import {
+  createFlowEdgesConverter,
+  createFlowNodesConverter,
+} from '../../features/boards/adapters/vue-flow-adapter';
 import { useBoardSessionStore } from '../../stores/board-session';
 import { useBoardClipboard } from '../../features/boards/composables/use-board-clipboard';
 import { useBoardCreation } from '../../features/boards/composables/use-board-creation';
@@ -147,8 +150,16 @@ const { t } = useI18n();
 const toast = useToast();
 const boardSession = useBoardSessionStore();
 
-const flowNodes = computed(() => toFlowNodes(props.items, props.canEdit));
-const flowEdges = computed(() => toFlowEdges(props.edges));
+// Мемоизирующие конвертеры (17.8) — по одному инстансу кэша на весь холст,
+// не на каждый вызов computed: инвалидация по id/ссылке/canEdit/теме внутри
+// `createFlowNodesConverter`/`createFlowEdgesConverter`. Кэш переживает смену
+// доски безопасно — id элементов глобально уникальны, устаревшие записи
+// самоочищаются в первом же пересчёте новой доски (не встречаются в новом
+// снимке → вычищаются как "не увиденные").
+const toFlowNodesMemoized = createFlowNodesConverter();
+const toFlowEdgesMemoized = createFlowEdgesConverter();
+const flowNodes = computed(() => toFlowNodesMemoized(props.items, props.canEdit));
+const flowEdges = computed(() => toFlowEdgesMemoized(props.edges));
 
 // markRaw — иначе Vue оборачивает объект с компонентами в reactive() и предупреждает
 // об этом в консоли (компонент-конструктор реактивным быть не должен)
