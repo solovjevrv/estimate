@@ -26,7 +26,7 @@ import type { PokerServer, PokerSocket } from '../socket';
 import type { ParticipantIdentity } from './presence';
 import { RoomReactions } from './room-reactions';
 import { RoomTimer } from './room-timer';
-import type { RoomsService } from './rooms.service';
+import type { RoomsGameService } from './rooms.game.service';
 
 type Ack<T> = (response: WsAck<T>) => void;
 
@@ -47,7 +47,7 @@ export class RoomsGateway {
   private readonly broadcasts = new Map<string, Promise<void>>();
 
   constructor(
-    private readonly service: RoomsService,
+    private readonly service: RoomsGameService,
     private readonly presence = new PresenceRegistry<ParticipantIdentity>(),
     private readonly timer = new RoomTimer(),
     private readonly reactions = new RoomReactions(),

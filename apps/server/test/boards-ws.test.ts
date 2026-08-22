@@ -27,7 +27,7 @@ import { ACCESS_COOKIE, TokenService, UsersRepository } from '../src/auth';
 import { BoardsService } from '../src/boards';
 import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
-import { RoomsService } from '../src/rooms';
+import { RoomsGameService } from '../src/rooms';
 import { SocketGateway } from '../src/socket';
 import { TeamsRepository, TeamsService } from '../src/teams';
 
@@ -182,7 +182,7 @@ describeDb('WS-канал досок', () => {
     teamsService = TeamsService.forDatabase(db);
     teamsRepository = new TeamsRepository(db);
     app = buildApp({ db, auth: authConfig });
-    const roomsService = RoomsService.forDatabase(db, authConfig.guestSecret);
+    const roomsService = RoomsGameService.forDatabase(db, authConfig.guestSecret);
     const boardsService = BoardsService.forDatabase(db, authConfig.guestSecret);
     new SocketGateway(roomsService, boardsService, { corsOrigin: '*' }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });

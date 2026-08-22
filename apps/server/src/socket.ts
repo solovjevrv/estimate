@@ -2,7 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { Server, type Socket } from 'socket.io';
 
 import { BoardsGateway, BoardsService } from './boards';
-import { RoomsGateway, RoomsService } from './rooms';
+import { RoomsGameService, RoomsGateway } from './rooms';
 
 /** Данные, которые сервер держит на каждом подключении */
 export interface SocketData {
@@ -47,7 +47,7 @@ export interface SocketGatewayOptions {
  */
 export class SocketGateway {
   constructor(
-    private readonly roomsService: RoomsService,
+    private readonly roomsService: RoomsGameService,
     private readonly boardsService: BoardsService,
     private readonly options: SocketGatewayOptions,
   ) {}
