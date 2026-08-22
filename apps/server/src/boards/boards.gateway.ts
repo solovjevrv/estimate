@@ -2,6 +2,7 @@ import {
   BOARD_RING_BUFFER_SIZE,
   BOARD_WS_EVENTS,
   BOARD_WS_SERVER_EVENTS,
+  hasBoardAccess,
   type ApplyBoardOpsPayload,
   type ApplyBoardOpsResult,
   type BoardAwarenessPayload,
@@ -30,9 +31,13 @@ interface EventArgs<P> {
 const NO_OP_ACK: Ack<unknown> = () => {};
 
 /**
- * Реалтайм-канал досок (12.4). Права проверяются на каждом событии по живому
- * состоянию сервера — так же, как у `RoomsGateway`: клиент присылает только
- * намерение, доступ и роль пересчитываются заново.
+ * Реалтайм-канал досок (12.4). У мутирующих событий (`JOIN`, `APPLY`) права
+ * проверяются по живому состоянию сервера — так же, как у `RoomsGateway`:
+ * клиент присылает только намерение, доступ и роль пересчитываются заново из
+ * БД. У эфемерного `AWARENESS` (14.7) — доступ, посчитанный на момент `JOIN`
+ * (тоже живая проверка, но не на каждое отдельное событие): курсор не
+ * чувствительные данные, а частый троттлед канал не стоит нагружать запросом
+ * в БД на каждое движение мыши.
  */
 export class BoardsGateway {
   /** Последние батчи операций на доску — используются для догона по `sinceRevision` */
@@ -75,6 +80,15 @@ export class BoardsGateway {
         const boardId = this.presence.scopeOf(socket.id);
         const identity = this.presence.identityOf(socket.id);
         if (!boardId || !identity || !payload) {
+          return;
+        }
+        // Клиент сам не шлёт курсор без canEdit (BoardCanvas.vue), но модифицированный
+        // клиент технически мог бы — доступ, посчитанный на JOIN, здесь тоже
+        // обязателен (14.7). Не полный live-recheck на каждое событие (как у APPLY):
+        // курсор не чувствительные данные, а частый троттлед канал не стоит нагружать
+        // запросом в БД на каждое движение мыши — доступ пересчитывается заново при
+        // каждом (пере)подключении к доске.
+        if (!hasBoardAccess(identity.access, 'edit')) {
           return;
         }
         // socket.to() (в отличие от io.to()) не шлёт самому отправителю — курсор
