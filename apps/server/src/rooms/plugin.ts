@@ -2,7 +2,6 @@ import fastifyRateLimit from '@fastify/rate-limit';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
-import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
 import { archivedQuerySchema, idParamsSchema } from '../http/schemas';
 
@@ -30,7 +29,6 @@ export interface RoomsRateLimitOptions {
 }
 
 export interface RoomsPluginOptions {
-  auth: AuthConfig;
   /** Переопределение для интеграционных тестов, где один и тот же IP легитимно шлёт много запросов подряд */
   rateLimit?: RoomsRateLimitOptions;
 }
@@ -46,7 +44,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
   }
 
   // Отдельный секрет гостевых токенов (выведен из jwtSecret) — их выдаёт только сервер
-  const controller = new RoomsController(RoomsService.forDatabase(app.db, opts.auth.guestSecret));
+  const controller = new RoomsController(RoomsService.forDatabase(app.db));
 
   /**
    * Отдельный вложенный контекст (без fp): так у лимитера свои границы и он не
