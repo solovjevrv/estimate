@@ -24,6 +24,7 @@ import {
 } from '@vue-flow/core';
 
 import { resolveEdgeColor } from '../config/board-item-defaults';
+import { theme, type ThemeMode } from '../../../lib/theme';
 
 /**
  * Типы узлов/связей Vue Flow с нашими доменными данными — единственная точка
@@ -219,4 +220,112 @@ export function boardEdgeToFlowEdge(edge: BoardEdge): Edge<BoardEdge> {
 
 export function toFlowEdges(edges: readonly BoardEdge[]): Edge<BoardEdge>[] {
   return edges.map(boardEdgeToFlowEdge);
+}
+
+/**
+ * Мемоизирующая обёртка над `toFlowNodes` (17.8) — `BoardCanvas.vue` зовёт её
+ * из `computed`/`watch` на КАЖДЫЙ входящий WS-патч, а не только когда реально
+ * поменялся конкретный узел: throttled-патч чужого драга каждые ~80мс иначе
+ * пересобирал бы новые объекты `Node` для ВСЕХ элементов доски, не только для
+ * двигающегося. Кэш по id хранит последний `BoardItem`/родителя/`canEdit`,
+ * которыми был построен узел — если ни один из них не изменился (сравнение
+ * по ссылке, не по значению: `apply-local-op.ts` заменяет объект элемента
+ * целиком при патче, не мутирует поля), отдаётся тот же объект `Node`, что и
+ * в прошлый раз, вместо пересборки.
+ *
+ * Возвращает новую функцию-конвертер с приватным кэшем — не глобальную
+ * функцию с модульным состоянием, чтобы несколько независимых холстов (тесты,
+ * будущая многодосочная страница) не делили кэш и не текли друг в друга.
+ */
+export function createFlowNodesConverter(): (
+  items: readonly BoardItem[],
+  canEdit: boolean,
+) => Node<BoardItem>[] {
+  interface CacheEntry {
+    item: BoardItem;
+    parent: BoardItem | undefined;
+    canEdit: boolean;
+    node: Node<BoardItem>;
+  }
+  const cache = new Map<string, CacheEntry>();
+
+  return function toFlowNodesMemoized(items, canEdit) {
+    const byId = new Map(items.map((item) => [item.id, item]));
+    const result: Node<BoardItem>[] = [];
+    const visited = new Set<string>();
+    const seenIds = new Set<string>();
+
+    function visit(id: string): void {
+      if (visited.has(id)) return;
+      visited.add(id);
+      const item = byId.get(id);
+      if (!item) return;
+      if (item.parentId !== null) visit(item.parentId);
+      const parent = item.parentId !== null ? byId.get(item.parentId) : undefined;
+      seenIds.add(id);
+
+      const cached = cache.get(id);
+      if (
+        cached &&
+        cached.item === item &&
+        cached.parent === parent &&
+        cached.canEdit === canEdit
+      ) {
+        result.push(cached.node);
+        return;
+      }
+      const node = boardItemToNode(item, parent, canEdit);
+      cache.set(id, { item, parent, canEdit, node });
+      result.push(node);
+    }
+
+    for (const item of items) visit(item.id);
+
+    // Элементы, удалённые/переставшие приходить в снимке — не держим их
+    // устаревшие записи в кэше вечно (иначе он рос бы неограниченно за сессию).
+    for (const id of cache.keys()) {
+      if (!seenIds.has(id)) cache.delete(id);
+    }
+
+    return result;
+  };
+}
+
+/**
+ * Мемоизирующая обёртка над `toFlowEdges` (17.8), тот же приём, что у
+ * `createFlowNodesConverter`. У связи, в отличие от элемента, есть ещё один
+ * источник изменения БЕЗ смены ссылки на `BoardEdge` — тема оформления
+ * (`resolveEdgeColor` берёт auto-цвет из неё, когда `edge.style.color` не
+ * задан явно), поэтому кэш дополнительно инвалидируется по текущей теме.
+ */
+export function createFlowEdgesConverter(): (edges: readonly BoardEdge[]) => Edge<BoardEdge>[] {
+  interface CacheEntry {
+    edge: BoardEdge;
+    theme: ThemeMode;
+    flowEdge: Edge<BoardEdge>;
+  }
+  const cache = new Map<string, CacheEntry>();
+
+  return function toFlowEdgesMemoized(edges) {
+    const seenIds = new Set<string>();
+    const result: Edge<BoardEdge>[] = [];
+
+    for (const edge of edges) {
+      seenIds.add(edge.id);
+      const cached = cache.get(edge.id);
+      if (cached && cached.edge === edge && cached.theme === theme.value) {
+        result.push(cached.flowEdge);
+        continue;
+      }
+      const flowEdge = boardEdgeToFlowEdge(edge);
+      cache.set(edge.id, { edge, theme: theme.value, flowEdge });
+      result.push(flowEdge);
+    }
+
+    for (const id of cache.keys()) {
+      if (!seenIds.has(id)) cache.delete(id);
+    }
+
+    return result;
+  };
 }
