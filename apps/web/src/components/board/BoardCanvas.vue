@@ -45,6 +45,7 @@ import { MiniMap } from '@vue-flow/minimap';
 import {
   ConnectionMode,
   Panel,
+  useNodesInitialized,
   useVueFlow,
   VueFlow,
   type GraphNode,
@@ -57,6 +58,7 @@ import {
   onBeforeUnmount,
   onMounted,
   provide,
+  ref,
   shallowRef,
   useTemplateRef,
   watch,
@@ -541,16 +543,41 @@ onBeforeUnmount(() => {
 });
 
 /**
+ * Автофит при первом появлении содержимого доски (17.12) — раньше это делал
+ * булев проп `fit-view-on-init` у `<VueFlow>`, но он вызывает библиотечный
+ * `fitView()` совсем без опций, так что зум ограничен только общим
+ * `:max-zoom="2"`: для доски с одним маленьким стикером итог — зум 200% сразу
+ * после создания первого элемента (воспроизведено в
+ * `boards-frames-groups.spec.ts`). Автофит без явного действия пользователя
+ * не должен приближать БЛИЖЕ 100% — обычный ручной fit-view (Ctrl+1, тулбар)
+ * по-прежнему волен использовать весь `:max-zoom`.
+ *
+ * `useNodesInitialized()` — тот же сигнал «у всех текущих узлов уже есть
+ * размеры», на который опирался внутренний `fit-view-on-init`: вызывать
+ * `fitView` раньше бессмысленно, узлы без dimensions в подгонку не попадают.
+ */
+const nodesInitialized = useNodesInitialized();
+const autoFitDone = ref(false);
+watch(nodesInitialized, (ready) => {
+  if (!ready || autoFitDone.value) return;
+  autoFitDone.value = true;
+  void fitView({ maxZoom: 1 });
+});
+
+/**
  * `BoardPage.vue` переиспользует один и тот же `BoardCanvas` при смене доски
  * (меняет пропы, не размонтирует компонент), так что без явной очистки записи
  * от уже покинутой доски (в т.ч. trailing throttles) продолжали бы висеть в
  * памяти всю сессию страницы. Состояние — в composable, а не в локальном Map.
+ * Автофит тоже переармируется — иначе вторая и последующие доски за сессию
+ * открывались бы без начальной подгонки вида вовсе.
  */
 watch(
   () => props.board.id,
   () => {
     dragAndSnap.reset();
     viewportControl.resetAwareness();
+    autoFitDone.value = false;
   },
 );
 
@@ -786,7 +813,6 @@ useBoardHotkeys({
       :min-zoom="0.1"
       :max-zoom="2"
       :only-render-visible-elements="true"
-      fit-view-on-init
       :delete-key-code="null"
       :elevate-nodes-on-select="false"
       @connect="edges.onConnect"
