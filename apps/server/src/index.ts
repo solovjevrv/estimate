@@ -3,7 +3,7 @@ import { BoardImagesService, BoardsService } from './boards';
 import { loadConfig } from './config';
 import { createDb } from './db';
 import { attachSentryErrorHandler, initSentry } from './monitoring';
-import { RoomsService } from './rooms';
+import { RoomsGameService } from './rooms';
 import { SocketGateway } from './socket';
 
 async function main(): Promise<void> {
@@ -28,7 +28,7 @@ async function main(): Promise<void> {
     attachSentryErrorHandler(app);
   }
 
-  const roomsService = RoomsService.forDatabase(db, config.auth.guestSecret);
+  const roomsService = RoomsGameService.forDatabase(db, config.auth.guestSecret);
   const boardImagesService = await BoardImagesService.forDirectory(config.boardAssetsDir);
   const boardsService = BoardsService.forDatabase(
     db,
