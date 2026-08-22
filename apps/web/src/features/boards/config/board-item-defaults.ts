@@ -2,7 +2,7 @@
  * Значения по умолчанию и границы для создания/резайза стикеров (12.6) —
  * держим их отдельно от компонентов, чтобы холст и тулбар их не дублировали.
  */
-import type { BoardColorHex, BoardFontFamily } from '@poker/shared';
+import type { BoardColorHex, BoardFontFamily, BoardItemContent } from '@poker/shared';
 
 import { theme } from '../../../lib/theme';
 
@@ -67,6 +67,22 @@ export const TEXT_MIN_WIDTH = STICKY_MIN_WIDTH;
 export const TEXT_MIN_HEIGHT = STICKY_MIN_HEIGHT;
 export const TEXT_MAX_WIDTH = STICKY_MAX_WIDTH;
 export const TEXT_MAX_HEIGHT = STICKY_MAX_HEIGHT;
+
+/** Дефолтный бокс для создания элемента по типу контента — картинка/эмодзи/стикер создаются со своим размером отдельно (см. их composable/обработчик), сюда не входят */
+export function textDefaultDimensions(
+  content: BoardItemContent,
+): { width: number; height: number } | null {
+  switch (content.type) {
+    case 'sticky':
+      return { width: STICKY_DEFAULT_WIDTH, height: STICKY_DEFAULT_HEIGHT };
+    case 'shape':
+      return { width: SHAPE_DEFAULT_WIDTH, height: SHAPE_DEFAULT_HEIGHT };
+    case 'text':
+      return { width: TEXT_DEFAULT_WIDTH, height: TEXT_DEFAULT_HEIGHT };
+    default:
+      return null;
+  }
+}
 
 /**
  * Картинка на доске (13.2) — сохраняет пропорции исходника, дефолтный бокс —
@@ -142,4 +158,16 @@ export function minZIndex(elements: readonly ZIndexed[]): number {
 
 export function maxZIndex(elements: readonly ZIndexed[]): number {
   return elements.reduce((max, el) => Math.max(max, el.zIndex), 0);
+}
+
+/**
+ * Сохраняет прежнюю baseline-семантику: максимум не ниже 0, минимум не выше 0.
+ * Карточки и связи делят одно пространство порядка (12.21) — вызывающий код
+ * передаёт сюда смешанный массив `[...items, ...edges]`, чтобы «на передний/
+ * задний план» для связи или карточки учитывало оба типа, а не только один.
+ * Используется и в `useBoardSelection` (bring/send для выделения), и в
+ * `useBoardEdges` (дефолтный zIndex новой связи при создании).
+ */
+export function zIndexRange(elements: readonly ZIndexed[]): { max: number; min: number } {
+  return { max: maxZIndex(elements), min: minZIndex(elements) };
 }
