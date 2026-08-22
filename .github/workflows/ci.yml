@@ -35,8 +35,31 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # Объектное хранилище (Epic 21) — интеграционный тест MinioObjectStorage
+      # (apps/server/test/minio-object-storage.test.ts) гоняется против настоящего
+      # MinIO, не только фейка. Тот же образ/тег, что и в docker-compose.yml —
+      # уже проверен вживую локально. command: у служебных контейнеров GitHub
+      # Actions поддерживается с апреля 2026 — до этого minio/minio было нечем
+      # завести (без command он допечатывает usage и выходит).
+      minio:
+        image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin123
+        ports:
+          - 9000:9000
+        command: server /data
     env:
       DATABASE_URL: postgres://poker:poker@localhost:5432/poker
+      MINIO_ENDPOINT: localhost
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: 'false'
+      # В CI — сразу root-учётка MinIO, без отдельной app-учётки с урезанными
+      # правами: контейнер одноразовый и живёт только на время джобы, разделение
+      # ролей имеет смысл в проде (см. minio-init в docker-compose.prod.yml), не здесь.
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: poker-assets
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -53,6 +76,23 @@ jobs:
       - name: Установка зависимостей
         run: pnpm install --frozen-lockfile
 
+      # minio/minio, в отличие от bitnami-образов, не создаёт бакет из env
+      # переменной сам — заводим его тем же mc, что и в docker-compose.
+      - name: Подготовить бакет MinIO для тестов
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && break
+            if [ "$i" -eq 30 ]; then
+              echo "MinIO не поднялся за 30с" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
+          chmod +x /usr/local/bin/mc
+          mc alias set local http://localhost:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"
+          mc mb --ignore-existing "local/$MINIO_BUCKET"
+
       - name: Линтер
         run: pnpm lint
 
@@ -67,7 +107,7 @@ jobs:
       - name: Unit-тесты (без БД)
         run: pnpm test:unit
 
-      - name: Тесты сервера (с PostgreSQL)
+      - name: Тесты сервера (с PostgreSQL и MinIO)
         run: pnpm test:server
 
       - name: Сборка

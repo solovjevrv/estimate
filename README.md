@@ -163,6 +163,22 @@ docker compose -f docker-compose.prod.yml run --rm --no-deps \
   -c "tar -xzf /backups/<имя_файла>.tar.gz -C /avatars"
 ```
 
+### Объектное хранилище (MinIO, Epic 21)
+
+`docker-compose.prod.yml` поднимает MinIO для аватарок/картинок досок/стикер-паков — на момент
+задачи 21.1 это только фундамент: сам `server` его ещё не читает и не пишет (аватарки/картинки
+досок по-прежнему на локальном диске), миграция — отдельные задачи 21.2/21.5. API и консоль MinIO
+наружу не публикуются, доступ только по внутренней сети Compose.
+
+Обязательные переменные в `.env` на сервере: `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` (root —
+использует только одноразовый `minio-init`, сервер их не видит) и `MINIO_ACCESS_KEY`/
+`MINIO_SECRET_KEY` (учётка уровня приложения, права только на бакет `poker-assets` — заводится
+тем же `minio-init` через `mc admin user add`/`mc admin policy attach`). Сервис `minio-init`
+идемпотентен — безопасно перезапускать при каждом `up`.
+
+Бэкап бакета — сервис `minio-backup`, тем же принципом, что и `db-backup` ниже: ежедневный
+`mc mirror` в volume `object_storage_backups`, хранение 14 дней, только локально на том же сервере.
+
 ### История: переезд с pokerplan.solovyovdev.ru:3000
 
 Раньше 443/8443 на сервере были заняты VPN-панелью (x-ui/xray), поэтому пробовали Cloudflare-прокси
