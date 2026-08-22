@@ -575,5 +575,28 @@ describeDb('WS-канал досок', () => {
       expect(received.userId).toBe(owner.id);
       expect(received.avatarUrl).toBe('https://example.com/avatar.png');
     });
+
+    it('участник без права редактирования не может транслировать курсор (14.7)', async () => {
+      const owner = await newUser('awareness-view-owner');
+      const guest = await newUser('awareness-view-guest');
+      const teamId = await newTeam(owner, [[guest, 'guest']]);
+      const boardId = await newBoard(owner, teamId);
+      const ownerClient = connect(owner);
+      const guestClient = connect(guest);
+      await joinBoard(ownerClient, boardId);
+      await joinBoard(guestClient, boardId);
+
+      let received = false;
+      ownerClient.once(BOARD_WS_SERVER_EVENTS.AWARENESS, () => {
+        received = true;
+      });
+      guestClient.emit(BOARD_WS_EVENTS.AWARENESS, { kind: 'cursor', data: { x: 1, y: 2 } });
+      // Барьер вместо произвольной паузы: следующее событие того же сокета с ack
+      // гарантированно обработано сервером после awareness — порядок доставки
+      // для одного сокета сохраняется
+      await joinBoard(guestClient, boardId);
+
+      expect(received).toBe(false);
+    });
   });
 });
