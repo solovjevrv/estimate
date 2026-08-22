@@ -3,6 +3,7 @@ import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { trimText } from '@poker/shared';
 import { computed, reactive, watch } from 'vue';
 
+import { nextEntityModalValue } from '../lib/entity-text-modal';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 
 const props = withDefaults(
@@ -37,7 +38,7 @@ const state = reactive({ value: '' });
 watch(
   () => props.open,
   (isOpen) => {
-    state.value = isOpen ? props.initialValue : '';
+    state.value = nextEntityModalValue(isOpen, props.initialValue, state.value);
   },
 );
 
