@@ -35,6 +35,11 @@ services:
       YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-}
       YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      # MinIO намеренно не подключен здесь (21.1): аватарки/картинки досок пока
+      # пишутся на локальный диск (volumes ниже) — MINIO_ACCESS_KEY/SECRET_KEY
+      # заводятся вместе с фактической миграцией сервисов (21.2/21.5), не раньше,
+      # чтобы новая инфраструктура не становилась точкой отказа раньше, чем ею
+      # начинают реально пользоваться.
     volumes:
       - avatars_data:/app/apps/server/avatars
       - board_assets_data:/app/apps/server/board-assets
@@ -47,6 +52,48 @@ services:
       timeout: 3s
       retries: 6
       start_period: 5s
+
+  # Объектное хранилище (Epic 21) — поднято, но пока не в горячем пути: до
+  # миграции аватарок/картинок досок (21.2/21.5) `server` его не читает и не
+  # пишет. API/консоль не публикуются — доступ только по внутренней сети Compose.
+  minio:
+    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  # Идемпотентный init: приватный бакет + учётка приложения (не root) с правами
+  # только на этот бакет. Одноразовый — гоняется при каждом up, безопасно повторно.
+  minio-init:
+    image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
+      MINIO_BUCKET: ${MINIO_BUCKET:-poker-assets}
+    entrypoint: >
+      /bin/sh -c '
+      mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+      mc mb --ignore-existing "local/$$MINIO_BUCKET" &&
+      mc admin user add local "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY" &&
+      printf "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::%s\",\"arn:aws:s3:::%s/*\"]}]}" "$$MINIO_BUCKET" "$$MINIO_BUCKET" > /tmp/poker-app-policy.json &&
+      mc admin policy create local poker-app-policy /tmp/poker-app-policy.json &&
+      mc admin policy attach local poker-app-policy --user "$$MINIO_ACCESS_KEY"
+      '
 
   web:
     build:
@@ -117,10 +164,35 @@ services:
       tar -czf "/backups/board-assets_$$(date +%Y-%m-%d_%H%M%S).tar.gz" -C /board-assets . && find /backups -name "board-assets_*.tar.gz" -mtime +14 -delete;
       sleep 24h & wait $${!}; done'
 
+  # Бэкап бакета MinIO (21.1) — тем же принципом, что и db-backup выше: ежедневный
+  # локальный снимок, хранение 14 дней, не защита от потери диска целиком. Пока
+  # бакет пуст (аватарки/картинки ещё не мигрированы, 21.2/21.5) — снимает пустые
+  # срезы, механизм проверен заранее, а не в момент, когда в бакете уже есть данные.
+  minio-backup:
+    image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+    restart: unless-stopped
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
+      MINIO_BUCKET: ${MINIO_BUCKET:-poker-assets}
+    volumes:
+      - object_storage_backups:/backups
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    entrypoint: >
+      /bin/sh -c 'trap exit TERM;
+      mc alias set local http://minio:9000 "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY";
+      while :; do
+      mc mirror --quiet "local/$$MINIO_BUCKET" "/backups/$$(date +%Y-%m-%d_%H%M%S)" && find /backups -maxdepth 1 -mindepth 1 -mtime +14 -exec rm -rf {} \;;
+      sleep 24h & wait $${!}; done'
+
 volumes:
   postgres_data:
   postgres_backups:
   avatars_data:
   board_assets_data:
+  minio_data:
+  object_storage_backups:
   letsencrypt:
   certbot_www:

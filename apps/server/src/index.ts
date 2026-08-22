@@ -3,6 +3,7 @@ import { BoardImagesService, BoardsService } from './boards';
 import { loadConfig } from './config';
 import { createDb } from './db';
 import { attachSentryErrorHandler, initSentry } from './monitoring';
+import { MinioObjectStorage } from './platform/storage';
 import { RoomsGameService } from './rooms';
 import { SocketGateway } from './socket';
 
@@ -10,6 +11,9 @@ async function main(): Promise<void> {
   const config = loadConfig();
   const sentryEnabled = initSentry(config.sentryDsn);
   const { db, pool } = createDb(config.databaseUrl);
+  const objectStorage = config.objectStorage
+    ? new MinioObjectStorage(config.objectStorage)
+    : undefined;
 
   const app = buildApp(
     {
@@ -21,6 +25,7 @@ async function main(): Promise<void> {
       docsEnabled: config.docsEnabled,
       avatarsDir: config.avatarsDir,
       boardAssetsDir: config.boardAssetsDir,
+      objectStorage,
     },
     { logger: true },
   );

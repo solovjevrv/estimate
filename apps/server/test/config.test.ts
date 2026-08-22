@@ -13,6 +13,16 @@ function stubBaseEnv(): void {
   vi.stubEnv('GOOGLE_CLIENT_SECRET', '');
   vi.stubEnv('YANDEX_CLIENT_ID', '');
   vi.stubEnv('YANDEX_CLIENT_SECRET', '');
+  vi.stubEnv('MINIO_ACCESS_KEY', '');
+  vi.stubEnv('MINIO_SECRET_KEY', '');
+  // undefined, не '' — иначе '' ?? 'default' в loadObjectStorageConfig не сработает
+  // (?? реагирует только на null/undefined). В CI эти переменные реально заданы
+  // на уровне джобы (нужны отдельному интеграционному тесту MinioObjectStorage) —
+  // без явной очистки тесты дефолтов здесь ловили бы значения из окружения CI.
+  vi.stubEnv('MINIO_ENDPOINT', undefined);
+  vi.stubEnv('MINIO_PORT', undefined);
+  vi.stubEnv('MINIO_USE_SSL', undefined);
+  vi.stubEnv('MINIO_BUCKET', undefined);
 }
 
 afterEach(() => {
@@ -75,5 +85,61 @@ describe('loadConfig: обязательные переменные', () => {
     vi.stubEnv('GOOGLE_CLIENT_ID', 'только-id');
 
     expect(() => loadConfig()).toThrow(/google/);
+  });
+});
+
+describe('loadConfig: объектное хранилище (21.1)', () => {
+  it('без MINIO_ACCESS_KEY/MINIO_SECRET_KEY остаётся не задано', () => {
+    stubBaseEnv();
+
+    expect(loadConfig().objectStorage).toBeUndefined();
+  });
+
+  it('половина ключей MinIO считается ошибкой конфигурации', () => {
+    stubBaseEnv();
+    vi.stubEnv('MINIO_ACCESS_KEY', 'только-access');
+
+    expect(() => loadConfig()).toThrow(/MINIO_ACCESS_KEY.*MINIO_SECRET_KEY/);
+  });
+
+  it('обе части собирают конфиг с дефолтами endpoint/port/bucket', () => {
+    stubBaseEnv();
+    vi.stubEnv('MINIO_ACCESS_KEY', 'app-access');
+    vi.stubEnv('MINIO_SECRET_KEY', 'app-secret');
+
+    expect(loadConfig().objectStorage).toEqual({
+      endpoint: 'minio',
+      port: 9000,
+      useSSL: false,
+      accessKey: 'app-access',
+      secretKey: 'app-secret',
+      bucket: 'poker-assets',
+    });
+  });
+
+  it('MINIO_ENDPOINT/MINIO_PORT/MINIO_USE_SSL/MINIO_BUCKET переопределяют дефолты', () => {
+    stubBaseEnv();
+    vi.stubEnv('MINIO_ACCESS_KEY', 'app-access');
+    vi.stubEnv('MINIO_SECRET_KEY', 'app-secret');
+    vi.stubEnv('MINIO_ENDPOINT', 's3.example.com');
+    vi.stubEnv('MINIO_PORT', '443');
+    vi.stubEnv('MINIO_USE_SSL', 'true');
+    vi.stubEnv('MINIO_BUCKET', 'custom-bucket');
+
+    expect(loadConfig().objectStorage).toMatchObject({
+      endpoint: 's3.example.com',
+      port: 443,
+      useSSL: true,
+      bucket: 'custom-bucket',
+    });
+  });
+
+  it('некорректный MINIO_PORT отклоняется', () => {
+    stubBaseEnv();
+    vi.stubEnv('MINIO_ACCESS_KEY', 'app-access');
+    vi.stubEnv('MINIO_SECRET_KEY', 'app-secret');
+    vi.stubEnv('MINIO_PORT', 'не число');
+
+    expect(() => loadConfig()).toThrow(/MINIO_PORT/);
   });
 });
