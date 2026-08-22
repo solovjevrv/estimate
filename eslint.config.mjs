@@ -211,6 +211,26 @@ export default tseslint.config(
     rules: { 'no-restricted-imports': 'off' },
   },
   {
+    // 17.14/REFACTORING_PLAN п.1.2: одна фича не читает внутренности другой —
+    // общее поднимается в lib/ или composables/, а не импортируется напрямую
+    // из соседнего features/*. До сих пор это держалось только на дисциплине.
+    files: ['apps/web/src/features/**/*.{ts,vue}'],
+    rules: {
+      'import-x/no-restricted-paths': [
+        'error',
+        {
+          zones: ['auth', 'boards', 'rooms', 'teams'].map((feature) => ({
+            target: `./apps/web/src/features/${feature}`,
+            from: './apps/web/src/features',
+            except: [`./${feature}`],
+            message:
+              'features/a не импортирует features/b напрямую — общее поднимать в lib/ или composables/.',
+          })),
+        },
+      ],
+    },
+  },
+  {
     files: ['apps/server/**/*.ts'],
     languageOptions: { globals: globals.node },
   },

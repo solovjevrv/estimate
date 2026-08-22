@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import { boardLocators } from '../src/board-locators';
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
+import { waitForStableBox } from '../src/stable-box';
 
 /**
  * Фреймы и группы (14.3) — видимые контейнеры (frame) и невидимые (group).
@@ -540,12 +541,21 @@ test.describe('Доски: фреймы и группы', () => {
     await expect(board.pane).toBeVisible();
     await board.pane.click();
 
-    // Фрейм + стикер внутри него (приклеивается сразу, 14.3)
+    // Фрейм + стикер внутри него (приклеивается сразу, 14.3). Автофит на
+    // пустой доске подгоняется под только что созданный 640×400 фрейм (17.12)
+    // и заодно перецентровывает pan — срабатывает асинхронно (ResizeObserver),
+    // поэтому ждём стабилизации boundingBox фрейма, а не полагаемся на текст
+    // зума (он и так «100%» ДО фита — проверка прошла бы, не дождавшись сдвига).
     await board.toolbarButton('Фрейм').click();
     await board.pane.click({ position: { x: 300, y: 200 } });
     await expect(board.frameNodes).toHaveCount(1);
+
+    // Стикер — ближе к верхнему левому углу фрейма, не в его центре: ниже
+    // копируем фрейм кликом по умолчанию в центр локатора (`frameNodes.click()`),
+    // а сплошной 180×180 стикер поверх центра фрейма перехватил бы этот клик.
+    const frameBox = await waitForStableBox(board.frameNodes);
     await board.toolbarButton('Стикер').click();
-    await board.pane.click({ position: { x: 310, y: 210 } });
+    await page.mouse.click(frameBox.x + frameBox.width * 0.2, frameBox.y + frameBox.height * 0.2);
     await expect(board.stickyNodes).toHaveCount(1);
     await page.keyboard.press('Escape');
 
