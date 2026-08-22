@@ -15,6 +15,14 @@ function stubBaseEnv(): void {
   vi.stubEnv('YANDEX_CLIENT_SECRET', '');
   vi.stubEnv('MINIO_ACCESS_KEY', '');
   vi.stubEnv('MINIO_SECRET_KEY', '');
+  // undefined, не '' — иначе '' ?? 'default' в loadObjectStorageConfig не сработает
+  // (?? реагирует только на null/undefined). В CI эти переменные реально заданы
+  // на уровне джобы (нужны отдельному интеграционному тесту MinioObjectStorage) —
+  // без явной очистки тесты дефолтов здесь ловили бы значения из окружения CI.
+  vi.stubEnv('MINIO_ENDPOINT', undefined);
+  vi.stubEnv('MINIO_PORT', undefined);
+  vi.stubEnv('MINIO_USE_SSL', undefined);
+  vi.stubEnv('MINIO_BUCKET', undefined);
 }
 
 afterEach(() => {
