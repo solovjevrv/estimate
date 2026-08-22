@@ -479,18 +479,36 @@ function validateGeometry(
   itemId: string,
   state: BoardOpState,
 ): Pick<BoardItem, 'x' | 'y' | 'width' | 'height' | 'rotation' | 'zIndex' | 'parentId'> {
-  // Родитель (14.3): null, либо id существующего контейнера (frame/group).
-  // Вложенность запрещена: контейнер сам не может иметь родителя — из этого
-  // неизбежно отсутствие циклов (родитель всегда верхнеуровневый). Инварианты:
-  //  - контейнер (frame/group) всегда верхнеуровневый — у него parentId обязан быть null;
-  //  - обычный элемент может иметь родителем только существующий контейнер,
-  //    который сам никому не подчинён, и только не самого себя.
-  const isContainer = isBoardContainer(item.content?.type as string);
-  if (isContainer && item.parentId != null) {
-    throw new ValidationError('Фрейм и группа не могут быть вложены в другой контейнер');
-  }
+  // Родитель (14.3; 14.8): null, либо id существующего контейнера (frame/group).
+  // Единственная разрешённая вложенность контейнеров — группа-в-фрейме (14.8);
+  // фрейм-в-фрейме и группа-в-группе по-прежнему запрещены. Циклов из этого
+  // не возникает: фрейм всегда верхнеуровневый, значит любая цепочка
+  // родителей обязана в нём закончиться. Инварианты:
+  //  - фрейм всегда верхнеуровневый — у него parentId обязан быть null;
+  //  - группа — либо верхнеуровневая, либо вложена ровно в один фрейм;
+  //  - обычный элемент может иметь родителем только существующий фрейм или
+  //    группу (в т.ч. вложенную в фрейм), и только не самого себя.
+  const contentType = item.content?.type as string;
+  const isContainer = isBoardContainer(contentType);
   let parentId: string | null = null;
-  if (!isContainer && item.parentId != null) {
+
+  if (isContainer) {
+    if (contentType === 'frame') {
+      if (item.parentId != null) {
+        throw new ValidationError('Фрейм не может быть вложен в другой контейнер');
+      }
+    } else if (item.parentId != null) {
+      requireUuid(item.parentId, 'родителя');
+      const parent = state.items.get(item.parentId as string);
+      if (!parent || parent.id === itemId) {
+        throw new ValidationError('Родитель не найден');
+      }
+      if (parent.content.type !== 'frame') {
+        throw new ValidationError('Группа может быть вложена только во фрейм');
+      }
+      parentId = parent.id;
+    }
+  } else if (item.parentId != null) {
     requireUuid(item.parentId, 'родителя');
     const parent = state.items.get(item.parentId as string);
     if (!parent || parent.id === itemId) {
@@ -498,9 +516,6 @@ function validateGeometry(
     }
     if (!isBoardContainer(parent.content.type)) {
       throw new ValidationError('Родителем может быть только фрейм или группа');
-    }
-    if (parent.parentId !== null) {
-      throw new ValidationError('Вложенность фреймов и групп не поддерживается');
     }
     parentId = parent.id;
   }
