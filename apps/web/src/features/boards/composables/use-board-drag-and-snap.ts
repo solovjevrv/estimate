@@ -100,6 +100,20 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     return getItems().filter((candidate) => candidate.parentId === containerId);
   }
 
+  /**
+   * Дети контейнера плюс, если среди них есть вложенная группа (14.8:
+   * группа-в-фрейме — единственная разрешённая вложенность), ещё и участники
+   * этой группы — иначе при драге фрейма группа сдвинулась бы, а её участники
+   * (parentId указывает на группу, не на фрейм) остались бы на месте.
+   */
+  function descendantsOf(containerId: string): BoardItem[] {
+    const direct = childrenOf(containerId);
+    const nested = direct.flatMap((child) =>
+      child.content.type === 'group' ? childrenOf(child.id) : [],
+    );
+    return [...direct, ...nested];
+  }
+
   /** Конвертирует узел в SnapRect для вычисления snap guide */
   function nodeToSnapRect(node: BoardDragNode): SnapRect {
     return {
@@ -153,7 +167,7 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     const dx = node.computedPosition.x - start.x;
     const dy = node.computedPosition.y - start.y;
     if (isBoardContainer(node.data.content.type)) {
-      return shiftOps(childrenOf(node.id), dx, dy);
+      return shiftOps(descendantsOf(node.id), dx, dy);
     }
     if (node.data.parentId !== null) {
       const parent = getItems().find((candidate) => candidate.id === node.data.parentId);
@@ -166,14 +180,18 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
   }
 
   /**
-   * Родитель, который должен получить перетаскиваемый узел на dragStop (14.3).
-   * Контейнеры сами никогда не вкладываются. Участник группы сохраняет текущий
-   * parentId — членство жёсткое, меняется только явным «Разгруппировать».
-   * Верхнеуровневый элемент или участник фрейма — родитель пересчитывается от
-   * текущей позиции всегда, чтобы узнать, что элемент вытащили за пределы фрейма.
+   * Родитель, который должен получить перетаскиваемый узел на dragStop (14.3;
+   * 14.8 — группа-в-фрейме). Фрейм сам никогда не вкладывается — вложенность
+   * «фрейм-в-фрейме» запрещена. Группа МОЖЕТ приклеиться к фрейму: `findFrameAt`
+   * ищет только фреймы (см. её doc-комментарий в `BoardCanvas.vue`), поэтому
+   * «группа-в-группе» геометрически недостижима даже без отдельной проверки
+   * здесь. Участник группы сохраняет текущий parentId — членство жёсткое,
+   * меняется только явным «Разгруппировать». Верхнеуровневый элемент, участник
+   * фрейма или сама группа — родитель пересчитывается от текущей позиции
+   * всегда, чтобы узнать, что элемент/группу вытащили за пределы фрейма.
    */
   function resolveDragParent(node: BoardDragNode): string | null {
-    if (isBoardContainer(node.data.content.type)) return null;
+    if (node.data.content.type === 'frame') return null;
     const parent =
       node.data.parentId !== null
         ? getItems().find((candidate) => candidate.id === node.data.parentId)
@@ -187,11 +205,53 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
   }
 
   /**
-   * Все узлы, чью стартовую позицию нужно засеять вместе с самим `node` (14.3):
-   * дети контейнера ИЛИ соседи по группе (включая саму группу-обёртку).
+   * Драг УЧАСТНИКА группы сдвигает саму группу как жёсткий пучок (см. ветку
+   * `dragCascadeOps` выше), но не проверяет, не должна ли группа целиком
+   * приклеиться к фрейму или отклеиться от него по новой позиции (14.8) — без
+   * этого приклеить группу к фрейму можно было бы только точным кликом по её
+   * невидимому телу, а не обычным перетаскиванием любого участника, что
+   * пользователю никак не открывается. Вызывается только на dragStop (не на
+   * промежуточных тиках — как и resolveDragParent для обычных элементов),
+   * мутирует `cascade.ops`/`cascade.inverse` НА МЕСТЕ, только если parentId
+   * группы реально меняется.
+   */
+  function reattachGroupIfNeeded(
+    memberNode: BoardDragNode,
+    cascade: { ops: BoardOp[]; inverse: BoardOp[] },
+  ): void {
+    if (memberNode.data.parentId === null) return;
+    const group = getItems().find((candidate) => candidate.id === memberNode.data.parentId);
+    if (!group || group.content.type !== 'group') return;
+    const memberStart = dragStartPositions.get(memberNode.id);
+    if (!memberStart) return;
+    const dx = memberNode.computedPosition.x - memberStart.x;
+    const dy = memberNode.computedPosition.y - memberStart.y;
+    const groupStart = dragStartPositions.get(group.id) ?? { x: group.x, y: group.y };
+    const center = {
+      x: groupStart.x + dx + group.width / 2,
+      y: groupStart.y + dy + group.height / 2,
+    };
+    const nextParentId = findFrameAt(center, group.id)?.id ?? null;
+    if (nextParentId === group.parentId) return;
+    const groupPatch = cascade.ops.find(
+      (op): op is BoardItemPatchOp => op.type === 'item.patch' && op.id === group.id,
+    );
+    if (groupPatch) groupPatch.patch.parentId = nextParentId;
+    const groupInverse = cascade.inverse.find(
+      (op): op is BoardItemPatchOp => op.type === 'item.patch' && op.id === group.id,
+    );
+    if (groupInverse) groupInverse.patch.parentId = group.parentId;
+  }
+
+  /**
+   * Все узлы, чью стартовую позицию нужно засеять вместе с самим `node` (14.3;
+   * 14.8): дети контейнера (рекурсивно — с учётом вложенной группы) ИЛИ
+   * соседи по группе (включая саму группу-обёртку). Без стартовой позиции у
+   * участников вложенной группы `dragCascadeOps` считал бы дельту от уже
+   * оптимистично сдвинутых координат вместо истинного начала жеста.
    */
   function dragFamilyOf(node: BoardItem): BoardItem[] {
-    if (isBoardContainer(node.content.type)) return childrenOf(node.id);
+    if (isBoardContainer(node.content.type)) return descendantsOf(node.id);
     if (node.parentId !== null) {
       const parent = getItems().find((candidate) => candidate.id === node.parentId);
       if (parent?.content.type === 'group') {
@@ -307,6 +367,12 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     opts: BoardApplyOptions = {},
     /** Задан — узел на dragStop сменил родителя (drag-in/out фрейма, 14.3) */
     parentId?: string | null,
+    /**
+     * Готовые cascade-ops (14.8) — на dragStop уже посчитаны один раз снаружи
+     * (и, возможно, дополнены `reattachGroupIfNeeded`), пересчитывать заново
+     * незачем. Не задано — обычный путь промежуточных throttled тиков.
+     */
+    cascadeOps?: BoardOp[],
   ): void {
     const patch: BoardItemPatchOp['patch'] = {
       x: node.computedPosition.x,
@@ -315,7 +381,7 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     if (parentId !== undefined) patch.parentId = parentId;
     const ops: BoardOp[] = [
       { type: 'item.patch', clientOpId: uuid(), id: node.id, patch },
-      ...dragCascadeOps(node).ops,
+      ...(cascadeOps ?? dragCascadeOps(node).ops),
     ];
     void applyOps(dedupPatchOps(ops), opts);
   }
@@ -372,10 +438,13 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
       // его к ней (Miro-семантика, 14.3), см. resolveDragParent
       const nextParentId = resolveDragParent(node);
       const parentChanged = nextParentId !== node.data.parentId;
+      // cascade считаем один раз и переиспользуем — reattachGroupIfNeeded (14.8)
+      // может дописать в неё смену parentId самой группы, если тащили её участника
+      const cascade = dragCascadeOps(node);
+      reattachGroupIfNeeded(node, cascade);
       // Инверсия — стартовая позиция ВСЕГО жеста (12.10), не позиция перед этим
       // конкретным финальным патчем. Если сменился родитель — откатываем и его тоже,
       // иначе Ctrl+Z вернул бы позицию, но оставил элемент приклеенным к фрейму.
-      const mateInverse = dragCascadeOps(node).inverse;
       const inverse: BoardOp[] | undefined = start
         ? [
             {
@@ -388,13 +457,14 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
                 ...(parentChanged ? { parentId: node.data.parentId } : {}),
               },
             },
-            ...mateInverse,
+            ...cascade.inverse,
           ]
         : undefined;
       sendPositionPatch(
         node,
         { record: moved || parentChanged, inverse },
         parentChanged ? nextParentId : undefined,
+        cascade.ops,
       );
       // Финальная позиция уже отправлена напрямую выше; trailing промежуточного
       // throttle после неё был бы лишним batch без history и мог бы прийти в

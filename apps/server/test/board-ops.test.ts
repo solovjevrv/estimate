@@ -1902,12 +1902,66 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
     expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
   });
 
-  it('отклоняет группу с parentId != null', () => {
+  it('отклоняет группу с parentId, указывающим на несуществующий элемент', () => {
     const state = emptyState();
     const op = groupCreateOp(randomUUID());
     (op as { item: { parentId: unknown } }).item.parentId = randomUUID();
 
     expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('принимает группу с parentId, указывающим на существующий фрейм (14.8)', () => {
+    const state = emptyState();
+    const frameId = randomUUID();
+    applyBoardOp(state, frameCreateOp(frameId), BOARD_ID, ACTOR);
+
+    const groupId = randomUUID();
+    const op = groupCreateOp(groupId);
+    (op as { item: { parentId: unknown } }).item.parentId = frameId;
+    applyBoardOp(state, op, BOARD_ID, ACTOR);
+
+    expect(state.items.get(groupId)!.parentId).toBe(frameId);
+  });
+
+  it('отклоняет группу с parentId, указывающим на другую группу (14.8 — группа-в-группе запрещена)', () => {
+    const state = emptyState();
+    const outerGroupId = randomUUID();
+    applyBoardOp(state, groupCreateOp(outerGroupId), BOARD_ID, ACTOR);
+
+    const innerGroupId = randomUUID();
+    const op = groupCreateOp(innerGroupId);
+    (op as { item: { parentId: unknown } }).item.parentId = outerGroupId;
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('отклоняет фрейм с parentId, указывающим на существующий фрейм (14.8 — фрейм-в-фрейме по-прежнему запрещён)', () => {
+    const state = emptyState();
+    const outerFrameId = randomUUID();
+    applyBoardOp(state, frameCreateOp(outerFrameId), BOARD_ID, ACTOR);
+
+    const innerFrameId = randomUUID();
+    const op = frameCreateOp(innerFrameId);
+    (op as { item: { parentId: unknown } }).item.parentId = outerFrameId;
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('участник группы, вложенной во фрейм, — валиден (14.8, двухуровневая вложенность)', () => {
+    const state = emptyState();
+    const frameId = randomUUID();
+    applyBoardOp(state, frameCreateOp(frameId), BOARD_ID, ACTOR);
+
+    const groupId = randomUUID();
+    const groupOp = groupCreateOp(groupId);
+    (groupOp as { item: { parentId: unknown } }).item.parentId = frameId;
+    applyBoardOp(state, groupOp, BOARD_ID, ACTOR);
+
+    const memberId = randomUUID();
+    applyBoardOp(state, childItemOp(memberId, groupId), BOARD_ID, ACTOR);
+
+    expect(state.items.get(memberId)!.parentId).toBe(groupId);
+    expect(state.items.get(groupId)!.parentId).toBe(frameId);
   });
 
   it('принимает элемент с parentId, указывающим на существующий фрейм', () => {
@@ -1962,6 +2016,33 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
     expect(state.items.has(frameId)).toBe(false);
     const child = state.items.get(childId)!;
     expect(child.parentId).toBeNull();
+  });
+
+  it('удаление фрейма осирает вложенную группу, но не трогает её участников (14.8)', () => {
+    const state = emptyState();
+    const frameId = randomUUID();
+    applyBoardOp(state, frameCreateOp(frameId), BOARD_ID, ACTOR);
+
+    const groupId = randomUUID();
+    const groupOp = groupCreateOp(groupId);
+    (groupOp as { item: { parentId: unknown } }).item.parentId = frameId;
+    applyBoardOp(state, groupOp, BOARD_ID, ACTOR);
+
+    const memberId = randomUUID();
+    applyBoardOp(state, childItemOp(memberId, groupId), BOARD_ID, ACTOR);
+
+    applyBoardOp(
+      state,
+      { type: 'item.delete', clientOpId: randomUUID(), id: frameId },
+      BOARD_ID,
+      ACTOR,
+    );
+
+    expect(state.items.has(frameId)).toBe(false);
+    // Группа осиротела (была ребёнком фрейма), но сама пережила удаление —
+    // её собственные участники по-прежнему привязаны к ней, а не к фрейму
+    expect(state.items.get(groupId)!.parentId).toBeNull();
+    expect(state.items.get(memberId)!.parentId).toBe(groupId);
   });
 
   it('item.patch поля, отличного от parentId, не трогает существующий parentId ребёнка', () => {
