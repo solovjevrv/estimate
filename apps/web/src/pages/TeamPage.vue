@@ -17,12 +17,16 @@ import { useRouter } from 'vue-router';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
 import EntityTextModal from '../components/EntityTextModal.vue';
+import TeamBoardsSection from '../components/team/TeamBoardsSection.vue';
+import TeamMembersSection from '../components/team/TeamMembersSection.vue';
+import TeamRoomsSection from '../components/team/TeamRoomsSection.vue';
+import TeamSettingsSection from '../components/team/TeamSettingsSection.vue';
 import { useArchiveTab } from '../composables/use-archive-tab';
 import { usePagedList } from '../composables/use-paged-list';
 import { useAsyncAction } from '../composables/use-async-action';
 import { useEntityModal } from '../composables/use-entity-modal';
 import { ApiError } from '../lib/api';
-import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
+import { roleBadgeColor } from '../lib/team-roles';
 import {
   createBoard as createBoardRequest,
   deleteBoard as deleteBoardRequest,
@@ -75,11 +79,6 @@ function canManageBoard(board: BoardSummary): boolean {
   return canManageTeam.value || board.ownerId === currentUserId.value;
 }
 
-const roomTabs = computed(() => [
-  { key: 'active' as const, label: t('team.roomsActive') },
-  { key: 'archive' as const, label: t('team.tabArchive') },
-]);
-
 /** Пока идёт запрос по участнику — блокируем его элементы управления. Набор, а
  * не один id: операции по разным участникам могут идти внахлёст. */
 const busyUsers = ref<Set<string>>(new Set());
@@ -111,10 +110,6 @@ const archiveTabRooms = computed(() =>
 const activeRoomsPaging = usePagedList(computed(() => teamRooms.active));
 const archiveTabPaging = usePagedList(archiveTabRooms);
 
-const boardTabs = computed(() => [
-  { key: 'active' as const, label: t('team.boardsActive') },
-  { key: 'archive' as const, label: t('team.tabArchive') },
-]);
 const activeBoardsPaging = usePagedList(computed(() => teamBoards.active));
 const archiveBoardsPaging = usePagedList(computed(() => teamBoards.archived));
 
@@ -306,16 +301,6 @@ async function confirmDeleteBoard(): Promise<void> {
   await deleteTeamBoard(target);
 }
 
-async function copyInvite(): Promise<void> {
-  if (!inviteUrl.value) return;
-  try {
-    await navigator.clipboard.writeText(inviteUrl.value);
-    toast.add({ title: t('team.copied'), color: 'success', icon: 'i-lucide-check' });
-  } catch {
-    toast.add({ title: t('team.copyFailed'), color: 'error' });
-  }
-}
-
 const rotateOpen = ref(false);
 
 const { pending: rotating, execute: rotateInvite } = useAsyncAction({
@@ -484,396 +469,54 @@ async function confirmDelete(): Promise<void> {
         </span>
       </div>
 
-      <div class="surface-card overflow-hidden">
-        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-5 sm:px-[30px]">
-          <h2 class="text-[17px] font-bold">{{ t('team.roomsTitle') }}</h2>
-          <UButton
-            v-if="canManageTeam"
-            icon="i-lucide-plus"
-            class="rounded-[11px] px-[18px] py-[11px] text-sm font-bold"
-            @click="createRoomModal.show"
-          >
-            {{ t('room.create') }}
-          </UButton>
-        </div>
+      <TeamRoomsSection
+        :can-manage-team="canManageTeam"
+        :rooms-failed="roomsFailed"
+        :rooms-tab="roomsTab"
+        :active-rooms-paging="activeRoomsPaging"
+        :archive-tab-paging="archiveTabPaging"
+        :room-archive="roomArchive"
+        :format-date="formatDate"
+        @select-tab="selectRoomsTab"
+        @create="createRoomModal.show"
+        @delete="askDeleteRoom"
+      />
 
-        <div class="flex items-center gap-2 px-4 pb-4 sm:px-[30px]">
-          <button
-            v-for="tab in roomTabs"
-            :key="tab.key"
-            type="button"
-            class="rounded-full px-4 py-1.5 text-[13px] font-bold transition-colors"
-            :class="
-              roomsTab === tab.key
-                ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)]'
-                : 'text-muted hover:text-default cursor-pointer'
-            "
-            @click="selectRoomsTab(tab.key)"
-          >
-            {{ tab.label }}
-          </button>
-        </div>
+      <TeamBoardsSection
+        :can-create-board="canCreateBoard"
+        :can-manage-board="canManageBoard"
+        :boards-failed="boardsFailed"
+        :boards-tab="boardsTab"
+        :active-boards-paging="activeBoardsPaging"
+        :archive-boards-paging="archiveBoardsPaging"
+        :board-archive="boardArchive"
+        :unarchiving-board-id="unarchivingBoardId"
+        :format-date="formatDate"
+        @select-tab="selectBoardsTab"
+        @create="createBoardModal.show"
+        @unarchive="unarchiveBoard"
+        @delete="askDeleteBoard"
+      />
 
-        <UAlert
-          v-if="roomsFailed"
-          color="error"
-          variant="subtle"
-          class="mx-4 mb-5 sm:mx-[30px]"
-          :description="t('team.roomsError')"
-        />
-        <template v-else-if="roomsTab === 'active'">
-          <p
-            v-if="activeRoomsPaging.total.value === 0"
-            class="text-muted px-4 pb-5 sm:px-[30px] text-sm"
-          >
-            {{ t('team.roomsEmpty') }}
-          </p>
-          <RouterLink
-            v-for="room in activeRoomsPaging.items.value"
-            :key="room.id"
-            :to="{ name: 'room', params: { id: room.id } }"
-            class="border-default hover:bg-elevated/50 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
-          >
-            <span class="min-w-28 flex-1 truncate text-base font-bold">{{ room.name }}</span>
-            <div class="flex shrink-0 items-center gap-3.5">
-              <span class="text-muted text-sm">{{ formatDate(room.createdAt) }}</span>
-              <span class="badge-pill badge-pill-primary">{{ t('team.roomActive') }}</span>
-            </div>
-          </RouterLink>
-          <div
-            v-if="activeRoomsPaging.total.value > activeRoomsPaging.pageSize"
-            class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
-          >
-            <UPagination
-              v-model:page="activeRoomsPaging.page.value"
-              :total="activeRoomsPaging.total.value"
-              :items-per-page="activeRoomsPaging.pageSize"
-            />
-          </div>
-        </template>
-        <template v-else>
-          <!-- Ошибка тянет только заархивированную часть (доступна лишь администратору) —
-               уже загруженные завершённые комнаты всё равно показываем ниже, не прячем их
-               за баннером. -->
-          <UAlert
-            v-if="roomArchive.failed"
-            color="error"
-            variant="subtle"
-            class="mx-4 mb-5 sm:mx-[30px]"
-            :description="t('team.archiveError')"
-          />
-          <div v-if="roomArchive.loading" class="text-muted flex justify-center pb-5">
-            <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
-          </div>
-          <template v-else>
-            <p
-              v-if="archiveTabPaging.total.value === 0"
-              class="text-muted px-4 pb-5 sm:px-[30px] text-sm"
-            >
-              {{ t('team.archiveEmpty') }}
-            </p>
-            <div
-              v-for="room in archiveTabPaging.items.value"
-              :key="room.id"
-              class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
-            >
-              <RouterLink
-                :to="{ name: 'room', params: { id: room.id } }"
-                class="min-w-28 flex-1 truncate text-base font-bold"
-              >
-                {{ room.name }}
-              </RouterLink>
-              <div class="flex shrink-0 items-center gap-3.5">
-                <span class="text-muted text-sm">{{ formatDate(room.createdAt) }}</span>
-                <span class="badge-pill badge-pill-neutral">{{ t('team.roomClosed') }}</span>
-                <UButton
-                  v-if="room.archivedAt && canManageTeam"
-                  icon="i-lucide-trash-2"
-                  color="error"
-                  variant="ghost"
-                  size="sm"
-                  @click="askDeleteRoom(room)"
-                >
-                  {{ t('team.archiveDeleteRoom') }}
-                </UButton>
-              </div>
-            </div>
-            <div
-              v-if="archiveTabPaging.total.value > archiveTabPaging.pageSize"
-              class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
-            >
-              <UPagination
-                v-model:page="archiveTabPaging.page.value"
-                :total="archiveTabPaging.total.value"
-                :items-per-page="archiveTabPaging.pageSize"
-              />
-            </div>
-          </template>
-        </template>
-      </div>
+      <TeamMembersSection
+        :team-id="props.id"
+        :members="overview.members"
+        :can-manage-team="canManageTeam"
+        :current-user-id="currentUserId"
+        :role-items="roleItems"
+        :is-busy="isBusy"
+        @role-change="onRoleChange"
+        @remove="askRemove"
+      />
 
-      <div class="surface-card overflow-hidden">
-        <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-5 sm:px-[30px]">
-          <h2 class="text-[17px] font-bold">{{ t('team.boardsTitle') }}</h2>
-          <UButton
-            v-if="canCreateBoard"
-            icon="i-lucide-plus"
-            class="rounded-[11px] px-[18px] py-[11px] text-sm font-bold"
-            @click="createBoardModal.show"
-          >
-            {{ t('board.create') }}
-          </UButton>
-        </div>
-
-        <div class="flex items-center gap-2 px-4 pb-4 sm:px-[30px]">
-          <button
-            v-for="tab in boardTabs"
-            :key="tab.key"
-            type="button"
-            class="rounded-full px-4 py-1.5 text-[13px] font-bold transition-colors"
-            :class="
-              boardsTab === tab.key
-                ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)]'
-                : 'text-muted hover:text-default cursor-pointer'
-            "
-            @click="selectBoardsTab(tab.key)"
-          >
-            {{ tab.label }}
-          </button>
-        </div>
-
-        <UAlert
-          v-if="boardsFailed"
-          color="error"
-          variant="subtle"
-          class="mx-4 mb-5 sm:mx-[30px]"
-          :description="t('team.boardsError')"
-        />
-        <template v-else-if="boardsTab === 'active'">
-          <p
-            v-if="activeBoardsPaging.total.value === 0"
-            class="text-muted px-4 pb-5 sm:px-[30px] text-sm"
-          >
-            {{ t('team.boardsEmpty') }}
-          </p>
-          <RouterLink
-            v-for="board in activeBoardsPaging.items.value"
-            :key="board.id"
-            :to="{ name: 'board', params: { id: board.id } }"
-            class="border-default hover:bg-elevated/50 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
-          >
-            <span class="min-w-28 flex-1 truncate text-base font-bold">{{ board.title }}</span>
-            <span class="text-muted text-sm">{{ formatDate(board.createdAt) }}</span>
-          </RouterLink>
-          <div
-            v-if="activeBoardsPaging.total.value > activeBoardsPaging.pageSize"
-            class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
-          >
-            <UPagination
-              v-model:page="activeBoardsPaging.page.value"
-              :total="activeBoardsPaging.total.value"
-              :items-per-page="activeBoardsPaging.pageSize"
-            />
-          </div>
-        </template>
-        <template v-else>
-          <UAlert
-            v-if="boardArchive.failed"
-            color="error"
-            variant="subtle"
-            class="mx-4 mb-5 sm:mx-[30px]"
-            :description="t('team.boardsError')"
-          />
-          <div v-if="boardArchive.loading" class="text-muted flex justify-center pb-5">
-            <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
-          </div>
-          <template v-else>
-            <p
-              v-if="archiveBoardsPaging.total.value === 0"
-              class="text-muted px-4 pb-5 sm:px-[30px] text-sm"
-            >
-              {{ t('team.archiveBoardsEmpty') }}
-            </p>
-            <div
-              v-for="board in archiveBoardsPaging.items.value"
-              :key="board.id"
-              class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
-            >
-              <RouterLink
-                :to="{ name: 'board', params: { id: board.id } }"
-                class="min-w-28 flex-1 truncate text-base font-bold"
-              >
-                {{ board.title }}
-              </RouterLink>
-              <div class="flex shrink-0 items-center gap-3.5">
-                <span class="text-muted text-sm">{{ formatDate(board.createdAt) }}</span>
-                <template v-if="canManageBoard(board)">
-                  <UButton
-                    icon="i-lucide-rotate-ccw"
-                    color="neutral"
-                    variant="ghost"
-                    size="sm"
-                    :loading="unarchivingBoardId === board.id"
-                    @click="unarchiveBoard(board)"
-                  >
-                    {{ t('team.archiveUnarchiveBoard') }}
-                  </UButton>
-                  <UButton
-                    icon="i-lucide-trash-2"
-                    color="error"
-                    variant="ghost"
-                    size="sm"
-                    @click="askDeleteBoard(board)"
-                  >
-                    {{ t('team.archiveDeleteBoard') }}
-                  </UButton>
-                </template>
-              </div>
-            </div>
-            <div
-              v-if="archiveBoardsPaging.total.value > archiveBoardsPaging.pageSize"
-              class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
-            >
-              <UPagination
-                v-model:page="archiveBoardsPaging.page.value"
-                :total="archiveBoardsPaging.total.value"
-                :items-per-page="archiveBoardsPaging.pageSize"
-              />
-            </div>
-          </template>
-        </template>
-      </div>
-
-      <div class="surface-card px-4 py-5 sm:px-[30px] sm:py-[26px]">
-        <h2 class="mb-[18px] text-[17px] font-bold">{{ t('team.membersTitle') }}</h2>
-        <div
-          v-for="member in overview.members"
-          :key="member.userId"
-          class="border-default flex flex-wrap items-center justify-between gap-3 border-t py-3.5 first:border-t-0 first:pt-0 last:pb-0"
-        >
-          <RouterLink
-            :to="{ name: 'team-member', params: { id: props.id, userId: member.userId } }"
-            class="hover:text-primary flex min-w-36 items-center gap-3.5"
-          >
-            <UAvatar
-              :src="member.avatarUrl ?? undefined"
-              :alt="member.name"
-              size="md"
-              class="size-[38px] shrink-0"
-              :class="teamAvatarColor(member.userId)"
-              :ui="{ fallback: 'font-heading text-[12px] font-bold text-white' }"
-            />
-            <span class="min-w-0 truncate text-[15.5px] font-bold">{{ member.name }}</span>
-          </RouterLink>
-
-          <div class="ml-[52px] flex shrink-0 items-center gap-3 sm:ml-0">
-            <!-- Администратор меняет роли всем, кроме себя; себе показываем бейдж -->
-            <USelect
-              v-if="canManageTeam && member.userId !== currentUserId"
-              :model-value="member.role"
-              :items="roleItems"
-              value-key="value"
-              :aria-label="t('team.roleLabel')"
-              :disabled="isBusy(member.userId)"
-              class="w-40"
-              :ui="{
-                base: 'rounded-[9px] border border-[var(--brand-border)] bg-[var(--brand-surface)] py-2 ps-3.5 pe-[34px] ring-0',
-              }"
-              @update:model-value="onRoleChange(member, $event as TeamRole)"
-            />
-            <span
-              v-else
-              class="badge-pill"
-              :class="
-                roleBadgeColor(member.role) === 'primary'
-                  ? 'badge-pill-primary'
-                  : 'badge-pill-neutral'
-              "
-            >
-              {{ t(`role.${member.role}`) }}
-            </span>
-
-            <UButton
-              v-if="canManageTeam && member.userId !== currentUserId"
-              icon="i-lucide-user-minus"
-              color="error"
-              variant="ghost"
-              size="sm"
-              :aria-label="t('team.remove')"
-              :disabled="isBusy(member.userId)"
-              @click="askRemove(member)"
-            />
-          </div>
-        </div>
-      </div>
-
-      <div v-if="inviteUrl" class="surface-card px-4 py-5 sm:px-[30px] sm:py-[26px]">
-        <h2 class="mb-1.5 text-[17px] font-bold">{{ t('team.inviteTitle') }}</h2>
-        <p class="text-muted mb-4 text-sm">{{ t('team.inviteHint') }}</p>
-        <div class="mb-3.5 flex flex-wrap items-center gap-3">
-          <UInput
-            :model-value="inviteUrl"
-            readonly
-            class="grow"
-            :ui="{
-              base: 'font-mono rounded-[11px] border-[length:1.5px] border-[color:var(--brand-border)] bg-[var(--brand-surface)] px-4 py-3 ring-0',
-            }"
-          />
-          <UButton
-            icon="i-lucide-copy"
-            class="rounded-[10px] px-[18px] py-3 text-sm font-bold"
-            @click="copyInvite"
-          >
-            {{ t('team.copy') }}
-          </UButton>
-        </div>
-        <UButton
-          icon="i-lucide-refresh-cw"
-          color="neutral"
-          variant="link"
-          class="p-0 text-[13.5px] font-semibold"
-          @click="rotateOpen = true"
-        >
-          {{ t('team.rotate') }}
-        </UButton>
-      </div>
-
-      <div class="surface-card px-4 py-5 sm:px-[30px] sm:py-[26px]">
-        <h2 class="mb-[18px] text-[17px] font-bold">{{ t('team.settingsTitle') }}</h2>
-        <div class="flex flex-col gap-3 sm:flex-row sm:flex-wrap">
-          <UButton
-            v-if="canManageTeam"
-            icon="i-lucide-pencil"
-            color="neutral"
-            variant="outline"
-            class="w-full justify-center rounded-[10px] px-[18px] py-[11px] text-sm font-bold sm:w-auto"
-            @click="renameModal.show"
-          >
-            {{ t('team.rename') }}
-          </UButton>
-          <!-- Выйти может любой участник; единственному администратору бэкенд
-               откажет (409) и предложит сначала назначить другого -->
-          <UButton
-            icon="i-lucide-log-out"
-            color="neutral"
-            variant="outline"
-            class="w-full justify-center rounded-[10px] px-[18px] py-[11px] text-sm font-bold sm:w-auto"
-            @click="leaveOpen = true"
-          >
-            {{ t('team.leave') }}
-          </UButton>
-          <UButton
-            v-if="canManageTeam"
-            icon="i-lucide-trash-2"
-            color="error"
-            variant="subtle"
-            class="w-full justify-center rounded-[10px] px-[18px] py-[11px] text-sm font-bold sm:w-auto"
-            @click="deleteOpen = true"
-          >
-            {{ t('team.deleteTeam') }}
-          </UButton>
-        </div>
-      </div>
+      <TeamSettingsSection
+        :can-manage-team="canManageTeam"
+        :invite-url="inviteUrl"
+        @rotate-click="rotateOpen = true"
+        @rename-click="renameModal.show"
+        @leave-click="leaveOpen = true"
+        @delete-click="deleteOpen = true"
+      />
     </template>
 
     <ConfirmModal

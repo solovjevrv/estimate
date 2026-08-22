@@ -91,7 +91,6 @@ export default tseslint.config(
       'apps/web/src/components/board/BoardCanvas.vue',
       // 19.19: формы и вкладки уезжают в отдельные компоненты и composable
       'apps/web/src/pages/RoomPage.vue',
-      'apps/web/src/pages/TeamPage.vue',
     ],
     rules: { 'max-lines': 'off' },
   },
