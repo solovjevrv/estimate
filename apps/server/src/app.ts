@@ -3,7 +3,7 @@ import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastif
 import fp from 'fastify-plugin';
 
 import { authPlugin, avatarPlugin, sessionCleanupPlugin } from './auth';
-import { boardsPlugin, boardImagesPlugin } from './boards';
+import { boardsPlugin, boardImagesPlugin, stickerPacksPlugin } from './boards';
 import type { AuthConfig } from './config';
 import type { Db } from './db';
 import { ErrorHandler } from './http/error-handler';
@@ -48,10 +48,10 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
   const app = Fastify({ ajv: { customOptions: { coerceTypes: false } }, ...opts });
 
   // Ответы API касаются сессии и состава команд — их нельзя держать в кэшах.
-  // Аватарки и картинки досок — исключение: отдаются под тем же /api/ (см.
-  // nginx/vite-прокси), но их собственный cache-control (10.15, 13.2) не
-  // должен затираться этим хуком.
-  const CACHEABLE_ASSET_PATTERN = /^\/api\/(avatars\/|boards\/[^/]+\/assets\/)/;
+  // Аватарки, картинки досок и стикеры — исключение: отдаются под тем же /api/
+  // (см. nginx/vite-прокси), но их собственный cache-control (10.15, 13.2, 21.3)
+  // не должен затираться этим хуком.
+  const CACHEABLE_ASSET_PATTERN = /^\/api\/(avatars\/|boards\/[^/]+\/assets\/|stickers\/)/;
   app.addHook('onSend', async (req, reply) => {
     if (req.url.startsWith('/api/') && !CACHEABLE_ASSET_PATTERN.test(req.url)) {
       reply.header('cache-control', 'no-store');
@@ -101,6 +101,9 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
         storage: deps.objectStorage,
         legacyAssetsDir: deps.boardAssetsDir,
         auth: deps.auth,
+      });
+      void app.register(stickerPacksPlugin, {
+        storage: deps.objectStorage,
       });
     }
     // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией

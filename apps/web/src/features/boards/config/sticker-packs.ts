@@ -1,9 +1,14 @@
 /**
- * Стикер-паки (13.4) — статичные webp-стикеры в бандле фронта, без загрузки и без БД.
+ * Стикер-паки (13.4) — статичные webp-стикеры в MinIO, без загрузки и без БД.
  * Источник: реальные наборы стикеров Telegram (Bot API `getStickerSet`/`getFile`,
  * 10.08.2026, паки выбраны пользователем вручную из подборки t-j.ru/short/telegram-stickers).
  * Анимированные/видео стикеры и целиком анимированные паки — пропущены (решение пользователя):
  * скачаны только полностью статичные паки, никакого видео/Lottie-рендерера на фронте не нужно.
+ *
+ * Файлы лежат в MinIO по ключу stickers/v1/:pack/:id.webp, отдаются публичным
+ * read-only эндпоинтом сервера (/api/stickers/v1/:pack/:id.webp) с immutable-кэшем.
+ * В бандл фронта бинарники не попадают — URL резолвится в рантайме через urlFor.
+ * Список паков/id/emoji-меток в коде остаётся как раньше.
  */
 
 export interface StickerPackItem {
@@ -19,16 +24,8 @@ export interface StickerPack {
   items: StickerPackItem[];
 }
 
-const assetModules = import.meta.glob<string>('../../../assets/sticker-packs/**/*.webp', {
-  eager: true,
-  import: 'default',
-});
-
 function urlFor(pack: string, id: string): string {
-  const path = `../../../assets/sticker-packs/${pack}/${id}.webp`;
-  const url = assetModules[path];
-  if (!url) throw new Error(`Sticker asset not found: ${path}`);
-  return url;
+  return `/api/stickers/v1/${pack}/${id}.webp`;
 }
 
 function pack(id: string, label: string, entries: [string, string][]): StickerPack {
