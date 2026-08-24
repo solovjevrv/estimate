@@ -4,6 +4,7 @@ import fp from 'fastify-plugin';
 import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
 import { archivedQuerySchema, idParamsSchema } from '../http/schemas';
+import type { ObjectStorage } from '../platform/storage';
 
 import { BoardImagesService } from './board-images.service';
 import {
@@ -26,8 +27,10 @@ import { BoardsController } from './boards.controller';
 import { BoardsService } from './boards.service';
 
 export interface BoardsPluginOptions {
-  /** Не задан — удаление доски не будет чистить файлы её картинок с диска (13.2) */
-  assetsDir?: string;
+  /** Не задан — доска без ObjectStorage: чистка файлов картинок при удалении отключена */
+  objectStorage?: ObjectStorage;
+  /** Легаси-каталог картинок для переходного чтения (Epic 21) */
+  legacyAssetsDir?: string;
   auth: AuthConfig;
 }
 
@@ -37,7 +40,9 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
     throw new Error('Роуты досок требуют плагина аутентификации');
   }
 
-  const images = opts.assetsDir ? await BoardImagesService.forDirectory(opts.assetsDir) : undefined;
+  const images = opts.objectStorage
+    ? BoardImagesService.create(opts.objectStorage, opts.legacyAssetsDir)
+    : undefined;
   const controller = new BoardsController(
     BoardsService.forDatabase(app.db, opts.auth.guestSecret, images, app.log),
   );

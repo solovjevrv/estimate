@@ -34,7 +34,9 @@ async function main(): Promise<void> {
   }
 
   const roomsService = RoomsGameService.forDatabase(db, config.auth.guestSecret);
-  const boardImagesService = await BoardImagesService.forDirectory(config.boardAssetsDir);
+  const boardImagesService = objectStorage
+    ? BoardImagesService.create(objectStorage, config.boardAssetsDir)
+    : undefined;
   const boardsService = BoardsService.forDatabase(
     db,
     config.auth.guestSecret,

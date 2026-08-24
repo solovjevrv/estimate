@@ -192,6 +192,21 @@ export class BoardsService {
   }
 
   /**
+   * Транзционная проверка владения для legacy-fallback чтения картинок (21.5).
+   * Легаси-каталог плоский (без boardId в пути) — без этой проверки
+   * GET .../assets/:filename отдавал бы любой файл с валидным именем
+   * независимо от того, какой доске он реально принадлежит (найденная при
+   * ревью 21.5 межбордовая утечка, существовавшая с 13.2). Убрать вместе с
+   * legacy-fallback после подтверждённой миграции.
+   */
+  async ownsImage(boardId: string, filename: string): Promise<boolean> {
+    const items = await this.repository.listItems(boardId);
+    return items.some(
+      (item) => item.content.type === 'image' && item.content.url.endsWith(`/${filename}`),
+    );
+  }
+
+  /**
    * Готовит вход на доску по WS (12.4): проверяет доступ, а для гостя —
    * выписывает/проверяет гостевой токен. Возвращает полную личность
    * участника, включая уровень доступа `access`.
