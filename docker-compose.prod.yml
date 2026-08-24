@@ -35,10 +35,11 @@ services:
       YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-}
       YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
-      # Аватарки (21.2) пишутся в MinIO, а не на диск. env-переменные совпадают
-      # с теми, что создаёт minio-init (учётка приложения): MINIO_ENDPOINT=minio —
-      # внутренний hostname Docker-сети. avatars_data volume остаётся смонтированным
-      # для переходного чтения legacy-файлов и для запуска migrate:avatars — планово
+      # Аватарки (21.2) и картинки досок (21.5) пишутся в MinIO, а не на диск.
+      # env-переменные совпадают с теми, что создаёт minio-init (учётка приложения):
+      # MINIO_ENDPOINT=minio — внутренний hostname Docker-сети. avatars_data и
+      # board_assets_data volume остаются смонтированными для переходного чтения
+      # legacy-файлов и для запуска migrate:avatars / migrate:board-images — планово
       # убрать отдельной задачей после подтверждённой миграции.
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
@@ -57,8 +58,8 @@ services:
       retries: 6
       start_period: 5s
 
-  # Объектное хранилище (Epic 21) — MinIO. Аватарки (21.2) уже пишутся сюда; картинки
-  # досок (21.5) — ещё нет. API/консоль не публикуются — доступ только по внутренней
+  # Объектное хранилище (Epic 21) — MinIO. Аватарки (21.2) и картинки досок
+  # (21.5) пишутся сюда. API/консоль не публикуются — доступ только по внутренней
   # сети Compose.
   minio:
     image: minio/minio:RELEASE.2025-04-08T15-41-24Z
@@ -169,9 +170,8 @@ services:
       sleep 24h & wait $${!}; done'
 
   # Бэкап бакета MinIO — тем же принципом, что и db-backup выше: ежедневный
-  # локальный снимок, хранение 14 дней, не защита от потери диска целиком. Механизм
-  # проверен заранее, пока в бакете есть только аватарки (21.2); картинки досок
-  # (21.5) появятся позже теми же способом.
+  # локальный снимок, хранение 14 дней, не защита от потери диска целиком.
+  # Аватарки (21.2) и картинки досок (21.5) бэкапятся тем же способом.
   minio-backup:
     image: minio/mc:RELEASE.2025-04-08T15-39-49Z
     restart: unless-stopped

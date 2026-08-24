@@ -1,6 +1,3 @@
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
-
 import fastifyMultipart from '@fastify/multipart';
 import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_IMAGE_MAX_BYTES } from '@poker/shared';
 import type { FastifyInstance } from 'fastify';
@@ -10,12 +7,15 @@ import type { AuthConfig } from '../config';
 import { ForbiddenError, NotFoundError, ValidationError } from '../errors';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
 import { idParamsSchema, uuidSchema } from '../http/schemas';
+import type { ObjectStorage } from '../platform/storage';
 
 import { BoardImagesService } from './board-images.service';
 import { BoardsService } from './boards.service';
 
 export interface BoardImagesPluginOptions {
-  assetsDir: string;
+  storage: ObjectStorage;
+  /** Легаси-каталог для переходного чтения; не задан — fallback выключен */
+  legacyAssetsDir?: string;
   auth: AuthConfig;
 }
 
@@ -30,7 +30,7 @@ async function boardImagesPluginImpl(
     throw new Error('Роуты картинок досок требуют плагина аутентификации');
   }
 
-  const service = await BoardImagesService.forDirectory(opts.assetsDir);
+  const service = BoardImagesService.create(opts.storage, opts.legacyAssetsDir);
 
   // Свой encapsulation-контекст (обычный register, не fp) только для
   // multipart+роутов: @fastify/multipart уже зарегистрирован аватарками
@@ -147,28 +147,25 @@ async function boardImagesPluginImpl(
         try {
           await boardsService.assertViewAccess(req.actorId ?? null, boardId);
         } catch (err) {
-          if (err instanceof NotFoundError) {
-            throw new NotFoundError('Доска не найдена');
-          }
-          if (err instanceof ForbiddenError) {
-            throw new ForbiddenError('Нет доступа к этой доске');
-          }
+          if (err instanceof NotFoundError) throw new NotFoundError('Доска не найдена');
+          if (err instanceof ForbiddenError) throw new ForbiddenError('Нет доступа к этой доске');
           throw err;
         }
 
-        const path = service.filePath(filename);
-        if (!path) {
+        let stream = await service.readFromStorage(boardId, filename);
+        if (!stream && opts.legacyAssetsDir) {
+          // Легаси-каталог плоский — без проверки владения filename мог бы
+          // принадлежать чужой доске (см. BoardImagesService.readLegacy, 21.5)
+          if (await boardsService.ownsImage(boardId, filename)) {
+            stream = await service.readLegacy(filename);
+          }
+        }
+        if (!stream) {
           throw new NotFoundError('Картинка не найдена');
         }
-        try {
-          await stat(path);
-        } catch {
-          throw new NotFoundError('Картинка не найдена');
-        }
-        // Имя файла случайное и меняется при каждой загрузке — можно кэшировать навсегда
         reply.header('cache-control', 'public, max-age=31536000, immutable');
         reply.type('image/webp');
-        return reply.send(createReadStream(path));
+        return reply.send(stream);
       },
     );
   });

@@ -4,13 +4,13 @@
  * доски/path traversal, очистка файла при удалении элемента/доски. Без
  * DATABASE_URL — пропускается.
  */
-import { randomUUID } from 'node:crypto';
-import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { randomBytes, randomUUID } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BOARD_IMAGE_MAX_BYTES, type AuthUser } from '@poker/shared';
+import { BOARD_IMAGE_MAX_BYTES, boardImageUrl, type AuthUser } from '@poker/shared';
 import { inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import sharp from 'sharp';
@@ -23,6 +23,7 @@ import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
 import { FakeObjectStorage } from '../src/platform/storage';
 import { TeamsRepository, TeamsService } from '../src/teams';
+import { boardImageKey } from '../src/boards/board-images.service';
 
 try {
   process.loadEnvFile(fileURLToPath(new URL('../../../.env', import.meta.url)));
@@ -59,6 +60,7 @@ describeDb('картинки досок', () => {
   let db: ReturnType<typeof createDb>['db'];
   let pool: ReturnType<typeof createDb>['pool'];
   let app: FastifyInstance;
+  let storage: FakeObjectStorage;
   let assetsDir: string;
   let avatarsDir: string;
   let teamsService: TeamsService;
@@ -127,6 +129,7 @@ describeDb('картинки досок', () => {
     ({ db, pool } = createDb(databaseUrl as string));
     teamsRepository = new TeamsRepository(db);
     teamsService = new TeamsService(db, teamsRepository);
+    storage = new FakeObjectStorage();
     assetsDir = mkdtempSync(join(tmpdir(), 'poker-board-assets-'));
     // Оба каталога, как в проде (app.ts регистрирует avatarPlugin и
     // boardImagesPlugin вместе) — так тест ловит коллизии между их
@@ -137,7 +140,7 @@ describeDb('картинки досок', () => {
       auth: authConfig,
       boardAssetsDir: assetsDir,
       avatarsDir,
-      objectStorage: new FakeObjectStorage(),
+      objectStorage: storage,
     });
     await app.ready();
   });
@@ -175,7 +178,7 @@ describeDb('картинки досок', () => {
       expect(res.statusCode).toBe(200);
       expect(res.url).toMatch(new RegExp(`^/api/boards/${boardId}/assets/[a-f0-9]{32}\\.webp$`));
       const filename = res.url!.split('/').pop()!;
-      expect(existsSync(join(assetsDir, filename))).toBe(true);
+      expect(storage.peek(boardImageKey(boardId, filename))).toBeDefined();
     });
 
     it('участник и администратор команды могут загрузить, гость — нет', async () => {
@@ -317,35 +320,35 @@ describeDb('картинки досок', () => {
     });
   });
 
-  describe('очистка файлов на диске (BoardsService.applyOps/remove, минуя транспорт WS)', () => {
-    // applyOps/remove ходят по WS в проде, но сам метод — обычный сервисный код;
-    // дёргаем BoardsService напрямую, чтобы не поднимать сокеты только ради этого
-    async function boardsService(): Promise<BoardsService> {
-      const images = await BoardImagesService.forDirectory(assetsDir);
-      return BoardsService.forDatabase(db, authConfig.guestSecret, images);
-    }
+  // applyOps/remove ходят по WS в проде, но сам метод — обычный сервисный код;
+  // дёргаем BoardsService напрямую, чтобы не поднимать сокеты только ради этого
+  function boardsService(): BoardsService {
+    const images = BoardImagesService.create(storage, assetsDir);
+    return BoardsService.forDatabase(db, authConfig.guestSecret, images);
+  }
 
-    function imageItem(id: string, url: string): Parameters<BoardsService['applyOps']>[2][number] {
-      return {
-        type: 'item.create',
-        clientOpId: randomUUID(),
-        item: {
-          id,
-          parentId: null,
-          x: 0,
-          y: 0,
-          width: 300,
-          height: 200,
-          rotation: 0,
-          zIndex: 0,
-          content: { type: 'image', url, width: 40, height: 40 },
-          style: { color: '#FCEB96' },
-          reactions: [],
-        },
-      };
-    }
+  function imageItem(id: string, url: string): Parameters<BoardsService['applyOps']>[2][number] {
+    return {
+      type: 'item.create',
+      clientOpId: randomUUID(),
+      item: {
+        id,
+        parentId: null,
+        x: 0,
+        y: 0,
+        width: 300,
+        height: 200,
+        rotation: 0,
+        zIndex: 0,
+        content: { type: 'image', url, width: 40, height: 40 },
+        style: { color: '#FCEB96' },
+        reactions: [],
+      },
+    };
+  }
 
-    it('удаление элемента-картинки чистит файл с диска', async () => {
+  describe('очистка файлов в storage (BoardsService.applyOps/remove, минуя транспорт WS)', () => {
+    it('удаление элемента-картинки чистит файл в storage', async () => {
       const owner = await newUser('cleanup-delete-owner');
       const boardId = await newBoard(owner);
       const { url } = await upload(
@@ -354,9 +357,9 @@ describeDb('картинки досок', () => {
         imageForm(await testImage(), 'i.jpg', 'image/jpeg'),
       );
       const filename = url!.split('/').pop()!;
-      expect(existsSync(join(assetsDir, filename))).toBe(true);
+      expect(storage.peek(boardImageKey(boardId, filename))).toBeDefined();
 
-      const service = await boardsService();
+      const service = boardsService();
       const itemId = randomUUID();
       await service.applyOps(
         { participantId: owner.id, userId: owner.id, name: owner.name },
@@ -369,7 +372,7 @@ describeDb('картинки досок', () => {
         [{ type: 'item.delete', clientOpId: randomUUID(), id: itemId }],
       );
 
-      expect(existsSync(join(assetsDir, filename))).toBe(false);
+      expect(storage.peek(boardImageKey(boardId, filename))).toBeUndefined();
     });
 
     it('замена картинки другим содержимым (patch content) чистит старый файл', async () => {
@@ -382,7 +385,7 @@ describeDb('картинки досок', () => {
       );
       const filename = url!.split('/').pop()!;
 
-      const service = await boardsService();
+      const service = boardsService();
       const itemId = randomUUID();
       await service.applyOps(
         { participantId: owner.id, userId: owner.id, name: owner.name },
@@ -402,7 +405,7 @@ describeDb('картинки досок', () => {
         ],
       );
 
-      expect(existsSync(join(assetsDir, filename))).toBe(false);
+      expect(storage.peek(boardImageKey(boardId, filename))).toBeUndefined();
     });
 
     it('удаление доски чистит файлы всех её картинок', async () => {
@@ -415,7 +418,7 @@ describeDb('картинки досок', () => {
       );
       const filename = url!.split('/').pop()!;
 
-      const service = await boardsService();
+      const service = boardsService();
       await service.applyOps(
         { participantId: owner.id, userId: owner.id, name: owner.name },
         boardId,
@@ -428,7 +431,126 @@ describeDb('картинки досок', () => {
       });
       await service.remove(owner.id, boardId);
 
-      expect(existsSync(join(assetsDir, filename))).toBe(false);
+      expect(storage.peek(boardImageKey(boardId, filename))).toBeUndefined();
+    });
+  });
+
+  describe('переходное чтение legacy-каталога (fallback) и защита от межбордовой утечки', () => {
+    /** Случайное валидное имя файла картинки доски (32 hex + .webp) */
+    function randomFilename(): string {
+      return `${randomBytes(16).toString('hex')}.webp`;
+    }
+
+    it('GET .../assets/:filename отдаёт файл из storage, если он там есть', async () => {
+      const owner = await newUser('legacy-storage-owner');
+      const boardId = await newBoard(owner);
+      const { url } = await upload(
+        boardId,
+        owner,
+        imageForm(await testImage(), 'l1.jpg', 'image/jpeg'),
+      );
+      const filename = url!.split('/').pop()!;
+
+      const res = await app.inject({
+        method: 'GET',
+        url,
+        headers: as(owner),
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toBe('image/webp');
+      // Файл уже в storage — disk fallback не используется
+      expect(storage.peek(boardImageKey(boardId, filename))).toBeDefined();
+    });
+
+    it('GET .../assets/:filename отдаёт файл с диска, если он в БД привязан к этой доске (legacy, не мигрирован)', async () => {
+      const owner = await newUser('legacy-disk-owner');
+      const boardId = await newBoard(owner);
+      const filename = randomFilename();
+      const buf = Buffer.from('legacy-board-image-content');
+      // upload всегда пишет в storage, поэтому эмулируем legacy-файл вручную
+      writeFileSync(join(assetsDir, filename), buf);
+
+      const service = boardsService();
+      const itemId = randomUUID();
+      await service.applyOps(
+        { participantId: owner.id, userId: owner.id, name: owner.name },
+        boardId,
+        [imageItem(itemId, boardImageUrl(boardId, filename))],
+      );
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/boards/${boardId}/assets/${filename}`,
+        headers: as(owner),
+      });
+
+      expect(res.statusCode).toBe(200);
+      expect(res.headers['content-type']).toBe('image/webp');
+      const body = Buffer.isBuffer(res.body) ? res.body : Buffer.from(res.body as string, 'binary');
+      expect(body.toString('hex')).toBe(buf.toString('hex'));
+    });
+
+    it('GET .../assets/:filename — 404, если файл на диске есть, но ни один item этой доски на него не ссылается (межбордовая утечка закрыта)', async () => {
+      const owner = await newUser('leak-orphan-owner');
+      const boardId = await newBoard(owner);
+      const filename = randomFilename();
+      const buf = Buffer.from('orphaned-legacy-content');
+      writeFileSync(join(assetsDir, filename), buf);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/boards/${boardId}/assets/${filename}`,
+        headers: as(owner),
+      });
+
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('GET .../assets/:filename — 404, если filename привязан к ДРУГОЙ доске, не к запрошенной', async () => {
+      const owner = await newUser('leak-cross-owner');
+      const boardA = await newBoard(owner);
+      const boardB = await newBoard(owner);
+      const filename = randomFilename();
+      const buf = Buffer.from('board-a-legacy-content');
+      writeFileSync(join(assetsDir, filename), buf);
+
+      // Файл привязан ТОЛЬКО к boardA через БД
+      const service = boardsService();
+      await service.applyOps(
+        { participantId: owner.id, userId: owner.id, name: owner.name },
+        boardA,
+        [imageItem(randomUUID(), boardImageUrl(boardA, filename))],
+      );
+
+      // owner имеет полный доступ к boardB, но файл принадлежит boardA — 404
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/boards/${boardB}/assets/${filename}`,
+        headers: as(owner),
+      });
+
+      expect(res.statusCode).toBe(404);
+    });
+
+    it('storage.get имеет приоритет над легаси-диском, если объект есть в обоих местах', async () => {
+      const owner = await newUser('legacy-priority-owner');
+      const boardId = await newBoard(owner);
+      const filename = randomFilename();
+      const storageContent = Buffer.from('from-storage');
+      const diskContent = Buffer.from('from-disk');
+      await storage.put(boardImageKey(boardId, filename), storageContent, 'image/webp');
+      writeFileSync(join(assetsDir, filename), diskContent);
+
+      const res = await app.inject({
+        method: 'GET',
+        url: `/api/boards/${boardId}/assets/${filename}`,
+        headers: as(owner),
+      });
+
+      expect(res.statusCode).toBe(200);
+      const body = Buffer.isBuffer(res.body) ? res.body : Buffer.from(res.body as string, 'binary');
+      expect(body.toString('hex')).toBe(storageContent.toString('hex'));
     });
   });
 });
