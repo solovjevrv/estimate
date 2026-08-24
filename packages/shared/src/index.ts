@@ -5,3 +5,4 @@ export * from './teams';
 export * from './rooms';
 export * from './boards';
 export * from './validation';
+export * from './emoji';

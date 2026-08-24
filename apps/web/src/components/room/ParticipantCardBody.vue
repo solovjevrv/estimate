@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { REACTION_EMOJIS, type Participant, type ReactionEmoji } from '@poker/shared';
+import { type EmojiSequence, type Participant } from '@poker/shared';
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -25,11 +25,13 @@ const props = withDefaults(
   { flyingReactions: () => [], flipIndex: 0 },
 );
 
-const emit = defineEmits<{ react: [emoji: ReactionEmoji] }>();
+import EmojiPicker from '../EmojiPicker.vue';
+
+const emit = defineEmits<{ react: [emoji: EmojiSequence] }>();
 
 const { t } = useI18n();
 
-function onPickEmoji(emoji: ReactionEmoji, close: () => void): void {
+function onPickEmoji(emoji: EmojiSequence, close: () => void): void {
   emit('react', emoji);
   close();
 }
@@ -64,7 +66,7 @@ watch(
  * у кого её ещё нет — ставит; у кого уже есть — снимает (сервер решает сам,
  * какая это из двух веток, по паре «автор → адресат»).
  */
-function onBadgeClick(emoji: ReactionEmoji): void {
+function onBadgeClick(emoji: EmojiSequence): void {
   emit('react', emoji);
 }
 </script>
@@ -181,18 +183,13 @@ function onBadgeClick(emoji: ReactionEmoji): void {
         </button>
 
         <template #content="{ close }">
-          <div class="grid grid-cols-5 gap-1 p-2">
-            <button
-              v-for="emoji in REACTION_EMOJIS"
-              :key="emoji"
-              type="button"
-              class="hover:bg-[var(--brand-border)] flex size-8 cursor-pointer items-center justify-center rounded-[8px] text-xl"
-              :aria-label="emoji"
-              @click.stop="onPickEmoji(emoji, close)"
-            >
-              {{ emoji }}
-            </button>
-          </div>
+          <EmojiPicker
+            @select="
+              (emoji) => {
+                onPickEmoji(emoji, close);
+              }
+            "
+          />
         </template>
       </UPopover>
       <UAvatar

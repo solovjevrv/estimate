@@ -33,7 +33,7 @@ test.describe('Доски: эмодзи', () => {
 
     // Клик по инструменту сразу открывает список — без клика по холсту
     await board.toolbarButton('Эмодзи').click();
-    await page.getByRole('button', { name: '🔥', exact: true }).click();
+    await page.getByRole('button', { name: 'fire', exact: true }).click();
 
     const emojiNode = board.emojiNodes.first();
     await expect(emojiNode).toBeVisible();
@@ -61,7 +61,7 @@ test.describe('Доски: эмодзи', () => {
 
     // Замена эмодзи через тулбар выделения
     await toolbar.getByLabel('Заменить эмодзи').click();
-    await page.getByRole('button', { name: '🚀', exact: true }).click();
+    await page.getByRole('button', { name: 'rocket', exact: true }).click();
     await expect(board.emojiNodes.first()).toContainText('🚀');
     await expect(board.emojiNodes).toHaveCount(1);
   });

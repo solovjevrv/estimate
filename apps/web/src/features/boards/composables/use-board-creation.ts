@@ -1,4 +1,4 @@
-import type { BoardItem, BoardOp, ReactionEmoji } from '@poker/shared';
+import type { BoardItem, BoardOp, EmojiSequence } from '@poker/shared';
 import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_MAX_ITEMS } from '@poker/shared';
 import { useToast } from '@nuxt/ui/composables';
 import { ref, type Ref } from 'vue';
@@ -68,7 +68,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
   createText: (center: { x: number; y: number }) => void;
   createFrame: (center: { x: number; y: number }) => void;
   createImage: (center: { x: number; y: number }, file: File) => Promise<void>;
-  createEmojiAtCenter: (emoji: ReactionEmoji) => void;
+  createEmojiAtCenter: (emoji: EmojiSequence) => void;
   createStickerAtCenter: (pack: string, id: string) => void;
 
   cancelPendingEdit: () => void;
@@ -203,7 +203,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
     ]);
   }
 
-  function createEmojiAtCenter(emoji: ReactionEmoji): void {
+  function createEmojiAtCenter(emoji: EmojiSequence): void {
     options.breakFollowOnEdit();
     if (!options.canEdit() || !canCreateItem()) return;
     const rect = options.getCanvasRect();

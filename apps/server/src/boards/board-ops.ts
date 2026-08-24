@@ -29,7 +29,6 @@ import {
   BOARD_TEXT_LINK_PATTERN,
   isBoardImageUrl,
   isValidUuid,
-  REACTION_EMOJIS,
   toggleItemReaction,
   isBoardContainer,
   type BoardEdgeDash,
@@ -42,6 +41,7 @@ import {
   type BoardTextRun,
 } from '@poker/shared';
 
+import { isValidEmojiSequence } from '@poker/shared/emoji/validate';
 import { ValidationError } from '../errors';
 
 export interface BoardOpState {
@@ -375,12 +375,12 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
     title?: unknown;
   };
 
-  // Для emoji — только сам символ из фиксированного набора, text/runs не требуются
+  // Для emoji — валидный Unicode-эмодзи из каталога (21.4)
   if (c.type === 'emoji') {
-    if (!(REACTION_EMOJIS as readonly unknown[]).includes(c.emoji)) {
+    if (!isValidEmojiSequence(c.emoji)) {
       throw new ValidationError('Недопустимый эмодзи');
     }
-    return { type: 'emoji', emoji: c.emoji as (typeof REACTION_EMOJIS)[number] };
+    return { type: 'emoji', emoji: c.emoji };
   }
 
   // Для sticker — pack и id обязательны, формат /^[a-z0-9-]{1,64}$/ (13.4)
@@ -625,7 +625,7 @@ export function applyBoardOp(
       if (existing.content.type !== 'sticky') {
         throw new ValidationError('Реакции доступны только на стикерах');
       }
-      if (!(REACTION_EMOJIS as readonly unknown[]).includes(op.emoji)) {
+      if (!isValidEmojiSequence(op.emoji)) {
         throw new ValidationError('Недопустимый эмодзи реакции');
       }
       state.items.set(op.id, {

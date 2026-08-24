@@ -1,6 +1,6 @@
 /** Общие типы и контракты, используемые фронтендом и бэкендом. */
 
-import type { ReactionEmoji } from '../rooms';
+import type { EmojiSequence } from '../emoji';
 import type { BoardEdge, BoardEdgeStyle, BoardItem, BoardItemStyle } from './entities';
 
 interface BoardOpBase {
@@ -41,7 +41,7 @@ export interface BoardItemDeleteOp extends BoardOpBase {
 export interface BoardItemReactOp extends BoardOpBase {
   type: 'item.react';
   id: string;
-  emoji: ReactionEmoji;
+  emoji: EmojiSequence;
 }
 
 export interface BoardEdgeCreateOp extends BoardOpBase {

@@ -65,12 +65,11 @@ import {
   BOARD_TEXT_ALIGNS,
   BOARD_TEXT_LINK_MAX_LENGTH,
   BOARD_TEXT_LINK_PATTERN,
-  REACTION_EMOJIS,
   type BoardColorHex,
   type BoardHighlightColor,
   type BoardTextAlign,
   type BoardTextMark,
-  type ReactionEmoji,
+  type EmojiSequence,
 } from '@poker/shared';
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -79,6 +78,7 @@ import { HIGHLIGHT_CSS } from '../../features/boards/rich-text/board-rich-text';
 import type { FormatMarkKey } from '../../features/boards/composables/use-rich-text-editing';
 import type { ItemFormKind } from '../../features/boards/board-item-form';
 import BoardStickerPicker from './BoardStickerPicker.vue';
+import EmojiPicker from '../EmojiPicker.vue';
 import BoardColorPickerMenu from './BoardColorPickerMenu.vue';
 import BoardFormatButtons from './BoardFormatButtons.vue';
 
@@ -168,7 +168,7 @@ const emit = defineEmits<{
   duplicate: [];
   delete: [];
   replaceImage: [];
-  emoji: [emoji: ReactionEmoji];
+  emoji: [emoji: EmojiSequence];
   sticker: [pack: string, id: string];
 }>();
 
@@ -332,21 +332,14 @@ function cancelTextColor(hex: BoardColorHex): void {
       </button>
 
       <template #content="{ close }">
-        <div class="board-emoji-menu">
-          <button
-            v-for="emoji in REACTION_EMOJIS"
-            :key="emoji"
-            type="button"
-            class="board-emoji-menu-item"
-            :aria-label="emoji"
-            @click="
+        <EmojiPicker
+          @select="
+            (emoji: string) => {
               emit('emoji', emoji);
               close();
-            "
-          >
-            {{ emoji }}
-          </button>
-        </div>
+            }
+          "
+        />
       </template>
     </UPopover>
 

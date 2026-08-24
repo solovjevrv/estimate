@@ -8,7 +8,7 @@ import type {
   JoinRoomResult,
   Participant,
   Reaction,
-  ReactionEmoji,
+  EmojiSequence,
   RoomState,
   RoomTimerState,
   Round,
@@ -245,7 +245,7 @@ export const useRoomStore = defineStore('room', () => {
    * момент раунда, любому участнику на карточку любого другого. Повторная
    * реакция тому же адресату заменяет предыдущую — сервер решает это сам.
    */
-  async function sendReaction(targetParticipantId: string, emoji: ReactionEmoji): Promise<void> {
+  async function sendReaction(targetParticipantId: string, emoji: EmojiSequence): Promise<void> {
     await emitWithAck<typeof WS_EVENTS.SEND_REACTION, null>(
       requireSocket(),
       WS_EVENTS.SEND_REACTION,

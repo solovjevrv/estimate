@@ -1,5 +1,4 @@
 import {
-  REACTION_EMOJIS,
   WS_EVENTS,
   WS_SERVER_EVENTS,
   type JoinRoomPayload,
@@ -17,6 +16,7 @@ import {
   type UpdateLinksPayload,
   type WsAck,
 } from '@poker/shared';
+import { isValidEmojiSequence } from '@poker/shared/emoji/validate';
 import type { FastifyBaseLogger } from 'fastify';
 
 import { AppError, ForbiddenError, ValidationError } from '../errors';
@@ -179,7 +179,7 @@ export class RoomsGateway {
             throw new ValidationError('Не указан участник');
           }
           const emoji = payload?.emoji;
-          if (!emoji || !(REACTION_EMOJIS as readonly string[]).includes(emoji)) {
+          if (!isValidEmojiSequence(emoji)) {
             throw new ValidationError('Недопустимый эмодзи');
           }
           // Адресат должен реально сидеть за столом — иначе реакции на случайные

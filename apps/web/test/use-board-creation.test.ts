@@ -1,4 +1,4 @@
-import type { BoardItem, BoardOp, ReactionEmoji } from '@poker/shared';
+import type { BoardItem, BoardOp, EmojiSequence } from '@poker/shared';
 import { BOARD_MAX_ITEMS } from '@poker/shared';
 import type { Mock } from 'vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -87,7 +87,7 @@ function makeOptions(overrides: Partial<UseBoardCreationOptions> = {}): UseBoard
   } as UseBoardCreationOptions & { applyOps: Mock; breakFollowOnEdit: Mock };
 }
 
-const EMOJI = '👍' as ReactionEmoji;
+const EMOJI = '👍' as EmojiSequence;
 
 describe('useBoardCreation', () => {
   beforeEach(() => {

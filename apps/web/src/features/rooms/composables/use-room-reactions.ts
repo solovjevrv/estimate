@@ -1,6 +1,6 @@
 /** Реакции-эмодзи на карточке участника (10.10) — постоянный бейдж-счётчик и одноразовая анимация (10.12) */
 import { useToast } from '@nuxt/ui/composables';
-import type { Participant, Reaction, ReactionEmoji } from '@poker/shared';
+import type { Participant, Reaction, EmojiSequence } from '@poker/shared';
 import { reactive, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -17,7 +17,7 @@ export interface UseRoomReactionsOptions {
 export function useRoomReactions(options: UseRoomReactionsOptions): {
   receivedReactionsFor: (participantId: string) => ReceivedReaction[];
   flyingReactionsFor: (participantId: string) => FlyingReaction[];
-  onReactClick: (participant: Participant, emoji: ReactionEmoji) => Promise<void>;
+  onReactClick: (participant: Participant, emoji: EmojiSequence) => Promise<void>;
 } {
   const { t } = useI18n();
   const toast = useToast();
@@ -26,8 +26,7 @@ export function useRoomReactions(options: UseRoomReactionsOptions): {
   /**
    * Одинаковые реакции разных участников схлопываются в одну со счётчиком (как
    * реакции на сообщение в Telegram) — иначе при десятке участников бейджи не
-   * поместились бы под карточкой шириной 130px. Набор эмодзи фиксирован
-   * (`REACTION_EMOJIS`), поэтому уникальных групп на карточке не больше его длины.
+   * поместились бы под карточкой шириной 130px.
    */
   function receivedReactionsFor(participantId: string): ReceivedReaction[] {
     const forParticipant = room.reactions.filter((r) => r.toParticipantId === participantId);
@@ -53,7 +52,7 @@ export function useRoomReactions(options: UseRoomReactionsOptions): {
     }));
   }
 
-  async function onReactClick(participant: Participant, emoji: ReactionEmoji): Promise<void> {
+  async function onReactClick(participant: Participant, emoji: EmojiSequence): Promise<void> {
     try {
       await room.sendReaction(participant.participantId, emoji);
     } catch {

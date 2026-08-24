@@ -1170,7 +1170,7 @@ describeDb('комнаты', () => {
       ]);
     });
 
-    it('недопустимый эмодзи отклоняется', async () => {
+    it('недопустимая (не-эмодзи) строка отклоняется', async () => {
       const owner = await newUser('reaction-invalid-owner');
       const roomId = await newRoom(owner);
       const master = connect(owner);
@@ -1180,7 +1180,7 @@ describeDb('комнаты', () => {
 
       const ack = await emit(master, WS_EVENTS.SEND_REACTION, {
         targetParticipantId: guestJoin.participantId,
-        emoji: '🍕',
+        emoji: 'not-an-emoji',
       });
 
       expect(ack).toMatchObject({ ok: false, error: 'bad_request' });
