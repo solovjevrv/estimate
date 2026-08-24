@@ -21,6 +21,7 @@ import { ACCESS_COOKIE, TokenService, UsersRepository } from '../src/auth';
 import { BoardImagesService, BoardsService } from '../src/boards';
 import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
+import { FakeObjectStorage } from '../src/platform/storage';
 import { TeamsRepository, TeamsService } from '../src/teams';
 
 try {
@@ -131,7 +132,13 @@ describeDb('картинки досок', () => {
     // boardImagesPlugin вместе) — так тест ловит коллизии между их
     // независимыми регистрациями @fastify/multipart
     avatarsDir = mkdtempSync(join(tmpdir(), 'poker-avatars-'));
-    app = buildApp({ db, auth: authConfig, boardAssetsDir: assetsDir, avatarsDir });
+    app = buildApp({
+      db,
+      auth: authConfig,
+      boardAssetsDir: assetsDir,
+      avatarsDir,
+      objectStorage: new FakeObjectStorage(),
+    });
     await app.ready();
   });
 
