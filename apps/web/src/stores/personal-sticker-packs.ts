@@ -18,6 +18,12 @@ import {
 export const usePersonalStickerPacksStore = defineStore('personal-sticker-packs', () => {
   const packs = ref<PersonalStickerPackSummary[]>([]);
   const loaded = ref(false);
+  /**
+   * false — сервер не поднял роуты личных стикеров (нет TELEGRAM_BOT_TOKEN,
+   * см. config.ts/app.ts). Пикер и бейдж «импортировать» на этом должны
+   * прятать саму возможность импорта, а не вести на 404 с сервера.
+   */
+  const enabled = ref(true);
   let pending: Promise<void> | null = null;
 
   async function load(): Promise<void> {
@@ -28,12 +34,12 @@ export const usePersonalStickerPacksStore = defineStore('personal-sticker-packs'
       })
       .catch((err) => {
         if (err instanceof ApiError && err.status === 404) {
-          // Фича выключена на сервере (без TELEGRAM_BOT_TOKEN) — паки пусты
-          packs.value = [];
+          // Фича выключена на сервере (без TELEGRAM_BOT_TOKEN) — роутов нет вовсе
+          enabled.value = false;
         } else {
           console.warn('Не удалось загрузить личные стикер-паки', err);
-          packs.value = [];
         }
+        packs.value = [];
       })
       .finally(() => {
         loaded.value = true;
@@ -62,5 +68,5 @@ export const usePersonalStickerPacksStore = defineStore('personal-sticker-packs'
     return packs.value.some((p) => p.id === packId);
   }
 
-  return { packs, loaded, load, importPack, deletePack, hasPack };
+  return { packs, loaded, enabled, load, importPack, deletePack, hasPack };
 });

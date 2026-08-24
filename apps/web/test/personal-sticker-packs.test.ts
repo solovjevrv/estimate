@@ -10,6 +10,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { PersonalStickerPackSummary } from '@poker/shared';
 
+import { ApiError } from '../src/lib/api';
+
 const mockApi = vi.hoisted(() => ({
   listMyStickerPacks: vi.fn(),
   getStickerPackMeta: vi.fn(),
@@ -104,16 +106,23 @@ describe('usePersonalStickerPacksStore', () => {
     expect(store.hasPack(randomUUID())).toBe(false);
   });
 
-  it('load не падает при 404 (фича выключена на сервере)', async () => {
-    mockApi.listMyStickerPacks.mockRejectedValue({
-      name: 'ApiError',
-      status: 404,
-      message: 'not found',
-    });
+  it('load не падает при 404 и помечает фичу выключенной (нет TELEGRAM_BOT_TOKEN)', async () => {
+    mockApi.listMyStickerPacks.mockRejectedValue(new ApiError(404, 'not_found', 'not found'));
+    const { usePersonalStickerPacksStore } = await import('../src/stores/personal-sticker-packs');
+    const store = usePersonalStickerPacksStore();
+
+    expect(store.enabled).toBe(true);
+    await expect(store.load()).resolves.not.toThrow();
+    expect(store.packs).toHaveLength(0);
+    expect(store.enabled).toBe(false);
+  });
+
+  it('load оставляет enabled=true при обычной сетевой ошибке (не 404)', async () => {
+    mockApi.listMyStickerPacks.mockRejectedValue(new Error('network down'));
     const { usePersonalStickerPacksStore } = await import('../src/stores/personal-sticker-packs');
     const store = usePersonalStickerPacksStore();
 
     await expect(store.load()).resolves.not.toThrow();
-    expect(store.packs).toHaveLength(0);
+    expect(store.enabled).toBe(true);
   });
 });

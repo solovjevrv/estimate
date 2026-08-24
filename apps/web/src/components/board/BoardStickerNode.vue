@@ -3,7 +3,7 @@ import { useToast } from '@nuxt/ui/composables';
 import type { BoardItem, BoardStickerContent } from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
-import { computed, inject, ref } from 'vue';
+import { computed, inject, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import { BOARD_CAN_EDIT_KEY } from '../../features/boards/context/board-canvas-keys';
@@ -27,6 +27,15 @@ const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 const personalPacks = usePersonalStickerPacksStore();
 
+// Стор мог быть ещё не загружен (пикер стикеров не открывали в этой сессии) —
+// без этого isForeignPersonal/enabled судили бы по дефолтам (enabled: true,
+// hasPack: false) и бейдж «импортировать» мог бы показаться, даже когда
+// личные стикеры выключены на сервере (нет TELEGRAM_BOT_TOKEN). load()
+// идемпотентен — повторный вызов, если пикер уже загрузил стор, не делает лишний запрос.
+onMounted(() => {
+  void personalPacks.load();
+});
+
 const content = computed(() => props.data.content as BoardStickerContent);
 const stickerAsset = computed(() => findStickerAsset(content.value.pack, content.value.id));
 const imageUrl = computed(() => {
@@ -41,7 +50,7 @@ const altText = computed(() => stickerAsset.value?.emoji ?? 'sticker');
  * этот пакет и увидеть стикер (иначе картинка 404).
  */
 const isForeignPersonal = computed(
-  () => !stickerAsset.value && !personalPacks.hasPack(content.value.pack),
+  () => personalPacks.enabled && !stickerAsset.value && !personalPacks.hasPack(content.value.pack),
 );
 
 const showImportModal = ref(false);

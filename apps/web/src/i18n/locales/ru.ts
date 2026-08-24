@@ -374,12 +374,14 @@ export default {
     stickerPersonalEmpty: 'Импортированных паков пока нет',
     stickerImportButton: 'Импорт из Telegram',
     stickerImportTitle: 'Импорт стикеров из Telegram',
-    stickerImportPlaceholder: 'Название стикер-сета, например stickers',
+    stickerImportPlaceholder: 'Ссылка t.me/addstickers/... или имя пака',
     stickerImportConsentLabel: 'Согласен на использование чужих стикеров',
     stickerImportConfirm: 'Импортировать',
     stickerImportImporting: 'Импортируем…',
     stickerImportError:
       'Не удалось импортировать стикеры. Проверьте название и попробуйте ещё раз.',
+    stickerImportInvalidName:
+      'Не удалось распознать ссылку или имя пака — вставьте ссылку вида t.me/addstickers/имя или само имя',
     stickerImportSuccess: 'Пакет импортирован',
     stickerImportForeignLabel: 'Импортировать этот пакет',
     stickerImportMetaError: 'Не удалось получить сведения о паке — попробуйте ещё раз',

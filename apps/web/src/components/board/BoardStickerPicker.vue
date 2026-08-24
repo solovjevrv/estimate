@@ -96,6 +96,7 @@ function pick(pack: string, id: string): void {
         <img :src="pack.items[0]?.src" :alt="pack.label" draggable="false" />
       </button>
       <button
+        v-if="store.enabled"
         type="button"
         class="board-sticker-picker-tab"
         :aria-label="t('board.stickerImportButton')"
@@ -167,8 +168,10 @@ function pick(pack: string, id: string): void {
         </div>
       </section>
 
-      <!-- Мои паки (личные импортированные из Telegram) -->
+      <!-- Мои паки (личные импортированные из Telegram) — секции нет вообще,
+           если сервер не поднял роуты (нет TELEGRAM_BOT_TOKEN, см. store.enabled) -->
       <section
+        v-if="store.enabled"
         :ref="(el) => setSectionRef('personal', el as Element | null)"
         data-testid="board-sticker-picker-section"
         class="board-sticker-picker-section"

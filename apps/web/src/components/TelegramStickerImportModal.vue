@@ -12,6 +12,7 @@ import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
+import { parseTelegramSetName } from '../features/boards/api/personal-stickers-api';
 import { usePersonalStickerPacksStore } from '../stores/personal-sticker-packs';
 
 const props = defineProps<{
@@ -42,9 +43,16 @@ function close(): void {
 
 async function onSubmit(): Promise<void> {
   if (!canSubmit.value) return;
+  // Принимаем и голое имя (stickers), и ссылку (t.me/addstickers/stickers) —
+  // сервер понимает только голое имя, парсим здесь (21.6, §5.2)
+  const parsed = parseTelegramSetName(setName.value);
+  if (!parsed) {
+    toast.add({ title: t('board.stickerImportInvalidName'), color: 'error' });
+    return;
+  }
   loading.value = true;
   try {
-    await store.importPack(setName.value.trim());
+    await store.importPack(parsed);
     toast.add({ title: t('board.stickerImportSuccess'), color: 'success' });
     emit('imported');
     close();
@@ -62,12 +70,13 @@ async function onSubmit(): Promise<void> {
       <div class="space-y-4">
         <UInput
           v-model="setName"
+          class="w-full"
           :placeholder="t('board.stickerImportPlaceholder')"
           :ui="MODAL_INPUT_UI"
           :readonly="!!telegramSetName"
         />
         <label class="flex items-start gap-2 text-[14px]">
-          <UCheckbox v-model="consent" />
+          <UCheckbox v-model="consent" :ui="{ base: 'rounded-[5px]' }" />
           <span class="text-[var(--brand-ink2)]">{{ t('board.stickerImportConsentLabel') }}</span>
         </label>
       </div>
