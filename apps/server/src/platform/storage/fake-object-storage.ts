@@ -40,4 +40,9 @@ export class FakeObjectStorage implements ObjectStorage {
   peek(key: string): StoredObject | undefined {
     return this.objects.get(key);
   }
+
+  /** Только для тестов — перечислить все ключи в хранилище */
+  keys(): string[] {
+    return Array.from(this.objects.keys());
+  }
 }

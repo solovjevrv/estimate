@@ -35,11 +35,15 @@ services:
       YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-}
       YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
-      # MinIO намеренно не подключен здесь (21.1): аватарки/картинки досок пока
-      # пишутся на локальный диск (volumes ниже) — MINIO_ACCESS_KEY/SECRET_KEY
-      # заводятся вместе с фактической миграцией сервисов (21.2/21.5), не раньше,
-      # чтобы новая инфраструктура не становилась точкой отказа раньше, чем ею
-      # начинают реально пользоваться.
+      # Аватарки (21.2) пишутся в MinIO, а не на диск. env-переменные совпадают
+      # с теми, что создаёт minio-init (учётка приложения): MINIO_ENDPOINT=minio —
+      # внутренний hostname Docker-сети. avatars_data volume остаётся смонтированным
+      # для переходного чтения legacy-файлов и для запуска migrate:avatars — планово
+      # убрать отдельной задачей после подтверждённой миграции.
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
+      MINIO_ENDPOINT: minio
+      MINIO_BUCKET: ${MINIO_BUCKET:-poker-assets}
     volumes:
       - avatars_data:/app/apps/server/avatars
       - board_assets_data:/app/apps/server/board-assets
@@ -53,9 +57,9 @@ services:
       retries: 6
       start_period: 5s
 
-  # Объектное хранилище (Epic 21) — поднято, но пока не в горячем пути: до
-  # миграции аватарок/картинок досок (21.2/21.5) `server` его не читает и не
-  # пишет. API/консоль не публикуются — доступ только по внутренней сети Compose.
+  # Объектное хранилище (Epic 21) — MinIO. Аватарки (21.2) уже пишутся сюда; картинки
+  # досок (21.5) — ещё нет. API/консоль не публикуются — доступ только по внутренней
+  # сети Compose.
   minio:
     image: minio/minio:RELEASE.2025-04-08T15-41-24Z
     restart: unless-stopped
@@ -164,10 +168,10 @@ services:
       tar -czf "/backups/board-assets_$$(date +%Y-%m-%d_%H%M%S).tar.gz" -C /board-assets . && find /backups -name "board-assets_*.tar.gz" -mtime +14 -delete;
       sleep 24h & wait $${!}; done'
 
-  # Бэкап бакета MinIO (21.1) — тем же принципом, что и db-backup выше: ежедневный
-  # локальный снимок, хранение 14 дней, не защита от потери диска целиком. Пока
-  # бакет пуст (аватарки/картинки ещё не мигрированы, 21.2/21.5) — снимает пустые
-  # срезы, механизм проверен заранее, а не в момент, когда в бакете уже есть данные.
+  # Бэкап бакета MinIO — тем же принципом, что и db-backup выше: ежедневный
+  # локальный снимок, хранение 14 дней, не защита от потери диска целиком. Механизм
+  # проверен заранее, пока в бакете есть только аватарки (21.2); картинки досок
+  # (21.5) появятся позже теми же способом.
   minio-backup:
     image: minio/mc:RELEASE.2025-04-08T15-39-49Z
     restart: unless-stopped

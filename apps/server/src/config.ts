@@ -130,7 +130,7 @@ function loadAuthConfig(webOrigin: string, port: number): AuthConfig {
  * Обе учётные части (access/secret) обязаны идти вместе — как у OAuth-провайдеров
  * выше: одна без другой означает опечатку в конфиге, а не «выключено».
  */
-function loadObjectStorageConfig(): ObjectStorageConfig | undefined {
+export function loadObjectStorageConfig(): ObjectStorageConfig | undefined {
   const accessKey = process.env.MINIO_ACCESS_KEY;
   const secretKey = process.env.MINIO_SECRET_KEY;
   if (!accessKey && !secretKey) return undefined;

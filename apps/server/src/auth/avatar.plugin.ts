@@ -1,6 +1,3 @@
-import { createReadStream } from 'node:fs';
-import { stat } from 'node:fs/promises';
-
 import fastifyMultipart from '@fastify/multipart';
 import { AVATAR_ALLOWED_MIME_TYPES, AVATAR_MAX_BYTES } from '@poker/shared';
 import type { FastifyInstance } from 'fastify';
@@ -8,13 +5,16 @@ import fp from 'fastify-plugin';
 
 import { NotFoundError, ValidationError } from '../errors';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
+import type { ObjectStorage } from '../platform/storage';
 
 import { AvatarService } from './avatar.service';
 import { userResponse } from './plugin';
 import { UsersRepository } from './users.repository';
 
 export interface AvatarPluginOptions {
-  avatarsDir: string;
+  storage: ObjectStorage;
+  /** Каталог легаси-файлов для переходного чтения; не задан — fallback выключен */
+  legacyAvatarsDir?: string;
 }
 
 const ALLOWED_MIME = new Set<string>(AVATAR_ALLOWED_MIME_TYPES);
@@ -23,7 +23,7 @@ const avatarParams = {
   type: 'object',
   required: ['filename'],
   // Расширение фиксировано (мы всегда сохраняем webp) — валидация здесь только
-  // защита от мусора в URL, настоящая проверка имени — в AvatarService.filePath
+  // защита от мусора в URL, настоящая проверка имени — в AvatarService.read
   properties: { filename: { type: 'string', pattern: '^[a-f0-9]{32}\\.webp$' } },
 } as const;
 
@@ -33,7 +33,11 @@ async function avatarPluginImpl(app: FastifyInstance, opts: AvatarPluginOptions)
     throw new Error('Роуты аватарки требуют плагина аутентификации');
   }
 
-  const service = await AvatarService.forDirectory(new UsersRepository(app.db), opts.avatarsDir);
+  const service = AvatarService.create(
+    new UsersRepository(app.db),
+    opts.storage,
+    opts.legacyAvatarsDir,
+  );
 
   // Свой encapsulation-контекст (обычный register, не fp) только для
   // multipart+роута: картинки досок (board-images.plugin.ts, 13.2) тоже
@@ -99,19 +103,13 @@ async function avatarPluginImpl(app: FastifyInstance, opts: AvatarPluginOptions)
       },
     },
     async (req, reply) => {
-      const path = service.filePath(req.params.filename);
-      if (!path) {
+      const stream = await service.read(req.params.filename);
+      if (!stream) {
         throw new NotFoundError('Аватарка не найдена');
       }
-      try {
-        await stat(path);
-      } catch {
-        throw new NotFoundError('Аватарка не найдена');
-      }
-      // Имя файла случайное и меняется при каждой загрузке — можно кэшировать навсегда
       reply.header('cache-control', 'public, max-age=31536000, immutable');
       reply.type('image/webp');
-      return reply.send(createReadStream(path));
+      return reply.send(stream);
     },
   );
 }
