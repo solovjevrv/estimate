@@ -5,7 +5,7 @@ import type {
   BoardItemPatchOp,
   BoardOp,
   BoardTextAlign,
-  ReactionEmoji,
+  EmojiSequence,
 } from '@poker/shared';
 import { isBoardContainer } from '@poker/shared';
 import {
@@ -455,7 +455,7 @@ export function useBoardSelection(options: BoardSelectionOptions) {
 
   /** Смена эмодзи (13.3) — патчим content.emoji */
   /** Смена эмодзи (13.3) — как и замена картинки, не-эмодзи в смешанном выделении пропускаются */
-  function setSelectedEmoji(emoji: ReactionEmoji): void {
+  function setSelectedEmoji(emoji: EmojiSequence): void {
     const ops: BoardOp[] = selectedNodes.value
       .filter((node) => node.data.content.type === 'emoji')
       .map((node) => ({

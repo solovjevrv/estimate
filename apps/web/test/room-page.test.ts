@@ -1768,18 +1768,18 @@ describe('реакции-эмодзи на карточке участника (
     (trigger as HTMLElement).click();
     await vi.waitFor(() => {
       const buttons = Array.from(document.body.querySelectorAll('button'));
-      const found = buttons.find((b) => b.getAttribute('aria-label') === '👍');
+      const found = buttons.find((b) => b.getAttribute('aria-label') === 'thumbs up');
       expect(found).not.toBeUndefined();
     });
 
     const emojiButton = Array.from(document.body.querySelectorAll('button')).find(
-      (b) => b.getAttribute('aria-label') === '👍',
+      (b) => b.getAttribute('aria-label') === 'thumbs up',
     );
     (emojiButton as HTMLElement).click();
 
     await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'send_reaction')).toBe(true));
     const sent = socket.sent.find((s) => s.event === 'send_reaction');
-    expect(sent?.payload).toMatchObject({ targetParticipantId: 'g1', emoji: '👍' });
+    expect(sent?.payload).toMatchObject({ targetParticipantId: 'g1', emoji: '👍️' });
   });
 
   it('полученная реакция видна на карточке участника', async () => {
@@ -1967,11 +1967,11 @@ describe('реакции-эмодзи на карточке участника (
     (trigger as HTMLElement).click();
     await vi.waitFor(() => {
       const buttons = Array.from(document.body.querySelectorAll('button'));
-      expect(buttons.some((b) => b.getAttribute('aria-label') === '🎉')).toBe(true);
+      expect(buttons.some((b) => b.getAttribute('aria-label') === 'party popper')).toBe(true);
     });
 
     const emojiButton = Array.from(document.body.querySelectorAll('button')).find(
-      (b) => b.getAttribute('aria-label') === '🎉',
+      (b) => b.getAttribute('aria-label') === 'party popper',
     );
     (emojiButton as HTMLElement).click();
 

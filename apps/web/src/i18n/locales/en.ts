@@ -520,4 +520,10 @@ export default {
     support: 'Support',
     build: 'Build {version}',
   },
+  emojiPicker: {
+    searchPlaceholder: 'Search emoji',
+    noResults: 'No results',
+    skinToneLabel: 'Skin tone',
+    defaultToneLabel: 'Default',
+  },
 };

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui';
-import type { Participant, ReactionEmoji } from '@poker/shared';
+import type { Participant, EmojiSequence } from '@poker/shared';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -24,7 +24,7 @@ const props = defineProps<{
   flipIndex: number;
 }>();
 
-const emit = defineEmits<{ kick: []; react: [emoji: ReactionEmoji] }>();
+const emit = defineEmits<{ kick: []; react: [emoji: EmojiSequence] }>();
 
 const { t } = useI18n();
 

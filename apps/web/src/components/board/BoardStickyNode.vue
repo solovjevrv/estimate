@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import {
-  REACTION_EMOJIS,
-  type BoardItem,
-  type BoardStickyContent,
-  type ReactionEmoji,
-} from '@poker/shared';
+import { type BoardItem, type BoardStickyContent, type EmojiSequence } from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer } from '@vue-flow/node-resizer';
 import { computed, inject, ref, toRef, watch } from 'vue';
@@ -24,6 +19,7 @@ import { useSessionStore } from '../../stores/session';
 import { useBoardSessionStore } from '../../stores/board-session';
 import BoardEditingBadge from './shared/BoardEditingBadge.vue';
 import BoardRichText from './BoardRichText.vue';
+import EmojiPicker from '../EmojiPicker.vue';
 
 const props = defineProps<NodeProps<BoardItem>>();
 
@@ -73,14 +69,14 @@ const {
  * присылка того же эмодзи снимает её (toggle авторитетно решает сервер).
  */
 interface ReceivedReaction {
-  emoji: ReactionEmoji;
+  emoji: EmojiSequence;
   count: number;
   fromNames: string[];
   reactedByMe: boolean;
 }
 
 const receivedReactions = computed<ReceivedReaction[]>(() => {
-  const byEmoji = new Map<ReactionEmoji, ReceivedReaction>();
+  const byEmoji = new Map<EmojiSequence, ReceivedReaction>();
   for (const reaction of props.data.reactions) {
     const entry = byEmoji.get(reaction.emoji);
     if (entry) {
@@ -99,7 +95,7 @@ const receivedReactions = computed<ReceivedReaction[]>(() => {
   return [...byEmoji.values()];
 });
 
-function sendReaction(emoji: ReactionEmoji): void {
+function sendReaction(emoji: EmojiSequence): void {
   // record: false — реакции не попадают в стек undo/redo (12.10), как клик
   // по своей же реакции в мессенджере не отменяют отдельным Ctrl+Z
   void boardSession.applyOps(
@@ -108,7 +104,7 @@ function sendReaction(emoji: ReactionEmoji): void {
   );
 }
 
-function onPickEmoji(emoji: ReactionEmoji, close: () => void): void {
+function onPickEmoji(emoji: EmojiSequence, close: () => void): void {
   sendReaction(emoji);
   close();
 }
@@ -116,7 +112,7 @@ function onPickEmoji(emoji: ReactionEmoji, close: () => void): void {
 /** «Вылет» эмодзи над карточкой в момент простановки реакции (Meet-style, как у 10.12) */
 interface FlyingReaction {
   id: string;
-  emoji: ReactionEmoji;
+  emoji: EmojiSequence;
 }
 
 const flyingReactions = ref<FlyingReaction[]>([]);
@@ -307,18 +303,13 @@ watch(
         </button>
 
         <template #content="{ close }">
-          <div class="grid grid-cols-5 gap-1 p-2">
-            <button
-              v-for="emoji in REACTION_EMOJIS"
-              :key="emoji"
-              type="button"
-              class="hover:bg-[var(--brand-border)] flex size-8 cursor-pointer items-center justify-center rounded-[8px] text-xl"
-              :aria-label="emoji"
-              @click.stop="onPickEmoji(emoji, close)"
-            >
-              {{ emoji }}
-            </button>
-          </div>
+          <EmojiPicker
+            @select="
+              (emoji: string) => {
+                onPickEmoji(emoji, close);
+              }
+            "
+          />
         </template>
       </UPopover>
     </template>

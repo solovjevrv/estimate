@@ -520,4 +520,10 @@ export default {
     support: 'Поддержка',
     build: 'Сборка {version}',
   },
+  emojiPicker: {
+    searchPlaceholder: 'Поиск эмодзи',
+    noResults: 'Ничего не найдено',
+    skinToneLabel: 'Тон кожи',
+    defaultToneLabel: 'По умолчанию',
+  },
 };

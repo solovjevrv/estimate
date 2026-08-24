@@ -21,11 +21,12 @@
  * клик по стикеру сразу вставляет его на доску в центр вьюпорта. Не
  * "инструмент" в духе стикера/фигуры/текста.
  */
-import { REACTION_EMOJIS, type ReactionEmoji } from '@poker/shared';
 import { useI18n } from 'vue-i18n';
 
 import type { BoardTool } from '../../features/boards/board-tools';
+import type { EmojiSequence } from '@poker/shared';
 import BoardStickerPicker from './BoardStickerPicker.vue';
+import EmojiPicker from '../EmojiPicker.vue';
 
 export type { BoardTool };
 
@@ -35,7 +36,7 @@ const emit = defineEmits<{
   /** Эмодзи выбран из пикера — вставить на доску (13.3). Своего "инструмента"
    * у эмодзи нет: клик по кнопке сразу открывает список, клик по эмодзи в
    * списке сразу создаёт элемент, без промежуточного клика по холсту. */
-  emoji: [emoji: ReactionEmoji];
+  emoji: [emoji: EmojiSequence];
   /** Стикер выбран из пикера — вставить на доску (13.4). */
   sticker: [pack: string, id: string];
 }>();
@@ -108,21 +109,14 @@ function isActive(value: BoardTool): boolean {
       </button>
 
       <template #content="{ close }">
-        <div class="board-emoji-menu">
-          <button
-            v-for="emoji in REACTION_EMOJIS"
-            :key="emoji"
-            type="button"
-            class="board-emoji-menu-item"
-            :aria-label="emoji"
-            @click="
+        <EmojiPicker
+          @select="
+            (emoji: string) => {
               emit('emoji', emoji);
               close();
-            "
-          >
-            {{ emoji }}
-          </button>
-        </div>
+            }
+          "
+        />
       </template>
     </UPopover>
 

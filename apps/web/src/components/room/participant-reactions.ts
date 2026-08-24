@@ -1,4 +1,4 @@
-import type { ReactionEmoji } from '@poker/shared';
+import type { EmojiSequence } from '@poker/shared';
 
 /**
  * Одна и та же реакция от нескольких участников схлопнута в одну запись со
@@ -6,7 +6,7 @@ import type { ReactionEmoji } from '@poker/shared';
  * помещались бы под карточкой при десятке участников.
  */
 export interface ReceivedReaction {
-  emoji: ReactionEmoji;
+  emoji: EmojiSequence;
   count: number;
   /** Имена отправителей — для подсказки при наведении */
   fromNames: string[];
@@ -17,5 +17,5 @@ export interface ReceivedReaction {
 /** Одноразовый «вылет» эмодзи над карточкой в момент простановки реакции (10.12, Meet-style) */
 export interface FlyingReaction {
   id: string;
-  emoji: ReactionEmoji;
+  emoji: EmojiSequence;
 }
