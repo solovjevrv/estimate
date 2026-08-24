@@ -3,6 +3,7 @@ import type { BoardItem, BoardStickerContent } from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 import { BOARD_CAN_EDIT_KEY } from '../../features/boards/context/board-canvas-keys';
 import {
@@ -11,18 +12,36 @@ import {
   STICKER_MIN_HEIGHT,
   STICKER_MIN_WIDTH,
 } from '../../features/boards/config/board-item-defaults';
-import { findStickerAsset } from '../../features/boards/config/sticker-packs';
+import { findStickerAsset, personalStickerUrl } from '../../features/boards/config/sticker-packs';
 import { useBoardSessionStore } from '../../stores/board-session';
+import { usePersonalStickerPacksStore } from '../../stores/personal-sticker-packs';
+import TelegramStickerImportModal from '../TelegramStickerImportModal.vue';
 
 const props = defineProps<NodeProps<BoardItem>>();
 
+const { t } = useI18n();
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
+const personalPacks = usePersonalStickerPacksStore();
 
 const content = computed(() => props.data.content as BoardStickerContent);
 const stickerAsset = computed(() => findStickerAsset(content.value.pack, content.value.id));
-const imageUrl = computed(() => stickerAsset.value?.src);
+const imageUrl = computed(() => {
+  const builtIn = stickerAsset.value;
+  return builtIn ? builtIn.src : personalStickerUrl(content.value.pack, content.value.id);
+});
 const altText = computed(() => stickerAsset.value?.emoji ?? 'sticker');
+
+/**
+ * Стикер из чужого личного пака (не built-in и не импортированный нами):
+ * показываем бейдж «Импортировать», чтобы пользователь мог импортировать
+ * этот пакет и увидеть стикер (иначе картинка 404).
+ */
+const isForeignPersonal = computed(
+  () => !stickerAsset.value && !personalPacks.hasPack(content.value.pack),
+);
+
+const showImportModal = ref(false);
 
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
   void boardSession.applyOps([
@@ -75,6 +94,17 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
         </div>
       </template>
     </div>
+    <!-- Бейдж импорта для чужих личных паков (§5.4) -->
+    <button
+      v-if="canEdit && isForeignPersonal"
+      type="button"
+      data-testid="board-sticker-import-badge"
+      class="board-sticker-import-badge"
+      :title="t('board.stickerImportButton')"
+      @click.stop="showImportModal = true"
+    >
+      <UIcon name="i-lucide-download" class="size-3" />
+    </button>
     <!-- Связи (12.8): по видимой точке на сторону, все type="source" +
          connection-mode="loose" + увеличенный connection-radius на VueFlow — так
          с любой из четырёх можно и начать, и принять связь, а Vue Flow сам
@@ -114,6 +144,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
         data-testid="board-handle"
       />
     </template>
+    <TelegramStickerImportModal v-model:model-value="showImportModal" />
   </div>
 </template>
 
@@ -127,5 +158,28 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
   background: var(--ui-bg-elevated);
   border: 1px dashed var(--ui-border);
   border-radius: 8px;
+}
+
+.board-sticker-import-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border: none;
+  border-radius: 6px;
+  background: var(--ui-bg-elevated);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+  cursor: pointer;
+  opacity: 0.7;
+  transition: opacity 0.15s;
+}
+
+.board-sticker-import-badge:hover {
+  opacity: 1;
+  background: var(--ui-border);
 }
 </style>

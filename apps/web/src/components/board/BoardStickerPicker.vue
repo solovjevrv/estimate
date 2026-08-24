@@ -25,21 +25,27 @@ import {
 } from '../../features/boards/infrastructure/recent-stickers';
 import {
   findStickerAsset,
+  personalStickerUrl,
   STICKER_PACKS,
   type StickerPackItem,
 } from '../../features/boards/config/sticker-packs';
+import { usePersonalStickerPacksStore } from '../../stores/personal-sticker-packs';
+import TelegramStickerImportModal from '../TelegramStickerImportModal.vue';
 
 const emit = defineEmits<{ select: [pack: string, id: string] }>();
 
 const { t } = useI18n();
+const store = usePersonalStickerPacksStore();
 
 interface RecentEntry extends StickerPackItem {
   pack: string;
 }
 
 const recentItems = ref<RecentEntry[]>([]);
+const showImportModal = ref(false);
 
-onMounted(() => {
+onMounted(async () => {
+  await store.load();
   recentItems.value = getRecentStickers()
     .map((ref) => {
       const asset = findStickerAsset(ref.pack, ref.id);
@@ -89,6 +95,30 @@ function pick(pack: string, id: string): void {
       >
         <img :src="pack.items[0]?.src" :alt="pack.label" draggable="false" />
       </button>
+      <button
+        type="button"
+        class="board-sticker-picker-tab"
+        :aria-label="t('board.stickerImportButton')"
+        :title="t('board.stickerImportButton')"
+        @click="showImportModal = true"
+      >
+        <UIcon name="i-lucide-plus" class="size-4" />
+      </button>
+      <button
+        v-for="pack in store.packs"
+        :key="`personal-tab-${pack.id}`"
+        type="button"
+        class="board-sticker-picker-tab"
+        :aria-label="pack.title"
+        :title="pack.title"
+        @click="scrollToSection(`personal-${pack.id}`)"
+      >
+        <img
+          :src="personalStickerUrl(pack.id, pack.stickers[0]?.id ?? '')"
+          :alt="pack.title"
+          draggable="false"
+        />
+      </button>
     </div>
 
     <div class="board-sticker-picker-scroll">
@@ -136,6 +166,60 @@ function pick(pack: string, id: string): void {
           </button>
         </div>
       </section>
+
+      <!-- Мои паки (личные импортированные из Telegram) -->
+      <section
+        :ref="(el) => setSectionRef('personal', el as Element | null)"
+        data-testid="board-sticker-picker-section"
+        class="board-sticker-picker-section"
+      >
+        <h4 class="board-sticker-picker-heading">{{ t('board.stickerPersonalLabel') }}</h4>
+        <template v-if="store.packs.length === 0">
+          <div class="board-sticker-picker-empty">
+            <UIcon name="i-lucide-smile" class="size-8 opacity-30" />
+            <p class="mt-2 text-[13px] text-[var(--brand-ink2)]">
+              {{ t('board.stickerPersonalEmpty') }}
+            </p>
+            <button
+              type="button"
+              class="mt-3 board-sticker-picker-import-btn"
+              @click="showImportModal = true"
+            >
+              {{ t('board.stickerImportButton') }}
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <div
+            v-for="pack in store.packs"
+            :key="pack.id"
+            :ref="(el) => setSectionRef(`personal-${pack.id}`, el as Element | null)"
+            class="board-sticker-picker-pack"
+          >
+            <h5 class="board-sticker-picker-subheading">{{ pack.title }}</h5>
+            <div class="board-sticker-picker-grid">
+              <button
+                v-for="sticker in pack.stickers"
+                :key="sticker.id"
+                type="button"
+                data-testid="board-sticker-picker-item"
+                class="board-sticker-picker-item"
+                :aria-label="sticker.emoji"
+                @click="pick(pack.id, sticker.id)"
+              >
+                <img
+                  :src="personalStickerUrl(pack.id, sticker.id)"
+                  :alt="sticker.emoji"
+                  draggable="false"
+                />
+              </button>
+            </div>
+          </div>
+        </template>
+      </section>
+
+      <!-- Модалка импорта -->
+      <TelegramStickerImportModal v-model:model-value="showImportModal" />
     </div>
   </div>
 </template>
@@ -234,5 +318,34 @@ function pick(pack: string, id: string): void {
   height: 100%;
   object-fit: contain;
   border-radius: 4px;
+}
+
+.board-sticker-picker-subheading {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brand-ink2);
+}
+
+.board-sticker-picker-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 8px;
+}
+
+.board-sticker-picker-import-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-ink);
+  background: var(--ui-bg-elevated);
+  border: 1px solid var(--brand-border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.board-sticker-picker-import-btn:hover {
+  background: var(--ui-border);
 }
 </style>

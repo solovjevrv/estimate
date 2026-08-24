@@ -3,8 +3,13 @@ import Fastify, { type FastifyInstance, type FastifyServerOptions } from 'fastif
 import fp from 'fastify-plugin';
 
 import { authPlugin, avatarPlugin, sessionCleanupPlugin } from './auth';
-import { boardsPlugin, boardImagesPlugin, stickerPacksPlugin } from './boards';
-import type { AuthConfig } from './config';
+import {
+  boardsPlugin,
+  boardImagesPlugin,
+  personalStickersPlugin,
+  stickerPacksPlugin,
+} from './boards';
+import type { AuthConfig, TelegramConfig } from './config';
 import type { Db } from './db';
 import { ErrorHandler } from './http/error-handler';
 import { healthPlugin } from './http/health.plugin';
@@ -41,6 +46,8 @@ export interface AppDeps {
   boardAssetsDir?: string;
   /** Не задан — MinIO (Epic 21) ещё не подключен; `/health` в этом случае его не проверяет */
   objectStorage?: ObjectStorage;
+  /** Telegram Bot API (21.6) — выключена без токена */
+  telegram?: TelegramConfig;
 }
 
 export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): FastifyInstance {
@@ -105,6 +112,12 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
       void app.register(stickerPacksPlugin, {
         storage: deps.objectStorage,
       });
+      if (deps.telegram) {
+        void app.register(personalStickersPlugin, {
+          storage: deps.objectStorage,
+          telegram: deps.telegram,
+        });
+      }
     }
     // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией
     void app.register(teamsPlugin);
