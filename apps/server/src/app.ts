@@ -30,7 +30,10 @@ export interface AppDeps {
   docsEnabled?: boolean;
   /** Переопределение лимита /api/rooms/* — нужно интеграционным тестам (7.34) */
   roomsRateLimit?: RoomsRateLimitOptions;
-  /** Каталог для загруженных аватарок (10.15); без auth не используется */
+  /**
+   * Легаси-каталог аватарок для переходного чтения (Epic 21); без него — только storage.
+   * Без auth не используется.
+   */
   avatarsDir?: string;
   /** Каталог для картинок досок (13.2); без auth не используется */
   boardAssetsDir?: string;
@@ -87,8 +90,11 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
   if (deps.auth) {
     void app.register(authPlugin, { auth: deps.auth });
     void app.register(sessionCleanupPlugin);
-    if (deps.avatarsDir) {
-      void app.register(avatarPlugin, { avatarsDir: deps.avatarsDir });
+    if (deps.objectStorage) {
+      void app.register(avatarPlugin, {
+        storage: deps.objectStorage,
+        legacyAvatarsDir: deps.avatarsDir,
+      });
     }
     if (deps.boardAssetsDir) {
       void app.register(boardImagesPlugin, { assetsDir: deps.boardAssetsDir, auth: deps.auth });
