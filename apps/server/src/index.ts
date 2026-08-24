@@ -6,6 +6,7 @@ import { attachSentryErrorHandler, initSentry } from './monitoring';
 import { MinioObjectStorage } from './platform/storage';
 import { RoomsGameService } from './rooms';
 import { SocketGateway } from './socket';
+import { seedStickers } from './scripts/seed-stickers';
 
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -65,6 +66,29 @@ async function main(): Promise<void> {
         },
       );
     });
+  }
+
+  if (objectStorage) {
+    try {
+      // process.cwd() как у avatarsDir/boardAssetsDir (config.ts), не
+      // import.meta.dirname — tsup бандлит index.ts в CJS, где import.meta
+      // подменяется на пустой объект-шим, и import.meta.dirname всегда
+      // undefined в собранном dist/index.cjs (в отличие от seed-stickers.ts,
+      // который не входит в tsup entry и всегда исполняется напрямую через
+      // tsx — там import.meta.dirname рабочий).
+      const report = await seedStickers({
+        assetsDir: config.stickersAssetsDir,
+        storage: objectStorage,
+        dryRun: false,
+      });
+      if (report.errors.length > 0 || report.mismatches.length > 0) {
+        app.log.warn({ report }, 'Наполнение стикеров в MinIO завершилось с замечаниями');
+      } else {
+        app.log.info({ report }, 'Стикеры наполнены в MinIO');
+      }
+    } catch (err) {
+      app.log.error({ err }, 'Не удалось наполнить стикеры в MinIO — сервер продолжает запуск');
+    }
   }
 
   try {
