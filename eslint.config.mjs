@@ -237,6 +237,13 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // 21.4: генератор каталога emoji — обычный Node-скрипт (запускается
+    // вручную через pnpm generate:emoji), не покрыт globals ни apps/server,
+    // ни apps/web.
+    files: ['packages/shared/scripts/**/*.mjs'],
+    languageOptions: { globals: globals.node },
+  },
+  {
     // Тесты работают с моками и обобщёнными типами библиотек (`VueWrapper<any, any>`
     // у @vue/test-utils), поэтому `any` там приходит извне и убрать его нечем.
     // Правила про промисы намеренно оставлены включёнными: незакрытый промис в
@@ -260,6 +267,21 @@ export default tseslint.config(
     // projectService ругается «файл не входит ни в один проект»
     files: ['**/*.{js,mjs,cjs}'],
     extends: [tseslint.configs.disableTypeChecked],
+  },
+  {
+    // 21.4: сгенерированный каталог emoji — 1914 объектных литералов подряд,
+    // данные, а не логика (та же причина, что и у словарей локалей выше).
+    // `no-unnecessary-type-assertion` отключён отдельно: без `as
+    // EmojiCatalogEntry` на каждом элементе `tsc` падает с TS2590 («union type
+    // too complex») при попытке вывести тип массива целиком — тот же класс
+    // конфликта линтера с typecheck, что уже описан в шапке файла про автофикс
+    // `as BoardOp`: здесь правило тоже ошибочно считает аннотацию лишней, хотя
+    // без неё не проходит `pnpm typecheck`.
+    files: ['packages/shared/src/emoji/catalog.generated.ts'],
+    rules: {
+      'max-lines': 'off',
+      '@typescript-eslint/no-unnecessary-type-assertion': 'off',
+    },
   },
   prettierConfig,
 );

@@ -23,7 +23,11 @@ import {
 } from '../features/emoji/config/skin-tone';
 
 const emit = defineEmits<{ select: [emoji: string] }>();
-const { t } = useI18n();
+const { t, locale } = useI18n();
+
+function groupLabel(group: { labelEn: string; labelRu: string }): string {
+  return locale.value === 'ru' ? group.labelRu : group.labelEn;
+}
 
 const catalog = ref<readonly EmojiCatalogEntry[]>([]);
 const loading = ref(true);
@@ -117,8 +121,8 @@ function scrollToSection(key: string): void {
     <!-- Поиск -->
     <div class="emoji-picker-search">
       <input
-        data-testid="emoji-picker-search"
         v-model="query"
+        data-testid="emoji-picker-search"
         type="text"
         :placeholder="t('emojiPicker.searchPlaceholder')"
         class="emoji-picker-search-input"
@@ -167,11 +171,11 @@ function scrollToSection(key: string): void {
         :key="group.id"
         type="button"
         class="emoji-picker-tab"
-        :aria-label="group.labelEn"
-        :title="group.labelEn"
+        :aria-label="groupLabel(group)"
+        :title="groupLabel(group)"
         @click="scrollToSection(group.id)"
       >
-        {{ groupPreview.get(group.id) ?? group.labelEn }}
+        {{ groupPreview.get(group.id) ?? groupLabel(group) }}
       </button>
     </div>
 
@@ -179,8 +183,8 @@ function scrollToSection(key: string): void {
     <div class="emoji-picker-scroll">
       <section
         v-if="recent.length > 0"
-        data-testid="emoji-picker-section"
         :ref="(el) => setSectionRef('recent', el as Element | null)"
+        data-testid="emoji-picker-section"
         class="emoji-picker-section"
       >
         <h4 class="emoji-picker-heading">{{ t('board.stickerRecentLabel') }}</h4>
@@ -202,11 +206,11 @@ function scrollToSection(key: string): void {
       <section
         v-for="group in groupsWithEntries"
         :key="group.id"
-        data-testid="emoji-picker-section"
         :ref="(el) => setSectionRef(group.id, el as Element | null)"
+        data-testid="emoji-picker-section"
         class="emoji-picker-section"
       >
-        <h4 class="emoji-picker-heading">{{ group.labelEn }}</h4>
+        <h4 class="emoji-picker-heading">{{ groupLabel(group) }}</h4>
         <div class="emoji-picker-grid">
           <template v-if="loading || !byGroup.get(group.id)">
             <button type="button" class="emoji-picker-item">…</button>

@@ -181,6 +181,9 @@ function main() {
     }
     lines.push('  {');
     lines.push(`    ${objLines.join('\n    ')}`);
+    // Аннотация не лишняя, несмотря на предупреждение линтера: без неё
+    // `tsc` падает с TS2590 при выводе типа массива из 1914 литералов
+    // (см. override для no-unnecessary-type-assertion в eslint.config.mjs)
     lines.push('  } as EmojiCatalogEntry,');
   }
 

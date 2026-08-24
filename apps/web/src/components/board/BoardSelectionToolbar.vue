@@ -65,11 +65,11 @@ import {
   BOARD_TEXT_ALIGNS,
   BOARD_TEXT_LINK_MAX_LENGTH,
   BOARD_TEXT_LINK_PATTERN,
-  EmojiSequence,
   type BoardColorHex,
   type BoardHighlightColor,
   type BoardTextAlign,
   type BoardTextMark,
+  type EmojiSequence,
 } from '@poker/shared';
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
