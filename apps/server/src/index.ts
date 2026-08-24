@@ -1,5 +1,3 @@
-import { join } from 'node:path';
-
 import { buildApp } from './app';
 import { BoardImagesService, BoardsService } from './boards';
 import { loadConfig } from './config';
@@ -72,10 +70,17 @@ async function main(): Promise<void> {
 
   if (objectStorage) {
     try {
-      // index.ts лежит в src/ (и dist/ после сборки) — на один уровень .. меньше,
-      // чем в seed-stickers.ts, где скрипт находится в src/scripts/
-      const assetsDir = join(import.meta.dirname, '..', 'assets', 'sticker-packs');
-      const report = await seedStickers({ assetsDir, storage: objectStorage, dryRun: false });
+      // process.cwd() как у avatarsDir/boardAssetsDir (config.ts), не
+      // import.meta.dirname — tsup бандлит index.ts в CJS, где import.meta
+      // подменяется на пустой объект-шим, и import.meta.dirname всегда
+      // undefined в собранном dist/index.cjs (в отличие от seed-stickers.ts,
+      // который не входит в tsup entry и всегда исполняется напрямую через
+      // tsx — там import.meta.dirname рабочий).
+      const report = await seedStickers({
+        assetsDir: config.stickersAssetsDir,
+        storage: objectStorage,
+        dryRun: false,
+      });
       if (report.errors.length > 0 || report.mismatches.length > 0) {
         app.log.warn({ report }, 'Наполнение стикеров в MinIO завершилось с замечаниями');
       } else {

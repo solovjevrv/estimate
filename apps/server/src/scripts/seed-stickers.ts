@@ -176,7 +176,12 @@ function parseArgs(argv: string[]): { dryRun: boolean } {
 async function main(): Promise<void> {
   const { dryRun } = parseArgs(process.argv.slice(2));
 
-  const assetsDir = join(import.meta.dirname, '..', '..', 'assets', 'sticker-packs');
+  // Как AVATARS_DIR/BOARD_ASSETS_DIR в config.ts — не import.meta.dirname (см.
+  // index.ts: в собранном tsup/CJS-бандле он всегда undefined; здесь это не
+  // проявилось бы, поскольку CLI-режим исполняется только напрямую через tsx,
+  // но лучше не заводить второй способ резолвить один и тот же путь)
+  const assetsDir =
+    process.env.STICKERS_ASSETS_DIR ?? join(process.cwd(), 'assets', 'sticker-packs');
 
   const storageConfig = loadObjectStorageConfig();
   if (!storageConfig) {

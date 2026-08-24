@@ -53,6 +53,8 @@ export interface Config {
   avatarsDir: string;
   /** Легаси-каталог картинок досок для переходного чтения и migrate:board-images (Epic 21) */
   boardAssetsDir: string;
+  /** Каталог исходников встроенных стикер-паков для автозаполнения MinIO при старте (21.3) */
+  stickersAssetsDir: string;
   /**
    * MinIO (Epic 21) — обязателен для аватарок (21.2) и картинок досок (21.5):
    * без него их роуты не регистрируются вовсе (см. `app.ts`). `avatarsDir`/
@@ -179,6 +181,8 @@ export function loadConfig(): Config {
     sentryDsn: process.env.SENTRY_DSN || undefined,
     avatarsDir: process.env.AVATARS_DIR ?? join(process.cwd(), 'avatars'),
     boardAssetsDir: process.env.BOARD_ASSETS_DIR ?? join(process.cwd(), 'board-assets'),
+    stickersAssetsDir:
+      process.env.STICKERS_ASSETS_DIR ?? join(process.cwd(), 'assets', 'sticker-packs'),
     objectStorage: loadObjectStorageConfig(),
   };
 }
