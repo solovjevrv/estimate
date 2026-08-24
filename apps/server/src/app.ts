@@ -35,7 +35,9 @@ export interface AppDeps {
    * Без auth не используется.
    */
   avatarsDir?: string;
-  /** Каталог для картинок досок (13.2); без auth не используется */
+  /**
+   * Легаси-каталог картинок досок для переходного чтения (Epic 21); без auth не используется
+   */
   boardAssetsDir?: string;
   /** Не задан — MinIO (Epic 21) ещё не подключен; `/health` в этом случае его не проверяет */
   objectStorage?: ObjectStorage;
@@ -95,15 +97,21 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
         storage: deps.objectStorage,
         legacyAvatarsDir: deps.avatarsDir,
       });
-    }
-    if (deps.boardAssetsDir) {
-      void app.register(boardImagesPlugin, { assetsDir: deps.boardAssetsDir, auth: deps.auth });
+      void app.register(boardImagesPlugin, {
+        storage: deps.objectStorage,
+        legacyAssetsDir: deps.boardAssetsDir,
+        auth: deps.auth,
+      });
     }
     // Командам нужен вошедший пользователь, поэтому только вместе с аутентификацией
     void app.register(teamsPlugin);
     void app.register(roomsPlugin, { rateLimit: deps.roomsRateLimit });
     // Доскам нужны и аутентификация, и проверка членства в команде — регистрируем после teamsPlugin
-    void app.register(boardsPlugin, { assetsDir: deps.boardAssetsDir, auth: deps.auth });
+    void app.register(boardsPlugin, {
+      objectStorage: deps.objectStorage,
+      legacyAssetsDir: deps.boardAssetsDir,
+      auth: deps.auth,
+    });
   }
 
   if (deps.closeDb) {

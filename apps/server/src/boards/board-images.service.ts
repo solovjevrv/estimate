@@ -1,41 +1,65 @@
+import { createReadStream } from 'node:fs';
+import { rm, stat } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-
-import sharp from 'sharp';
+import type { Readable } from 'node:stream';
 
 import { boardImageUrl, isBoardImageUrl } from '@poker/shared';
+import sharp from 'sharp';
 
 import { ValidationError } from '../errors';
+import type { ObjectStorage } from '../platform/storage';
 
-/** Максимальная сторона картинки после пережатия — защита от гигантских исходников */
 const BOARD_IMAGE_MAX_DIMENSION = 2048;
-/** Качество WebP — тот же баланс, что у аватарок */
 const BOARD_IMAGE_WEBP_QUALITY = 82;
-/** Имя файла — только случайный hex + расширение, никогда не выводится из пользовательского ввода */
-const FILENAME_RE = /^[a-f0-9]{32}\.webp$/;
+export const FILENAME_RE = /^[a-f0-9]{32}\.webp$/;
+
+export function boardImageKey(boardId: string, filename: string): string {
+  return `boards/${boardId}/images/${filename}`;
+}
 
 /**
- * Хранит и пережимает картинки досок на локальном диске (13.2).
- * Исходник клиента не доверенный: всегда пере-кодируется через sharp в
- * WebP с ограничением максимальной стороны, а не сохраняется как есть.
- * Имя файла генерируется сервером (randomBytes), путь-траверсал закрыт
- * regex-валидацией имени.
+ * Хранит и пережимает картинки досок в ObjectStorage (Epic 21). `legacyDir`,
+ * если задан, — переходное чтение с локального диска для файлов, загруженных
+ * до перехода на MinIO и ещё не мигрированных migrate-board-images.ts. Убрать
+ * параметр и legacy-методы отдельной задачей после подтверждённой миграции.
+ * Легаси-каталог плоский (без boardId в пути) — читать из него напрямую
+ * НЕЛЬЗЯ без внешней проверки владения (см. readLegacy), иначе воспроизводится
+ * найденная в 21.5 уязвимость межбордовой утечки.
  */
 export class BoardImagesService {
-  private constructor(private readonly dir: string) {}
+  private constructor(
+    private readonly storage: ObjectStorage,
+    private readonly legacyDir: string | null,
+  ) {}
 
-  static async forDirectory(dir: string): Promise<BoardImagesService> {
-    await mkdir(dir, { recursive: true });
-    return new BoardImagesService(dir);
+  static create(storage: ObjectStorage, legacyDir?: string): BoardImagesService {
+    return new BoardImagesService(storage, legacyDir ?? null);
   }
 
-  /** Абсолютный путь на диске для валидного имени файла; null — имя не наше (защита от path traversal) */
-  filePath(filename: string): string | null {
-    return FILENAME_RE.test(filename) ? join(this.dir, filename) : null;
+  /** Чтение из storage — уже безопасно по построению (ключ содержит boardId) */
+  async readFromStorage(boardId: string, filename: string): Promise<Readable | null> {
+    if (!FILENAME_RE.test(filename)) return null;
+    return this.storage.get(boardImageKey(boardId, filename));
   }
 
-  /** Загружает картинку, пережимает в WebP с ограничением стороны, возвращает относительный URL */
+  /**
+   * Чтение из легаси-каталога — ТОЛЬКО по имени файла, без boardId (каталог
+   * плоский). Вызывающий код обязан САМ проверить, что filename реально
+   * принадлежит запрошенной доске (см. BoardsService.ownsImage), ПЕРЕД
+   * вызовом этого метода — иначе межбордовая утечка (см. п.0).
+   */
+  async readLegacy(filename: string): Promise<Readable | null> {
+    if (!this.legacyDir || !FILENAME_RE.test(filename)) return null;
+    const legacyPath = join(this.legacyDir, filename);
+    try {
+      await stat(legacyPath);
+    } catch {
+      return null;
+    }
+    return createReadStream(legacyPath);
+  }
+
   async upload(
     boardId: string,
     buffer: Buffer,
@@ -62,18 +86,19 @@ export class BoardImagesService {
     }
 
     const filename = `${randomBytes(16).toString('hex')}.webp`;
-    await writeFile(join(this.dir, filename), processed);
+    await this.storage.put(boardImageKey(boardId, filename), processed, 'image/webp');
 
     return { url: boardImageUrl(boardId, filename), width, height };
   }
 
-  /** Удаляет файл, только если url указывает на картинку именно этой доски */
+  /** Удаляет файл отовсюду, где он может физически лежать (storage и/или legacy-диск) */
   async deleteIfOwn(boardId: string, url: string | null): Promise<void> {
     if (!url || !isBoardImageUrl(boardId, url)) return;
 
     const filename = url.slice(url.lastIndexOf('/') + 1);
-    const path = this.filePath(filename);
-    if (!path) return;
-    await rm(path, { force: true });
+    await this.storage.remove(boardImageKey(boardId, filename));
+    if (this.legacyDir) {
+      await rm(join(this.legacyDir, filename), { force: true });
+    }
   }
 }
