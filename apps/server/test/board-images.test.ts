@@ -476,9 +476,7 @@ describeDb('картинки досок', () => {
       await service.applyOps(
         { participantId: owner.id, userId: owner.id, name: owner.name },
         boardId,
-        [
-          imageItem(itemId, boardImageUrl(boardId, filename)),
-        ],
+        [imageItem(itemId, boardImageUrl(boardId, filename))],
       );
 
       const res = await app.inject({
@@ -489,9 +487,7 @@ describeDb('картинки досок', () => {
 
       expect(res.statusCode).toBe(200);
       expect(res.headers['content-type']).toBe('image/webp');
-      const body = Buffer.isBuffer(res.body)
-        ? res.body
-        : Buffer.from(res.body as string, 'binary');
+      const body = Buffer.isBuffer(res.body) ? res.body : Buffer.from(res.body as string, 'binary');
       expect(body.toString('hex')).toBe(buf.toString('hex'));
     });
 
@@ -553,9 +549,7 @@ describeDb('картинки досок', () => {
       });
 
       expect(res.statusCode).toBe(200);
-      const body = Buffer.isBuffer(res.body)
-        ? res.body
-        : Buffer.from(res.body as string, 'binary');
+      const body = Buffer.isBuffer(res.body) ? res.body : Buffer.from(res.body as string, 'binary');
       expect(body.toString('hex')).toBe(storageContent.toString('hex'));
     });
   });

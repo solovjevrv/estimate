@@ -180,7 +180,9 @@ async function main(): Promise<void> {
 
   const storageConfig = loadObjectStorageConfig();
   if (!storageConfig) {
-    console.error('Миграция картинок досок требует настроенного MinIO (MINIO_ACCESS_KEY/MINIO_SECRET_KEY)');
+    console.error(
+      'Миграция картинок досок требует настроенного MinIO (MINIO_ACCESS_KEY/MINIO_SECRET_KEY)',
+    );
     process.exit(1);
   }
   const databaseUrl = process.env.DATABASE_URL;
