@@ -382,6 +382,7 @@ export default {
       'Не удалось импортировать стикеры. Проверьте название и попробуйте ещё раз.',
     stickerImportSuccess: 'Пакет импортирован',
     stickerImportForeignLabel: 'Импортировать этот пакет',
+    stickerImportMetaError: 'Не удалось получить сведения о паке — попробуйте ещё раз',
     frameTitlePlaceholder: 'Заголовок фрейма',
     groupSelection: 'Сгруппировать',
     ungroupSelection: 'Разгруппировать',

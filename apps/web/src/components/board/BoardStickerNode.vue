@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useToast } from '@nuxt/ui/composables';
 import type { BoardItem, BoardStickerContent } from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
@@ -6,6 +7,7 @@ import { computed, inject, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import { BOARD_CAN_EDIT_KEY } from '../../features/boards/context/board-canvas-keys';
+import { getStickerPackMeta } from '../../features/boards/api/personal-stickers-api';
 import {
   STICKER_MAX_HEIGHT,
   STICKER_MAX_WIDTH,
@@ -20,6 +22,7 @@ import TelegramStickerImportModal from '../TelegramStickerImportModal.vue';
 const props = defineProps<NodeProps<BoardItem>>();
 
 const { t } = useI18n();
+const toast = useToast();
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 const personalPacks = usePersonalStickerPacksStore();
@@ -42,6 +45,24 @@ const isForeignPersonal = computed(
 );
 
 const showImportModal = ref(false);
+/** Имя Telegram-сета этого конкретного пака — подтягивается перед открытием модалки */
+const importSetName = ref<string | undefined>(undefined);
+
+/**
+ * Клик по бейджу — сначала узнаём telegramSetName чужого пака (метаданные
+ * публичны, см. personal-stickers.plugin.ts), только потом открываем модалку
+ * с предзаполненным (readonly) полем — иначе пользователь видел бы пустое
+ * поле и не знал бы, какое имя пака вводить.
+ */
+async function onImportBadgeClick(): Promise<void> {
+  try {
+    const meta = await getStickerPackMeta(content.value.pack);
+    importSetName.value = meta.telegramSetName;
+    showImportModal.value = true;
+  } catch {
+    toast.add({ title: t('board.stickerImportMetaError'), color: 'error' });
+  }
+}
 
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
   void boardSession.applyOps([
@@ -100,8 +121,8 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       type="button"
       data-testid="board-sticker-import-badge"
       class="board-sticker-import-badge"
-      :title="t('board.stickerImportButton')"
-      @click.stop="showImportModal = true"
+      :title="t('board.stickerImportForeignLabel')"
+      @click.stop="onImportBadgeClick"
     >
       <UIcon name="i-lucide-download" class="size-3" />
     </button>
@@ -144,7 +165,10 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
         data-testid="board-handle"
       />
     </template>
-    <TelegramStickerImportModal v-model:model-value="showImportModal" />
+    <TelegramStickerImportModal
+      v-model:model-value="showImportModal"
+      :telegram-set-name="importSetName"
+    />
   </div>
 </template>
 

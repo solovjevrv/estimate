@@ -381,6 +381,7 @@ export default {
     stickerImportError: 'Could not import stickers. Check the name and try again.',
     stickerImportSuccess: 'Pack imported',
     stickerImportForeignLabel: 'Import this pack',
+    stickerImportMetaError: 'Could not load pack details — try again',
     frameTitlePlaceholder: 'Frame title',
     groupSelection: 'Group',
     ungroupSelection: 'Ungroup',
