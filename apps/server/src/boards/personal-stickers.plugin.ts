@@ -80,9 +80,18 @@ async function personalStickersPluginImpl(
   // Дочерний контекст: rate limiter не «съедает» лимит с остальных роутов
   // (аналогично /api/auth/* в auth/plugin.ts).
   void app.register(async (authedRoutes) => {
+    // @fastify/rate-limit по умолчанию вешается на onRequest — это раньше
+    // любого preHandler, поэтому req.user там ещё не заполнен и
+    // req.user?.sub всегда падал на req.ip (все пользователи за одним NAT
+    // делили один общий бюджет 10 запросов/10мин, а не 10 на каждого — нашли
+    // живой проверкой). Явный preHandler-хук authenticate, добавленный до
+    // регистрации rate-limit с hook:'preHandler', гарантирует порядок:
+    // сперва req.user заполняется, потом лимитер читает req.user.sub.
+    authedRoutes.addHook('preHandler', authenticate);
     await authedRoutes.register(fastifyRateLimit, {
       max: IMPORT_RATE_LIMIT_MAX,
       timeWindow: IMPORT_RATE_LIMIT_WINDOW,
+      hook: 'preHandler',
       keyGenerator: (req) => req.user?.sub ?? req.ip,
       errorResponseBuilder: (_req, context) => {
         const err = new Error(`Слишком много запросов, повторите через ${context.after}`);
@@ -95,7 +104,6 @@ async function personalStickersPluginImpl(
     authedRoutes.post<{ Body: { telegramSetName: string } }>(
       '/api/sticker-packs/personal/import',
       {
-        preHandler: authenticate,
         schema: {
           tags: [DOCS_TAGS.boards],
           summary: 'Импортировать стикер-пак из Telegram',
@@ -139,7 +147,6 @@ async function personalStickersPluginImpl(
     authedRoutes.get(
       '/api/sticker-packs/personal',
       {
-        preHandler: authenticate,
         schema: {
           tags: [DOCS_TAGS.boards],
           summary: 'Мои личные стикер-паки',
@@ -164,7 +171,6 @@ async function personalStickersPluginImpl(
     authedRoutes.delete<{ Params: { packId: string } }>(
       '/api/sticker-packs/personal/:packId',
       {
-        preHandler: authenticate,
         schema: {
           tags: [DOCS_TAGS.boards],
           summary: 'Удалить личный стикер-пак',

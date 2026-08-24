@@ -267,4 +267,31 @@ describe('Personal stickers plugin — rate limiting (10/10 min)', () => {
     });
     expect(res.statusCode).toBe(429);
   });
+
+  it('лимит считается на пользователя, а не на IP (req.user должен быть заполнен до keyGenerator)', async () => {
+    // Живой прогон нашёл: @fastify/rate-limit по умолчанию висит на onRequest,
+    // раньше preHandler-аутентификации — req.user?.sub тогда всегда undefined,
+    // и keyGenerator падал на req.ip, деля один бюджет на всех пользователей
+    // с одного адреса. app.inject бьёт с одного "адреса" на все запросы —
+    // если бы баг вернулся, второй пользователь получил бы 429 сразу же.
+    const cookieA = authCookie(app, 'user-ratelimit-a');
+    for (let i = 0; i < 10; i++) {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/sticker-packs/personal/import',
+        body: { telegramSetName: 'x' },
+        headers: { cookie: cookieA },
+      });
+      expect(res.statusCode).not.toBe(429);
+    }
+
+    const cookieB = authCookie(app, 'user-ratelimit-b');
+    const res = await app.inject({
+      method: 'POST',
+      url: '/api/sticker-packs/personal/import',
+      body: { telegramSetName: 'x' },
+      headers: { cookie: cookieB },
+    });
+    expect(res.statusCode).not.toBe(429);
+  });
 });

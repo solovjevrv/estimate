@@ -11,6 +11,7 @@ import { useToast } from '@nuxt/ui/composables';
 import { ref, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import { ApiError } from '../lib/api';
 import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { parseTelegramSetName } from '../features/boards/api/personal-stickers-api';
 import { usePersonalStickerPacksStore } from '../stores/personal-sticker-packs';
@@ -56,8 +57,14 @@ async function onSubmit(): Promise<void> {
     toast.add({ title: t('board.stickerImportSuccess'), color: 'success' });
     emit('imported');
     close();
-  } catch {
-    toast.add({ title: t('board.stickerImportError'), color: 'error' });
+  } catch (err) {
+    // Сервер даёт конкретную причину отказа (лимит паков, пак целиком
+    // анимированный/видео, не найден в Telegram и т.п., см.
+    // PersonalStickersService.importFromTelegram) — без этого пользователь
+    // видел одну и ту же общую фразу на любую причину и решал, что это баг
+    // приложения, а не, например, «в паке только анимированные стикеры»
+    const message = err instanceof ApiError ? err.message : t('board.stickerImportError');
+    toast.add({ title: message, color: 'error' });
   } finally {
     loading.value = false;
   }

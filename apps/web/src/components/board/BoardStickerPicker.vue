@@ -96,16 +96,6 @@ function pick(pack: string, id: string): void {
         <img :src="pack.items[0]?.src" :alt="pack.label" draggable="false" />
       </button>
       <button
-        v-if="store.enabled"
-        type="button"
-        class="board-sticker-picker-tab"
-        :aria-label="t('board.stickerImportButton')"
-        :title="t('board.stickerImportButton')"
-        @click="showImportModal = true"
-      >
-        <UIcon name="i-lucide-plus" class="size-4" />
-      </button>
-      <button
         v-for="pack in store.packs"
         :key="`personal-tab-${pack.id}`"
         type="button"
@@ -119,6 +109,17 @@ function pick(pack: string, id: string): void {
           :alt="pack.title"
           draggable="false"
         />
+      </button>
+      <!-- "+" всегда последней — трейлинг "добавить" после всех паков, не между ними -->
+      <button
+        v-if="store.enabled"
+        type="button"
+        class="board-sticker-picker-tab"
+        :aria-label="t('board.stickerImportButton')"
+        :title="t('board.stickerImportButton')"
+        @click="showImportModal = true"
+      >
+        <UIcon name="i-lucide-plus" class="size-4" />
       </button>
     </div>
 
