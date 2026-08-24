@@ -1,6 +1,6 @@
 /** Общие типы и контракты, используемые фронтендом и бэкендом. */
 
-import type { ReactionEmoji } from '../rooms';
+import type { EmojiSequence } from '../emoji';
 import type { BoardAccessLevel, BoardShareRole } from './permissions';
 
 /**
@@ -185,7 +185,7 @@ export interface BoardImageContent {
 
 export interface BoardEmojiContent {
   type: 'emoji';
-  emoji: ReactionEmoji;
+  emoji: EmojiSequence;
 }
 
 export interface BoardStickerContent {
@@ -280,8 +280,10 @@ export interface BoardItemStyle {
 export interface ItemReaction {
   userId: string;
   name: string;
-  emoji: ReactionEmoji;
+  emoji: EmojiSequence;
 }
+
+/**
 
 /**
  * Один пользователь — одна реакция на элемент; повторная присылка того же
@@ -294,7 +296,7 @@ export function toggleItemReaction(
   reactions: ItemReaction[],
   userId: string,
   name: string,
-  emoji: ReactionEmoji,
+  emoji: EmojiSequence,
 ): ItemReaction[] {
   const existing = reactions.find((r) => r.userId === userId);
   const withoutExisting = reactions.filter((r) => r.userId !== userId);

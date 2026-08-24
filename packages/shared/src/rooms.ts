@@ -1,4 +1,5 @@
 /** Общие типы и контракты, используемые фронтендом и бэкендом. */
+import type { EmojiSequence } from './emoji';
 
 /** События, которые клиент отправляет серверу */
 export const WS_EVENTS = {
@@ -185,32 +186,6 @@ export interface ResetTimerPayload {
   durationSec?: number;
 }
 
-/** Фиксированный набор эмодзи-реакций (10.10) — свободный выбор эмодзи не делаем */
-export const REACTION_EMOJIS = [
-  '👍',
-  '👎',
-  '😲',
-  '😐',
-  '😂',
-  '😢',
-  '🤔',
-  '🔥',
-  '😱',
-  '🙄',
-  '🎉',
-  '💯',
-  '🤯',
-  '🙌',
-  '😅',
-  '🚀',
-  '👀',
-  '🧐',
-  '☕',
-  '🐢',
-] as const;
-
-export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
-
 /**
  * Реакция одного участника на карточку другого. Живёт в памяти процесса на
  * комнату (как таймер/присутствие), а не в базе — сбрасывается с новым раундом.
@@ -220,12 +195,12 @@ export type ReactionEmoji = (typeof REACTION_EMOJIS)[number];
 export interface Reaction {
   fromParticipantId: string;
   toParticipantId: string;
-  emoji: ReactionEmoji;
+  emoji: EmojiSequence;
 }
 
 export interface SendReactionPayload {
   targetParticipantId: string;
-  emoji: ReactionEmoji;
+  emoji: EmojiSequence;
 }
 
 /** Полный снимок комнаты — то, что видит участник */
