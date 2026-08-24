@@ -16,6 +16,7 @@
     "db:studio": "drizzle-kit studio",
     "migrate:avatars": "tsx src/scripts/migrate-avatars.ts",
     "migrate:board-images": "tsx src/scripts/migrate-board-images.ts",
+    "seed:stickers": "tsx src/scripts/seed-stickers.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
