@@ -1,4 +1,4 @@
-import type { Reaction, ReactionEmoji } from '@poker/shared';
+import type { EmojiSequence, Reaction } from '@poker/shared';
 
 /**
  * Реакции-эмодзи на карточках участников (10.10). Живут в памяти процесса на
@@ -20,7 +20,7 @@ export class RoomReactions {
    * Повторная присылка уже стоящей реакции (клик по своему же бейджу в UI)
    * снимает её — как реакции на сообщение в Telegram.
    */
-  toggle(roomId: string, from: string, to: string, emoji: ReactionEmoji): Reaction[] {
+  toggle(roomId: string, from: string, to: string, emoji: EmojiSequence): Reaction[] {
     const current = this.list(roomId);
     const existing = current.find((r) => r.fromParticipantId === from && r.toParticipantId === to);
     const withoutExisting = current.filter(

@@ -8,7 +8,6 @@ import {
   BOARD_EDGE_CURVE_OFFSET_MAX,
   BOARD_EDGE_LABEL_OFFSET_MAX,
   BOARD_ITEM_FONT_SIZE_MAX,
-  REACTION_EMOJIS,
   type BoardEdge,
   type BoardItem,
   type BoardOp,
@@ -90,7 +89,7 @@ function imageCreateOp(
   };
 }
 
-function emojiCreateOp(id: string, emoji: string = REACTION_EMOJIS[0]): BoardOp {
+function emojiCreateOp(id: string, emoji: string = '👍'): BoardOp {
   return {
     type: 'item.create',
     clientOpId: randomUUID(),
@@ -258,18 +257,25 @@ describe('applyBoardOp — item.create', () => {
     const state = emptyState();
     const id = randomUUID();
 
-    applyBoardOp(state, emojiCreateOp(id, REACTION_EMOJIS[3]), BOARD_ID, ACTOR);
+    applyBoardOp(state, emojiCreateOp(id, '🔥'), BOARD_ID, ACTOR);
 
     const item = state.items.get(id);
     expect(item?.content.type).toBe('emoji');
     if (item?.content.type === 'emoji') {
-      expect(item.content.emoji).toBe(REACTION_EMOJIS[3]);
+      expect(item.content.emoji).toBe('🔥');
     }
   });
 
-  it('отклоняет эмодзи вне фиксированного набора (13.3, произвольный unicode запрещён)', () => {
+  it('принимает произвольный эмодзи из полного каталога (21.4)', () => {
     const state = emptyState();
     const op = emojiCreateOp(randomUUID(), '🦄');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).not.toThrow();
+  });
+
+  it('отклоняет строку, не являющуюся эмодзи (21.4)', () => {
+    const state = emptyState();
+    const op = emojiCreateOp(randomUUID(), 'not-an-emoji');
 
     expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
   });
@@ -935,7 +941,7 @@ describe('applyBoardOp — item.react', () => {
     expect(() =>
       applyBoardOp(
         state,
-        { type: 'item.react', clientOpId: randomUUID(), id, emoji: '🤡' as never },
+        { type: 'item.react', clientOpId: randomUUID(), id, emoji: 'not-an-emoji' as never },
         BOARD_ID,
         ACTOR,
       ),
