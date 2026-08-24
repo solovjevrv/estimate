@@ -80,7 +80,10 @@ describe('STICKER_PACKS ↔ apps/server/assets/sticker-packs — консист�
       if (!packDir.isDirectory()) continue;
       const packId = packDir.name;
       const declaredIds = index.get(packId);
-      expect(declaredIds, `pack "${packId}" есть на диске, но отсутствует в STICKER_PACKS`).toBeDefined();
+      expect(
+        declaredIds,
+        `pack "${packId}" есть на диске, но отсутствует в STICKER_PACKS`,
+      ).toBeDefined();
 
       const files = readdirSync(join(assetsRoot, packId));
       for (const file of files) {
