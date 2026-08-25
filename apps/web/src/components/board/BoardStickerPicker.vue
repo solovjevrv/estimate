@@ -337,7 +337,23 @@ async function confirmDeletePack(): Promise<void> {
   flex: 1;
   gap: 6px;
   min-width: 0;
+  padding-bottom: 6px;
   overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-border) transparent;
+}
+
+.board-sticker-picker-tabs-scroll::-webkit-scrollbar {
+  height: 4px;
+}
+
+.board-sticker-picker-tabs-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.board-sticker-picker-tabs-scroll::-webkit-scrollbar-thumb {
+  background: var(--ui-border);
+  border-radius: 2px;
 }
 
 .board-sticker-picker-tab-add {
