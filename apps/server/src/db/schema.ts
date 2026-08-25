@@ -12,6 +12,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
@@ -265,4 +266,56 @@ export const boardEdges = pgTable(
     zIndex: integer('z_index').notNull().default(0),
   },
   (t) => [index('board_edges_board_id_idx').on(t.boardId)],
+);
+
+/**
+ * Личный стикер-пак (21.6): пользователь импортирует публичный Telegram-пак
+ * через Bot API и сохраняет метаданные. pack_id — UUID, не выводится из
+ * short_name Telegram: каждый пользователь, импортировавший один и тот же
+ * публичный пак, получает независимый pack_id. Хранилище (MinIO) и read-only
+ * эндпоинты — публичны для любого, у кого есть прямая ссылка на конкретный
+ * sticker (см. personal-stickers.service.ts / personal-stickers.plugin.ts).
+ */
+export const personalStickerPacks = pgTable(
+  'personal_sticker_packs',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    ownerId: uuid('owner_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    /** short_name из Telegram (используется в getStickerSet и в t.me/addstickers/:name) */
+    telegramSetName: text('telegram_set_name').notNull(),
+    /** title из Telegram — человечески читаемое название пака */
+    title: text('title').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index('personal_sticker_packs_owner_id_idx').on(t.ownerId),
+    // Один и тот же пользователь не импортирует один Telegram-пак дважды —
+    // повторный запрос идемпотентен (см. personal-stickers.service.ts), а не плодит дубликаты
+    unique('personal_sticker_packs_owner_set_unique').on(t.ownerId, t.telegramSetName),
+  ],
+);
+
+/**
+ * Один импортированный статический стикер (WebP). file_unique_id из Telegram —
+ * стабилен для одного и того же файла, для будущей идемпотентности повторного
+ * импорта. Размер в байтах хранится в БД, чтобы считать квоту без похода в MinIO.
+ */
+export const personalStickers = pgTable(
+  'personal_stickers',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    packId: uuid('pack_id')
+      .notNull()
+      .references(() => personalStickerPacks.id, { onDelete: 'cascade' }),
+    /** file_unique_id из Telegram — стабилен для одного и того же файла */
+    telegramFileUniqueId: text('telegram_file_unique_id').notNull(),
+    /** Emoji, которым Telegram промаркировал стикер — как у встроенных паков (alt/aria-label) */
+    emoji: text('emoji').notNull(),
+    /** Размер сохранённого объекта в байтах — для подсчёта квоты без похода в MinIO */
+    byteSize: integer('byte_size').notNull(),
+    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index('personal_stickers_pack_id_idx').on(t.packId)],
 );

@@ -316,3 +316,12 @@ export const STICKER_PACKS: StickerPack[] = [
 export function findStickerAsset(packId: string, itemId: string): StickerPackItem | undefined {
   return STICKER_PACKS.find((p) => p.id === packId)?.items.find((i) => i.id === itemId);
 }
+
+/**
+ * URL личного стикера (21.6): GET /api/stickers/personal/:packId/:stickerId.webp.
+ * packId здесь всегда UUID, который никогда не совпадает со слагом встроенного
+ * пака (тот же regex ^[a-z0-9-]{1,64}$), поэтому резолвер не путает их.
+ */
+export function personalStickerUrl(packId: string, stickerId: string): string {
+  return `/api/stickers/personal/${packId}/${stickerId}.webp`;
+}

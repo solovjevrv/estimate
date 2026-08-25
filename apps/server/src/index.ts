@@ -27,6 +27,7 @@ async function main(): Promise<void> {
       avatarsDir: config.avatarsDir,
       boardAssetsDir: config.boardAssetsDir,
       objectStorage,
+      telegram: config.telegram,
     },
     { logger: true },
   );

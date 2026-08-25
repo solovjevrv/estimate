@@ -12,10 +12,14 @@
  * 3. Сами стикеры крупнее (72×72 вместо прежних 32×32).
  *
  * «Недавние» — без БД (задача 13.4 явно этого не предполагает), история в
- * localStorage (`recent-stickers.ts`), своя на каждом устройстве. Компонент
- * перемонтируется при каждом открытии поповера (Reka размонтирует `#content`
- * при закрытии) — читаем список заново в `onMounted`, всегда актуальный.
+ * localStorage (`recent-stickers.ts`), своя на каждом устройстве. Расчёт
+ * recentItems не только в onMounted, но и сразу в pick() (см. refreshRecent) —
+ * UPopover не гарантированно размонтирует #content при закрытии, поэтому
+ * полагаться только на remount при следующем открытии нельзя (баг живой
+ * проверки 21.6: «Недавние» переставали пополняться в течение сессии).
  */
+import { useToast } from '@nuxt/ui/composables';
+import type { PersonalStickerPackSummary } from '@poker/shared';
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -25,27 +29,54 @@ import {
 } from '../../features/boards/infrastructure/recent-stickers';
 import {
   findStickerAsset,
+  personalStickerUrl,
   STICKER_PACKS,
   type StickerPackItem,
 } from '../../features/boards/config/sticker-packs';
+import { usePersonalStickerPacksStore } from '../../stores/personal-sticker-packs';
+import ConfirmModal from '../ConfirmModal.vue';
+import TelegramStickerImportModal from '../TelegramStickerImportModal.vue';
 
 const emit = defineEmits<{ select: [pack: string, id: string] }>();
 
 const { t } = useI18n();
+const toast = useToast();
+const store = usePersonalStickerPacksStore();
 
 interface RecentEntry extends StickerPackItem {
   pack: string;
 }
 
 const recentItems = ref<RecentEntry[]>([]);
+const showImportModal = ref(false);
 
-onMounted(() => {
+/** Разрешает ссылку из «недавних» либо во встроенный пак, либо в личный (21.6) */
+function resolveRecentAsset(ref: { pack: string; id: string }): RecentEntry | null {
+  const builtIn = findStickerAsset(ref.pack, ref.id);
+  if (builtIn) return { ...builtIn, pack: ref.pack };
+
+  const personalPack = store.packs.find((p) => p.id === ref.pack);
+  const personalSticker = personalPack?.stickers.find((s) => s.id === ref.id);
+  if (personalPack && personalSticker) {
+    return {
+      id: personalSticker.id,
+      src: personalStickerUrl(personalPack.id, personalSticker.id),
+      emoji: personalSticker.emoji,
+      pack: ref.pack,
+    };
+  }
+  return null;
+}
+
+function refreshRecent(): void {
   recentItems.value = getRecentStickers()
-    .map((ref) => {
-      const asset = findStickerAsset(ref.pack, ref.id);
-      return asset ? { ...asset, pack: ref.pack } : null;
-    })
+    .map(resolveRecentAsset)
     .filter((item): item is RecentEntry => item !== null);
+}
+
+onMounted(async () => {
+  await store.load();
+  refreshRecent();
 });
 
 const sectionEls = new Map<string, HTMLElement>();
@@ -61,7 +92,39 @@ function scrollToSection(key: string): void {
 
 function pick(pack: string, id: string): void {
   addRecentSticker(pack, id);
+  // Реф recentItems обновляем сразу, не полагаясь только на onMounted при
+  // следующем открытии поповера — UPopover не гарантированно размонтирует
+  // #content при закрытии, из-за чего «Недавние» переставали обновляться
+  // после выбора стикера в течение той же сессии (нашли живой проверкой)
+  refreshRecent();
   emit('select', pack, id);
+}
+
+const deleteTarget = ref<PersonalStickerPackSummary | null>(null);
+const deleteOpen = ref(false);
+const deleting = ref(false);
+
+function askDeletePack(pack: PersonalStickerPackSummary, event: Event): void {
+  // Клик по кнопке удаления внутри заголовка пака не должен всплывать
+  // до клика по стикеру/скролла секции
+  event.stopPropagation();
+  deleteTarget.value = pack;
+  deleteOpen.value = true;
+}
+
+async function confirmDeletePack(): Promise<void> {
+  const target = deleteTarget.value;
+  if (!target) return;
+  deleting.value = true;
+  try {
+    await store.deletePack(target.id);
+    toast.add({ title: t('board.stickerPackDeleted'), color: 'success' });
+    deleteOpen.value = false;
+  } catch {
+    toast.add({ title: t('board.stickerPackDeleteError'), color: 'error' });
+  } finally {
+    deleting.value = false;
+  }
 }
 </script>
 
@@ -88,6 +151,32 @@ function pick(pack: string, id: string): void {
         @click="scrollToSection(pack.id)"
       >
         <img :src="pack.items[0]?.src" :alt="pack.label" draggable="false" />
+      </button>
+      <button
+        v-for="pack in store.packs"
+        :key="`personal-tab-${pack.id}`"
+        type="button"
+        class="board-sticker-picker-tab"
+        :aria-label="pack.title"
+        :title="pack.title"
+        @click="scrollToSection(`personal-${pack.id}`)"
+      >
+        <img
+          :src="personalStickerUrl(pack.id, pack.stickers[0]?.id ?? '')"
+          :alt="pack.title"
+          draggable="false"
+        />
+      </button>
+      <!-- "+" всегда последней — трейлинг "добавить" после всех паков, не между ними -->
+      <button
+        v-if="store.enabled"
+        type="button"
+        class="board-sticker-picker-tab"
+        :aria-label="t('board.stickerImportButton')"
+        :title="t('board.stickerImportButton')"
+        @click="showImportModal = true"
+      >
+        <UIcon name="i-lucide-plus" class="size-4" />
       </button>
     </div>
 
@@ -136,6 +225,81 @@ function pick(pack: string, id: string): void {
           </button>
         </div>
       </section>
+
+      <!-- Мои паки (личные импортированные из Telegram) — секции нет вообще,
+           если сервер не поднял роуты (нет TELEGRAM_BOT_TOKEN, см. store.enabled) -->
+      <section
+        v-if="store.enabled"
+        :ref="(el) => setSectionRef('personal', el as Element | null)"
+        data-testid="board-sticker-picker-section"
+        class="board-sticker-picker-section"
+      >
+        <h4 class="board-sticker-picker-heading">{{ t('board.stickerPersonalLabel') }}</h4>
+        <template v-if="store.packs.length === 0">
+          <div class="board-sticker-picker-empty">
+            <UIcon name="i-lucide-smile" class="size-8 opacity-30" />
+            <p class="mt-2 text-[13px] text-[var(--brand-ink2)]">
+              {{ t('board.stickerPersonalEmpty') }}
+            </p>
+            <button
+              type="button"
+              class="mt-3 board-sticker-picker-import-btn"
+              @click="showImportModal = true"
+            >
+              {{ t('board.stickerImportButton') }}
+            </button>
+          </div>
+        </template>
+        <template v-else>
+          <div
+            v-for="pack in store.packs"
+            :key="pack.id"
+            :ref="(el) => setSectionRef(`personal-${pack.id}`, el as Element | null)"
+            class="board-sticker-picker-pack"
+          >
+            <div class="board-sticker-picker-pack-header">
+              <h5 class="board-sticker-picker-subheading">{{ pack.title }}</h5>
+              <button
+                type="button"
+                class="board-sticker-picker-pack-delete"
+                :aria-label="t('board.stickerPackDeleteLabel')"
+                :title="t('board.stickerPackDeleteLabel')"
+                @click="askDeletePack(pack, $event)"
+              >
+                <UIcon name="i-lucide-trash-2" class="size-3.5" />
+              </button>
+            </div>
+            <div class="board-sticker-picker-grid">
+              <button
+                v-for="sticker in pack.stickers"
+                :key="sticker.id"
+                type="button"
+                data-testid="board-sticker-picker-item"
+                class="board-sticker-picker-item"
+                :aria-label="sticker.emoji"
+                @click="pick(pack.id, sticker.id)"
+              >
+                <img
+                  :src="personalStickerUrl(pack.id, sticker.id)"
+                  :alt="sticker.emoji"
+                  draggable="false"
+                />
+              </button>
+            </div>
+          </div>
+        </template>
+      </section>
+
+      <!-- Модалка импорта -->
+      <TelegramStickerImportModal v-model:model-value="showImportModal" />
+      <ConfirmModal
+        v-model:open="deleteOpen"
+        :title="t('board.stickerPackDeleteConfirmTitle')"
+        :description="t('board.stickerPackDeleteConfirmText', { name: deleteTarget?.title ?? '' })"
+        :confirm-label="t('board.stickerPackDeleteConfirm')"
+        :loading="deleting"
+        @confirm="confirmDeletePack"
+      />
     </div>
   </div>
 </template>
@@ -157,9 +321,12 @@ function pick(pack: string, id: string): void {
 .board-sticker-picker-tabs {
   display: flex;
   flex-shrink: 0;
+  flex-wrap: wrap;
   gap: 6px;
+  max-height: 70px;
   padding: 8px 8px 6px;
-  overflow-x: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   border-bottom: 1px solid var(--ui-border);
 }
 
@@ -234,5 +401,64 @@ function pick(pack: string, id: string): void {
   height: 100%;
   object-fit: contain;
   border-radius: 4px;
+}
+
+.board-sticker-picker-pack-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+
+.board-sticker-picker-subheading {
+  margin: 0;
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--brand-ink2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-sticker-picker-pack-delete {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--brand-ink2);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+}
+
+.board-sticker-picker-pack-delete:hover {
+  color: var(--ui-error, #e11d48);
+  background: var(--ui-bg-elevated);
+}
+
+.board-sticker-picker-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px 8px;
+}
+
+.board-sticker-picker-import-btn {
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--brand-ink);
+  background: var(--ui-bg-elevated);
+  border: 1px solid var(--brand-border);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.board-sticker-picker-import-btn:hover {
+  background: var(--ui-border);
 }
 </style>

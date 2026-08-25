@@ -127,6 +127,13 @@
       "when": 1787258921987,
       "tag": "0017_goofy_speed",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1787595620171,
+      "tag": "0018_simple_spirit",
+      "breakpoints": true
     }
   ]
 }

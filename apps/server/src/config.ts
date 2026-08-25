@@ -38,6 +38,14 @@ export interface ObjectStorageConfig {
   bucket: string;
 }
 
+/**
+ * Bot API — токен Telegram-бота для импорта личных стикер-паков (21.6).
+ * Фича полностью выключена, если токен не задан: роуты не регистрируются вовсе.
+ */
+export interface TelegramConfig {
+  botToken: string;
+}
+
 export interface Config {
   port: number;
   host: string;
@@ -62,6 +70,8 @@ export interface Config {
    * legacy-чтения и для migration-скриптов, не для записи.
    */
   objectStorage?: ObjectStorageConfig;
+  /** Telegram Bot API (21.6) — выключена без токена */
+  telegram?: TelegramConfig;
 }
 
 /**
@@ -154,6 +164,16 @@ export function loadObjectStorageConfig(): ObjectStorageConfig | undefined {
   };
 }
 
+/**
+ * Telegram Bot API (21.6) — без токена фича полностью выключена: роуты
+ * импорта личных стикеров не регистрируются вовсе (см. app.ts).
+ */
+export function loadTelegramConfig(): TelegramConfig | undefined {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  if (!botToken) return undefined;
+  return { botToken };
+}
+
 export function loadConfig(): Config {
   loadDotenv();
 
@@ -184,5 +204,6 @@ export function loadConfig(): Config {
     stickersAssetsDir:
       process.env.STICKERS_ASSETS_DIR ?? join(process.cwd(), 'assets', 'sticker-packs'),
     objectStorage: loadObjectStorageConfig(),
+    telegram: loadTelegramConfig(),
   };
 }
