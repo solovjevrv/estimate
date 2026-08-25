@@ -288,6 +288,17 @@ export const personalStickerPacks = pgTable(
     /** title из Telegram — человечески читаемое название пака */
     title: text('title').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
+    /**
+     * Мягкое удаление: при удалении пака строка не стирается, а помечается —
+     * иначе packId, уже расставленные на досках как BoardStickerContent.pack,
+     * теряют навсегда даже telegramSetName, и бейдж «импортировать» на
+     * осиротевшем стикере не может подсказать, какой пак переимпортировать
+     * (нашли живой проверкой, 21.6). Стикеры (personal_stickers) и файлы в
+     * storage при удалении стираются по-настоящему — восстанавливаются только
+     * повторным импортом из Telegram, который "оживляет" эту же строку
+     * (см. createPackWithStickers/onConflictDoUpdate).
+     */
+    deletedAt: timestamp('deleted_at', { withTimezone: true }),
   },
   (t) => [
     index('personal_sticker_packs_owner_id_idx').on(t.ownerId),

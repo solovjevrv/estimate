@@ -385,6 +385,8 @@ export default {
     stickerImportSuccess: 'Пакет импортирован',
     stickerImportForeignLabel: 'Импортировать этот пакет',
     stickerImportMetaError: 'Не удалось получить сведения о паке — попробуйте ещё раз',
+    stickerImportKnownPackDescription:
+      'Этот стикер — из личного пака «{title}», импортированного другим участником доски. Добавить этот пак и себе в личную библиотеку?',
     stickerPackDeleteLabel: 'Удалить пак',
     stickerPackDeleteConfirmTitle: 'Удалить стикер-пак?',
     stickerPackDeleteConfirmText:
