@@ -1,0 +1,1 @@
+ALTER TABLE "personal_stickers" ADD COLUMN "format" text DEFAULT 'static' NOT NULL;

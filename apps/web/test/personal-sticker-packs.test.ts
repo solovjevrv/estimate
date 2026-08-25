@@ -25,7 +25,7 @@ const PACK: PersonalStickerPackSummary = {
   id: randomUUID(),
   title: 'Test Pack',
   telegramSetName: 'testpack',
-  stickers: [{ id: 's1', emoji: '😀' }],
+  stickers: [{ id: 's1', emoji: '😀', format: 'static' }],
 };
 
 describe('usePersonalStickerPacksStore', () => {

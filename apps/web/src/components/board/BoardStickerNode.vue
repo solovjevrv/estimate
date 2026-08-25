@@ -18,6 +18,7 @@ import { findStickerAsset, personalStickerUrl } from '../../features/boards/conf
 import { useBoardSessionStore } from '../../stores/board-session';
 import { usePersonalStickerPacksStore } from '../../stores/personal-sticker-packs';
 import { useSessionStore } from '../../stores/session';
+import StickerMedia from './StickerMedia.vue';
 import TelegramStickerImportModal from '../TelegramStickerImportModal.vue';
 
 const props = defineProps<NodeProps<BoardItem>>();
@@ -43,10 +44,12 @@ onMounted(() => {
 
 const content = computed(() => props.data.content as BoardStickerContent);
 const stickerAsset = computed(() => findStickerAsset(content.value.pack, content.value.id));
-const imageUrl = computed(() => {
+const mediaUrl = computed(() => {
   const builtIn = stickerAsset.value;
   return builtIn ? builtIn.src : personalStickerUrl(content.value.pack, content.value.id);
 });
+/** Формат медиа (21.7) — только у личных Telegram-паков; встроенные всегда static (undefined) */
+const mediaFormat = computed(() => content.value.format);
 const altText = computed(() => stickerAsset.value?.emoji ?? 'sticker');
 
 /**
@@ -122,15 +125,12 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       class="board-node-content relative flex h-full w-full items-center justify-center overflow-hidden"
       @dblclick.stop
     >
-      <template v-if="imageUrl">
-        <img
-          :src="imageUrl"
+      <template v-if="mediaUrl">
+        <StickerMedia
+          :src="mediaUrl"
+          :format="mediaFormat"
           :alt="altText"
           data-testid="board-node-sticker-image"
-          class="h-full w-full object-contain"
-          draggable="false"
-          @load.stop
-          @error.stop
         />
       </template>
       <template v-else>

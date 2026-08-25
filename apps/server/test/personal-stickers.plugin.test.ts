@@ -18,24 +18,38 @@ import { FakeObjectStorage } from '../src/platform/storage';
 // Подменяем сервис: роуты вызывают его методы, мы контролируем ответы
 const mockService = vi.hoisted(() => ({
   getPublic: vi.fn(),
-  findPackOwner: vi.fn(),
+  findStickerLocation: vi.fn(),
   listOwn: vi.fn(),
   importFromTelegram: vi.fn(),
   deleteOwn: vi.fn(),
 }));
 
 vi.mock('../src/boards/personal-stickers.service', () => {
+  const extensionByFormat: Record<string, string> = {
+    static: 'webp',
+    animated: 'json',
+    video: 'webm',
+  };
   class MockService {
     getPublic = mockService.getPublic;
-    findPackOwner = mockService.findPackOwner;
+    findStickerLocation = mockService.findStickerLocation;
     listOwn = mockService.listOwn;
     importFromTelegram = mockService.importFromTelegram;
     deleteOwn = mockService.deleteOwn;
   }
   return {
     PersonalStickersService: MockService,
-    personalStickerKey: (ownerId: string, packId: string, stickerId: string) =>
-      `stickers/users/${ownerId}/${packId}/${stickerId}.webp`,
+    CONTENT_TYPE_BY_FORMAT: {
+      static: 'image/webp',
+      animated: 'application/json',
+      video: 'video/webm',
+    },
+    personalStickerKey: (
+      ownerId: string,
+      packId: string,
+      stickerId: string,
+      format: string = 'static',
+    ) => `stickers/users/${ownerId}/${packId}/${stickerId}.${extensionByFormat[format]}`,
   };
 });
 
@@ -81,7 +95,7 @@ describe('Personal stickers plugin — public routes', () => {
       id: 'pack-uuid',
       title: 'Test Pack',
       telegramSetName: 'testpack',
-      stickers: [{ id: 's1', emoji: '😀' }],
+      stickers: [{ id: 's1', emoji: '😀', format: 'static' }],
     });
 
     const res = await app.inject({
@@ -93,7 +107,7 @@ describe('Personal stickers plugin — public routes', () => {
     const body = JSON.parse(res.body);
     expect(body.pack.title).toBe('Test Pack');
     expect(body.pack.telegramSetName).toBe('testpack');
-    expect(body.pack.stickers).toEqual([{ id: 's1', emoji: '😀' }]);
+    expect(body.pack.stickers).toEqual([{ id: 's1', emoji: '😀', format: 'static' }]);
   });
 
   it('GET /api/sticker-packs/personal/:packId — 404 если пак не найден', async () => {
@@ -107,19 +121,23 @@ describe('Personal stickers plugin — public routes', () => {
     expect(res.statusCode).toBe(404);
   });
 
-  it('GET /api/stickers/personal/:packId/:filename — 200 + content-type image/webp + cache-control immutable', async () => {
+  it('GET /api/stickers/personal/:packId/:stickerId — 200 + content-type image/webp + cache-control immutable', async () => {
     const packId = randomUUID();
-    mockService.findPackOwner.mockResolvedValue('user-owner-id');
+    const stickerId = 'aaaaaaaa-0000-0000-0000-000000000000';
+    mockService.findStickerLocation.mockResolvedValue({
+      ownerId: 'user-owner-id',
+      format: 'static',
+    });
     const buf = Buffer.from('sticker-bytes');
     await storage.put(
-      `stickers/users/user-owner-id/${packId}/aaaaaaaa-0000-0000-0000-000000000000.webp`,
+      `stickers/users/user-owner-id/${packId}/${stickerId}.webp`,
       buf,
       'image/webp',
     );
 
     const res = await app.inject({
       method: 'GET',
-      url: `/api/stickers/personal/${packId}/aaaaaaaa-0000-0000-0000-000000000000.webp`,
+      url: `/api/stickers/personal/${packId}/${stickerId}`,
     });
 
     expect(res.statusCode).toBe(200);
@@ -127,12 +145,35 @@ describe('Personal stickers plugin — public routes', () => {
     expect(res.headers['cache-control']).toContain('immutable');
   });
 
-  it('GET /api/stickers/personal/:packId/:filename — 404 если владелец не найден', async () => {
-    mockService.findPackOwner.mockResolvedValue(null);
+  it('GET /api/stickers/personal/:packId/:stickerId — 200 + content-type video/webm для видео-стикера', async () => {
+    const packId = randomUUID();
+    const stickerId = 'bbbbbbbb-0000-0000-0000-000000000000';
+    mockService.findStickerLocation.mockResolvedValue({
+      ownerId: 'user-owner-id',
+      format: 'video',
+    });
+    const buf = Buffer.from('video-bytes');
+    await storage.put(
+      `stickers/users/user-owner-id/${packId}/${stickerId}.webm`,
+      buf,
+      'video/webm',
+    );
 
     const res = await app.inject({
       method: 'GET',
-      url: `/api/stickers/personal/${randomUUID()}/aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee.webp`,
+      url: `/api/stickers/personal/${packId}/${stickerId}`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers['content-type']).toBe('video/webm');
+  });
+
+  it('GET /api/stickers/personal/:packId/:stickerId — 404 если стикер не найден', async () => {
+    mockService.findStickerLocation.mockResolvedValue(null);
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/stickers/personal/${randomUUID()}/${randomUUID()}`,
     });
 
     expect(res.statusCode).toBe(404);
@@ -140,17 +181,14 @@ describe('Personal stickers plugin — public routes', () => {
 
   it('работает без сессии (публичный доступ без аутентификации)', async () => {
     const packId = randomUUID();
-    mockService.findPackOwner.mockResolvedValue('user-x');
+    const stickerId = 'aaaaaaaa-0000-0000-0000-000000000000';
+    mockService.findStickerLocation.mockResolvedValue({ ownerId: 'user-x', format: 'static' });
     const buf = Buffer.from('sticker-bytes');
-    await storage.put(
-      `stickers/users/user-x/${packId}/aaaaaaaa-0000-0000-0000-000000000000.webp`,
-      buf,
-      'image/webp',
-    );
+    await storage.put(`stickers/users/user-x/${packId}/${stickerId}.webp`, buf, 'image/webp');
 
     const res = await app.inject({
       method: 'GET',
-      url: `/api/stickers/personal/${packId}/aaaaaaaa-0000-0000-0000-000000000000.webp`,
+      url: `/api/stickers/personal/${packId}/${stickerId}`,
     });
 
     expect(res.statusCode).toBe(200);

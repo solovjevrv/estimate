@@ -309,9 +309,11 @@ export const personalStickerPacks = pgTable(
 );
 
 /**
- * Один импортированный статический стикер (WebP). file_unique_id из Telegram —
- * стабилен для одного и того же файла, для будущей идемпотентности повторного
- * импорта. Размер в байтах хранится в БД, чтобы считать квоту без похода в MinIO.
+ * Один импортированный стикер — статичный (WebP), анимированный (TGS/Lottie,
+ * распакован из gzip и хранится как обычный JSON, 21.7) или видео (WebM, 21.7).
+ * file_unique_id из Telegram — стабилен для одного и того же файла, для
+ * будущей идемпотентности повторного импорта. Размер в байтах хранится в БД,
+ * чтобы считать квоту без похода в MinIO.
  */
 export const personalStickers = pgTable(
   'personal_stickers',
@@ -324,6 +326,13 @@ export const personalStickers = pgTable(
     telegramFileUniqueId: text('telegram_file_unique_id').notNull(),
     /** Emoji, которым Telegram промаркировал стикер — как у встроенных паков (alt/aria-label) */
     emoji: text('emoji').notNull(),
+    /**
+     * 'static' | 'animated' | 'video' (21.7) — определяет расширение объекта в
+     * storage, Content-Type при отдаче и то, каким тегом рендерить на фронте
+     * (img/LottieSticker/video). Дефолт 'static' — все стикеры до 21.7 такими
+     * и были, миграция не трогает старые строки.
+     */
+    format: text('format').notNull().default('static'),
     /** Размер сохранённого объекта в байтах — для подсчёта квоты без похода в MinIO */
     byteSize: integer('byte_size').notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),

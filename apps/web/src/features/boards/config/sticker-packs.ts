@@ -1,3 +1,5 @@
+import type { PersonalStickerFormat } from '@poker/shared';
+
 /**
  * Стикер-паки (13.4) — статичные webp-стикеры в MinIO, без загрузки и без БД.
  * Источник: реальные наборы стикеров Telegram (Bot API `getStickerSet`/`getFile`,
@@ -16,6 +18,8 @@ export interface StickerPackItem {
   src: string;
   /** Emoji, которым Telegram промаркировал стикер — используем как alt/aria-label */
   emoji: string;
+  /** Формат медиа (21.7) — только у личных Telegram-паков, встроенные всегда 'static' (undefined) */
+  format?: PersonalStickerFormat;
 }
 
 export interface StickerPack {
@@ -318,10 +322,13 @@ export function findStickerAsset(packId: string, itemId: string): StickerPackIte
 }
 
 /**
- * URL личного стикера (21.6): GET /api/stickers/personal/:packId/:stickerId.webp.
- * packId здесь всегда UUID, который никогда не совпадает со слагом встроенного
- * пака (тот же regex ^[a-z0-9-]{1,64}$), поэтому резолвер не путает их.
+ * URL личного стикера: GET /api/stickers/personal/:packId/:stickerId. Без
+ * расширения (21.7) — формат (static webp / animated json-Lottie / video
+ * webm) резолвится сервером по БД, а не по суффиксу ссылки, единый URL для
+ * всех форматов. packId здесь всегда UUID, который никогда не совпадает со
+ * слагом встроенного пака (тот же regex ^[a-z0-9-]{1,64}$), поэтому резолвер
+ * не путает их.
  */
 export function personalStickerUrl(packId: string, stickerId: string): string {
-  return `/api/stickers/personal/${packId}/${stickerId}.webp`;
+  return `/api/stickers/personal/${packId}/${stickerId}`;
 }

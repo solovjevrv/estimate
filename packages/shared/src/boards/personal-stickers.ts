@@ -3,10 +3,23 @@
  * Совпадают с интерфейсами на фронте (§5.2) — импортируются из @poker/shared.
  */
 
+/**
+ * 'static' — WebP (21.6). 'animated' — Telegram TGS/Lottie, распакован из gzip
+ * и хранится как обычный JSON, рендерится LottieSticker.vue. 'video' — WebM,
+ * рендерится тегом <video> (оба — 21.7).
+ */
+export type PersonalStickerFormat = 'static' | 'animated' | 'video';
+export const PERSONAL_STICKER_FORMATS: readonly PersonalStickerFormat[] = [
+  'static',
+  'animated',
+  'video',
+];
+
 export interface PersonalStickerSummary {
   id: string;
   /** Emoji, которым Telegram промаркировал стикер — alt/aria-label */
   emoji: string;
+  format: PersonalStickerFormat;
 }
 
 export interface PersonalStickerPackSummary {

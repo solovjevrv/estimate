@@ -4,6 +4,7 @@
  * бизнес-логику (квоты, фильтры, идемпотентность, устойчивость к сбоям) без сети и БД.
  */
 import { randomUUID } from 'node:crypto';
+import { gzipSync } from 'node:zlib';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -23,7 +24,7 @@ const OWNER_ID = 'user-owner-id';
 function mockRepo(overrides: Partial<PersonalStickersRepository> = {}): PersonalStickersRepository {
   return {
     findPackByOwnerAndSetName: vi.fn().mockResolvedValue(null),
-    findPackOwner: vi.fn(),
+    findStickerLocation: vi.fn(),
     countPacksByOwner: vi.fn().mockResolvedValue(0),
     sumBytesByOwner: vi.fn().mockResolvedValue(0),
     createPackWithStickers: vi.fn().mockResolvedValue({
@@ -148,27 +149,81 @@ describe('PersonalStickersService.importFromTelegram', () => {
     );
   });
 
-  it('отбрасывает анимированные/видео стикеры', async () => {
+  it('принимает статичные, анимированные (TGS→gunzip) и видео стикеры вместе (21.7)', async () => {
     const repo = mockRepo();
     const storage = mockStorage();
+    const lottieJson = JSON.stringify({ v: '5.5.0', fr: 30, layers: [] });
+    const gzippedTgs = gzipSync(Buffer.from(lottieJson));
+
     const telegram = mockTelegram({
       getStickerSet: vi.fn().mockResolvedValue({
         name: 'mixedpack',
         title: 'Mixed Pack',
         stickers: [
-          basicSticker('anim', '😀'),
-          { ...basicSticker('video', '🎬'), isVideo: true },
-          { ...basicSticker('animated', '🤡'), isAnimated: true },
+          basicSticker('static-1', '😀'),
+          { ...basicSticker('animated-1', '🤡'), isAnimated: true },
+          { ...basicSticker('video-1', '🎬'), isVideo: true },
         ],
+      }),
+      downloadFile: vi.fn().mockImplementation((fileId: string) => {
+        if (fileId === 'animated-1') return Promise.resolve(gzippedTgs);
+        if (fileId === 'video-1') return Promise.resolve(Buffer.from('webm-bytes'));
+        return Promise.resolve(Buffer.from('webp-bytes'));
       }),
     });
     const service = new PersonalStickersService(repo, telegram, storage);
 
     const result = await service.importFromTelegram(OWNER_ID, 'mixedpack');
 
-    expect(telegram.downloadFile).toHaveBeenCalledTimes(1);
+    expect(result.skipped).toBe(0);
+    expect(storage.put).toHaveBeenCalledTimes(3);
+
+    const putCalls = (storage.put as ReturnType<typeof vi.fn>).mock.calls as Array<
+      [string, Buffer, string]
+    >;
+    const staticCall = putCalls.find(([key]) => key.endsWith('.webp'))!;
+    expect(staticCall[2]).toBe('image/webp');
+
+    const animatedCall = putCalls.find(([key]) => key.endsWith('.json'))!;
+    expect(animatedCall[2]).toBe('application/json');
+    // Сохранён распакованный JSON, а не сырой gzip
+    expect(animatedCall[1].toString()).toBe(lottieJson);
+
+    const videoCall = putCalls.find(([key]) => key.endsWith('.webm'))!;
+    expect(videoCall[2]).toBe('video/webm');
+
+    const createCall = (repo.createPackWithStickers as ReturnType<typeof vi.fn>).mock
+      .calls[0]![0] as { stickers: Array<{ format: string }> };
+    expect(createCall.stickers.map((s) => s.format).sort()).toEqual([
+      'animated',
+      'static',
+      'video',
+    ]);
+  });
+
+  it('пропускает стикер с битым TGS (невалидный gzip), не фейлит весь импорт', async () => {
+    const repo = mockRepo();
+    const storage = mockStorage();
+    const telegram = mockTelegram({
+      getStickerSet: vi.fn().mockResolvedValue({
+        name: 'brokenpack',
+        title: 'Broken Pack',
+        stickers: [
+          { ...basicSticker('broken-tgs', '🤡'), isAnimated: true },
+          basicSticker('ok-static', '😀'),
+        ],
+      }),
+      downloadFile: vi.fn().mockImplementation((fileId: string) => {
+        if (fileId === 'broken-tgs') return Promise.resolve(Buffer.from('not-actually-gzip'));
+        return Promise.resolve(Buffer.from('webp-bytes'));
+      }),
+    });
+    const service = new PersonalStickersService(repo, telegram, storage);
+
+    const result = await service.importFromTelegram(OWNER_ID, 'brokenpack');
+
+    expect(result.skipped).toBe(1);
     expect(storage.put).toHaveBeenCalledTimes(1);
-    expect(result.skipped).toBe(2);
   });
 
   it('пропускает файлы больше MAX_STICKER_FILE_BYTES без фейла', async () => {

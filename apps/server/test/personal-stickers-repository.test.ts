@@ -68,7 +68,13 @@ describeDb('PersonalStickersRepository — мягкое удаление и revi
       telegramSetName: 'softdeletepack',
       title: 'Soft Delete Pack',
       stickers: [
-        { stickerId: randomUUID(), telegramFileUniqueId: 'u1', emoji: '😀', byteSize: 100 },
+        {
+          stickerId: randomUUID(),
+          telegramFileUniqueId: 'u1',
+          emoji: '😀',
+          format: 'static',
+          byteSize: 100,
+        },
       ],
     });
 
@@ -112,7 +118,13 @@ describeDb('PersonalStickersRepository — мягкое удаление и revi
       telegramSetName: 'revivepack',
       title: 'Old Title',
       stickers: [
-        { stickerId: randomUUID(), telegramFileUniqueId: 'u1', emoji: '😀', byteSize: 100 },
+        {
+          stickerId: randomUUID(),
+          telegramFileUniqueId: 'u1',
+          emoji: '😀',
+          format: 'static',
+          byteSize: 100,
+        },
       ],
     });
     await repo.deletePack(packId, ownerId);
@@ -129,7 +141,13 @@ describeDb('PersonalStickersRepository — мягкое удаление и revi
       telegramSetName: 'revivepack',
       title: 'New Title After Reimport',
       stickers: [
-        { stickerId: randomUUID(), telegramFileUniqueId: 'u2', emoji: '🎉', byteSize: 200 },
+        {
+          stickerId: randomUUID(),
+          telegramFileUniqueId: 'u2',
+          emoji: '🎉',
+          format: 'static',
+          byteSize: 200,
+        },
       ],
     });
 

@@ -6,6 +6,7 @@ import type {
   BoardOp,
   BoardTextAlign,
   EmojiSequence,
+  PersonalStickerFormat,
 } from '@poker/shared';
 import { isBoardContainer } from '@poker/shared';
 import {
@@ -468,14 +469,17 @@ export function useBoardSelection(options: BoardSelectionOptions) {
   }
 
   /** Смена стикера (13.4) — патчим content.pack и content.id, не-стикеры пропускаются */
-  function setSelectedSticker(pack: string, id: string): void {
+  function setSelectedSticker(pack: string, id: string, format?: PersonalStickerFormat): void {
+    const content = format
+      ? { type: 'sticker' as const, pack, id, format }
+      : { type: 'sticker' as const, pack, id };
     const ops: BoardOp[] = selectedNodes.value
       .filter((node) => node.data.content.type === 'sticker')
       .map((node) => ({
         type: 'item.patch',
         clientOpId: uuid(),
         id: node.id,
-        patch: { content: { type: 'sticker', pack, id } },
+        patch: { content },
       }));
     if (ops.length) void options.applyOps(ops);
   }

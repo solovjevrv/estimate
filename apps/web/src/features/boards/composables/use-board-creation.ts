@@ -1,4 +1,4 @@
-import type { BoardItem, BoardOp, EmojiSequence } from '@poker/shared';
+import type { BoardItem, BoardOp, EmojiSequence, PersonalStickerFormat } from '@poker/shared';
 import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_MAX_ITEMS } from '@poker/shared';
 import { useToast } from '@nuxt/ui/composables';
 import { ref, type Ref } from 'vue';
@@ -69,7 +69,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
   createFrame: (center: { x: number; y: number }) => void;
   createImage: (center: { x: number; y: number }, file: File) => Promise<void>;
   createEmojiAtCenter: (emoji: EmojiSequence) => void;
-  createStickerAtCenter: (pack: string, id: string) => void;
+  createStickerAtCenter: (pack: string, id: string, format?: PersonalStickerFormat) => void;
 
   cancelPendingEdit: () => void;
 
@@ -232,7 +232,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
     ]);
   }
 
-  function createStickerAtCenter(pack: string, id: string): void {
+  function createStickerAtCenter(pack: string, id: string, format?: PersonalStickerFormat): void {
     options.breakFollowOnEdit();
     if (!options.canEdit() || !canCreateItem()) return;
     const rect = options.getCanvasRect();
@@ -253,7 +253,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
           height: STICKER_DEFAULT_HEIGHT,
           rotation: 0,
           zIndex: nextZIndexAbove(options.getItems()),
-          content: { type: 'sticker', pack, id },
+          content: format ? { type: 'sticker', pack, id, format } : { type: 'sticker', pack, id },
           style: { color: STICKY_DEFAULT_COLOR },
           reactions: [],
         },
