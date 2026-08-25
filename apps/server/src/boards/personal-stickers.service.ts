@@ -36,10 +36,12 @@ export class PersonalStickersService {
   ) {}
 
   async importFromTelegram(ownerId: string, telegramSetName: string): Promise<ImportResult> {
-    // 1. Идемпотентность: пак с таким именем у этого владельца уже есть —
-    // вернуть его как есть, не дёргать Telegram и не создавать дубликат
+    // 1. Идемпотентность: активный (не удалённый) пак с таким именем у этого
+    // владельца уже есть — вернуть его как есть, не дёргать Telegram и не
+    // создавать дубликат. Мягко удалённый пак с тем же именем — не идемпотентность,
+    // а повод переимпортировать (revive) под тем же packId, см. шаг 7
     const existing = await this.repo.findPackByOwnerAndSetName(ownerId, telegramSetName);
-    if (existing) {
+    if (existing && !existing.deletedAt) {
       const pack = await this.repo.getPackWithStickers(existing.id);
       return { pack: pack!, skipped: 0 };
     }
@@ -84,8 +86,11 @@ export class PersonalStickersService {
       }
     }
 
-    // 7. Генерируем packId заранее — до загрузки файлов в storage
-    const packId = randomUUID();
+    // 7. packId: обычный импорт — свежий randomUUID; переимпорт после удаления
+    // (existing здесь — только мягко удалённый пак, см. шаг 1) — переиспользуем
+    // тот же id, чтобы уже расставленные на досках стикеры под старым packId
+    // снова начали резолвиться сами, без патчей самих досок
+    const packId = existing?.id ?? randomUUID();
 
     // 8. Скачиваем и загружаем каждый стикер
     const savedStickers: CreatePackInput['stickers'] = [];

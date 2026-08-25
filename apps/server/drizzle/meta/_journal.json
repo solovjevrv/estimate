@@ -134,6 +134,13 @@
       "when": 1787595620171,
       "tag": "0018_simple_spirit",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1787657690278,
+      "tag": "0019_tearful_betty_brant",
+      "breakpoints": true
     }
   ]
 }

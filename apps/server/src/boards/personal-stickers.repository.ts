@@ -1,5 +1,5 @@
 import type { PersonalStickerPackWithStickers } from '@poker/shared';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNull, sql } from 'drizzle-orm';
 
 import { schema } from '../db';
 import type { Db } from '../db';
@@ -25,12 +25,21 @@ export interface CreatePackInput {
 export class PersonalStickersRepository {
   constructor(private readonly db: Db) {}
 
+  /**
+   * Ищет пак по (ownerId, telegramSetName) вне зависимости от того, удалён ли
+   * он (мягко) — вызывающая сторона (сервис) решает, что делать: активный пак
+   * возвращает как есть (идемпотентность повторного импорта), удалённый —
+   * "оживляет" через тот же packId (см. createPackWithStickers).
+   */
   async findPackByOwnerAndSetName(
     ownerId: string,
     telegramSetName: string,
-  ): Promise<{ id: string } | null> {
+  ): Promise<{ id: string; deletedAt: Date | null } | null> {
     const [row] = await this.db
-      .select({ id: schema.personalStickerPacks.id })
+      .select({
+        id: schema.personalStickerPacks.id,
+        deletedAt: schema.personalStickerPacks.deletedAt,
+      })
       .from(schema.personalStickerPacks)
       .where(
         and(
@@ -39,7 +48,7 @@ export class PersonalStickersRepository {
         ),
       )
       .limit(1);
-    return row ? { id: row.id } : null;
+    return row ? { id: row.id, deletedAt: row.deletedAt } : null;
   }
 
   /** ownerId по packId — нужен для резолва ключа в storage при публичной отдаче стикера */
@@ -52,11 +61,17 @@ export class PersonalStickersRepository {
     return row ? row.ownerId : null;
   }
 
+  /** Мягко удалённые (deletedAt не null) не занимают квоту — не считаем их */
   async countPacksByOwner(ownerId: string): Promise<number> {
     const [row] = await this.db
       .select({ count: sql<number>`count(*)` })
       .from(schema.personalStickerPacks)
-      .where(eq(schema.personalStickerPacks.ownerId, ownerId));
+      .where(
+        and(
+          eq(schema.personalStickerPacks.ownerId, ownerId),
+          isNull(schema.personalStickerPacks.deletedAt),
+        ),
+      );
     return Number(row?.count ?? 0);
   }
 
@@ -73,8 +88,15 @@ export class PersonalStickersRepository {
   }
 
   /**
-   * Одна транзакция: insert в personal_sticker_packs, затем batch-insert строк
+   * Одна транзакция: upsert в personal_sticker_packs, затем batch-insert строк
    * personal_stickers. Если по пути что-то упало — rollback, строки в БД не появятся.
+   *
+   * `onConflictDoUpdate` по id — не просто insert: сервис передаёт сюда либо
+   * свежий randomUUID (обычный импорт), либо id уже существующей, но мягко
+   * удалённой строки (переимпорт после удаления, см. deletedAt в схеме) —
+   * тогда конфликт по PK "оживляет" ту же строку (title обновляется,
+   * deletedAt сбрасывается) вместо ошибки уникальности. Старые personal_stickers
+   * под этим packId к этому моменту уже удалены явно в deletePack.
    */
   async createPackWithStickers(input: CreatePackInput): Promise<PersonalStickerPackWithStickers> {
     return await this.db.transaction(async (tx) => {
@@ -85,6 +107,10 @@ export class PersonalStickersRepository {
           ownerId: input.ownerId,
           telegramSetName: input.telegramSetName,
           title: input.title,
+        })
+        .onConflictDoUpdate({
+          target: schema.personalStickerPacks.id,
+          set: { title: input.title, deletedAt: null },
         })
         .returning();
 
@@ -141,12 +167,19 @@ export class PersonalStickersRepository {
   }
 
   async listPacksByOwner(ownerId: string): Promise<PersonalStickerPackWithStickers[]> {
-    // Запросим паки + стикеры двумя запросами, а не вложенным JOIN — проще и
-    // не меняет поведение при удалении пака (каскадно)
+    // Запросим паки + стикеры двумя запросами, а не вложенным JOIN — проще.
+    // Мягко удалённые (deletedAt не null) в список "моих паков" не попадают —
+    // это только tombstone для восстановления telegramSetName по чужим/своим
+    // осиротевшим стикерам на досках (см. deletedAt в схеме)
     const packRows = await this.db
       .select()
       .from(schema.personalStickerPacks)
-      .where(eq(schema.personalStickerPacks.ownerId, ownerId));
+      .where(
+        and(
+          eq(schema.personalStickerPacks.ownerId, ownerId),
+          isNull(schema.personalStickerPacks.deletedAt),
+        ),
+      );
 
     if (packRows.length === 0) return [];
 
@@ -175,8 +208,13 @@ export class PersonalStickersRepository {
   }
 
   /**
-   * Удаляет пак, только если он принадлежит ownerId (WHERE по обоим полям).
-   * Возвращает удалённые строки (нужны id стикеров для cleanup в storage).
+   * "Удаляет" пак, только если он принадлежит ownerId (WHERE по обоим полям)
+   * и ещё не был удалён раньше. Сами personal_stickers стираются взаправду
+   * (и storage-объекты — в сервисе), но родительская строка помечается
+   * deletedAt, а не удаляется — чтобы telegramSetName оставался резолвимым
+   * для бейджа «импортировать» на уже осиротевших стикерах на досках
+   * (нашли живой проверкой, 21.6: без этого повторный импорт падал 404).
+   * Возвращает удалённые строки стикеров (нужны id для cleanup в storage).
    */
   async deletePack(
     packId: string,
@@ -190,6 +228,7 @@ export class PersonalStickersRepository {
           and(
             eq(schema.personalStickerPacks.id, packId),
             eq(schema.personalStickerPacks.ownerId, ownerId),
+            isNull(schema.personalStickerPacks.deletedAt),
           ),
         )
         .limit(1);
@@ -203,9 +242,12 @@ export class PersonalStickersRepository {
         .from(schema.personalStickers)
         .where(eq(schema.personalStickers.packId, packId));
 
-      // Каскадно удалит и стикеры (ON DELETE CASCADE)
+      // Стикеры стираются взаправду — при переимпорте (revive) вставляются заново
+      await tx.delete(schema.personalStickers).where(eq(schema.personalStickers.packId, packId));
+
       await tx
-        .delete(schema.personalStickerPacks)
+        .update(schema.personalStickerPacks)
+        .set({ deletedAt: new Date() })
         .where(eq(schema.personalStickerPacks.id, packId));
 
       return {

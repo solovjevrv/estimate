@@ -421,6 +421,7 @@ async function confirmDeletePack(): Promise<void> {
    у личных паков с кнопкой удаления в заголовке (нашли живой проверкой) */
 .board-sticker-picker-section {
   padding-top: 14px;
+  padding-bottom: 14px;
   border-top: 1px solid var(--ui-border);
 }
 

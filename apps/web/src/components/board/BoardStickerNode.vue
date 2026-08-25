@@ -207,8 +207,18 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
   background: var(--ui-bg-elevated);
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
   cursor: pointer;
-  opacity: 0.7;
+  /* Скрыт по умолчанию — показываем только при наведении/фокусе/выделении
+     карточки, не постоянно поверх стикера (нашли живой проверкой, 21.6) */
+  opacity: 0;
+  pointer-events: none;
   transition: opacity 0.15s;
+}
+
+.board-node-resizer-gap:hover .board-sticker-import-badge,
+.board-node-resizer-gap:focus-within .board-sticker-import-badge,
+.board-node-resizer-gap[data-selected='true'] .board-sticker-import-badge {
+  opacity: 0.7;
+  pointer-events: auto;
 }
 
 .board-sticker-import-badge:hover {

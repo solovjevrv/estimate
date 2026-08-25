@@ -101,6 +101,39 @@ describe('PersonalStickersService.importFromTelegram', () => {
     expect(storage.put).not.toHaveBeenCalled();
   });
 
+  it('переимпорт после удаления (revive): использует старый packId, а не создаёт новый', async () => {
+    // Живой проверкой нашли: удалённый пак раньше исчезал из БД насовсем,
+    // из-за чего повторный импорт того же telegramSetName создавал НОВЫЙ
+    // packId — стикеры, уже расставленные на досках под старым packId,
+    // так и оставались осиротевшими (404 при попытке подгрузить картинку).
+    // deletedAt делает пак "мягко" удалённым — переимпорт должен подхватить
+    // тот же id, чтобы старые доски починились сами.
+    const deletedPackId = randomUUID();
+    const repo = mockRepo({
+      findPackByOwnerAndSetName: vi.fn().mockResolvedValue({
+        id: deletedPackId,
+        deletedAt: new Date('2026-08-01T00:00:00Z'),
+      }),
+      createPackWithStickers: vi.fn().mockResolvedValue({
+        id: deletedPackId,
+        title: 'Test Pack',
+        telegramSetName: 'testpack',
+        stickers: [{ id: 's1', emoji: '😀' }],
+      }),
+    });
+    const storage = mockStorage();
+    const telegram = mockTelegram();
+    const service = new PersonalStickersService(repo, telegram, storage);
+
+    const result = await service.importFromTelegram(OWNER_ID, 'testpack');
+
+    expect(telegram.getStickerSet).toHaveBeenCalledWith('testpack');
+    expect(repo.createPackWithStickers).toHaveBeenCalledWith(
+      expect.objectContaining({ packId: deletedPackId }),
+    );
+    expect(result.pack.id).toBe(deletedPackId);
+  });
+
   it('оборачивает TelegramApiError в ValidationError', async () => {
     const repo = mockRepo();
     const storage = mockStorage();
