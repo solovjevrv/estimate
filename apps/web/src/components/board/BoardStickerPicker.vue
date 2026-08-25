@@ -326,7 +326,10 @@ async function confirmDeletePack(): Promise<void> {
 .board-sticker-picker-tabs {
   display: flex;
   flex-shrink: 0;
-  align-items: center;
+  /* flex-start, не center: у .board-sticker-picker-tabs-scroll есть
+     padding-bottom под тонкий скроллбар, из-за чего её бокс выше на 6px,
+     чем у кнопки "+" — с center это сдвигало "+" вниз на половину разницы */
+  align-items: flex-start;
   gap: 6px;
   padding: 8px 8px 6px;
   border-bottom: 1px solid var(--ui-border);
