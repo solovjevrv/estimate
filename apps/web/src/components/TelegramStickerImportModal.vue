@@ -14,7 +14,7 @@
  * в обоих режимах.
  */
 import { useToast } from '@nuxt/ui/composables';
-import { ref, computed } from 'vue';
+import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import { ApiError } from '../lib/api';
@@ -41,6 +41,20 @@ const isOpen = defineModel<boolean>();
 const setName = ref(props.telegramSetName ?? '');
 const consent = ref(false);
 const loading = ref(false);
+
+// Компонент — синглтон в BoardStickerNode.vue (не пересоздаётся на каждый
+// клик по бейджу, в отличие от инстанса в BoardStickerPicker.vue внутри
+// поповера), поэтому `ref(props.telegramSetName ?? '')` — это снимок на
+// момент первого монтирования, ДО того как узнали метаданные пака. Без
+// watch setName так и оставался бы пустой строкой навсегда — кнопка
+// "Импортировать" была бы вечно задизейблена (canSubmit требует непустое
+// имя), даже с проставленной галочкой согласия (нашли живой проверкой)
+watch(
+  () => props.telegramSetName,
+  (value) => {
+    setName.value = value ?? '';
+  },
+);
 
 const canSubmit = computed(
   () => consent.value && !loading.value && setName.value.trim().length > 0,
