@@ -256,40 +256,42 @@ async function confirmDeletePack(): Promise<void> {
           </div>
         </template>
         <template v-else>
-          <div
-            v-for="pack in store.packs"
-            :key="pack.id"
-            :ref="(el) => setSectionRef(`personal-${pack.id}`, el as Element | null)"
-            class="board-sticker-picker-pack"
-          >
-            <div class="board-sticker-picker-pack-header">
-              <h5 class="board-sticker-picker-subheading">{{ pack.title }}</h5>
-              <button
-                type="button"
-                class="board-sticker-picker-pack-delete"
-                :aria-label="t('board.stickerPackDeleteLabel')"
-                :title="t('board.stickerPackDeleteLabel')"
-                @click="askDeletePack(pack, $event)"
-              >
-                <UIcon name="i-lucide-trash-2" class="size-3.5" />
-              </button>
-            </div>
-            <div class="board-sticker-picker-grid">
-              <button
-                v-for="sticker in pack.stickers"
-                :key="sticker.id"
-                type="button"
-                data-testid="board-sticker-picker-item"
-                class="board-sticker-picker-item"
-                :aria-label="sticker.emoji"
-                @click="pick(pack.id, sticker.id)"
-              >
-                <img
-                  :src="personalStickerUrl(pack.id, sticker.id)"
-                  :alt="sticker.emoji"
-                  draggable="false"
-                />
-              </button>
+          <div class="board-sticker-picker-pack-list">
+            <div
+              v-for="pack in store.packs"
+              :key="pack.id"
+              :ref="(el) => setSectionRef(`personal-${pack.id}`, el as Element | null)"
+              class="board-sticker-picker-pack"
+            >
+              <div class="board-sticker-picker-pack-header">
+                <h5 class="board-sticker-picker-subheading">{{ pack.title }}</h5>
+                <button
+                  type="button"
+                  class="board-sticker-picker-pack-delete"
+                  :aria-label="t('board.stickerPackDeleteLabel')"
+                  :title="t('board.stickerPackDeleteLabel')"
+                  @click="askDeletePack(pack, $event)"
+                >
+                  <UIcon name="i-lucide-trash-2" class="size-3.5" />
+                </button>
+              </div>
+              <div class="board-sticker-picker-grid">
+                <button
+                  v-for="sticker in pack.stickers"
+                  :key="sticker.id"
+                  type="button"
+                  data-testid="board-sticker-picker-item"
+                  class="board-sticker-picker-item"
+                  :aria-label="sticker.emoji"
+                  @click="pick(pack.id, sticker.id)"
+                >
+                  <img
+                    :src="personalStickerUrl(pack.id, sticker.id)"
+                    :alt="sticker.emoji"
+                    draggable="false"
+                  />
+                </button>
+              </div>
             </div>
           </div>
         </template>
@@ -393,11 +395,53 @@ async function confirmDeletePack(): Promise<void> {
 .board-sticker-picker-scroll {
   display: flex;
   flex-direction: column;
-  gap: 14px;
   max-height: 420px;
   padding: 10px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-border) transparent;
+}
+
+.board-sticker-picker-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.board-sticker-picker-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.board-sticker-picker-scroll::-webkit-scrollbar-thumb {
+  background: var(--ui-border);
+  border-radius: 2px;
+}
+
+/* Разделитель между паками (встроенными и личными) — без него на глаз не
+   разобрать, где кончается сетка одного пака и начинается другого, особенно
+   у личных паков с кнопкой удаления в заголовке (нашли живой проверкой) */
+.board-sticker-picker-section {
+  padding-top: 14px;
+  border-top: 1px solid var(--ui-border);
+}
+
+.board-sticker-picker-section:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+
+.board-sticker-picker-pack-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.board-sticker-picker-pack {
+  padding-top: 14px;
+  border-top: 1px solid var(--ui-border);
+}
+
+.board-sticker-picker-pack:first-child {
+  padding-top: 0;
+  border-top: none;
 }
 
 .board-sticker-picker-heading {
