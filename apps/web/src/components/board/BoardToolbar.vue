@@ -24,7 +24,7 @@
 import { useI18n } from 'vue-i18n';
 
 import type { BoardTool } from '../../features/boards/board-tools';
-import type { EmojiSequence } from '@poker/shared';
+import type { EmojiSequence, PersonalStickerFormat } from '@poker/shared';
 import BoardStickerPicker from './BoardStickerPicker.vue';
 import EmojiPicker from '../EmojiPicker.vue';
 
@@ -37,8 +37,8 @@ const emit = defineEmits<{
    * у эмодзи нет: клик по кнопке сразу открывает список, клик по эмодзи в
    * списке сразу создаёт элемент, без промежуточного клика по холсту. */
   emoji: [emoji: EmojiSequence];
-  /** Стикер выбран из пикера — вставить на доску (13.4). */
-  sticker: [pack: string, id: string];
+  /** Стикер выбран из пикера — вставить на доску (13.4). format — только у личных Telegram-паков (21.7) */
+  sticker: [pack: string, id: string, format?: PersonalStickerFormat];
 }>();
 
 const { t } = useI18n();
@@ -131,8 +131,8 @@ function isActive(value: BoardTool): boolean {
       <template #content="{ close }">
         <BoardStickerPicker
           @select="
-            (pack, id) => {
-              emit('sticker', pack, id);
+            (pack, id, format) => {
+              emit('sticker', pack, id, format);
               close();
             }
           "

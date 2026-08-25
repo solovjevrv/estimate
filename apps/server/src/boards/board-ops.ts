@@ -31,6 +31,7 @@ import {
   isValidUuid,
   toggleItemReaction,
   isBoardContainer,
+  PERSONAL_STICKER_FORMATS,
   type BoardEdgeDash,
   type BoardEdge,
   type BoardItem,
@@ -39,6 +40,7 @@ import {
   type BoardOp,
   type BoardTextMark,
   type BoardTextRun,
+  type PersonalStickerFormat,
 } from '@poker/shared';
 
 import { isValidEmojiSequence } from '@poker/shared/emoji/validate';
@@ -373,6 +375,7 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
     pack?: unknown;
     id?: unknown;
     title?: unknown;
+    format?: unknown;
   };
 
   // Для emoji — валидный Unicode-эмодзи из каталога (21.4)
@@ -386,6 +389,8 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
   // Для sticker — pack и id обязательны, формат /^[a-z0-9-]{1,64}$/ (13.4)
   // Валидируем формат, но НЕ сверяем с манифестом (он только на фронте) —
   // компонент рендера на фронте сам покажет плейсхолдер для неизвестного pack/id.
+  // format (21.7) — опционален: у встроенных паков его нет вовсе (всегда
+  // static), клиент передаёт его только для личных Telegram-стикеров.
   if (c.type === 'sticker') {
     const PACK_ID_PATTERN = /^[a-z0-9-]{1,64}$/;
     if (typeof c.pack !== 'string' || c.pack.length === 0 || !PACK_ID_PATTERN.test(c.pack)) {
@@ -394,7 +399,14 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
     if (typeof c.id !== 'string' || c.id.length === 0 || !PACK_ID_PATTERN.test(c.id)) {
       throw new ValidationError('Недопустимый идентификатор стикера');
     }
-    return { type: 'sticker', pack: c.pack, id: c.id };
+    if (
+      c.format !== undefined &&
+      !PERSONAL_STICKER_FORMATS.includes(c.format as PersonalStickerFormat)
+    ) {
+      throw new ValidationError('Недопустимый формат стикера');
+    }
+    const format = c.format as PersonalStickerFormat | undefined;
+    return { type: 'sticker', pack: c.pack, id: c.id, ...(format ? { format } : {}) };
   }
 
   // Фрейм (14.3) — видимый контейнер с заголовком; title ≤ BOARD_FRAME_TITLE_MAX_LENGTH

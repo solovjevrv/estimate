@@ -2,6 +2,7 @@
 
 import type { EmojiSequence } from '../emoji';
 import type { BoardAccessLevel, BoardShareRole } from './permissions';
+import type { PersonalStickerFormat } from './personal-stickers';
 
 /**
  * Доски (Epic 12+) — простой холст для брейншторма/планирования/ретро, по
@@ -192,6 +193,12 @@ export interface BoardStickerContent {
   type: 'sticker';
   pack: string;
   id: string;
+  /**
+   * Формат медиа (21.7) — только у личных Telegram-паков, у встроенных нет
+   * (всегда static webp). Опционален для обратной совместимости: элементы,
+   * созданные до 21.7, этого поля не имеют — трактовать отсутствие как 'static'.
+   */
+  format?: PersonalStickerFormat;
 }
 
 /**

@@ -27,8 +27,8 @@ const PACK_WITH_STICKERS: PersonalStickerPackSummary = {
   title: 'Full Pack',
   telegramSetName: 'fullpack',
   stickers: [
-    { id: 's1', emoji: '😀' },
-    { id: 's2', emoji: '🎉' },
+    { id: 's1', emoji: '😀', format: 'static' },
+    { id: 's2', emoji: '🎉', format: 'static' },
   ],
 };
 

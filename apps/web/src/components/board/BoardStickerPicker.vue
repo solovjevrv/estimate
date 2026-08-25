@@ -19,7 +19,7 @@
  * проверки 21.6: «Недавние» переставали пополняться в течение сессии).
  */
 import { useToast } from '@nuxt/ui/composables';
-import type { PersonalStickerPackSummary } from '@poker/shared';
+import type { PersonalStickerFormat, PersonalStickerPackSummary } from '@poker/shared';
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -35,9 +35,12 @@ import {
 } from '../../features/boards/config/sticker-packs';
 import { usePersonalStickerPacksStore } from '../../stores/personal-sticker-packs';
 import ConfirmModal from '../ConfirmModal.vue';
+import StickerMedia from './StickerMedia.vue';
 import TelegramStickerImportModal from '../TelegramStickerImportModal.vue';
 
-const emit = defineEmits<{ select: [pack: string, id: string] }>();
+const emit = defineEmits<{
+  select: [pack: string, id: string, format?: PersonalStickerFormat];
+}>();
 
 const { t } = useI18n();
 const toast = useToast();
@@ -62,6 +65,7 @@ function resolveRecentAsset(ref: { pack: string; id: string }): RecentEntry | nu
       id: personalSticker.id,
       src: personalStickerUrl(personalPack.id, personalSticker.id),
       emoji: personalSticker.emoji,
+      format: personalSticker.format,
       pack: ref.pack,
     };
   }
@@ -90,14 +94,14 @@ function scrollToSection(key: string): void {
   sectionEls.get(key)?.scrollIntoView({ block: 'start' });
 }
 
-function pick(pack: string, id: string): void {
+function pick(pack: string, id: string, format?: PersonalStickerFormat): void {
   addRecentSticker(pack, id);
   // Реф recentItems обновляем сразу, не полагаясь только на onMounted при
   // следующем открытии поповера — UPopover не гарантированно размонтирует
   // #content при закрытии, из-за чего «Недавние» переставали обновляться
   // после выбора стикера в течение той же сессии (нашли живой проверкой)
   refreshRecent();
-  emit('select', pack, id);
+  emit('select', pack, id, format);
 }
 
 const deleteTarget = ref<PersonalStickerPackSummary | null>(null);
@@ -166,10 +170,10 @@ async function confirmDeletePack(): Promise<void> {
           :title="pack.title"
           @click="scrollToSection(`personal-${pack.id}`)"
         >
-          <img
+          <StickerMedia
             :src="personalStickerUrl(pack.id, pack.stickers[0]?.id ?? '')"
+            :format="pack.stickers[0]?.format"
             :alt="pack.title"
-            draggable="false"
           />
         </button>
       </div>
@@ -201,9 +205,9 @@ async function confirmDeletePack(): Promise<void> {
             data-testid="board-sticker-picker-item"
             class="board-sticker-picker-item"
             :aria-label="item.emoji"
-            @click="pick(item.pack, item.id)"
+            @click="pick(item.pack, item.id, item.format)"
           >
-            <img :src="item.src" :alt="item.emoji" draggable="false" />
+            <StickerMedia :src="item.src" :format="item.format" :alt="item.emoji" />
           </button>
         </div>
       </section>
@@ -283,12 +287,12 @@ async function confirmDeletePack(): Promise<void> {
                   data-testid="board-sticker-picker-item"
                   class="board-sticker-picker-item"
                   :aria-label="sticker.emoji"
-                  @click="pick(pack.id, sticker.id)"
+                  @click="pick(pack.id, sticker.id, sticker.format)"
                 >
-                  <img
+                  <StickerMedia
                     :src="personalStickerUrl(pack.id, sticker.id)"
+                    :format="sticker.format"
                     :alt="sticker.emoji"
-                    draggable="false"
                   />
                 </button>
               </div>
@@ -479,6 +483,12 @@ async function confirmDeletePack(): Promise<void> {
   width: 100%;
   height: 100%;
   object-fit: contain;
+  border-radius: 4px;
+}
+
+/* StickerMedia сама задаёт себе размер/object-fit (video/Lottie, 21.7) —
+   тут только скругление, чтобы совпадало со статичными webp */
+.board-sticker-picker-item :deep(video) {
   border-radius: 4px;
 }
 

@@ -70,6 +70,7 @@ import {
   type BoardTextAlign,
   type BoardTextMark,
   type EmojiSequence,
+  type PersonalStickerFormat,
 } from '@poker/shared';
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -169,7 +170,7 @@ const emit = defineEmits<{
   delete: [];
   replaceImage: [];
   emoji: [emoji: EmojiSequence];
-  sticker: [pack: string, id: string];
+  sticker: [pack: string, id: string, format?: PersonalStickerFormat];
 }>();
 
 const { t } = useI18n();
@@ -357,8 +358,8 @@ function cancelTextColor(hex: BoardColorHex): void {
       <template #content="{ close }">
         <BoardStickerPicker
           @select="
-            (pack, id) => {
-              emit('sticker', pack, id);
+            (pack, id, format) => {
+              emit('sticker', pack, id, format);
               close();
             }
           "

@@ -9,7 +9,11 @@ import { uuidSchema } from '../http/schemas';
 import type { ObjectStorage } from '../platform/storage';
 
 import { PersonalStickersRepository } from './personal-stickers.repository';
-import { PersonalStickersService, personalStickerKey } from './personal-stickers.service';
+import {
+  CONTENT_TYPE_BY_FORMAT,
+  PersonalStickersService,
+  personalStickerKey,
+} from './personal-stickers.service';
 import { TelegramClient } from './telegram-client';
 
 export interface PersonalStickersPluginOptions {
@@ -20,10 +24,11 @@ export interface PersonalStickersPluginOptions {
 /** JSON Schema для одного стикера в ответе */
 const personalStickerItemResponse = {
   type: 'object',
-  required: ['id', 'emoji'],
+  required: ['id', 'emoji', 'format'],
   properties: {
     id: { type: 'string', format: 'uuid' },
     emoji: { type: 'string' },
+    format: { type: 'string', enum: ['static', 'animated', 'video'] },
   },
 } as const;
 
@@ -48,13 +53,17 @@ const packIdParams = {
   },
 } as const;
 
-/** Параметры :packId/:filename для GET стикера */
+/**
+ * Параметры :packId/:stickerId для GET файла стикера (21.7: URL больше не
+ * содержит расширение — формат/Content-Type резолвится по БД, а не по
+ * суффиксу в ссылке, единый вид для static/animated/video).
+ */
 const stickerFileParams = {
   type: 'object',
-  required: ['packId', 'filename'],
+  required: ['packId', 'stickerId'],
   properties: {
     packId: uuidSchema,
-    filename: { type: 'string', pattern: '^[a-f0-9-]{1,64}\\.webp$' },
+    stickerId: uuidSchema,
   },
 } as const;
 
@@ -221,17 +230,19 @@ async function personalStickersPluginImpl(
     },
   );
 
-  // GET /api/stickers/personal/:packId/:filename — публично (без preHandler)
-  app.get<{ Params: { packId: string; filename: string } }>(
-    '/api/stickers/personal/:packId/:filename',
+  // GET /api/stickers/personal/:packId/:stickerId — публично (без preHandler)
+  app.get<{ Params: { packId: string; stickerId: string } }>(
+    '/api/stickers/personal/:packId/:stickerId',
     {
       schema: {
         tags: [DOCS_TAGS.boards],
         summary: 'Файл личного стикера',
         description:
-          'Публично, без аутентификации — отдаёт webp-файл стикера по прямой ссылке, ' +
-          'как встроенные стикеры. Раз владелец пака может быть любым, а ключ ' +
-          'в storage содержит ownerId, ownerId определяется по packId в БД.',
+          'Публично, без аутентификации — отдаёт файл стикера по прямой ссылке, как ' +
+          'встроенные стикеры (статичный webp, анимированный Lottie-json или видео webm, ' +
+          '21.7 — формат резолвится по БД, а не по URL). Раз владелец пака может быть ' +
+          'любым, а ключ в storage содержит ownerId, ownerId определяется по паре ' +
+          '(packId, stickerId) в БД.',
         params: stickerFileParams,
         response: {
           404: { description: 'Стикер не найден', ...errorResponse },
@@ -239,16 +250,20 @@ async function personalStickersPluginImpl(
       },
     },
     async (req, reply) => {
-      const ownerId = await service.findPackOwner(req.params.packId);
-      if (!ownerId) throw new NotFoundError('Стикер не найден');
+      const location = await service.findStickerLocation(req.params.packId, req.params.stickerId);
+      if (!location) throw new NotFoundError('Стикер не найден');
 
-      const stickerId = req.params.filename.replace(/\.webp$/, '');
-      const key = personalStickerKey(ownerId, req.params.packId, stickerId);
+      const key = personalStickerKey(
+        location.ownerId,
+        req.params.packId,
+        req.params.stickerId,
+        location.format,
+      );
       const stream = await opts.storage.get(key);
       if (!stream) throw new NotFoundError('Стикер не найден');
 
       reply.header('cache-control', 'public, max-age=31536000, immutable');
-      reply.type('image/webp');
+      reply.type(CONTENT_TYPE_BY_FORMAT[location.format]);
       return reply.send(stream);
     },
   );

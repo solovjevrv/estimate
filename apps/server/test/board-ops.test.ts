@@ -341,6 +341,53 @@ describe('applyBoardOp — item.create', () => {
     expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
   });
 
+  it('принимает стикер с валидным format (21.7: static/animated/video)', () => {
+    for (const format of ['static', 'animated', 'video']) {
+      const state = emptyState();
+      const id = randomUUID();
+      const op = stickerCreateOp(id);
+      (op as { item: { content: unknown } }).item.content = {
+        type: 'sticker',
+        pack: 'eduardkonstantinovich',
+        id: '01',
+        format,
+      };
+
+      applyBoardOp(state, op, BOARD_ID, ACTOR);
+      expect(state.items.get(id)?.content).toEqual({
+        type: 'sticker',
+        pack: 'eduardkonstantinovich',
+        id: '01',
+        format,
+      });
+    }
+  });
+
+  it('стикер без format вообще (встроенные паки, обратная совместимость) — не добавляет поле', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    applyBoardOp(state, stickerCreateOp(id), BOARD_ID, ACTOR);
+
+    expect(state.items.get(id)?.content).toEqual({
+      type: 'sticker',
+      pack: 'eduardkonstantinovich',
+      id: '01',
+    });
+  });
+
+  it('отклоняет стикер с недопустимым format', () => {
+    const state = emptyState();
+    const op = stickerCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'sticker',
+      pack: 'eduardkonstantinovich',
+      id: '01',
+      format: 'gif',
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
   it('отклоняет эмодзи без самого поля emoji', () => {
     const state = emptyState();
     const op = emojiCreateOp(randomUUID());

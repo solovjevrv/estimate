@@ -375,7 +375,7 @@ export default {
     stickerImportButton: 'Импорт из Telegram',
     stickerImportTitle: 'Импорт стикеров из Telegram',
     stickerImportPlaceholder: 'Ссылка t.me/addstickers/... или имя пака',
-    stickerImportConsentLabel: 'Согласен на использование чужих стикеров',
+    stickerImportConsentLabel: 'Согласен на использование сторонних стикеров',
     stickerImportConfirm: 'Импортировать',
     stickerImportImporting: 'Импортируем…',
     stickerImportError:

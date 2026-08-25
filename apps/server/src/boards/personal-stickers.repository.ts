@@ -1,4 +1,4 @@
-import type { PersonalStickerPackWithStickers } from '@poker/shared';
+import type { PersonalStickerFormat, PersonalStickerPackWithStickers } from '@poker/shared';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 
 import { schema } from '../db';
@@ -13,6 +13,7 @@ export interface CreatePackInput {
     stickerId: string;
     telegramFileUniqueId: string;
     emoji: string;
+    format: PersonalStickerFormat;
     byteSize: number;
   }>;
 }
@@ -51,14 +52,31 @@ export class PersonalStickersRepository {
     return row ? { id: row.id, deletedAt: row.deletedAt } : null;
   }
 
-  /** ownerId по packId — нужен для резолва ключа в storage при публичной отдаче стикера */
-  async findPackOwner(packId: string): Promise<string | null> {
+  /**
+   * ownerId + format стикера по (packId, stickerId) — нужны для резолва ключа
+   * в storage и Content-Type при публичной отдаче файла (21.6/21.7). JOIN, а
+   * не два похода в БД: format лежит в personal_stickers, ownerId — в
+   * personal_sticker_packs.
+   */
+  async findStickerLocation(
+    packId: string,
+    stickerId: string,
+  ): Promise<{ ownerId: string; format: PersonalStickerFormat } | null> {
     const [row] = await this.db
-      .select({ ownerId: schema.personalStickerPacks.ownerId })
-      .from(schema.personalStickerPacks)
-      .where(eq(schema.personalStickerPacks.id, packId))
+      .select({
+        ownerId: schema.personalStickerPacks.ownerId,
+        format: schema.personalStickers.format,
+      })
+      .from(schema.personalStickers)
+      .innerJoin(
+        schema.personalStickerPacks,
+        eq(schema.personalStickers.packId, schema.personalStickerPacks.id),
+      )
+      .where(
+        and(eq(schema.personalStickers.packId, packId), eq(schema.personalStickers.id, stickerId)),
+      )
       .limit(1);
-    return row ? row.ownerId : null;
+    return row ? { ownerId: row.ownerId, format: row.format as PersonalStickerFormat } : null;
   }
 
   /** Мягко удалённые (deletedAt не null) не занимают квоту — не считаем их */
@@ -128,6 +146,7 @@ export class PersonalStickersRepository {
                   packId: input.packId,
                   telegramFileUniqueId: s.telegramFileUniqueId,
                   emoji: s.emoji,
+                  format: s.format,
                   byteSize: s.byteSize,
                 })),
               )
@@ -138,7 +157,11 @@ export class PersonalStickersRepository {
         id: input.packId,
         title: input.title,
         telegramSetName: input.telegramSetName,
-        stickers: stickerRows.map((s) => ({ id: s.id, emoji: s.emoji })),
+        stickers: stickerRows.map((s) => ({
+          id: s.id,
+          emoji: s.emoji,
+          format: s.format as PersonalStickerFormat,
+        })),
       };
     });
   }
@@ -154,7 +177,11 @@ export class PersonalStickersRepository {
     if (!packRow) return null;
 
     const stickerRows = await this.db
-      .select({ id: schema.personalStickers.id, emoji: schema.personalStickers.emoji })
+      .select({
+        id: schema.personalStickers.id,
+        emoji: schema.personalStickers.emoji,
+        format: schema.personalStickers.format,
+      })
       .from(schema.personalStickers)
       .where(eq(schema.personalStickers.packId, packId));
 
@@ -162,7 +189,11 @@ export class PersonalStickersRepository {
       id: packRow.id,
       title: packRow.title,
       telegramSetName: packRow.telegramSetName,
-      stickers: stickerRows.map((s) => ({ id: s.id, emoji: s.emoji })),
+      stickers: stickerRows.map((s) => ({
+        id: s.id,
+        emoji: s.emoji,
+        format: s.format as PersonalStickerFormat,
+      })),
     };
   }
 
@@ -188,14 +219,18 @@ export class PersonalStickersRepository {
         id: schema.personalStickers.id,
         packId: schema.personalStickers.packId,
         emoji: schema.personalStickers.emoji,
+        format: schema.personalStickers.format,
       })
       .from(schema.personalStickers)
       .where(sql`${schema.personalStickers.packId} IN ${packRows.map((p) => p.id)}`);
 
-    const byPack = new Map<string, Array<{ id: string; emoji: string }>>();
+    const byPack = new Map<
+      string,
+      Array<{ id: string; emoji: string; format: PersonalStickerFormat }>
+    >();
     for (const row of stickerRows) {
       const arr = byPack.get(row.packId) ?? [];
-      arr.push({ id: row.id, emoji: row.emoji });
+      arr.push({ id: row.id, emoji: row.emoji, format: row.format as PersonalStickerFormat });
       byPack.set(row.packId, arr);
     }
 
@@ -238,7 +273,11 @@ export class PersonalStickersRepository {
       const pack = packRow[0]!;
 
       const stickerRows = await tx
-        .select({ id: schema.personalStickers.id, emoji: schema.personalStickers.emoji })
+        .select({
+          id: schema.personalStickers.id,
+          emoji: schema.personalStickers.emoji,
+          format: schema.personalStickers.format,
+        })
         .from(schema.personalStickers)
         .where(eq(schema.personalStickers.packId, packId));
 
@@ -254,7 +293,11 @@ export class PersonalStickersRepository {
         id: pack.id,
         title: pack.title,
         telegramSetName: pack.telegramSetName,
-        stickers: stickerRows.map((s) => ({ id: s.id, emoji: s.emoji })),
+        stickers: stickerRows.map((s) => ({
+          id: s.id,
+          emoji: s.emoji,
+          format: s.format as PersonalStickerFormat,
+        })),
       };
     });
   }
