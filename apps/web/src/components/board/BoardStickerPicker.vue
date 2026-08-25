@@ -12,10 +12,14 @@
  * 3. Сами стикеры крупнее (72×72 вместо прежних 32×32).
  *
  * «Недавние» — без БД (задача 13.4 явно этого не предполагает), история в
- * localStorage (`recent-stickers.ts`), своя на каждом устройстве. Компонент
- * перемонтируется при каждом открытии поповера (Reka размонтирует `#content`
- * при закрытии) — читаем список заново в `onMounted`, всегда актуальный.
+ * localStorage (`recent-stickers.ts`), своя на каждом устройстве. Расчёт
+ * recentItems не только в onMounted, но и сразу в pick() (см. refreshRecent) —
+ * UPopover не гарантированно размонтирует #content при закрытии, поэтому
+ * полагаться только на remount при следующем открытии нельзя (баг живой
+ * проверки 21.6: «Недавние» переставали пополняться в течение сессии).
  */
+import { useToast } from '@nuxt/ui/composables';
+import type { PersonalStickerPackSummary } from '@poker/shared';
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -30,11 +34,13 @@ import {
   type StickerPackItem,
 } from '../../features/boards/config/sticker-packs';
 import { usePersonalStickerPacksStore } from '../../stores/personal-sticker-packs';
+import ConfirmModal from '../ConfirmModal.vue';
 import TelegramStickerImportModal from '../TelegramStickerImportModal.vue';
 
 const emit = defineEmits<{ select: [pack: string, id: string] }>();
 
 const { t } = useI18n();
+const toast = useToast();
 const store = usePersonalStickerPacksStore();
 
 interface RecentEntry extends StickerPackItem {
@@ -44,14 +50,33 @@ interface RecentEntry extends StickerPackItem {
 const recentItems = ref<RecentEntry[]>([]);
 const showImportModal = ref(false);
 
+/** Разрешает ссылку из «недавних» либо во встроенный пак, либо в личный (21.6) */
+function resolveRecentAsset(ref: { pack: string; id: string }): RecentEntry | null {
+  const builtIn = findStickerAsset(ref.pack, ref.id);
+  if (builtIn) return { ...builtIn, pack: ref.pack };
+
+  const personalPack = store.packs.find((p) => p.id === ref.pack);
+  const personalSticker = personalPack?.stickers.find((s) => s.id === ref.id);
+  if (personalPack && personalSticker) {
+    return {
+      id: personalSticker.id,
+      src: personalStickerUrl(personalPack.id, personalSticker.id),
+      emoji: personalSticker.emoji,
+      pack: ref.pack,
+    };
+  }
+  return null;
+}
+
+function refreshRecent(): void {
+  recentItems.value = getRecentStickers()
+    .map(resolveRecentAsset)
+    .filter((item): item is RecentEntry => item !== null);
+}
+
 onMounted(async () => {
   await store.load();
-  recentItems.value = getRecentStickers()
-    .map((ref) => {
-      const asset = findStickerAsset(ref.pack, ref.id);
-      return asset ? { ...asset, pack: ref.pack } : null;
-    })
-    .filter((item): item is RecentEntry => item !== null);
+  refreshRecent();
 });
 
 const sectionEls = new Map<string, HTMLElement>();
@@ -67,7 +92,39 @@ function scrollToSection(key: string): void {
 
 function pick(pack: string, id: string): void {
   addRecentSticker(pack, id);
+  // Реф recentItems обновляем сразу, не полагаясь только на onMounted при
+  // следующем открытии поповера — UPopover не гарантированно размонтирует
+  // #content при закрытии, из-за чего «Недавние» переставали обновляться
+  // после выбора стикера в течение той же сессии (нашли живой проверкой)
+  refreshRecent();
   emit('select', pack, id);
+}
+
+const deleteTarget = ref<PersonalStickerPackSummary | null>(null);
+const deleteOpen = ref(false);
+const deleting = ref(false);
+
+function askDeletePack(pack: PersonalStickerPackSummary, event: Event): void {
+  // Клик по кнопке удаления внутри заголовка пака не должен всплывать
+  // до клика по стикеру/скролла секции
+  event.stopPropagation();
+  deleteTarget.value = pack;
+  deleteOpen.value = true;
+}
+
+async function confirmDeletePack(): Promise<void> {
+  const target = deleteTarget.value;
+  if (!target) return;
+  deleting.value = true;
+  try {
+    await store.deletePack(target.id);
+    toast.add({ title: t('board.stickerPackDeleted'), color: 'success' });
+    deleteOpen.value = false;
+  } catch {
+    toast.add({ title: t('board.stickerPackDeleteError'), color: 'error' });
+  } finally {
+    deleting.value = false;
+  }
 }
 </script>
 
@@ -200,7 +257,18 @@ function pick(pack: string, id: string): void {
             :ref="(el) => setSectionRef(`personal-${pack.id}`, el as Element | null)"
             class="board-sticker-picker-pack"
           >
-            <h5 class="board-sticker-picker-subheading">{{ pack.title }}</h5>
+            <div class="board-sticker-picker-pack-header">
+              <h5 class="board-sticker-picker-subheading">{{ pack.title }}</h5>
+              <button
+                type="button"
+                class="board-sticker-picker-pack-delete"
+                :aria-label="t('board.stickerPackDeleteLabel')"
+                :title="t('board.stickerPackDeleteLabel')"
+                @click="askDeletePack(pack, $event)"
+              >
+                <UIcon name="i-lucide-trash-2" class="size-3.5" />
+              </button>
+            </div>
             <div class="board-sticker-picker-grid">
               <button
                 v-for="sticker in pack.stickers"
@@ -224,6 +292,14 @@ function pick(pack: string, id: string): void {
 
       <!-- Модалка импорта -->
       <TelegramStickerImportModal v-model:model-value="showImportModal" />
+      <ConfirmModal
+        v-model:open="deleteOpen"
+        :title="t('board.stickerPackDeleteConfirmTitle')"
+        :description="t('board.stickerPackDeleteConfirmText', { name: deleteTarget?.title ?? '' })"
+        :confirm-label="t('board.stickerPackDeleteConfirm')"
+        :loading="deleting"
+        @confirm="confirmDeletePack"
+      />
     </div>
   </div>
 </template>
@@ -245,9 +321,12 @@ function pick(pack: string, id: string): void {
 .board-sticker-picker-tabs {
   display: flex;
   flex-shrink: 0;
+  flex-wrap: wrap;
   gap: 6px;
+  max-height: 70px;
   padding: 8px 8px 6px;
-  overflow-x: auto;
+  overflow-x: hidden;
+  overflow-y: auto;
   border-bottom: 1px solid var(--ui-border);
 }
 
@@ -324,11 +403,41 @@ function pick(pack: string, id: string): void {
   border-radius: 4px;
 }
 
-.board-sticker-picker-subheading {
+.board-sticker-picker-pack-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
   margin: 0 0 8px;
+}
+
+.board-sticker-picker-subheading {
+  margin: 0;
+  overflow: hidden;
   font-size: 11px;
   font-weight: 600;
   color: var(--brand-ink2);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-sticker-picker-pack-delete {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  color: var(--brand-ink2);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+}
+
+.board-sticker-picker-pack-delete:hover {
+  color: var(--ui-error, #e11d48);
+  background: var(--ui-bg-elevated);
 }
 
 .board-sticker-picker-empty {

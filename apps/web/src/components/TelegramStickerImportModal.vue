@@ -92,7 +92,7 @@ async function onSubmit(): Promise<void> {
     <template #footer>
       <div class="flex justify-end gap-2">
         <UButton color="neutral" variant="outline" :ui="MODAL_BUTTON_UI" @click="close">
-          {{ t('board.shareClose') }}
+          {{ t('common.cancel') }}
         </UButton>
         <UButton :loading="loading" :disabled="!canSubmit" :ui="MODAL_BUTTON_UI" @click="onSubmit">
           {{ loading ? t('board.stickerImportImporting') : t('board.stickerImportConfirm') }}

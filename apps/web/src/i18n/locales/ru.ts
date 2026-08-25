@@ -385,6 +385,13 @@ export default {
     stickerImportSuccess: 'Пакет импортирован',
     stickerImportForeignLabel: 'Импортировать этот пакет',
     stickerImportMetaError: 'Не удалось получить сведения о паке — попробуйте ещё раз',
+    stickerPackDeleteLabel: 'Удалить пак',
+    stickerPackDeleteConfirmTitle: 'Удалить стикер-пак?',
+    stickerPackDeleteConfirmText:
+      'Пак «{name}» и все его стикеры будут удалены безвозвратно. Стикеры этого пака, уже размещённые на досках, перестанут отображаться.',
+    stickerPackDeleteConfirm: 'Удалить',
+    stickerPackDeleted: 'Пак удалён',
+    stickerPackDeleteError: 'Не удалось удалить пак',
     frameTitlePlaceholder: 'Заголовок фрейма',
     groupSelection: 'Сгруппировать',
     ungroupSelection: 'Разгруппировать',

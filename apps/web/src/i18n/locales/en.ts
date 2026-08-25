@@ -384,6 +384,13 @@ export default {
     stickerImportSuccess: 'Pack imported',
     stickerImportForeignLabel: 'Import this pack',
     stickerImportMetaError: 'Could not load pack details — try again',
+    stickerPackDeleteLabel: 'Delete pack',
+    stickerPackDeleteConfirmTitle: 'Delete sticker pack?',
+    stickerPackDeleteConfirmText:
+      'Pack "{name}" and all its stickers will be deleted permanently. Stickers from this pack already placed on boards will stop showing.',
+    stickerPackDeleteConfirm: 'Delete',
+    stickerPackDeleted: 'Pack deleted',
+    stickerPackDeleteError: 'Failed to delete pack',
     frameTitlePlaceholder: 'Frame title',
     groupSelection: 'Group',
     ungroupSelection: 'Ungroup',
