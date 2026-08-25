@@ -131,47 +131,52 @@ async function confirmDeletePack(): Promise<void> {
 <template>
   <div data-testid="board-sticker-picker" class="board-sticker-picker">
     <div class="board-sticker-picker-tabs">
-      <button
-        v-if="recentItems.length > 0"
-        type="button"
-        class="board-sticker-picker-tab"
-        :aria-label="t('board.stickerRecentLabel')"
-        :title="t('board.stickerRecentLabel')"
-        @click="scrollToSection('recent')"
-      >
-        <UIcon name="i-lucide-clock" class="size-4" />
-      </button>
-      <button
-        v-for="pack in STICKER_PACKS"
-        :key="pack.id"
-        type="button"
-        class="board-sticker-picker-tab"
-        :aria-label="pack.label"
-        :title="pack.label"
-        @click="scrollToSection(pack.id)"
-      >
-        <img :src="pack.items[0]?.src" :alt="pack.label" draggable="false" />
-      </button>
-      <button
-        v-for="pack in store.packs"
-        :key="`personal-tab-${pack.id}`"
-        type="button"
-        class="board-sticker-picker-tab"
-        :aria-label="pack.title"
-        :title="pack.title"
-        @click="scrollToSection(`personal-${pack.id}`)"
-      >
-        <img
-          :src="personalStickerUrl(pack.id, pack.stickers[0]?.id ?? '')"
-          :alt="pack.title"
-          draggable="false"
-        />
-      </button>
-      <!-- "+" всегда последней — трейлинг "добавить" после всех паков, не между ними -->
+      <!-- Прокручиваемая по горизонтали лента: недавние + встроенные + личные паки.
+           Кнопка "+" вынесена ЗА пределы этой ленты (см. ниже) — иначе при большом
+           числе паков она уезжает за край вместе с остальными табами и её не найти
+           без прокрутки до конца (нашли живой проверкой, 21.6) -->
+      <div class="board-sticker-picker-tabs-scroll">
+        <button
+          v-if="recentItems.length > 0"
+          type="button"
+          class="board-sticker-picker-tab"
+          :aria-label="t('board.stickerRecentLabel')"
+          :title="t('board.stickerRecentLabel')"
+          @click="scrollToSection('recent')"
+        >
+          <UIcon name="i-lucide-clock" class="size-4" />
+        </button>
+        <button
+          v-for="pack in STICKER_PACKS"
+          :key="pack.id"
+          type="button"
+          class="board-sticker-picker-tab"
+          :aria-label="pack.label"
+          :title="pack.label"
+          @click="scrollToSection(pack.id)"
+        >
+          <img :src="pack.items[0]?.src" :alt="pack.label" draggable="false" />
+        </button>
+        <button
+          v-for="pack in store.packs"
+          :key="`personal-tab-${pack.id}`"
+          type="button"
+          class="board-sticker-picker-tab"
+          :aria-label="pack.title"
+          :title="pack.title"
+          @click="scrollToSection(`personal-${pack.id}`)"
+        >
+          <img
+            :src="personalStickerUrl(pack.id, pack.stickers[0]?.id ?? '')"
+            :alt="pack.title"
+            draggable="false"
+          />
+        </button>
+      </div>
       <button
         v-if="store.enabled"
         type="button"
-        class="board-sticker-picker-tab"
+        class="board-sticker-picker-tab board-sticker-picker-tab-add"
         :aria-label="t('board.stickerImportButton')"
         :title="t('board.stickerImportButton')"
         @click="showImportModal = true"
@@ -321,13 +326,23 @@ async function confirmDeletePack(): Promise<void> {
 .board-sticker-picker-tabs {
   display: flex;
   flex-shrink: 0;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
-  max-height: 70px;
   padding: 8px 8px 6px;
-  overflow-x: hidden;
-  overflow-y: auto;
   border-bottom: 1px solid var(--ui-border);
+}
+
+.board-sticker-picker-tabs-scroll {
+  display: flex;
+  flex: 1;
+  gap: 6px;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.board-sticker-picker-tab-add {
+  flex-shrink: 0;
+  margin-left: 8px;
 }
 
 .board-sticker-picker-tab {
