@@ -17,6 +17,7 @@ import {
 import { findStickerAsset, personalStickerUrl } from '../../features/boards/config/sticker-packs';
 import { useBoardSessionStore } from '../../stores/board-session';
 import { usePersonalStickerPacksStore } from '../../stores/personal-sticker-packs';
+import { useSessionStore } from '../../stores/session';
 import TelegramStickerImportModal from '../TelegramStickerImportModal.vue';
 
 const props = defineProps<NodeProps<BoardItem>>();
@@ -26,14 +27,18 @@ const toast = useToast();
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 const personalPacks = usePersonalStickerPacksStore();
+const session = useSessionStore();
 
 // Стор мог быть ещё не загружен (пикер стикеров не открывали в этой сессии) —
 // без этого isForeignPersonal/enabled судили бы по дефолтам (enabled: true,
 // hasPack: false) и бейдж «импортировать» мог бы показаться, даже когда
 // личные стикеры выключены на сервере (нет TELEGRAM_BOT_TOKEN). load()
 // идемпотентен — повторный вызов, если пикер уже загрузил стор, не делает лишний запрос.
+// Для гостя (не залогинен) не грузим вовсе: GET требует аутентификации, у гостя
+// это всегда 401 — список личных паков ему в принципе не положен (нет
+// аккаунта, куда их сохранять), see isForeignPersonal ниже.
 onMounted(() => {
-  void personalPacks.load();
+  if (session.isAuthenticated) void personalPacks.load();
 });
 
 const content = computed(() => props.data.content as BoardStickerContent);
@@ -48,25 +53,36 @@ const altText = computed(() => stickerAsset.value?.emoji ?? 'sticker');
  * Стикер из чужого личного пака (не built-in и не импортированный нами):
  * показываем бейдж «Импортировать», чтобы пользователь мог импортировать
  * этот пакет и увидеть стикер (иначе картинка 404).
+ *
+ * Только для залогиненных: у гостя нет аккаунта, куда сохранять личный пак —
+ * POST .../import у него всегда 401. Раньше бейдж показывался и гостям,
+ * заводя в тупиковую модалку без объяснений (нашли живой проверкой, 21.6).
  */
 const isForeignPersonal = computed(
-  () => personalPacks.enabled && !stickerAsset.value && !personalPacks.hasPack(content.value.pack),
+  () =>
+    session.isAuthenticated &&
+    personalPacks.enabled &&
+    !stickerAsset.value &&
+    !personalPacks.hasPack(content.value.pack),
 );
 
 const showImportModal = ref(false);
-/** Имя Telegram-сета этого конкретного пака — подтягивается перед открытием модалки */
+/** Имя Telegram-сета и человеческое название этого конкретного пака — подтягиваются перед открытием модалки */
 const importSetName = ref<string | undefined>(undefined);
+const importTitle = ref<string | undefined>(undefined);
 
 /**
- * Клик по бейджу — сначала узнаём telegramSetName чужого пака (метаданные
- * публичны, см. personal-stickers.plugin.ts), только потом открываем модалку
- * с предзаполненным (readonly) полем — иначе пользователь видел бы пустое
- * поле и не знал бы, какое имя пака вводить.
+ * Клик по бейджу — сначала узнаём метаданные чужого пака (публичны, см.
+ * personal-stickers.plugin.ts: резолвятся даже если владелец потом удалил
+ * свою копию — см. deletedAt), только потом открываем модалку с уже известным
+ * пакетом — пользователь не должен сам искать/вставлять ссылку на пак,
+ * который он и так уже видит на доске (нашли живой проверкой, 21.6).
  */
 async function onImportBadgeClick(): Promise<void> {
   try {
     const meta = await getStickerPackMeta(content.value.pack);
     importSetName.value = meta.telegramSetName;
+    importTitle.value = meta.title;
     showImportModal.value = true;
   } catch {
     toast.add({ title: t('board.stickerImportMetaError'), color: 'error' });
@@ -124,9 +140,13 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
         </div>
       </template>
     </div>
-    <!-- Бейдж импорта для чужих личных паков (§5.4) -->
+    <!-- Бейдж импорта для чужих личных паков (§5.4) — намеренно НЕ завязан на
+         canEdit: импорт кладёт пак в личную библиотеку кликнувшего, а не
+         редактирует доску, поэтому доступен и участникам с доступом только на
+         просмотр (нашли живой проверкой: view-only участник по share-ссылке
+         не мог увидеть свой же чужой стикер нормально) -->
     <button
-      v-if="canEdit && isForeignPersonal"
+      v-if="isForeignPersonal"
       type="button"
       data-testid="board-sticker-import-badge"
       class="board-sticker-import-badge"
@@ -177,6 +197,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
     <TelegramStickerImportModal
       v-model:model-value="showImportModal"
       :telegram-set-name="importSetName"
+      :pack-title="importTitle"
     />
   </div>
 </template>

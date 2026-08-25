@@ -384,6 +384,8 @@ export default {
     stickerImportSuccess: 'Pack imported',
     stickerImportForeignLabel: 'Import this pack',
     stickerImportMetaError: 'Could not load pack details — try again',
+    stickerImportKnownPackDescription:
+      'This sticker is from the personal pack "{title}", imported by another board member. Add this pack to your own library too?',
     stickerPackDeleteLabel: 'Delete pack',
     stickerPackDeleteConfirmTitle: 'Delete sticker pack?',
     stickerPackDeleteConfirmText:

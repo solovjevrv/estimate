@@ -1,11 +1,17 @@
 <script setup lang="ts">
 /**
  * Модалка импорта личного стикер-пака из Telegram (21.6).
- * Переиспользуется: в BoardStickerPicker.vue (кнопка «Импорт из Telegram»)
- * и в BoardStickerNode.vue (бейдж на чужом паке, §5.4).
+ * Переиспользуется: в BoardStickerPicker.vue (кнопка «Импорт из Telegram» —
+ * общий флоу, пользователь сам вставляет ссылку/имя) и в BoardStickerNode.vue
+ * (бейдж на чужом/осиротевшем стикере, §5.4 — конкретный пак уже известен
+ * заранее по контенту стикера на доске).
  *
- * Если telegramSetName задан — поле ввода только для чтения (импортируем
- * именно этот пакет). Согласие на использование чужих стикеров обязательно.
+ * Если packTitle задан — режим «известного пака»: вместо поля ввода
+ * показываем название пака текстом, вставлять ссылку не нужно (раньше поле
+ * было readonly-инпутом с сырым telegramSetName — пользователь не понимал,
+ * что это уже разрешённый пак, а не просьба вставить свою ссылку, нашли
+ * живой проверкой). Согласие на использование чужих стикеров обязательно
+ * в обоих режимах.
  */
 import { useToast } from '@nuxt/ui/composables';
 import { ref, computed } from 'vue';
@@ -19,6 +25,8 @@ import { usePersonalStickerPacksStore } from '../stores/personal-sticker-packs';
 const props = defineProps<{
   /** Предзаполненное имя стикер-сета (передаётся, когда импортируем конкретный пакет) */
   telegramSetName?: string;
+  /** Человеческое название пака — задан вместе с telegramSetName в режиме «известного пака» */
+  packTitle?: string;
 }>();
 const emit = defineEmits<{
   (e: 'update:modelValue', v: boolean): void;
@@ -75,12 +83,15 @@ async function onSubmit(): Promise<void> {
   <UModal v-model:open="isOpen" :title="t('board.stickerImportTitle')" :ui="MODAL_UI">
     <template #body>
       <div class="space-y-4">
+        <p v-if="packTitle" class="text-[14px] text-[var(--brand-ink)]">
+          {{ t('board.stickerImportKnownPackDescription', { title: packTitle }) }}
+        </p>
         <UInput
+          v-else
           v-model="setName"
           class="w-full"
           :placeholder="t('board.stickerImportPlaceholder')"
           :ui="MODAL_INPUT_UI"
-          :readonly="!!telegramSetName"
         />
         <label class="flex items-start gap-2 text-[14px]">
           <UCheckbox v-model="consent" :ui="{ base: 'rounded-[5px]' }" />
