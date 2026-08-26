@@ -357,6 +357,7 @@ const {
   findContainerAt: containerAt,
   applyOps: (ops) => void boardSession.applyOps(ops),
   breakFollowOnEdit,
+  selectItems: (ids) => addSelectedNodes(ids.map((id) => ({ id }) as GraphNode<BoardItem>)),
 });
 
 const {

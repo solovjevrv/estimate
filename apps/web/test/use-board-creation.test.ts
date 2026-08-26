@@ -2,6 +2,7 @@ import type { BoardItem, BoardOp, EmojiSequence } from '@poker/shared';
 import { BOARD_MAX_ITEMS } from '@poker/shared';
 import type { Mock } from 'vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { nextTick } from 'vue';
 
 import {
   EMOJI_DEFAULT_HEIGHT,
@@ -70,9 +71,11 @@ function makeItem(id: string, overrides: Partial<BoardItem> = {}): BoardItem {
 
 function makeOptions(overrides: Partial<UseBoardCreationOptions> = {}): UseBoardCreationOptions & {
   applyOps: ReturnType<typeof vi.fn>;
+  selectItems: ReturnType<typeof vi.fn>;
 } {
   const applyOps = vi.fn<(ops: BoardOp[]) => void>();
   const breakFollowOnEdit = vi.fn();
+  const selectItems = vi.fn();
   const items: BoardItem[] = [];
   return {
     boardId: () => 'board-1',
@@ -83,8 +86,9 @@ function makeOptions(overrides: Partial<UseBoardCreationOptions> = {}): UseBoard
     findContainerAt: () => undefined,
     applyOps,
     breakFollowOnEdit,
+    selectItems,
     ...overrides,
-  } as UseBoardCreationOptions & { applyOps: Mock; breakFollowOnEdit: Mock };
+  } as UseBoardCreationOptions & { applyOps: Mock; breakFollowOnEdit: Mock; selectItems: Mock };
 }
 
 const EMOJI = '👍' as EmojiSequence;
@@ -125,6 +129,17 @@ describe('useBoardCreation', () => {
       expect(item.content).toEqual({ type: 'sticky', text: '' });
       expect(item.style).toEqual({ color: STICKY_DEFAULT_COLOR });
       expect(api.pendingEditId.value).toBe('test-uuid-0');
+    });
+
+    it('выделяет только что созданный элемент после nextTick (26.08.2026: иначе тулбар выделения недоступен сразу после создания)', async () => {
+      const options = makeOptions();
+      const api = useBoardCreation(options);
+
+      api.createSticky({ x: 100, y: 50 });
+      expect(options.selectItems).not.toHaveBeenCalled();
+
+      await nextTick();
+      expect(options.selectItems).toHaveBeenCalledWith(['test-uuid-0']);
     });
   });
 

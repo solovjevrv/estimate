@@ -144,6 +144,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       ref="contentBox"
       data-testid="board-node-content"
       class="board-text-content flex h-full w-full items-center overflow-hidden p-4"
+      :style="{ color: textColor }"
       @dblclick.stop="startEditing"
     >
       <template v-if="editing">

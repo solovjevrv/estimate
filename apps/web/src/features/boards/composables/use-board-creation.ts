@@ -7,7 +7,7 @@ import type {
 } from '@poker/shared';
 import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_MAX_ITEMS } from '@poker/shared';
 import { useToast } from '@nuxt/ui/composables';
-import { ref, type Ref } from 'vue';
+import { nextTick, ref, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import {
@@ -51,6 +51,22 @@ export interface UseBoardCreationOptions {
 
   // Canvas остаётся владельцем follow-mode; composable лишь вызывает callback.
   breakFollowOnEdit: () => void;
+
+  /**
+   * Выделяет только что созданный элемент в Vue Flow (тот же примитив, что уже
+   * использует вставка/дублирование в `use-board-clipboard.ts`). Без этого
+   * новый элемент оставался НЕ выделенным — плавающий тулбар выделения
+   * (`selectionToolbarPosition` в `use-board-selection.ts`) целиком завязан на
+   * `selectedNodes`, поэтому цвет текста/начертание/маркер и другие действия
+   * тулбара были недоступны сразу после создания через инструмент, пока
+   * пользователь не кликал по элементу ещё раз. Раньше это маскировалось
+   * другим багом (автофокус текста не срабатывал сразу — см. `startEditing`
+   * в `use-rich-text-editing.ts`): вынужденный повторный клик, чтобы вообще
+   * начать печатать, заодно и выделял узел. После фикса автофокуса баг стал
+   * заметен напрямую — набор текста сразу работает, а тулбар форматирования
+   * всё ещё недоступен, пока не кликнешь (найдено пользователем 26.08.2026).
+   */
+  selectItems: (ids: readonly string[]) => void;
 }
 
 export interface UploadedBoardImage {
@@ -109,6 +125,13 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
     return options.project({ x: event.clientX - rect.left, y: event.clientY - rect.top });
   }
 
+  /** Ждём, пока `item.create` дойдёт до `nodes` Vue Flow (см. паттерн в
+   *  `use-board-clipboard.ts`), иначе `selectItems` целится в ещё не
+   *  существующий в графе узел. */
+  function selectAfterCreate(id: string): void {
+    void nextTick(() => options.selectItems([id]));
+  }
+
   function createSticky(center: { x: number; y: number }): void {
     if (!canCreateItem()) return;
     const id = uuid();
@@ -132,6 +155,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
         },
       },
     ]);
+    selectAfterCreate(id);
   }
 
   function createShape(center: { x: number; y: number }): void {
@@ -157,6 +181,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
         },
       },
     ]);
+    selectAfterCreate(id);
   }
 
   function createText(center: { x: number; y: number }): void {
@@ -182,6 +207,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
         },
       },
     ]);
+    selectAfterCreate(id);
   }
 
   function createFrame(center: { x: number; y: number }): void {
@@ -208,6 +234,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
         },
       },
     ]);
+    selectAfterCreate(id);
   }
 
   function createEmojiAtCenter(emoji: EmojiSequence): void {
@@ -237,6 +264,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
         },
       },
     ]);
+    selectAfterCreate(id);
   }
 
   function createStickerAtCenter(pack: string, id: string, format?: PersonalStickerFormat): void {
@@ -266,6 +294,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
         },
       },
     ]);
+    selectAfterCreate(itemId);
   }
 
   /** Вставка GIF из Giphy (21.9) — аналогично картинке (13.2): естественный размер
@@ -299,6 +328,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
         },
       },
     ]);
+    selectAfterCreate(itemId);
   }
 
   /** Создаёт скрытый input[type=file], возвращает выбранный файл или null при отмене */
@@ -375,6 +405,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
         },
       },
     ]);
+    selectAfterCreate(id);
   }
 
   function cancelPendingEdit(): void {
