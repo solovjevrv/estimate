@@ -7,8 +7,6 @@ import { computed, inject, ref, toRef } from 'vue';
 import { BOARD_CAN_EDIT_KEY } from '../../features/boards/context/board-canvas-keys';
 import { darkenHex } from '../../features/boards/domain/board-colors';
 import {
-  SHAPE_DEFAULT_HEIGHT,
-  SHAPE_DEFAULT_WIDTH,
   SHAPE_MAX_HEIGHT,
   SHAPE_MAX_WIDTH,
   SHAPE_MIN_HEIGHT,
@@ -57,8 +55,6 @@ const {
     text,
     ...(runs ? { runs } : {}),
   }),
-  defaultWidth: SHAPE_DEFAULT_WIDTH,
-  defaultHeight: SHAPE_DEFAULT_HEIGHT,
 });
 
 /** Обводка — заметно более тёмный вариант того же тона, не отдельный цвет */

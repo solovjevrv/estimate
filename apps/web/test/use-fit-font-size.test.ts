@@ -4,7 +4,6 @@ import {
   FIT_FONT_MIN,
   getScaledFontSize,
   longestWordWidth,
-  unscaleFontSizeStep,
 } from '../src/features/boards/composables/use-fit-font-size';
 
 describe('getScaledFontSize', () => {
@@ -49,27 +48,5 @@ describe('longestWordWidth', () => {
 
   it('одно длинное слово без пробелов — вся строка целиком', () => {
     expect(longestWordWidth('Иллюстрация', widthByLength)).toBe(110);
-  });
-});
-
-describe('unscaleFontSizeStep (18.5)', () => {
-  it('при небольшом масштабе переводит целевой displayed-размер в базовый напрямую', () => {
-    // scale=2, currentBase=20 (displayed=40), клик "+2" → target=42
-    expect(unscaleFontSizeStep(20, 42, 2)).toBe(21);
-  });
-
-  it('гарантирует минимум ±1 к базе, если округление откатывается к текущему значению', () => {
-    // Регресс: объект увеличен в 5 раз (scale=5), currentBase=20 (displayed=100).
-    // Клик "+2" → target=102 → 102/5=20.4 → round=20 === currentBase, без
-    // гарантии минимума клик молча ничего не менял бы (залипшие кнопки).
-    expect(unscaleFontSizeStep(20, 102, 5)).toBe(21);
-  });
-
-  it('минимальный шаг идёт в сторону клика (уменьшение)', () => {
-    expect(unscaleFontSizeStep(20, 98, 5)).toBe(19);
-  });
-
-  it('не откатывается, если пересчёт и так даёт другое значение', () => {
-    expect(unscaleFontSizeStep(20, 110, 5)).toBe(22);
   });
 });

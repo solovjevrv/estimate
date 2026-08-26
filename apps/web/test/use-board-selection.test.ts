@@ -88,17 +88,6 @@ function flowEdge(data: BoardEdge, selected = false): MockEdge {
   };
 }
 
-function defaultTextDims(content: BoardItem['content']): { width: number; height: number } | null {
-  switch (content.type) {
-    case 'text':
-    case 'sticky':
-    case 'shape':
-      return { width: 120, height: 80 };
-    default:
-      return null;
-  }
-}
-
 interface MakeOptions {
   items?: BoardItem[];
   flowNodes?: MockNode[];
@@ -140,7 +129,6 @@ function makeSelection(opts: MakeOptions = {}) {
     uploadImage: vi.fn(),
     activeTool: opts.activeTool ?? (() => 'select'),
     breakFollowOnEdit,
-    textDefaultDimensions: (c) => defaultTextDims(c),
     getBoardZIndex: opts.getBoardZIndex ?? (() => ({ max: 10, min: 0 })),
     defaultItemColor: opts.defaultItemColor ?? '#CCCCCC',
     resolveTextColor: () => '#111111',
@@ -493,28 +481,30 @@ describe('useBoardSelection — font size clamping', () => {
     expect(makeSelection({ selectedNodes: [lo] }).api.canIncreaseSelectedFontSize.value).toBe(true);
   });
 
-  it('canIncreaseSelectedFontSize is false once the box already clamps below the base size (26.08.2026)', () => {
-    // Стикер, уменьшенный вручную вдвое от дефолтного бокса (120x80 в тестовых
-    // хелперах) — geometric-fallback в selectedFontSize даёт 10 при базе 20,
-    // бокс уже не вмещает запрошенный размер. Кнопка "+" не должна молча
-    // ничего не делать в этом состоянии (см. пояснение у самого computed).
-    const shrunk = flowNode(
+  it('canIncreaseSelectedFontSize is false once the DOM-measured size already clamps below the base (26.08.2026)', () => {
+    // Реальный сценарий — авто-fit (useFitFontSize) ужал отрисованный размер
+    // ниже базы, потому что длинный текст не помещается даже при базовом
+    // размере, и сообщил об этом через effectiveFontSizeRegistry (26.08.2026:
+    // раньше это же симулировалось несовпадением геометрии бокса с дефолтной —
+    // с момента, когда resize сам пересчитывает базу под текущий бокс
+    // (`onResizeEnd`), несовпадение геометрии больше не возникает само по
+    // себе, единственный источник расхождения — реальное DOM-измерение).
+    // Кнопка "+" не должна молча ничего не делать в этом состоянии.
+    const node = flowNode(
       item('a', { content: { type: 'sticky', text: 'x' }, style: { color: '#fff', fontSize: 20 } }),
-      { x: 0, y: 0 },
-      { width: 60, height: 40 },
     );
-    const { api } = makeSelection({ selectedNodes: [shrunk] });
-    expect(api.selectedFontSize.value).toBeLessThan(20);
+    const { api } = makeSelection({ selectedNodes: [node] });
+    api.effectiveFontSizeRegistry.set('a', 10);
+    expect(api.selectedFontSize.value).toBe(10);
     expect(api.canIncreaseSelectedFontSize.value).toBe(false);
   });
 
-  it('canIncreaseSelectedFontSize stays true while the box fully honors the base size', () => {
-    const fullSize = flowNode(
+  it('canIncreaseSelectedFontSize stays true while the DOM-measured size matches the base', () => {
+    const node = flowNode(
       item('a', { content: { type: 'sticky', text: 'x' }, style: { color: '#fff', fontSize: 20 } }),
-      { x: 0, y: 0 },
-      { width: 120, height: 80 },
     );
-    const { api } = makeSelection({ selectedNodes: [fullSize] });
+    const { api } = makeSelection({ selectedNodes: [node] });
+    api.effectiveFontSizeRegistry.set('a', 20);
     expect(api.selectedFontSize.value).toBe(20);
     expect(api.canIncreaseSelectedFontSize.value).toBe(true);
   });
@@ -584,7 +574,7 @@ describe('useBoardSelection — font size clamping', () => {
     expect(applyOps).not.toHaveBeenCalled();
   });
 
-  it('manual mode: selectedFontSize does not scale with box dimensions (geometry fallback)', () => {
+  it('manual mode: selectedFontSize fallback is the base as-is, regardless of box dimensions (26.08.2026: same as auto now — see selectedFontSize)', () => {
     const shrunk = flowNode(
       item('a', {
         content: { type: 'sticky', text: 'x' },

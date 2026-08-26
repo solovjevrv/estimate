@@ -13,10 +13,7 @@ import type {
   PersonalStickerFormat,
 } from '@poker/shared';
 import { isBoardContainer } from '@poker/shared';
-import {
-  FIT_FONT_MAX,
-  getScaledFontSize,
-} from '../../../features/boards/composables/use-fit-font-size';
+import { FIT_FONT_MAX } from '../../../features/boards/composables/use-fit-font-size';
 import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@poker/shared';
 import { computed, ref, shallowRef } from 'vue';
 
@@ -68,9 +65,6 @@ export interface BoardSelectionOptions {
   uploadImage: (file: File) => Promise<{ url: string; width: number; height: number } | null>;
   activeTool: () => string;
   breakFollowOnEdit: () => void;
-  /** Размеры по умолчанию для текста/стикера/фигуры — вынесены в Canvas, чтобы
-   * composable не зависел от board-item-defaults (см. комментарий ниже). */
-  textDefaultDimensions: (content: BoardItemContent) => { width: number; height: number } | null;
   /** max/min zIndex среди всех элементов — Canvas вычисляет через board-item-defaults. */
   getBoardZIndex: () => { max: number; min: number };
   /** Цвет заливки по умолчанию для новых групп (без него composable импортировал бы
@@ -250,12 +244,6 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     },
   };
 
-  function textDefaultDimensions(
-    content: BoardItemContent,
-  ): { width: number; height: number } | null {
-    return options.textDefaultDimensions(content);
-  }
-
   /** Сохранённый базовый размер — только для изменения +/- и его границ. */
   const selectedBaseFontSize = computed<number>(
     () => selectedNodes.value[0]?.data.style.fontSize ?? FIT_FONT_MAX,
@@ -267,27 +255,21 @@ export function useBoardSelection(options: BoardSelectionOptions) {
   );
 
   /**
-   * Тулбар показывает размер, который реально нарисовал node. Пока node ещё не
-   * смонтирован, fallback применяет геометрическое масштабирование (только в
-   * `auto` — в `manual` размер зафиксирован пользователем и не зависит от
-   * геометрии бокса, см. `BoardFontSizeMode`); после DOM-fit registry
-   * заменяет его точным значением с учётом длины и форматирования текста.
+   * Тулбар показывает размер, который реально нарисовал node. Пока node ещё
+   * не смонтирован, fallback — сохранённая база: она уже актуальна для
+   * текущего бокса в ОБОИХ режимах (26.08.2026) — в `auto` её пересчитывает
+   * пропорционально самому resize `onResizeEnd` в момент действия, а не
+   * реактивная геометрическая формула здесь (раньше формула сравнивала
+   * текущий бокс с ФИКСИРОВАННОЙ геометрией элемента по умолчанию, из-за чего
+   * переключение auto↔manual могло дать неожиданный скачок числа — баг,
+   * найден пользователем). После DOM-fit registry заменяет фоллбэк точным
+   * значением с учётом длины и форматирования текста.
    */
   const selectedFontSize = computed<number>(() => {
     const node = selectedNodes.value[0];
     if (!node) return FIT_FONT_MAX;
     const measured = fontSizeSizes.value.get(node.id);
-    if (measured !== undefined) return measured;
-    if (selectedFontSizeMode.value === 'manual') return selectedBaseFontSize.value;
-    const defaults = textDefaultDimensions(node.data.content);
-    if (!defaults) return selectedBaseFontSize.value;
-    return getScaledFontSize(
-      selectedBaseFontSize.value,
-      node.dimensions.width,
-      node.dimensions.height,
-      defaults.width,
-      defaults.height,
-    );
+    return measured ?? selectedBaseFontSize.value;
   });
   /**
    * «Увеличить» не должно молча ничего не делать, когда бокс уже не может

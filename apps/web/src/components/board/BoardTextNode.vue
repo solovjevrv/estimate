@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { BoardItem, BoardTextContent } from '@poker/shared';
+import {
+  BOARD_ITEM_FONT_SIZE_MAX,
+  BOARD_ITEM_FONT_SIZE_MIN,
+  type BoardItem,
+  type BoardTextContent,
+} from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, onBeforeUnmount, ref, toRef, useTemplateRef, watch } from 'vue';
@@ -11,14 +16,16 @@ import {
 import { readableTextColor } from '../../features/boards/domain/board-colors';
 import {
   boardFontFamilyCss,
-  TEXT_DEFAULT_HEIGHT,
-  TEXT_DEFAULT_WIDTH,
   TEXT_MAX_HEIGHT,
   TEXT_MAX_WIDTH,
   TEXT_MIN_HEIGHT,
   TEXT_MIN_WIDTH,
 } from '../../features/boards/config/board-item-defaults';
-import { FIT_FONT_MAX, useFitFontSize } from '../../features/boards/composables/use-fit-font-size';
+import {
+  FIT_FONT_MAX,
+  getScaledFontSize,
+  useFitFontSize,
+} from '../../features/boards/composables/use-fit-font-size';
 import { useRichTextEditing } from '../../features/boards/composables/use-rich-text-editing';
 import { useBoardSessionStore } from '../../stores/board-session';
 import BoardEditingBadge from './shared/BoardEditingBadge.vue';
@@ -94,8 +101,6 @@ const fontSize = useFitFontSize(
   boxHeight,
   editing,
   baseFontSize,
-  TEXT_DEFAULT_WIDTH,
-  TEXT_DEFAULT_HEIGHT,
   fontSizeMode,
 );
 
@@ -114,13 +119,38 @@ onBeforeUnmount(() => {
   if (reportedItemId) effectiveFontSizes?.remove(reportedItemId);
 });
 
+/**
+ * В `auto` (26.08.2026, по референсу Miro) пересчитывает `style.fontSize`
+ * пропорционально ИМЕННО ЭТОМУ resize (было `props.data.width/height` →
+ * стало `width/height`) и сохраняет как новую базу — см. подробное пояснение
+ * у аналогичного `onResizeEnd` в `use-board-node-editing.ts` (BoardStickyNode/
+ * BoardShapeNode используют общий composable, у текста своя копия, так как
+ * он не проходит через `useBoardNodeEditing`).
+ */
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
+  const patch: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    style?: { fontSize: number };
+  } = { x, y, width, height };
+  if (fontSizeMode.value === 'auto') {
+    const nextFontSize = Math.min(
+      BOARD_ITEM_FONT_SIZE_MAX,
+      Math.max(
+        BOARD_ITEM_FONT_SIZE_MIN,
+        getScaledFontSize(baseFontSize.value, width, height, props.data.width, props.data.height),
+      ),
+    );
+    if (nextFontSize !== baseFontSize.value) patch.style = { fontSize: nextFontSize };
+  }
   void boardSession.applyOps([
     {
       type: 'item.patch',
       clientOpId: crypto.randomUUID(),
       id: props.id,
-      patch: { x, y, width, height },
+      patch,
     },
   ]);
 }

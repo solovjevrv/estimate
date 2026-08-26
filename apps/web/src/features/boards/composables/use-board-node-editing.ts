@@ -7,13 +7,19 @@
  * форма `content` (`buildContent`) и специфичная геометрия/оформление
  * (ромб/скругление у фигуры, реакции у стикера) — остаётся в самих компонентах.
  */
-import type { BoardItem, BoardItemContent, BoardTextRun } from '@poker/shared';
+import {
+  BOARD_ITEM_FONT_SIZE_MAX,
+  BOARD_ITEM_FONT_SIZE_MIN,
+  type BoardItem,
+  type BoardItemContent,
+  type BoardTextRun,
+} from '@poker/shared';
 import { computed, inject, onBeforeUnmount, useTemplateRef, watch, type Ref } from 'vue';
 
 import { BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY } from '../context/board-canvas-keys';
 import { readableTextColor } from '../domain/board-colors';
 import { boardFontFamilyCss } from '../config/board-item-defaults';
-import { FIT_FONT_MAX, useFitFontSize } from './use-fit-font-size';
+import { FIT_FONT_MAX, getScaledFontSize, useFitFontSize } from './use-fit-font-size';
 import { useRichTextEditing } from './use-rich-text-editing';
 import { useBoardSessionStore } from '../../../stores/board-session';
 
@@ -33,16 +39,12 @@ export interface UseBoardNodeEditingOptions<TContent extends BoardItemContent & 
   isSelected: Ref<boolean>;
   content: Ref<TContent>;
   buildContent: (text: string, runs: BoardTextRun[] | undefined) => TContent;
-  /** Геометрия по умолчанию для масштабирования базового размера шрифта при resize. */
-  defaultWidth: number;
-  defaultHeight: number;
 }
 
 export function useBoardNodeEditing<TContent extends BoardItemContent & { text: string }>(
   options: UseBoardNodeEditingOptions<TContent>,
 ) {
-  const { itemId, data, canEdit, isSelected, content, buildContent, defaultWidth, defaultHeight } =
-    options;
+  const { itemId, data, canEdit, isSelected, content, buildContent } = options;
   const boardSession = useBoardSessionStore();
   const effectiveFontSizes = inject(BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY, null);
 
@@ -103,8 +105,6 @@ export function useBoardNodeEditing<TContent extends BoardItemContent & { text: 
     boxHeight,
     editing,
     baseFontSize,
-    defaultWidth,
-    defaultHeight,
     fontSizeMode,
   );
 
@@ -129,14 +129,42 @@ export function useBoardNodeEditing<TContent extends BoardItemContent & { text: 
    * из `@vue-flow/node-resizer`, а не сам тип: composable живёт в
    * `features/boards`, где прямой импорт Vue Flow запрещён (19.36) — конечная
    * геометрия резайза не зависит от библиотеки.
+   *
+   * В `auto` (26.08.2026, по референсу Miro) resize ещё и пересчитывает
+   * `style.fontSize` пропорционально ИМЕННО ЭТОМУ действию (старые
+   * `data.value.width/height` → новые `width/height`), сохраняя результат
+   * как новую базу — а не оставляет реактивному `useFitFontSize` каждый раз
+   * заново домножать на отношение к ФИКСИРОВАННОЙ геометрии элемента по
+   * умолчанию (так было раньше). Раньше переключение auto↔manual могло дать
+   * неожиданный скачок числа — база оставалась «как для дефолтного бокса»,
+   * даже если бокс давно не дефолтного размера, и при возврате в auto тут же
+   * пересчитывалась с нуля от него. Теперь база ВСЕГДА актуальна для текущего
+   * бокса в обоих режимах — просто в `manual` resize её не трогает вовсе.
    */
   function onResizeEnd({ params: { x, y, width, height } }: { params: BoardResizeParams }): void {
+    const patch: {
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      style?: { fontSize: number };
+    } = { x, y, width, height };
+    if (fontSizeMode.value === 'auto') {
+      const nextFontSize = Math.min(
+        BOARD_ITEM_FONT_SIZE_MAX,
+        Math.max(
+          BOARD_ITEM_FONT_SIZE_MIN,
+          getScaledFontSize(baseFontSize.value, width, height, data.value.width, data.value.height),
+        ),
+      );
+      if (nextFontSize !== baseFontSize.value) patch.style = { fontSize: nextFontSize };
+    }
     void boardSession.applyOps([
       {
         type: 'item.patch',
         clientOpId: crypto.randomUUID(),
         id: itemId,
-        patch: { x, y, width, height },
+        patch,
       },
     ]);
   }

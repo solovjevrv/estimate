@@ -59,7 +59,6 @@ import { useI18n } from 'vue-i18n';
 import {
   resolveEdgeColor,
   STICKY_DEFAULT_COLOR,
-  textDefaultDimensions,
   zIndexRange,
 } from '../../features/boards/config/board-item-defaults';
 import {
@@ -405,7 +404,6 @@ const selection = useBoardSelection({
   uploadImage,
   activeTool: () => activeTool.value,
   breakFollowOnEdit,
-  textDefaultDimensions,
   getBoardZIndex,
   defaultItemColor: STICKY_DEFAULT_COLOR,
   resolveTextColor: readableTextColor,
