@@ -216,3 +216,184 @@ export function computeSnapGuides(
 
   return { guides, positions };
 }
+
+/**
+ * Направляющие и выравнивание при изменении размера (22.3) — в отличие от
+ * `computeSnapGuides` (перемещение целиком, три ключа на элемент — лево/центр/
+ * право сравниваются СВОИМИ ЖЕ ключами у статичных), при resize подвижен
+ * только КОНКРЕТНЫЙ край, который тянет пользователь: `direction` — тот же
+ * `[dx, dy]` (-1/0/1 по каждой оси), что отдаёт `@vue-flow/node-resizer` в
+ * `OnResize`/`ResizeParamsWithDirection` (0 — эта ось вообще не меняется в
+ * этом жесте, у `OnResizeEnd` такого поля уже нет — вызывающий код запоминает
+ * последнее значение с `@resize`). Подвижный край сравнивается со ВСЕМИ тремя
+ * точками (лево/центр/право или верх/центр/низ) каждого статичного элемента —
+ * выровнять правый край растягиваемой фигуры по центру соседней так же
+ * осмысленно, как и по её левому/правому краю (в отличие от drag, здесь нет
+ * симметричного «свой ключ ищет тот же ключ»).
+ *
+ * `lockAspectRatio` (стикер/картинка/эмодзи/стикер-пак/GIF — фиксированное
+ * соотношение сторон, `keep-aspect-ratio` у `NodeResizer`): обе стороны
+ * меняются синхронно, поэтому независимый снап по X и по Y одновременно
+ * исказил бы пропорцию рассинхроном с тем, что уже отрисовал сам ресайзер.
+ * Если совпадения нашлись на обеих осях сразу — оставляем только более
+ * точное (меньше diff), вторую сторону пересчитываем от актуального
+ * соотношения `width/height`, а не от независимого совпадения.
+ */
+/**
+ * `readonly number[]`, не кортеж `[number, number]` — таким его типизирует
+ * сама `@vue-flow/node-resizer` (`ResizeParamsWithDirection.direction`), не
+ * гарантируя длину на уровне типов. Индексация ниже везде через `?? 0`.
+ */
+export type ResizeDirection = readonly number[];
+
+export interface ResizeSnapOptions {
+  lockAspectRatio?: boolean;
+}
+
+export interface ResizeSnapResult {
+  guides: SnapGuide[];
+  rect: SnapRect;
+}
+
+interface AxisMatch {
+  value: number;
+  sourceId: string;
+  diff: number;
+}
+
+function bestMatchX(
+  resizing: SnapRect,
+  activeKey: SnapAlignKeyX,
+  staticNodes: readonly SnapRect[],
+  threshold: number,
+): AxisMatch | null {
+  const dVal = xOf(resizing, activeKey);
+  let best: AxisMatch | null = null;
+  for (const s of staticNodes) {
+    for (const key of X_KEYS) {
+      const diff = Math.abs(dVal - xOf(s, key));
+      if (diff < threshold && (!best || diff < best.diff)) {
+        best = { value: xOf(s, key), sourceId: s.id, diff };
+      }
+    }
+  }
+  return best;
+}
+
+function bestMatchY(
+  resizing: SnapRect,
+  activeKey: SnapAlignKeyY,
+  staticNodes: readonly SnapRect[],
+  threshold: number,
+): AxisMatch | null {
+  const dVal = yOf(resizing, activeKey);
+  let best: AxisMatch | null = null;
+  for (const s of staticNodes) {
+    for (const key of Y_KEYS) {
+      const diff = Math.abs(dVal - yOf(s, key));
+      if (diff < threshold && (!best || diff < best.diff)) {
+        best = { value: yOf(s, key), sourceId: s.id, diff };
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Устанавливает РАЗМЕР (не координату края) вдоль оси, сохраняя фиксированным
+ * тот край, который в этом resize-жесте неподвижен (по знаку `direction`) —
+ * общая арифметика и для снапа к найденной координате края (вызывающий код
+ * сам переводит её в размер), и для пересчёта второй стороны при
+ * `lockAspectRatio` (там размер приходит уже готовым, из соотношения).
+ */
+function resizeAxis(rect: SnapRect, axis: 'x' | 'y', direction: number, newSize: number): SnapRect {
+  if (axis === 'x') {
+    if (direction < 0) {
+      const right = rect.x + rect.width;
+      return { ...rect, x: right - newSize, width: newSize };
+    }
+    return { ...rect, width: newSize };
+  }
+  if (direction < 0) {
+    const bottom = rect.y + rect.height;
+    return { ...rect, y: bottom - newSize, height: newSize };
+  }
+  return { ...rect, height: newSize };
+}
+
+function makeResizeGuide(
+  orientation: 'vertical' | 'horizontal',
+  position: number,
+  sourceId: string,
+  rect: SnapRect,
+  staticNodes: readonly SnapRect[],
+): SnapGuide {
+  const target = staticNodes.find((s) => s.id === sourceId)!;
+  const key = guideKey(position);
+  if (orientation === 'vertical') {
+    return {
+      orientation,
+      position: key,
+      targetIds: [sourceId],
+      from: Math.min(rect.y, rect.y + rect.height, target.y, target.y + target.height),
+      to: Math.max(rect.y, rect.y + rect.height, target.y, target.y + target.height),
+    };
+  }
+  return {
+    orientation,
+    position: key,
+    targetIds: [sourceId],
+    from: Math.min(rect.x, rect.x + rect.width, target.x, target.x + target.width),
+    to: Math.max(rect.x, rect.x + rect.width, target.x, target.x + target.width),
+  };
+}
+
+export function computeResizeSnapGuides(
+  resizing: SnapRect,
+  direction: ResizeDirection,
+  staticNodes: readonly SnapRect[],
+  threshold = SNAP_THRESHOLD_PX,
+  options: ResizeSnapOptions = {},
+): ResizeSnapResult {
+  const dx = direction[0] ?? 0;
+  const dy = direction[1] ?? 0;
+  const activeXKey: SnapAlignKeyX | null = dx > 0 ? 'right' : dx < 0 ? 'left' : null;
+  const activeYKey: SnapAlignKeyY | null = dy > 0 ? 'bottom' : dy < 0 ? 'top' : null;
+
+  const xMatch = activeXKey ? bestMatchX(resizing, activeXKey, staticNodes, threshold) : null;
+  const yMatch = activeYKey ? bestMatchY(resizing, activeYKey, staticNodes, threshold) : null;
+
+  let useX = xMatch !== null;
+  let useY = yMatch !== null;
+  if (options.lockAspectRatio && xMatch && yMatch) {
+    if (xMatch.diff <= yMatch.diff) useY = false;
+    else useX = false;
+  }
+
+  let rect = resizing;
+  const guides: SnapGuide[] = [];
+
+  if (useX && xMatch && activeXKey) {
+    const newWidth =
+      activeXKey === 'right' ? xMatch.value - rect.x : rect.x + rect.width - xMatch.value;
+    rect = resizeAxis(rect, 'x', dx, newWidth);
+    guides.push(makeResizeGuide('vertical', xMatch.value, xMatch.sourceId, rect, staticNodes));
+  }
+  if (useY && yMatch && activeYKey) {
+    const newHeight =
+      activeYKey === 'bottom' ? yMatch.value - rect.y : rect.y + rect.height - yMatch.value;
+    rect = resizeAxis(rect, 'y', dy, newHeight);
+    guides.push(makeResizeGuide('horizontal', yMatch.value, yMatch.sourceId, rect, staticNodes));
+  }
+
+  if (options.lockAspectRatio && (useX || useY) && resizing.width > 0 && resizing.height > 0) {
+    const ratio = resizing.width / resizing.height;
+    if (useX && !useY) {
+      rect = resizeAxis(rect, 'y', dy, rect.width / ratio);
+    } else if (useY && !useX) {
+      rect = resizeAxis(rect, 'x', dx, rect.height * ratio);
+    }
+  }
+
+  return { guides, rect };
+}

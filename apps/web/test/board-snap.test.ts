@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  computeResizeSnapGuides,
   computeSnapGuides,
   SNAP_THRESHOLD_PX,
   type SnapRect,
@@ -203,6 +204,82 @@ describe('computeSnapGuides', () => {
       from: 100, // min(a.y, a.bottom, b.y, b.bottom) = min(100, 200, 1000, 1100) = 100
       to: 1100, // max(100, 200, 1000, 1100) = 1100
     });
+  });
+});
+
+describe('computeResizeSnapGuides', () => {
+  it('снапит правый край (direction=[1,0]) к левому краю статичного элемента, x не двигается', () => {
+    // resizing: right=100. b: left=105 (x=105), diff=5 < 8
+    const result = computeResizeSnapGuides(
+      rect('a', 0, 0, 100, 100),
+      [1, 0],
+      [rect('b', 105, 0, 50, 50)],
+    );
+    expect(result.rect).toMatchObject({ x: 0, y: 0, width: 105, height: 100 });
+    expect(result.guides).toHaveLength(1);
+    expect(result.guides[0]!).toMatchObject({ orientation: 'vertical', position: 105 });
+  });
+
+  it('снапит левый край (direction=[-1,0]), правый край остаётся зафиксирован', () => {
+    // resizing: x=50,width=100 → right=150 (анкер). b: left=45, diff=5 < 8
+    const result = computeResizeSnapGuides(
+      rect('a', 50, 0, 100, 100),
+      [-1, 0],
+      [rect('b', 45, 0, 20, 20)],
+    );
+    // right edge (150) должен остаться на месте: x + width = 45 + 105 = 150
+    expect(result.rect).toMatchObject({ x: 45, width: 105 });
+    expect(result.rect.x + result.rect.width).toBe(150);
+  });
+
+  it('не трогает ось, которая не участвует в этом resize-жесте (direction=0 на оси)', () => {
+    // direction=[0,1] — только Y активна, X-совпадение (пусть и в пороге) игнорируется
+    const result = computeResizeSnapGuides(
+      rect('a', 0, 0, 100, 100),
+      [0, 1],
+      [rect('b', 103, 0, 100, 100)], // X-края почти совпадают, но X здесь неактивен
+    );
+    expect(result.rect).toMatchObject({ x: 0, width: 100 });
+    expect(result.guides.every((g) => g.orientation !== 'vertical')).toBe(true);
+  });
+
+  it('не снапит за пределами порога — rect не меняется, guides пустой', () => {
+    const result = computeResizeSnapGuides(
+      rect('a', 0, 0, 100, 100),
+      [1, 1],
+      [rect('b', 200, 200, 50, 50)],
+    );
+    expect(result.rect).toEqual(rect('a', 0, 0, 100, 100));
+    expect(result.guides).toEqual([]);
+  });
+
+  it('lockAspectRatio: при совпадении на обеих осях побеждает более точное, вторая сторона пересчитывается от исходного соотношения', () => {
+    // Квадрат 100x100 (сторона стикера), тянут за угол bottom-right ([1,1]).
+    // X-совпадение (diff=6) слабее Y-совпадения (diff=3) → выигрывает Y,
+    // итоговая высота 103, ширина пересчитывается от ratio=1 тоже в 103 —
+    // пропорция стикера не искажается снапом.
+    const result = computeResizeSnapGuides(
+      rect('a', 0, 0, 100, 100),
+      [1, 1],
+      [rect('bx', 106, 0, 10, 10), rect('by', 0, 103, 10, 10)],
+      SNAP_THRESHOLD_PX,
+      { lockAspectRatio: true },
+    );
+    expect(result.rect).toMatchObject({ x: 0, y: 0, width: 103, height: 103 });
+    // Только Y реально совпал с соседом — X пересчитан от пропорции, не от независимого снапа
+    expect(result.guides).toHaveLength(1);
+    expect(result.guides[0]!.orientation).toBe('horizontal');
+  });
+
+  it('lockAspectRatio: без конфликта (совпала только одна ось) вторая сторона всё равно пересчитывается пропорционально', () => {
+    const result = computeResizeSnapGuides(
+      rect('a', 0, 0, 100, 100),
+      [1, 1],
+      [rect('bx', 106, 0, 10, 10)],
+      SNAP_THRESHOLD_PX,
+      { lockAspectRatio: true },
+    );
+    expect(result.rect).toMatchObject({ width: 106, height: 106 });
   });
 });
 

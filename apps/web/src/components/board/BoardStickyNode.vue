@@ -48,6 +48,7 @@ const {
   onEditableCompositionEnd,
   onEditablePaste,
   onEditableDrop,
+  onResize,
   onResizeEnd,
 } = useBoardNodeEditing({
   itemId: props.id,
@@ -56,6 +57,8 @@ const {
   isSelected: toRef(props, 'selected'),
   content,
   buildContent: (text, runs) => ({ type: 'sticky', text, ...(runs ? { runs } : {}) }),
+  // Стикер всегда квадрат — см. `keep-aspect-ratio` на `NodeResizer` ниже.
+  lockAspectRatio: true,
 });
 
 /**
@@ -153,6 +156,7 @@ watch(
       :max-width="STICKY_MAX_WIDTH"
       :max-height="STICKY_MAX_HEIGHT"
       keep-aspect-ratio
+      @resize="onResize"
       @resize-end="onResizeEnd"
     />
     <div

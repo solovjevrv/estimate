@@ -16,9 +16,13 @@ import {
 } from '@poker/shared';
 import { computed, inject, onBeforeUnmount, useTemplateRef, watch, type Ref } from 'vue';
 
-import { BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY } from '../context/board-canvas-keys';
+import {
+  BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
+  BOARD_RESIZE_SNAP_KEY,
+} from '../context/board-canvas-keys';
 import { readableTextColor } from '../domain/board-colors';
 import { boardFontFamilyCss } from '../config/board-item-defaults';
+import type { ResizeDirection } from '../domain/board-snap';
 import { FIT_FONT_MAX, getScaledFontSize, useFitFontSize } from './use-fit-font-size';
 import { useRichTextEditing } from './use-rich-text-editing';
 import { useBoardSessionStore } from '../../../stores/board-session';
@@ -30,6 +34,10 @@ export interface BoardResizeParams {
   height: number;
 }
 
+export interface BoardResizeParamsWithDirection extends BoardResizeParams {
+  direction: ResizeDirection;
+}
+
 export interface UseBoardNodeEditingOptions<TContent extends BoardItemContent & { text: string }> {
   itemId: string;
   /** `props.data` целиком — цвет/шрифт/ширина/высота читаются из него. */
@@ -39,14 +47,17 @@ export interface UseBoardNodeEditingOptions<TContent extends BoardItemContent & 
   isSelected: Ref<boolean>;
   content: Ref<TContent>;
   buildContent: (text: string, runs: BoardTextRun[] | undefined) => TContent;
+  /** Стикер всегда квадрат (`keep-aspect-ratio` на `NodeResizer`), фигура — нет (22.3). */
+  lockAspectRatio: boolean;
 }
 
 export function useBoardNodeEditing<TContent extends BoardItemContent & { text: string }>(
   options: UseBoardNodeEditingOptions<TContent>,
 ) {
-  const { itemId, data, canEdit, isSelected, content, buildContent } = options;
+  const { itemId, data, canEdit, isSelected, content, buildContent, lockAspectRatio } = options;
   const boardSession = useBoardSessionStore();
   const effectiveFontSizes = inject(BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY, null);
+  const resizeSnap = inject(BOARD_RESIZE_SNAP_KEY, null);
 
   const bgColor = computed(() => data.value.style.color);
   const textColor = computed(() => data.value.style.textColor ?? readableTextColor(bgColor.value));
@@ -125,6 +136,35 @@ export function useBoardNodeEditing<TContent extends BoardItemContent & { text: 
   });
 
   /**
+   * Последнее известное `direction` этого resize-жеста (22.3) — есть только у
+   * `OnResize` (живой тик), а `OnResizeEnd`'s `ResizeParams` его не содержит
+   * (см. `@vue-flow/node-resizer`'s `types.d.ts`), при этом направление не
+   * меняется в рамках одного жеста (один и тот же угол/сторона тянется от
+   * `resizeStart` до `resizeEnd`) — запоминаем на каждом `onResize` и просто
+   * используем то же значение на resize-end.
+   */
+  let lastResizeDirection: ResizeDirection = [0, 0];
+
+  /**
+   * Live-подсказка выравнивания во время resize (22.3) — только гиды, без
+   * мутации геометрии: сама геометрия по-прежнему рисуется библиотекой, снап
+   * применяется один раз на resize-end (тот же принцип, что и у drag, 19.30).
+   */
+  function onResize({
+    params: { x, y, width, height, direction },
+  }: {
+    params: BoardResizeParamsWithDirection;
+  }): void {
+    lastResizeDirection = direction;
+    resizeSnap?.updateGuides(
+      itemId,
+      { id: itemId, x, y, width, height },
+      direction,
+      lockAspectRatio,
+    );
+  }
+
+  /**
    * Форма события резайза — только нужные поля `NodeResizer`'s `OnResizeEnd`
    * из `@vue-flow/node-resizer`, а не сам тип: composable живёт в
    * `features/boards`, где прямой импорт Vue Flow запрещён (19.36) — конечная
@@ -145,15 +185,27 @@ export function useBoardNodeEditing<TContent extends BoardItemContent & { text: 
    * обратном переключении в `auto` (`setSelectedFontSizeMode` в
    * `use-board-selection.ts`), а не молча теряется (баг из живой проверки:
    * `manual=4` → resize 2x → переключение на `auto` не меняло число).
+   *
+   * Снап к соседним элементам (22.3) применяется здесь же, ДО пересчёта
+   * шрифта — итоговый (уже подровненный) размер бокса и есть та геометрия,
+   * от которой должен масштабироваться шрифт в `auto`, а не сырое значение
+   * из события резайза.
    */
   function onResizeEnd({ params: { x, y, width, height } }: { params: BoardResizeParams }): void {
+    const snapped = resizeSnap?.applySnap(
+      itemId,
+      { id: itemId, x, y, width, height },
+      lastResizeDirection,
+      lockAspectRatio,
+    ) ?? { x, y, width, height };
+    resizeSnap?.clearGuides();
     const patch: {
       x: number;
       y: number;
       width: number;
       height: number;
       style?: { fontSize: number; fontSizeBoxWidth: number; fontSizeBoxHeight: number };
-    } = { x, y, width, height };
+    } = { x: snapped.x, y: snapped.y, width: snapped.width, height: snapped.height };
     if (fontSizeMode.value === 'auto') {
       const anchorWidth = data.value.style.fontSizeBoxWidth ?? data.value.width;
       const anchorHeight = data.value.style.fontSizeBoxHeight ?? data.value.height;
@@ -161,14 +213,20 @@ export function useBoardNodeEditing<TContent extends BoardItemContent & { text: 
         BOARD_ITEM_FONT_SIZE_MAX,
         Math.max(
           BOARD_ITEM_FONT_SIZE_MIN,
-          getScaledFontSize(baseFontSize.value, width, height, anchorWidth, anchorHeight),
+          getScaledFontSize(
+            baseFontSize.value,
+            snapped.width,
+            snapped.height,
+            anchorWidth,
+            anchorHeight,
+          ),
         ),
       );
       if (nextFontSize !== baseFontSize.value) {
         patch.style = {
           fontSize: nextFontSize,
-          fontSizeBoxWidth: width,
-          fontSizeBoxHeight: height,
+          fontSizeBoxWidth: snapped.width,
+          fontSizeBoxHeight: snapped.height,
         };
       }
     }
@@ -202,6 +260,7 @@ export function useBoardNodeEditing<TContent extends BoardItemContent & { text: 
     onEditableCompositionEnd,
     onEditablePaste,
     onEditableDrop,
+    onResize,
     onResizeEnd,
   };
 }

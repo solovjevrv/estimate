@@ -67,6 +67,7 @@ import {
   BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
   BOARD_PENDING_EDGE_EDIT_ID_KEY,
   BOARD_PENDING_EDIT_ID_KEY,
+  BOARD_RESIZE_SNAP_KEY,
 } from '../../features/boards/context/board-canvas-keys';
 import { readableTextColor } from '../../features/boards/domain/board-colors';
 import { findFrameAt } from '../../features/boards/domain/board-containers';
@@ -619,6 +620,14 @@ function onNodeClick(event: NodeMouseEvent): void {
 // effectiveFontSizeRegistry принадлежит composable (жизненный цикл совпадает с
 // холстом); Canvas только пробрасывает его через provide для измерения node-ами.
 provide(BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY, selection.effectiveFontSizeRegistry);
+
+// Тот же приём для snap guides при resize (22.3) — тонкий адаптер над
+// dragAndSnap.*ResizeGuides/*ResizeSnap, узел резайза видит только этот контракт.
+provide(BOARD_RESIZE_SNAP_KEY, {
+  updateGuides: dragAndSnap.updateResizeGuides,
+  applySnap: dragAndSnap.applyResizeSnap,
+  clearGuides: dragAndSnap.clearResizeGuides,
+});
 
 /* canCreateItems/canCreateItem вынесены в useBoardCreation. Canvas сохраняет
  * canApplyOpsCount — он про батч-лимит WS, а не про создание элемента. */

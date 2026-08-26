@@ -7,6 +7,7 @@
 import type { InjectionKey, Ref } from 'vue';
 
 import type { BoardTextEditorHandle } from '../rich-text/board-rich-text';
+import type { ResizeDirection, SnapRect } from '../domain/board-snap';
 
 export const BOARD_CAN_EDIT_KEY: InjectionKey<Ref<boolean>> = Symbol('boardCanEdit');
 export const BOARD_PENDING_EDIT_ID_KEY: InjectionKey<Ref<string | null>> =
@@ -31,3 +32,33 @@ export interface BoardEffectiveFontSizeRegistry {
 
 export const BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY: InjectionKey<BoardEffectiveFontSizeRegistry> =
   Symbol('boardEffectiveFontSizeRegistry');
+
+/**
+ * Snap guides при изменении размера (22.3) — узел резайза не знает про соседние
+ * узлы холста (только про свой `props.data`), а холст — единственный владелец
+ * полного списка узлов/zoom, нужных для `computeResizeSnapGuides`. Тот же
+ * приём, что и `BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY` выше: узел сообщает
+ * наверх, холст считает и владеет состоянием (тем же `activeSnapGuides`, что
+ * уже используется для drag, 19.30 — drag и resize не бывают одновременно,
+ * делить один ref безопасно).
+ */
+export interface BoardResizeSnapContext {
+  /** Live-подсказка во время resize — не мутирует геометрию, только гиды для отрисовки. */
+  updateGuides(
+    itemId: string,
+    rect: SnapRect,
+    direction: ResizeDirection,
+    lockAspectRatio: boolean,
+  ): void;
+  /** Финальный снап на resize-end — возвращает скорректированный rect (тот же rect, если снапа не было). */
+  applySnap(
+    itemId: string,
+    rect: SnapRect,
+    direction: ResizeDirection,
+    lockAspectRatio: boolean,
+  ): SnapRect;
+  clearGuides(): void;
+}
+
+export const BOARD_RESIZE_SNAP_KEY: InjectionKey<BoardResizeSnapContext> =
+  Symbol('boardResizeSnap');
