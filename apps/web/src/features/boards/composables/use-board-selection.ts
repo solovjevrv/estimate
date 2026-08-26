@@ -290,8 +290,25 @@ export function useBoardSelection(options: BoardSelectionOptions) {
       defaults.height,
     );
   });
+  /**
+   * «Увеличить» не должно молча ничего не делать, когда бокс уже не может
+   * вместить больший шрифт — авто-fit (`useFitFontSize`) в этом случае тут же
+   * ужимает отрисованный размер обратно к тому, что реально помещается, и с
+   * точки зрения пользователя кнопка выглядит сломанной (клик есть, видимого
+   * эффекта нет, никакой обратной связи). Пока `selectedFontSize` (реально
+   * отрисованный размер) меньше `selectedBaseFontSize` (запрошенный) — бокс
+   * уже исчерпал место для текущего содержимого, дальше расти некуда без
+   * ручного увеличения самого бокса — кнопка должна быть задизейблена, а не
+   * тихо съедать клики (баг, найден пользователем 26.08.2026, ярче всего
+   * проявлялся на текстовом элементе — его дефолтный бокс, `TEXT_DEFAULT_HEIGHT`,
+   * рассчитан впритык под ОДИН размер шрифта по умолчанию, без всякого запаса
+   * на «+», но тот же тупик воспроизводится на любом достаточно уменьшенном
+   * вручную стикере/фигуре — механизм общий для всех типов).
+   */
   const canIncreaseSelectedFontSize = computed(
-    () => selectedBaseFontSize.value < BOARD_ITEM_FONT_SIZE_MAX,
+    () =>
+      selectedBaseFontSize.value < BOARD_ITEM_FONT_SIZE_MAX &&
+      selectedFontSize.value >= selectedBaseFontSize.value,
   );
   const canDecreaseSelectedFontSize = computed(
     () => selectedBaseFontSize.value > BOARD_ITEM_FONT_SIZE_MIN,

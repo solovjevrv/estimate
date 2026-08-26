@@ -493,6 +493,32 @@ describe('useBoardSelection — font size clamping', () => {
     expect(makeSelection({ selectedNodes: [lo] }).api.canIncreaseSelectedFontSize.value).toBe(true);
   });
 
+  it('canIncreaseSelectedFontSize is false once the box already clamps below the base size (26.08.2026)', () => {
+    // Стикер, уменьшенный вручную вдвое от дефолтного бокса (120x80 в тестовых
+    // хелперах) — geometric-fallback в selectedFontSize даёт 10 при базе 20,
+    // бокс уже не вмещает запрошенный размер. Кнопка "+" не должна молча
+    // ничего не делать в этом состоянии (см. пояснение у самого computed).
+    const shrunk = flowNode(
+      item('a', { content: { type: 'sticky', text: 'x' }, style: { color: '#fff', fontSize: 20 } }),
+      { x: 0, y: 0 },
+      { width: 60, height: 40 },
+    );
+    const { api } = makeSelection({ selectedNodes: [shrunk] });
+    expect(api.selectedFontSize.value).toBeLessThan(20);
+    expect(api.canIncreaseSelectedFontSize.value).toBe(false);
+  });
+
+  it('canIncreaseSelectedFontSize stays true while the box fully honors the base size', () => {
+    const fullSize = flowNode(
+      item('a', { content: { type: 'sticky', text: 'x' }, style: { color: '#fff', fontSize: 20 } }),
+      { x: 0, y: 0 },
+      { width: 120, height: 80 },
+    );
+    const { api } = makeSelection({ selectedNodes: [fullSize] });
+    expect(api.selectedFontSize.value).toBe(20);
+    expect(api.canIncreaseSelectedFontSize.value).toBe(true);
+  });
+
   it('selectedFontSize falls back to FIT_FONT_MAX when no base size is set', () => {
     const a = flowNode(item('a', { content: { type: 'frame', title: 'F' } }));
     const { api } = makeSelection({ selectedNodes: [a] });
