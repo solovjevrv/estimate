@@ -4,7 +4,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "start": "tsx src/run.ts"
+    "start": "tsx src/run.ts",
+    "start:board": "tsx src/run-board.ts"
   },
   "devDependencies": {
     "@fastify/jwt": "^10.2.0",
