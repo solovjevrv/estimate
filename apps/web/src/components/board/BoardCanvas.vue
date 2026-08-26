@@ -810,7 +810,9 @@ useBoardHotkeys({
         @text-color-preview="previewSelectedTextColor"
         @text-color-cancel="cancelSelectedTextColorPreview"
         @text-align="setSelectedTextAlign"
-        @toggle-mark="activeTextEditor ? activeTextEditor.toggle($event) : toggleSelectedMark($event)"
+        @toggle-mark="
+          activeTextEditor ? activeTextEditor.toggle($event) : toggleSelectedMark($event)
+        "
         @set-highlight="
           activeTextEditor ? activeTextEditor.setHighlight($event) : setSelectedHighlight($event)
         "
@@ -978,6 +980,25 @@ useBoardHotkeys({
 :deep(.vue-flow__selection) {
   background: color-mix(in oklch, var(--ui-primary) 8%, transparent);
   border: 1px dashed var(--ui-primary);
+}
+
+/*
+ * Узел/связь получают нативный DOM-фокус (клавиатурная a11y-навигация Vue
+ * Flow — например, стрелки для сдвига выделенного узла), а браузерный дефолтный
+ * контур фокуса для них глушится только в НЕ подключённом у нас `theme-default.css`
+ * (см. пояснение про `.vue-flow__selection` выше — по той же причине не тянем
+ * его целиком). Без этого правила выделение узла иногда рисовало прямо поверх
+ * карточки синий прямоугольник ровно по её границе (браузерный `outline`,
+ * никак не связанный с нашими зелёными хендлами ресайза) — баг, найден
+ * пользователем 26.08.2026 после того, как автовыделение только что созданного
+ * элемента (см. `use-board-creation.ts`) сделало путь к нативному фокусу узла
+ * куда более частым, чем раньше.
+ */
+:deep(.vue-flow__node:focus),
+:deep(.vue-flow__node:focus-visible),
+:deep(.vue-flow__edge:focus),
+:deep(.vue-flow__edge:focus-visible) {
+  outline: none;
 }
 
 .board-empty-state {
