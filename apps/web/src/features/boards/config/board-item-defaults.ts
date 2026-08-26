@@ -62,7 +62,15 @@ export const SHAPE_MAX_HEIGHT = STICKY_MAX_HEIGHT;
  * Границы резайза — те же, что у стикера/фигуры.
  */
 export const TEXT_DEFAULT_WIDTH = 200;
-export const TEXT_DEFAULT_HEIGHT = 40;
+/**
+ * 40 давало контентной зоне (бокс минус `p-4`, см. `BoardTextNode.vue`) всего
+ * 8px высоты — меньше высоты одной строки даже на `FIT_FONT_MIN` (10px), из-за
+ * чего свежесозданный текстовый элемент обрезал собственную первую строку с
+ * первого введённого символа, и это никак не лечилось авто-fit'ом (баг, найден
+ * пользователем 26.08.2026). 64px оставляет ~32px контентной зоне — с запасом
+ * хватает на одну строку при `FIT_FONT_MAX` (20px).
+ */
+export const TEXT_DEFAULT_HEIGHT = 64;
 export const TEXT_MIN_WIDTH = STICKY_MIN_WIDTH;
 export const TEXT_MIN_HEIGHT = STICKY_MIN_HEIGHT;
 export const TEXT_MAX_WIDTH = STICKY_MAX_WIDTH;
