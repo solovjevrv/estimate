@@ -741,8 +741,8 @@ useBoardHotkeys({
       :pan-on-scroll="true"
       :zoom-on-scroll="false"
       :zoom-on-pinch="true"
-      :min-zoom="0.1"
-      :max-zoom="2"
+      :min-zoom="0.02"
+      :max-zoom="20"
       :only-render-visible-elements="true"
       :delete-key-code="null"
       :elevate-nodes-on-select="false"
@@ -760,7 +760,7 @@ useBoardHotkeys({
       @edge-double-click="edges.onEdgeDoubleClick"
       @edge-context-menu="onEdgeContextMenu"
     >
-      <Background pattern-color="var(--brand-border)" :gap="22" variant="dots" />
+      <Background pattern-color="var(--board-grid-dot)" :gap="22" variant="dots" />
       <MiniMap
         class="board-minimap"
         pannable
