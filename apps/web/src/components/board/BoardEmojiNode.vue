@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import type { BoardItem, BoardEmojiContent } from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
-import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
+import { NodeResizer, type OnResize, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, ref } from 'vue';
 
-import { BOARD_CAN_EDIT_KEY } from '../../features/boards/context/board-canvas-keys';
+import {
+  BOARD_CAN_EDIT_KEY,
+  BOARD_RESIZE_SNAP_KEY,
+} from '../../features/boards/context/board-canvas-keys';
 import {
   EMOJI_FONT_SIZE_RATIO,
   EMOJI_MAX_HEIGHT,
@@ -12,12 +15,14 @@ import {
   EMOJI_MIN_HEIGHT,
   EMOJI_MIN_WIDTH,
 } from '../../features/boards/config/board-item-defaults';
+import type { ResizeDirection } from '../../features/boards/domain/board-snap';
 import { useBoardSessionStore } from '../../stores/board-session';
 
 const props = defineProps<NodeProps<BoardItem>>();
 
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
+const resizeSnap = inject(BOARD_RESIZE_SNAP_KEY, null);
 
 const content = computed(() => props.data.content as BoardEmojiContent);
 const emoji = computed(() => content.value.emoji);
@@ -27,13 +32,28 @@ const fontSize = computed(
   () => Math.min(props.data.width, props.data.height) * EMOJI_FONT_SIZE_RATIO,
 );
 
+/** См. `use-board-node-editing.ts` — тот же паттерн snap guides при resize (22.3). */
+let lastResizeDirection: ResizeDirection = [0, 0];
+
+function onResize({ params: { x, y, width, height, direction } }: OnResize): void {
+  lastResizeDirection = direction;
+  resizeSnap?.updateGuides(props.id, { id: props.id, x, y, width, height }, direction, true);
+}
+
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
+  const snapped = resizeSnap?.applySnap(
+    props.id,
+    { id: props.id, x, y, width, height },
+    lastResizeDirection,
+    true,
+  ) ?? { x, y, width, height };
+  resizeSnap?.clearGuides();
   void boardSession.applyOps([
     {
       type: 'item.patch',
       clientOpId: crypto.randomUUID(),
       id: props.id,
-      patch: { x, y, width, height },
+      patch: snapped,
     },
   ]);
 }
@@ -53,6 +73,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       :max-width="EMOJI_MAX_WIDTH"
       :max-height="EMOJI_MAX_HEIGHT"
       keep-aspect-ratio
+      @resize="onResize"
       @resize-end="onResizeEnd"
     />
     <div

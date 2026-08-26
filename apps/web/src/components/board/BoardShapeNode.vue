@@ -42,6 +42,7 @@ const {
   onEditableCompositionEnd,
   onEditablePaste,
   onEditableDrop,
+  onResize,
   onResizeEnd,
 } = useBoardNodeEditing({
   itemId: props.id,
@@ -55,6 +56,7 @@ const {
     text,
     ...(runs ? { runs } : {}),
   }),
+  lockAspectRatio: false,
 });
 
 /** Обводка — заметно более тёмный вариант того же тона, не отдельный цвет */
@@ -101,6 +103,7 @@ const DIAMOND_CLIP_PATH = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
       :min-height="SHAPE_MIN_HEIGHT"
       :max-width="SHAPE_MAX_WIDTH"
       :max-height="SHAPE_MAX_HEIGHT"
+      @resize="onResize"
       @resize-end="onResizeEnd"
     />
     <div

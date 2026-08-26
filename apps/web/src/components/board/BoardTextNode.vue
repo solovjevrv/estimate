@@ -6,12 +6,13 @@ import {
   type BoardTextContent,
 } from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
-import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
+import { NodeResizer, type OnResize, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, onBeforeUnmount, ref, toRef, useTemplateRef, watch } from 'vue';
 
 import {
   BOARD_CAN_EDIT_KEY,
   BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
+  BOARD_RESIZE_SNAP_KEY,
 } from '../../features/boards/context/board-canvas-keys';
 import { readableTextColor } from '../../features/boards/domain/board-colors';
 import {
@@ -21,6 +22,7 @@ import {
   TEXT_MIN_HEIGHT,
   TEXT_MIN_WIDTH,
 } from '../../features/boards/config/board-item-defaults';
+import type { ResizeDirection } from '../../features/boards/domain/board-snap';
 import {
   FIT_FONT_MAX,
   getScaledFontSize,
@@ -36,6 +38,7 @@ const props = defineProps<NodeProps<BoardItem>>();
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
 const effectiveFontSizes = inject(BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY, null);
+const resizeSnap = inject(BOARD_RESIZE_SNAP_KEY, null);
 
 const content = computed(() => props.data.content as BoardTextContent);
 const textColor = computed(
@@ -119,6 +122,16 @@ onBeforeUnmount(() => {
   if (reportedItemId) effectiveFontSizes?.remove(reportedItemId);
 });
 
+/** Последнее известное `direction` жеста (22.3) — см. пояснение у аналогичного
+ * поля в `use-board-node-editing.ts` (`OnResizeEnd`'s `ResizeParams` его не содержит). */
+let lastResizeDirection: ResizeDirection = [0, 0];
+
+/** Live-подсказка выравнивания во время resize (22.3) — см. `use-board-node-editing.ts`. */
+function onResize({ params: { x, y, width, height, direction } }: OnResize): void {
+  lastResizeDirection = direction;
+  resizeSnap?.updateGuides(props.id, { id: props.id, x, y, width, height }, direction, false);
+}
+
 /**
  * В `auto` (26.08.2026, по референсу Miro) пересчитывает `style.fontSize`
  * пропорционально ИМЕННО ЭТОМУ resize (было — якорь `fontSizeBoxWidth/Height`,
@@ -127,16 +140,24 @@ onBeforeUnmount(() => {
  * подробное пояснение у аналогичного `onResizeEnd` в
  * `use-board-node-editing.ts` (BoardStickyNode/BoardShapeNode используют общий
  * composable, у текста своя копия, так как он не проходит через
- * `useBoardNodeEditing`).
+ * `useBoardNodeEditing`). Снап к соседним элементам (22.3) применяется здесь
+ * же, ДО пересчёта шрифта — см. тот же порядок в `use-board-node-editing.ts`.
  */
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
+  const snapped = resizeSnap?.applySnap(
+    props.id,
+    { id: props.id, x, y, width, height },
+    lastResizeDirection,
+    false,
+  ) ?? { x, y, width, height };
+  resizeSnap?.clearGuides();
   const patch: {
     x: number;
     y: number;
     width: number;
     height: number;
     style?: { fontSize: number; fontSizeBoxWidth: number; fontSizeBoxHeight: number };
-  } = { x, y, width, height };
+  } = { x: snapped.x, y: snapped.y, width: snapped.width, height: snapped.height };
   if (fontSizeMode.value === 'auto') {
     const anchorWidth = props.data.style.fontSizeBoxWidth ?? props.data.width;
     const anchorHeight = props.data.style.fontSizeBoxHeight ?? props.data.height;
@@ -144,11 +165,21 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       BOARD_ITEM_FONT_SIZE_MAX,
       Math.max(
         BOARD_ITEM_FONT_SIZE_MIN,
-        getScaledFontSize(baseFontSize.value, width, height, anchorWidth, anchorHeight),
+        getScaledFontSize(
+          baseFontSize.value,
+          snapped.width,
+          snapped.height,
+          anchorWidth,
+          anchorHeight,
+        ),
       ),
     );
     if (nextFontSize !== baseFontSize.value) {
-      patch.style = { fontSize: nextFontSize, fontSizeBoxWidth: width, fontSizeBoxHeight: height };
+      patch.style = {
+        fontSize: nextFontSize,
+        fontSizeBoxWidth: snapped.width,
+        fontSizeBoxHeight: snapped.height,
+      };
     }
   }
   void boardSession.applyOps([
@@ -176,6 +207,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       :min-height="TEXT_MIN_HEIGHT"
       :max-width="TEXT_MAX_WIDTH"
       :max-height="TEXT_MAX_HEIGHT"
+      @resize="onResize"
       @resize-end="onResizeEnd"
     />
     <div

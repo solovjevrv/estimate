@@ -19,8 +19,10 @@ import { ref, type Ref } from 'vue';
 
 import { BOARD_DRAG_THROTTLE_MS } from '../../../features/boards/config/board-constants';
 import {
+  computeResizeSnapGuides,
   computeSnapGuides,
   SNAP_THRESHOLD_PX,
+  type ResizeDirection,
   type SnapGuide,
   type SnapRect,
 } from '../../../features/boards/domain/board-snap';
@@ -72,6 +74,21 @@ export interface BoardDragAndSnap {
 
   /** Отменяет trailing throttles и очищает все drag/snap-состояния. Идемпотентен. */
   reset: () => void;
+
+  /** См. `BoardResizeSnapContext` в `board-canvas-keys.ts` — тот же `activeSnapGuides`. */
+  updateResizeGuides: (
+    itemId: string,
+    rect: SnapRect,
+    direction: ResizeDirection,
+    lockAspectRatio: boolean,
+  ) => void;
+  applyResizeSnap: (
+    itemId: string,
+    rect: SnapRect,
+    direction: ResizeDirection,
+    lockAspectRatio: boolean,
+  ) => SnapRect;
+  clearResizeGuides: () => void;
 }
 
 // Доменные типы BoardItem/BoardOp не должны получать полей Vue Flow: все
@@ -323,6 +340,50 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     }
   }
 
+  /**
+   * Snap guides при resize (22.3) — узел резайза не знает про соседние узлы
+   * (см. `BoardResizeSnapContext`), поэтому холст сам собирает статичные rect'ы
+   * (все узлы кроме резайзящегося) и делегирует чистой `computeResizeSnapGuides`.
+   * Использует ТОТ ЖЕ `activeSnapGuides`, что и drag — drag и resize взаимно
+   * исключают друг друга по времени (нельзя тащить и резайзить один жест).
+   */
+  function staticRectsExcept(itemId: string): SnapRect[] {
+    return getNodes()
+      .filter((n) => n.id !== itemId)
+      .map(nodeToSnapRect);
+  }
+
+  function updateResizeGuides(
+    itemId: string,
+    rect: SnapRect,
+    direction: ResizeDirection,
+    lockAspectRatio: boolean,
+  ): void {
+    const threshold = SNAP_THRESHOLD_PX / Math.max(getZoom(), 0.1);
+    const result = computeResizeSnapGuides(rect, direction, staticRectsExcept(itemId), threshold, {
+      lockAspectRatio,
+    });
+    if (!guidesEqual(result.guides, activeSnapGuides.value)) {
+      activeSnapGuides.value = result.guides;
+    }
+  }
+
+  function applyResizeSnap(
+    itemId: string,
+    rect: SnapRect,
+    direction: ResizeDirection,
+    lockAspectRatio: boolean,
+  ): SnapRect {
+    const threshold = SNAP_THRESHOLD_PX / Math.max(getZoom(), 0.1);
+    return computeResizeSnapGuides(rect, direction, staticRectsExcept(itemId), threshold, {
+      lockAspectRatio,
+    }).rect;
+  }
+
+  function clearResizeGuides(): void {
+    activeSnapGuides.value = [];
+  }
+
   /** Shift+drag — ограничение перетаскивания по одной оси */
   function applyAxisLock(event: BoardDragEvent): void {
     if (!(event.event instanceof MouseEvent) || !event.event.shiftKey) return;
@@ -499,5 +560,8 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     onNodeDrag,
     onNodeDragStop,
     reset,
+    updateResizeGuides,
+    applyResizeSnap,
+    clearResizeGuides,
   };
 }

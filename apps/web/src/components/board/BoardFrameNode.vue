@@ -16,11 +16,14 @@
  * NodeResizer сам не знает о нашем абстрактном `item.width/height`.
  */
 import { BOARD_FRAME_TITLE_MAX_LENGTH, type BoardItem } from '@poker/shared';
-import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
+import { NodeResizer, type OnResize, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { BOARD_CAN_EDIT_KEY } from '../../features/boards/context/board-canvas-keys';
+import {
+  BOARD_CAN_EDIT_KEY,
+  BOARD_RESIZE_SNAP_KEY,
+} from '../../features/boards/context/board-canvas-keys';
 import { darkenHex } from '../../features/boards/domain/board-colors';
 import {
   FRAME_MAX_HEIGHT,
@@ -28,6 +31,7 @@ import {
   FRAME_MIN_HEIGHT,
   FRAME_MIN_WIDTH,
 } from '../../features/boards/config/board-constants';
+import type { ResizeDirection } from '../../features/boards/domain/board-snap';
 import { uuid } from '../../features/boards/infrastructure/uuid';
 import { useBoardSessionStore } from '../../stores/board-session';
 import type { NodeProps } from '@vue-flow/core';
@@ -37,6 +41,7 @@ const props = defineProps<NodeProps<BoardItem>>();
 const { t } = useI18n();
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
+const resizeSnap = inject(BOARD_RESIZE_SNAP_KEY, null);
 
 const content = computed(() => props.data.content);
 const isGroup = computed(() => content.value.type === 'group');
@@ -100,13 +105,28 @@ function commitTitle(): void {
   ]);
 }
 
+/** См. `use-board-node-editing.ts` — тот же паттерн snap guides при resize (22.3). */
+let lastResizeDirection: ResizeDirection = [0, 0];
+
+function onResize({ params: { x, y, width, height, direction } }: OnResize): void {
+  lastResizeDirection = direction;
+  resizeSnap?.updateGuides(props.id, { id: props.id, x, y, width, height }, direction, false);
+}
+
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
+  const snapped = resizeSnap?.applySnap(
+    props.id,
+    { id: props.id, x, y, width, height },
+    lastResizeDirection,
+    false,
+  ) ?? { x, y, width, height };
+  resizeSnap?.clearGuides();
   void boardSession.applyOps([
     {
       type: 'item.patch',
       clientOpId: uuid(),
       id: props.id,
-      patch: { x, y, width, height },
+      patch: snapped,
     },
   ]);
 }
@@ -132,6 +152,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       :min-height="FRAME_MIN_HEIGHT"
       :max-width="FRAME_MAX_WIDTH"
       :max-height="FRAME_MAX_HEIGHT"
+      @resize="onResize"
       @resize-end="onResizeEnd"
     />
     <div
