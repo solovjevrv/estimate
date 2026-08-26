@@ -66,6 +66,7 @@ import {
   BOARD_TEXT_LINK_MAX_LENGTH,
   BOARD_TEXT_LINK_PATTERN,
   type BoardColorHex,
+  type BoardFontSizeMode,
   type BoardHighlightColor,
   type BoardTextAlign,
   type BoardTextMark,
@@ -131,6 +132,9 @@ const props = withDefaults(
     currentForm: ItemFormKind;
     /** Реальный отрисованный размер, может быть больше максимальной сохранённой базы. */
     currentFontSize: number;
+    /** `auto` (по умолчанию) — размер масштабируется с боксом; `manual` — пользователь
+     *  зафиксировал конкретное значение, resize бокса его не трогает (26.08.2026). */
+    currentFontSizeMode: BoardFontSizeMode;
     canIncreaseFontSize?: boolean;
     canDecreaseFontSize?: boolean;
     currentTextColor: BoardColorHex;
@@ -163,6 +167,7 @@ const emit = defineEmits<{
   colorCancel: [hex: BoardColorHex];
   form: [kind: ItemFormKind];
   fontSize: [size: number];
+  fontSizeMode: [mode: BoardFontSizeMode];
   textColor: [hex: BoardColorHex];
   textColorPreview: [hex: BoardColorHex];
   textColorCancel: [hex: BoardColorHex];
@@ -215,10 +220,18 @@ const FORMAT_BUTTONS: readonly { key: FormatMarkKey; icon: string }[] = [
   { key: 'strike', icon: 'i-lucide-strikethrough' },
 ];
 
-/** Начертание/маркер доступны при редактировании и непустом тексте (18.7): при
- *  схлопнутом курсоре `activeMarks` вычисляются по всему тексту, и кнопки
- *  применяют действие к нему */
-const formattingDisabled = computed(() => !props.editingText || props.activeMarks === null);
+/**
+ * Начертание/маркер доступны при непустом тексте — не только во время
+ * активного редактирования (18.7: при схлопнутом курсоре `activeMarks`
+ * вычисляются по всему тексту), но и когда элемент просто ВЫДЕЛЕН, а
+ * редактор ещё не открыт (26.08.2026, баг с живой проверки: раньше в этом
+ * случае начертание/маркер были недоступны, хотя цвет текста и размер
+ * шрифта прекрасно патчатся без входа в редактирование). `null` в
+ * `activeMarks` — надёжный сигнал «нет текста» в обоих случаях, см.
+ * `BoardCanvas.vue` (передаёт метки живого редактора либо метки первого
+ * выделенного узла, `selectedActiveMarks` в `use-board-selection.ts`).
+ */
+const formattingDisabled = computed(() => props.activeMarks === null);
 /** Ссылка требует ЯВНОГО выделения (18.7): без него показываем подсказку, а не форму URL */
 const linkUnavailable = computed(() => !props.editingText || !props.hasTextSelection);
 /** Ключи начертания, активные в activeMarks — вход для общего BoardFormatButtons.vue */
@@ -275,6 +288,25 @@ function clearLink(): void {
 function stepFontSize(delta: number): void {
   const next = props.currentFontSize + delta;
   if (next !== props.currentFontSize) emit('fontSize', next);
+}
+
+/**
+ * Прямой ввод числа в поле размера (26.08.2026, по референсу Miro — не
+ * только степпер ±, но и явное значение). Невалидный/пустой ввод откатывает
+ * поле обратно к текущему отрисованному значению — `:value` привязан к
+ * пропу, поэтому достаточно ничего не эмитить, следующий рендер сам вернёт
+ * старое число в input.
+ */
+function onFontSizeInputChange(event: Event): void {
+  const raw = (event.target as HTMLInputElement).value.trim();
+  const parsed = Number.parseInt(raw, 10);
+  if (!Number.isFinite(parsed)) {
+    (event.target as HTMLInputElement).value = String(props.currentFontSize);
+    return;
+  }
+  const clamped = Math.min(BOARD_ITEM_FONT_SIZE_MAX, Math.max(BOARD_ITEM_FONT_SIZE_MIN, parsed));
+  (event.target as HTMLInputElement).value = String(clamped);
+  if (clamped !== props.currentFontSize) emit('fontSize', clamped);
 }
 
 /** Цвет заливки из пикера (18.4) — обёртка над emit, чтобы не писать
@@ -480,26 +512,47 @@ function cancelTextColor(hex: BoardColorHex): void {
           <div class="board-text-menu">
             <div class="board-text-menu-row">
               <span class="board-text-menu-label">{{ t('board.fontSizeLabel') }}</span>
-              <div class="board-stepper">
+              <div class="board-fontsize-controls">
                 <button
                   type="button"
-                  class="board-stepper-btn"
-                  :disabled="!(canDecreaseFontSize ?? currentFontSize > BOARD_ITEM_FONT_SIZE_MIN)"
-                  :aria-label="t('board.fontSizeDecrease')"
-                  @click="stepFontSize(-FONT_SIZE_STEP)"
+                  class="board-fontsize-auto-btn"
+                  :class="{ 'board-fontsize-auto-btn-active': currentFontSizeMode === 'auto' }"
+                  :aria-pressed="currentFontSizeMode === 'auto'"
+                  :aria-label="t('board.fontSizeAuto')"
+                  :title="t('board.fontSizeAuto')"
+                  @click="emit('fontSizeMode', 'auto')"
                 >
-                  <UIcon name="i-lucide-minus" class="size-3" />
+                  {{ t('board.fontSizeAuto') }}
                 </button>
-                <span class="board-stepper-value">{{ currentFontSize }}</span>
-                <button
-                  type="button"
-                  class="board-stepper-btn"
-                  :disabled="!(canIncreaseFontSize ?? currentFontSize < BOARD_ITEM_FONT_SIZE_MAX)"
-                  :aria-label="t('board.fontSizeIncrease')"
-                  @click="stepFontSize(FONT_SIZE_STEP)"
-                >
-                  <UIcon name="i-lucide-plus" class="size-3" />
-                </button>
+                <div class="board-stepper">
+                  <button
+                    type="button"
+                    class="board-stepper-btn"
+                    :disabled="!(canDecreaseFontSize ?? currentFontSize > BOARD_ITEM_FONT_SIZE_MIN)"
+                    :aria-label="t('board.fontSizeDecrease')"
+                    @click="stepFontSize(-FONT_SIZE_STEP)"
+                  >
+                    <UIcon name="i-lucide-minus" class="size-3" />
+                  </button>
+                  <input
+                    type="text"
+                    inputmode="numeric"
+                    class="board-stepper-value board-stepper-input"
+                    :aria-label="t('board.fontSizeLabel')"
+                    :value="currentFontSize"
+                    @change="onFontSizeInputChange"
+                    @keydown.enter="($event.target as HTMLInputElement).blur()"
+                  />
+                  <button
+                    type="button"
+                    class="board-stepper-btn"
+                    :disabled="!(canIncreaseFontSize ?? currentFontSize < BOARD_ITEM_FONT_SIZE_MAX)"
+                    :aria-label="t('board.fontSizeIncrease')"
+                    @click="stepFontSize(FONT_SIZE_STEP)"
+                  >
+                    <UIcon name="i-lucide-plus" class="size-3" />
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -702,6 +755,47 @@ function cancelTextColor(hex: BoardColorHex): void {
 
 <style scoped>
 @import './shared/board-toolbar.css';
+
+/* Переключатель «Авто»/ручной размер шрифта (26.08.2026) — свой стиль здесь,
+   не в общем board-toolbar.css: BoardEdgeToolbar.vue переиспользует оттуда
+   только сам степпер (.board-stepper*), у подписи связи нет режима auto/manual. */
+.board-fontsize-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.board-fontsize-auto-btn {
+  height: 24px;
+  padding: 0 8px;
+  color: var(--brand-ink2);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+  background: var(--ui-bg-elevated);
+  border: none;
+  border-radius: 6px;
+}
+
+.board-fontsize-auto-btn:hover {
+  background: color-mix(in oklch, var(--ui-primary) 14%, var(--ui-bg-elevated));
+}
+
+.board-fontsize-auto-btn-active {
+  color: var(--ui-primary);
+  background: color-mix(in oklch, var(--ui-primary) 18%, var(--ui-bg-elevated));
+}
+
+/* Тот же внешний вид, что у прежнего статичного span (.board-stepper-value
+   в board-toolbar.css) — здесь он же навешен на input, только сброшены
+   браузерные стили поля ввода. */
+.board-stepper-input {
+  width: 26px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+}
 
 .board-text-menu-swatches {
   display: flex;

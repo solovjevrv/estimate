@@ -109,6 +109,49 @@ import { useBoardSessionStore } from '../../../stores/board-session';
 
 export type FormatMarkKey = 'bold' | 'italic' | 'underline' | 'strike';
 
+/**
+ * Ждёт, пока элемент перестанет быть `visibility: hidden`, с потолком по
+ * РЕАЛЬНОМУ времени, чтобы не зациклиться, если элемент так и не станет
+ * видимым (например, узел удалили в процессе ожидания). Библиотеко-нейтрально
+ * проверяем именно вычисленный стиль, а не что-то специфичное для Vue Flow —
+ * причина скрытости конкретного узла (измерение размеров) нас не касается,
+ * важен только конечный факт «можно ли фокусировать».
+ *
+ * Опрос через `setTimeout`, а не `requestAnimationFrame` — Chromium полностью
+ * приостанавливает rAF у неактивной/фоновой вкладки (только троттлит
+ * `setTimeout` до ~1 раза в секунду, но не глушит совсем), из-за чего кадровый
+ * потолок в фоновой вкладке мог реально растянуться на порядки дольше
+ * ожидаемого. Ровно так ведут себя параллельные воркеры Playwright — у каждого
+ * своё окно браузера, но реальный OS-фокус только у одного из них — поэтому
+ * потолок по времени (не по числу кадров) остаётся в разумных рамках
+ * независимо от того, активна вкладка сейчас или нет.
+ *
+ * Пробовал заменить на `MutationObserver` на скрытом предке (расчёт был не
+ * тратить обязательные 16мс между попытками опроса) — оказалось хуже, а не
+ * лучше: Vue Flow либо не мутирует именно тот узел/атрибут, на который вешался
+ * наблюдатель, либо делает это как-то ещё не отслеживаемо `MutationObserver`
+ * в этой версии библиотеки — наблюдатель НИ РАЗУ не сработал в живой проверке,
+ * и `waitUntilFocusable` каждый раз просто досиживал до таймаута (1000мс)
+ * вместо типичных ~16-32мс поллинга. Синтетический ввод в тесте, начинающийся
+ * сразу после видимости, за это время успевал уйти в `document.body` ПОЛНОСТЬЮ
+ * (не один потерянный символ, как было с поллингом, а весь текст) — 15 живых
+ * прогонов подряд, 15 из 15 сломаны. Отменено, найдено и проверено 26.08.2026
+ * в этой же задаче до мержа — в `dev` эта версия не попадала.
+ */
+function waitUntilFocusable(el: HTMLElement, timeoutMs = 1000): Promise<void> {
+  return new Promise((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    function check(): void {
+      if (getComputedStyle(el).visibility !== 'hidden' || Date.now() >= deadline) {
+        resolve();
+        return;
+      }
+      setTimeout(check, 16);
+    }
+    check();
+  });
+}
+
 export interface UseRichTextEditingOptions<TContent extends BoardItemContent> {
   itemId: string;
   canEdit: Ref<boolean>;
@@ -317,6 +360,17 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
     const el = editableEl.value;
     if (el) {
       renderRunsInto(el, runsFromContent(content.value));
+      // Только что созданный узел Vue Flow рендерит с `visibility: hidden` до тех
+      // пор, пока не измерит его реальные размеры через ResizeObserver (свой
+      // внутренний `isInit`) — это происходит не в этом тике, а как минимум
+      // кадром позже. `.focus()` на элементе с `visibility: hidden` — тихий
+      // no-op по спецификации: фокус остаётся на `<body>`, набор текста никуда
+      // не попадает, пока пользователь не кликнет в поле повторно сам (баг,
+      // найден пользователем 26.08.2026 именно на пути «выбрать инструмент
+      // Текст → клик по холсту → сразу печатать», а не через dblclick по уже
+      // отрисованному элементу — там видимость к этому моменту уже снята).
+      await waitUntilFocusable(el);
+      if (!editing.value || activeTextEditor.value?.itemId !== itemId) return;
       el.focus();
       const range = document.createRange();
       range.selectNodeContents(el);

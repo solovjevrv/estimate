@@ -850,6 +850,65 @@ describe('applyBoardOp — item.patch', () => {
     });
   });
 
+  it('принимает fontSizeMode manual/auto (26.08.2026)', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    const op = stickyCreateOp(id);
+    (op as { item: { style: unknown } }).item.style = {
+      color: '#FCEB96',
+      fontSize: 32,
+      fontSizeMode: 'manual',
+    };
+    applyBoardOp(state, op, BOARD_ID, ACTOR);
+
+    expect(state.items.get(id)!.style).toEqual({
+      color: '#FCEB96',
+      fontSize: 32,
+      fontSizeMode: 'manual',
+    });
+  });
+
+  it('отклоняет недопустимый режим размера шрифта', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { style: unknown } }).item.style = { color: '#FCEB96', fontSizeMode: 'fixed' };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('принимает якорь fontSizeBoxWidth/Height (26.08.2026)', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    const op = stickyCreateOp(id);
+    (op as { item: { style: unknown } }).item.style = {
+      color: '#FCEB96',
+      fontSize: 4,
+      fontSizeMode: 'manual',
+      fontSizeBoxWidth: 90,
+      fontSizeBoxHeight: 90,
+    };
+    applyBoardOp(state, op, BOARD_ID, ACTOR);
+
+    expect(state.items.get(id)!.style).toEqual({
+      color: '#FCEB96',
+      fontSize: 4,
+      fontSizeMode: 'manual',
+      fontSizeBoxWidth: 90,
+      fontSizeBoxHeight: 90,
+    });
+  });
+
+  it('отклоняет некорректный якорь размера шрифта', () => {
+    const state = emptyState();
+    const op = stickyCreateOp(randomUUID());
+    (op as { item: { style: unknown } }).item.style = {
+      color: '#FCEB96',
+      fontSizeBoxWidth: -5,
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
   it('отклоняет размер шрифта вне границ', () => {
     const state = emptyState();
     const op = stickyCreateOp(randomUUID());

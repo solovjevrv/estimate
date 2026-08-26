@@ -88,17 +88,6 @@ function flowEdge(data: BoardEdge, selected = false): MockEdge {
   };
 }
 
-function defaultTextDims(content: BoardItem['content']): { width: number; height: number } | null {
-  switch (content.type) {
-    case 'text':
-    case 'sticky':
-    case 'shape':
-      return { width: 120, height: 80 };
-    default:
-      return null;
-  }
-}
-
 interface MakeOptions {
   items?: BoardItem[];
   flowNodes?: MockNode[];
@@ -140,7 +129,6 @@ function makeSelection(opts: MakeOptions = {}) {
     uploadImage: vi.fn(),
     activeTool: opts.activeTool ?? (() => 'select'),
     breakFollowOnEdit,
-    textDefaultDimensions: (c) => defaultTextDims(c),
     getBoardZIndex: opts.getBoardZIndex ?? (() => ({ max: 10, min: 0 })),
     defaultItemColor: opts.defaultItemColor ?? '#CCCCCC',
     resolveTextColor: () => '#111111',
@@ -493,6 +481,34 @@ describe('useBoardSelection — font size clamping', () => {
     expect(makeSelection({ selectedNodes: [lo] }).api.canIncreaseSelectedFontSize.value).toBe(true);
   });
 
+  it('canIncreaseSelectedFontSize is false once the DOM-measured size already clamps below the base (26.08.2026)', () => {
+    // Реальный сценарий — авто-fit (useFitFontSize) ужал отрисованный размер
+    // ниже базы, потому что длинный текст не помещается даже при базовом
+    // размере, и сообщил об этом через effectiveFontSizeRegistry (26.08.2026:
+    // раньше это же симулировалось несовпадением геометрии бокса с дефолтной —
+    // с момента, когда resize сам пересчитывает базу под текущий бокс
+    // (`onResizeEnd`), несовпадение геометрии больше не возникает само по
+    // себе, единственный источник расхождения — реальное DOM-измерение).
+    // Кнопка "+" не должна молча ничего не делать в этом состоянии.
+    const node = flowNode(
+      item('a', { content: { type: 'sticky', text: 'x' }, style: { color: '#fff', fontSize: 20 } }),
+    );
+    const { api } = makeSelection({ selectedNodes: [node] });
+    api.effectiveFontSizeRegistry.set('a', 10);
+    expect(api.selectedFontSize.value).toBe(10);
+    expect(api.canIncreaseSelectedFontSize.value).toBe(false);
+  });
+
+  it('canIncreaseSelectedFontSize stays true while the DOM-measured size matches the base', () => {
+    const node = flowNode(
+      item('a', { content: { type: 'sticky', text: 'x' }, style: { color: '#fff', fontSize: 20 } }),
+    );
+    const { api } = makeSelection({ selectedNodes: [node] });
+    api.effectiveFontSizeRegistry.set('a', 20);
+    expect(api.selectedFontSize.value).toBe(20);
+    expect(api.canIncreaseSelectedFontSize.value).toBe(true);
+  });
+
   it('selectedFontSize falls back to FIT_FONT_MAX when no base size is set', () => {
     const a = flowNode(item('a', { content: { type: 'frame', title: 'F' } }));
     const { api } = makeSelection({ selectedNodes: [a] });
@@ -509,7 +525,28 @@ describe('useBoardSelection — font size clamping', () => {
     expect(op.patch.style.fontSize).toBe(BOARD_ITEM_FONT_SIZE_MAX);
   });
 
-  it('setSelectedFontSize is a no-op once already at MAX (clampedBase === currentBase)', () => {
+  it('setSelectedFontSize re-anchors fontSizeBoxWidth/Height to the current box (26.08.2026)', () => {
+    // Иначе следующий resize в manual считал бы расхождение от устаревшего
+    // якоря, оставшегося от предыдущего auto-периода — а не от бокса, каким
+    // он был в момент, когда пользователь только что явно задал это число.
+    const a = flowNode(
+      item('a', {
+        content: { type: 'frame', title: 'F' },
+        width: 240,
+        height: 160,
+        style: { color: '#fff', fontSize: 20, fontSizeBoxWidth: 120, fontSizeBoxHeight: 80 },
+      }),
+      { x: 0, y: 0 },
+      { width: 240, height: 160 },
+    );
+    const { api, applyOps } = makeSelection({ selectedNodes: [a] });
+    api.setSelectedFontSize(32);
+    const op = lastOps(applyOps)[0]!;
+    expect(op.patch.style.fontSizeBoxWidth).toBe(240);
+    expect(op.patch.style.fontSizeBoxHeight).toBe(160);
+  });
+
+  it('setSelectedFontSize still switches auto to manual even when the clamped number is unchanged (26.08.2026)', () => {
     const a = flowNode(
       item('a', {
         content: { type: 'frame', title: 'F' },
@@ -518,7 +555,95 @@ describe('useBoardSelection — font size clamping', () => {
     );
     const { api, applyOps } = makeSelection({ selectedNodes: [a] });
     api.setSelectedFontSize(BOARD_ITEM_FONT_SIZE_MAX + 100);
+    const op = lastOps(applyOps)[0]!;
+    expect(op.patch.style.fontSize).toBe(BOARD_ITEM_FONT_SIZE_MAX);
+    expect(op.patch.style.fontSizeMode).toBe('manual');
+  });
+
+  it('setSelectedFontSize is a true no-op once already manual and clamped value is unchanged', () => {
+    const a = flowNode(
+      item('a', {
+        content: { type: 'frame', title: 'F' },
+        style: { color: '#fff', fontSize: BOARD_ITEM_FONT_SIZE_MAX, fontSizeMode: 'manual' },
+      }),
+    );
+    const { api, applyOps } = makeSelection({ selectedNodes: [a] });
+    api.setSelectedFontSize(BOARD_ITEM_FONT_SIZE_MAX + 100);
     expect(applyOps).not.toHaveBeenCalled();
+  });
+
+  it('setSelectedFontSizeMode switches back to auto without changing fontSize when the box never moved while manual', () => {
+    // Якорь не задан явно — по умолчанию считается равным текущему боксу
+    // узла (120x80, см. `item()`), значит расхождения нет и число не меняется.
+    const a = flowNode(
+      item('a', {
+        content: { type: 'frame', title: 'F' },
+        style: { color: '#fff', fontSize: 30, fontSizeMode: 'manual' },
+      }),
+    );
+    const { api, applyOps } = makeSelection({ selectedNodes: [a] });
+    api.setSelectedFontSizeMode('auto');
+    const op = lastOps(applyOps)[0]!;
+    expect(op.patch.style.fontSizeMode).toBe('auto');
+    expect(op.patch.style.fontSize).toBe(30);
+    expect(op.patch.style.fontSizeBoxWidth).toBe(120);
+    expect(op.patch.style.fontSizeBoxHeight).toBe(80);
+  });
+
+  it('setSelectedFontSizeMode(auto) catches up on box growth that happened while manual (26.08.2026, Miro-style)', () => {
+    // Ровно репортнутый пользователем сценарий: manual=4 установлен на боксе
+    // 90x90 (якорь), затем стикер увеличен вдвое (180x180) БЕЗ изменения
+    // fontSize (manual не трогает его при resize) — переключение на auto
+    // должно досчитать это расхождение одним пересчётом, а не ждать
+    // следующего resize.
+    const a = flowNode(
+      item('a', {
+        content: { type: 'sticky', text: 'x' },
+        width: 180,
+        height: 180,
+        style: {
+          color: '#fff',
+          fontSize: 4,
+          fontSizeMode: 'manual',
+          fontSizeBoxWidth: 90,
+          fontSizeBoxHeight: 90,
+        },
+      }),
+      { x: 0, y: 0 },
+      { width: 180, height: 180 },
+    );
+    const { api, applyOps } = makeSelection({ selectedNodes: [a] });
+    api.setSelectedFontSizeMode('auto');
+    const op = lastOps(applyOps)[0]!;
+    expect(op.patch.style.fontSizeMode).toBe('auto');
+    // getScaledFontSize floor's ниже FIT_FONT_MIN=10 (та же авто-fit защита от
+    // переполнения, что и внутри resize) — математически 4*2=8, но 10 — то же
+    // число, что видел пользователь в живом репорте этого бага.
+    expect(op.patch.style.fontSize).toBe(10);
+    expect(op.patch.style.fontSizeBoxWidth).toBe(180);
+    expect(op.patch.style.fontSizeBoxHeight).toBe(180);
+  });
+
+  it('setSelectedFontSizeMode is a no-op when already in the target mode', () => {
+    const a = flowNode(
+      item('a', { content: { type: 'frame', title: 'F' }, style: { color: '#fff', fontSize: 20 } }),
+    );
+    const { api, applyOps } = makeSelection({ selectedNodes: [a] });
+    api.setSelectedFontSizeMode('auto');
+    expect(applyOps).not.toHaveBeenCalled();
+  });
+
+  it('manual mode: selectedFontSize fallback is the base as-is, regardless of box dimensions (26.08.2026: same as auto now — see selectedFontSize)', () => {
+    const shrunk = flowNode(
+      item('a', {
+        content: { type: 'sticky', text: 'x' },
+        style: { color: '#fff', fontSize: 20, fontSizeMode: 'manual' },
+      }),
+      { x: 0, y: 0 },
+      { width: 60, height: 40 },
+    );
+    const { api } = makeSelection({ selectedNodes: [shrunk] });
+    expect(api.selectedFontSize.value).toBe(20);
   });
 });
 

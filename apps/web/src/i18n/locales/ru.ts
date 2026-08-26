@@ -441,6 +441,7 @@ export default {
     },
     textOptionsLabel: 'Настройки текста',
     fontSizeLabel: 'Размер',
+    fontSizeAuto: 'Авто',
     fontSizeDecrease: 'Уменьшить размер шрифта',
     fontSizeIncrease: 'Увеличить размер шрифта',
     textColorLabel: 'Цвет текста',

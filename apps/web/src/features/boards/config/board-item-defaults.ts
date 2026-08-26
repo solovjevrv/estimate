@@ -2,7 +2,7 @@
  * Значения по умолчанию и границы для создания/резайза стикеров (12.6) —
  * держим их отдельно от компонентов, чтобы холст и тулбар их не дублировали.
  */
-import type { BoardColorHex, BoardFontFamily, BoardItemContent } from '@poker/shared';
+import type { BoardColorHex, BoardFontFamily } from '@poker/shared';
 
 import { theme } from '../../../lib/theme';
 
@@ -62,27 +62,19 @@ export const SHAPE_MAX_HEIGHT = STICKY_MAX_HEIGHT;
  * Границы резайза — те же, что у стикера/фигуры.
  */
 export const TEXT_DEFAULT_WIDTH = 200;
-export const TEXT_DEFAULT_HEIGHT = 40;
+/**
+ * 40 давало контентной зоне (бокс минус `p-4`, см. `BoardTextNode.vue`) всего
+ * 8px высоты — меньше высоты одной строки даже на `FIT_FONT_MIN` (10px), из-за
+ * чего свежесозданный текстовый элемент обрезал собственную первую строку с
+ * первого введённого символа, и это никак не лечилось авто-fit'ом (баг, найден
+ * пользователем 26.08.2026). 64px оставляет ~32px контентной зоне — с запасом
+ * хватает на одну строку при `FIT_FONT_MAX` (20px).
+ */
+export const TEXT_DEFAULT_HEIGHT = 64;
 export const TEXT_MIN_WIDTH = STICKY_MIN_WIDTH;
 export const TEXT_MIN_HEIGHT = STICKY_MIN_HEIGHT;
 export const TEXT_MAX_WIDTH = STICKY_MAX_WIDTH;
 export const TEXT_MAX_HEIGHT = STICKY_MAX_HEIGHT;
-
-/** Дефолтный бокс для создания элемента по типу контента — картинка/эмодзи/стикер создаются со своим размером отдельно (см. их composable/обработчик), сюда не входят */
-export function textDefaultDimensions(
-  content: BoardItemContent,
-): { width: number; height: number } | null {
-  switch (content.type) {
-    case 'sticky':
-      return { width: STICKY_DEFAULT_WIDTH, height: STICKY_DEFAULT_HEIGHT };
-    case 'shape':
-      return { width: SHAPE_DEFAULT_WIDTH, height: SHAPE_DEFAULT_HEIGHT };
-    case 'text':
-      return { width: TEXT_DEFAULT_WIDTH, height: TEXT_DEFAULT_HEIGHT };
-    default:
-      return null;
-  }
-}
 
 /**
  * Картинка на доске (13.2) — сохраняет пропорции исходника, дефолтный бокс —

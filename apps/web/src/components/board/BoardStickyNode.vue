@@ -9,8 +9,6 @@ import { BOARD_CAN_EDIT_KEY } from '../../features/boards/context/board-canvas-k
 import {
   STICKY_MAX_HEIGHT,
   STICKY_MAX_WIDTH,
-  STICKY_DEFAULT_HEIGHT,
-  STICKY_DEFAULT_WIDTH,
   STICKY_MIN_HEIGHT,
   STICKY_MIN_WIDTH,
 } from '../../features/boards/config/board-item-defaults';
@@ -58,8 +56,6 @@ const {
   isSelected: toRef(props, 'selected'),
   content,
   buildContent: (text, runs) => ({ type: 'sticky', text, ...(runs ? { runs } : {}) }),
-  defaultWidth: STICKY_DEFAULT_WIDTH,
-  defaultHeight: STICKY_DEFAULT_HEIGHT,
 });
 
 /**

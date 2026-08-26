@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { BoardItem, BoardTextContent } from '@poker/shared';
+import {
+  BOARD_ITEM_FONT_SIZE_MAX,
+  BOARD_ITEM_FONT_SIZE_MIN,
+  type BoardItem,
+  type BoardTextContent,
+} from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer, type OnResizeEnd } from '@vue-flow/node-resizer';
 import { computed, inject, onBeforeUnmount, ref, toRef, useTemplateRef, watch } from 'vue';
@@ -11,14 +16,16 @@ import {
 import { readableTextColor } from '../../features/boards/domain/board-colors';
 import {
   boardFontFamilyCss,
-  TEXT_DEFAULT_HEIGHT,
-  TEXT_DEFAULT_WIDTH,
   TEXT_MAX_HEIGHT,
   TEXT_MAX_WIDTH,
   TEXT_MIN_HEIGHT,
   TEXT_MIN_WIDTH,
 } from '../../features/boards/config/board-item-defaults';
-import { FIT_FONT_MAX, useFitFontSize } from '../../features/boards/composables/use-fit-font-size';
+import {
+  FIT_FONT_MAX,
+  getScaledFontSize,
+  useFitFontSize,
+} from '../../features/boards/composables/use-fit-font-size';
 import { useRichTextEditing } from '../../features/boards/composables/use-rich-text-editing';
 import { useBoardSessionStore } from '../../stores/board-session';
 import BoardEditingBadge from './shared/BoardEditingBadge.vue';
@@ -37,6 +44,7 @@ const textColor = computed(
 const fontFamily = computed(() => boardFontFamilyCss(props.data.style.fontFamily));
 const textAlign = computed(() => props.data.style.textAlign ?? 'left');
 const baseFontSize = computed(() => props.data.style.fontSize ?? FIT_FONT_MAX);
+const fontSizeMode = computed(() => props.data.style.fontSizeMode ?? 'auto');
 
 const contentBoxEl = useTemplateRef<HTMLDivElement>('contentBox');
 const textEl = useTemplateRef<HTMLSpanElement>('text');
@@ -93,8 +101,7 @@ const fontSize = useFitFontSize(
   boxHeight,
   editing,
   baseFontSize,
-  TEXT_DEFAULT_WIDTH,
-  TEXT_DEFAULT_HEIGHT,
+  fontSizeMode,
 );
 
 let reportedItemId: string | null = null;
@@ -112,13 +119,44 @@ onBeforeUnmount(() => {
   if (reportedItemId) effectiveFontSizes?.remove(reportedItemId);
 });
 
+/**
+ * В `auto` (26.08.2026, по референсу Miro) пересчитывает `style.fontSize`
+ * пропорционально ИМЕННО ЭТОМУ resize (было — якорь `fontSizeBoxWidth/Height`,
+ * а не всегда `props.data.width/height`, см. пояснение в `BoardItemStyle` — →
+ * стало `width/height`) и сохраняет обе величины как новую базу/якорь — см.
+ * подробное пояснение у аналогичного `onResizeEnd` в
+ * `use-board-node-editing.ts` (BoardStickyNode/BoardShapeNode используют общий
+ * composable, у текста своя копия, так как он не проходит через
+ * `useBoardNodeEditing`).
+ */
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
+  const patch: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    style?: { fontSize: number; fontSizeBoxWidth: number; fontSizeBoxHeight: number };
+  } = { x, y, width, height };
+  if (fontSizeMode.value === 'auto') {
+    const anchorWidth = props.data.style.fontSizeBoxWidth ?? props.data.width;
+    const anchorHeight = props.data.style.fontSizeBoxHeight ?? props.data.height;
+    const nextFontSize = Math.min(
+      BOARD_ITEM_FONT_SIZE_MAX,
+      Math.max(
+        BOARD_ITEM_FONT_SIZE_MIN,
+        getScaledFontSize(baseFontSize.value, width, height, anchorWidth, anchorHeight),
+      ),
+    );
+    if (nextFontSize !== baseFontSize.value) {
+      patch.style = { fontSize: nextFontSize, fontSizeBoxWidth: width, fontSizeBoxHeight: height };
+    }
+  }
   void boardSession.applyOps([
     {
       type: 'item.patch',
       clientOpId: crypto.randomUUID(),
       id: props.id,
-      patch: { x, y, width, height },
+      patch,
     },
   ]);
 }
@@ -144,6 +182,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       ref="contentBox"
       data-testid="board-node-content"
       class="board-text-content flex h-full w-full items-center overflow-hidden p-4"
+      :style="{ color: textColor }"
       @dblclick.stop="startEditing"
     >
       <template v-if="editing">

@@ -59,7 +59,6 @@ import { useI18n } from 'vue-i18n';
 import {
   resolveEdgeColor,
   STICKY_DEFAULT_COLOR,
-  textDefaultDimensions,
   zIndexRange,
 } from '../../features/boards/config/board-item-defaults';
 import {
@@ -357,6 +356,7 @@ const {
   findContainerAt: containerAt,
   applyOps: (ops) => void boardSession.applyOps(ops),
   breakFollowOnEdit,
+  selectItems: (ids) => addSelectedNodes(ids.map((id) => ({ id }) as GraphNode<BoardItem>)),
 });
 
 const {
@@ -404,7 +404,6 @@ const selection = useBoardSelection({
   uploadImage,
   activeTool: () => activeTool.value,
   breakFollowOnEdit,
-  textDefaultDimensions,
   getBoardZIndex,
   defaultItemColor: STICKY_DEFAULT_COLOR,
   resolveTextColor: readableTextColor,
@@ -424,6 +423,8 @@ const {
   canDecreaseSelectedFontSize,
   selectedTextColor,
   selectedTextAlign,
+  selectedActiveMarks,
+  selectedFontSizeMode,
   canGroupSelection,
   canUngroupSelection,
   contextMenu,
@@ -435,8 +436,11 @@ const {
   setSelectedColor,
   setSelectedForm,
   setSelectedFontSize,
+  setSelectedFontSizeMode,
   setSelectedTextColor,
   setSelectedTextAlign,
+  toggleSelectedMark,
+  setSelectedHighlight,
   setSelectedEmoji,
   setSelectedSticker,
   setSelectedGiphy,
@@ -790,24 +794,30 @@ useBoardHotkeys({
         :current-color="selectedColor"
         :current-form="selectedForm"
         :current-font-size="selectedFontSize"
+        :current-font-size-mode="selectedFontSizeMode"
         :can-increase-font-size="canIncreaseSelectedFontSize"
         :can-decrease-font-size="canDecreaseSelectedFontSize"
         :current-text-color="selectedTextColor"
         :current-text-align="selectedTextAlign"
         :editing-text="!!activeTextEditor"
-        :active-marks="activeTextEditor?.activeMarks.value ?? null"
+        :active-marks="activeTextEditor ? activeTextEditor.activeMarks.value : selectedActiveMarks"
         :has-text-selection="activeTextEditor?.hasTextSelection.value ?? false"
         @color="setSelectedColor"
         @color-preview="previewSelectedColor"
         @color-cancel="cancelSelectedColorPreview"
         @form="setSelectedForm"
         @font-size="setSelectedFontSize"
+        @font-size-mode="setSelectedFontSizeMode"
         @text-color="setSelectedTextColor"
         @text-color-preview="previewSelectedTextColor"
         @text-color-cancel="cancelSelectedTextColorPreview"
         @text-align="setSelectedTextAlign"
-        @toggle-mark="activeTextEditor?.toggle($event)"
-        @set-highlight="activeTextEditor?.setHighlight($event)"
+        @toggle-mark="
+          activeTextEditor ? activeTextEditor.toggle($event) : toggleSelectedMark($event)
+        "
+        @set-highlight="
+          activeTextEditor ? activeTextEditor.setHighlight($event) : setSelectedHighlight($event)
+        "
         @set-link="activeTextEditor?.setLink($event)"
         @duplicate="duplicateSelected"
         @delete="deleteSelected"
@@ -972,6 +982,25 @@ useBoardHotkeys({
 :deep(.vue-flow__selection) {
   background: color-mix(in oklch, var(--ui-primary) 8%, transparent);
   border: 1px dashed var(--ui-primary);
+}
+
+/*
+ * Узел/связь получают нативный DOM-фокус (клавиатурная a11y-навигация Vue
+ * Flow — например, стрелки для сдвига выделенного узла), а браузерный дефолтный
+ * контур фокуса для них глушится только в НЕ подключённом у нас `theme-default.css`
+ * (см. пояснение про `.vue-flow__selection` выше — по той же причине не тянем
+ * его целиком). Без этого правила выделение узла иногда рисовало прямо поверх
+ * карточки синий прямоугольник ровно по её границе (браузерный `outline`,
+ * никак не связанный с нашими зелёными хендлами ресайза) — баг, найден
+ * пользователем 26.08.2026 после того, как автовыделение только что созданного
+ * элемента (см. `use-board-creation.ts`) сделало путь к нативному фокусу узла
+ * куда более частым, чем раньше.
+ */
+:deep(.vue-flow__node:focus),
+:deep(.vue-flow__node:focus-visible),
+:deep(.vue-flow__edge:focus),
+:deep(.vue-flow__edge:focus-visible) {
+  outline: none;
 }
 
 .board-empty-state {

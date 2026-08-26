@@ -1,10 +1,13 @@
 import type {
   BoardColorHex,
+  BoardFontSizeMode,
+  BoardHighlightColor,
   BoardItem,
   BoardItemContent,
   BoardItemPatchOp,
   BoardOp,
   BoardTextAlign,
+  BoardTextMark,
   EmojiSequence,
   GiphyGifSummary,
   PersonalStickerFormat,
@@ -13,7 +16,6 @@ import { isBoardContainer } from '@poker/shared';
 import {
   FIT_FONT_MAX,
   getScaledFontSize,
-  unscaleFontSizeStep,
 } from '../../../features/boards/composables/use-fit-font-size';
 import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@poker/shared';
 import { computed, ref, shallowRef } from 'vue';
@@ -21,11 +23,25 @@ import { computed, ref, shallowRef } from 'vue';
 import type { BoardEffectiveFontSizeRegistry } from '../context/board-canvas-keys';
 import type { ItemFormKind } from '../board-item-form';
 import type { BoardContextMenuTarget } from '../board-context-menu';
+import type { FormatMarkKey } from './use-rich-text-editing';
 import {
   type BoardSelectionEdge,
   type BoardSelectionNode,
 } from '../../../features/boards/adapters/vue-flow-adapter';
 import { uuid } from '../../../features/boards/infrastructure/uuid';
+import {
+  applyMarkToRange,
+  getActiveMarks,
+  runsFromContent,
+  runsPlainText,
+} from '../rich-text/board-rich-text';
+
+/** Стикер/фигура/текст — единственные типы с текстовым содержимым (runs/text) */
+function isTextBearingContent(
+  content: BoardItemContent,
+): content is Extract<BoardItemContent, { type: 'sticky' | 'shape' | 'text' }> {
+  return content.type === 'sticky' || content.type === 'shape' || content.type === 'text';
+}
 
 export interface BoardSelectionOptions {
   canEdit: () => boolean;
@@ -52,9 +68,6 @@ export interface BoardSelectionOptions {
   uploadImage: (file: File) => Promise<{ url: string; width: number; height: number } | null>;
   activeTool: () => string;
   breakFollowOnEdit: () => void;
-  /** Размеры по умолчанию для текста/стикера/фигуры — вынесены в Canvas, чтобы
-   * composable не зависел от board-item-defaults (см. комментарий ниже). */
-  textDefaultDimensions: (content: BoardItemContent) => { width: number; height: number } | null;
   /** max/min zIndex среди всех элементов — Canvas вычисляет через board-item-defaults. */
   getBoardZIndex: () => { max: number; min: number };
   /** Цвет заливки по умолчанию для новых групп (без него composable импортировал бы
@@ -234,48 +247,52 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     },
   };
 
-  function textDefaultDimensions(
-    content: BoardItemContent,
-  ): { width: number; height: number } | null {
-    return options.textDefaultDimensions(content);
-  }
-
-  function selectedTextScale(node: BoardSelectionNode): number | null {
-    const defaults = textDefaultDimensions(node.data.content);
-    if (!defaults) return null;
-    return Math.min(
-      node.dimensions.width / defaults.width,
-      node.dimensions.height / defaults.height,
-    );
-  }
-
   /** Сохранённый базовый размер — только для изменения +/- и его границ. */
   const selectedBaseFontSize = computed<number>(
     () => selectedNodes.value[0]?.data.style.fontSize ?? FIT_FONT_MAX,
   );
 
+  /** Не задано — `auto` (масштабируется с боксом, как было до этой задачи). */
+  const selectedFontSizeMode = computed<BoardFontSizeMode>(
+    () => selectedNodes.value[0]?.data.style.fontSizeMode ?? 'auto',
+  );
+
   /**
-   * Тулбар показывает размер, который реально нарисовал node. Пока node ещё не
-   * смонтирован, fallback применяет геометрическое масштабирование; после DOM-fit
-   * registry заменяет его точным значением с учётом длины и форматирования текста.
+   * Тулбар показывает размер, который реально нарисовал node. Пока node ещё
+   * не смонтирован, fallback — сохранённая база: она уже актуальна для
+   * текущего бокса в ОБОИХ режимах (26.08.2026) — в `auto` её пересчитывает
+   * пропорционально самому resize `onResizeEnd` в момент действия, а не
+   * реактивная геометрическая формула здесь (раньше формула сравнивала
+   * текущий бокс с ФИКСИРОВАННОЙ геометрией элемента по умолчанию, из-за чего
+   * переключение auto↔manual могло дать неожиданный скачок числа — баг,
+   * найден пользователем). После DOM-fit registry заменяет фоллбэк точным
+   * значением с учётом длины и форматирования текста.
    */
   const selectedFontSize = computed<number>(() => {
     const node = selectedNodes.value[0];
     if (!node) return FIT_FONT_MAX;
     const measured = fontSizeSizes.value.get(node.id);
-    if (measured !== undefined) return measured;
-    const defaults = textDefaultDimensions(node.data.content);
-    if (!defaults) return selectedBaseFontSize.value;
-    return getScaledFontSize(
-      selectedBaseFontSize.value,
-      node.dimensions.width,
-      node.dimensions.height,
-      defaults.width,
-      defaults.height,
-    );
+    return measured ?? selectedBaseFontSize.value;
   });
+  /**
+   * «Увеличить» не должно молча ничего не делать, когда бокс уже не может
+   * вместить больший шрифт — авто-fit (`useFitFontSize`) в этом случае тут же
+   * ужимает отрисованный размер обратно к тому, что реально помещается, и с
+   * точки зрения пользователя кнопка выглядит сломанной (клик есть, видимого
+   * эффекта нет, никакой обратной связи). Пока `selectedFontSize` (реально
+   * отрисованный размер) меньше `selectedBaseFontSize` (запрошенный) — бокс
+   * уже исчерпал место для текущего содержимого, дальше расти некуда без
+   * ручного увеличения самого бокса — кнопка должна быть задизейблена, а не
+   * тихо съедать клики (баг, найден пользователем 26.08.2026, ярче всего
+   * проявлялся на текстовом элементе — его дефолтный бокс, `TEXT_DEFAULT_HEIGHT`,
+   * рассчитан впритык под ОДИН размер шрифта по умолчанию, без всякого запаса
+   * на «+», но тот же тупик воспроизводится на любом достаточно уменьшенном
+   * вручную стикере/фигуре — механизм общий для всех типов).
+   */
   const canIncreaseSelectedFontSize = computed(
-    () => selectedBaseFontSize.value < BOARD_ITEM_FONT_SIZE_MAX,
+    () =>
+      selectedBaseFontSize.value < BOARD_ITEM_FONT_SIZE_MAX &&
+      selectedFontSize.value >= selectedBaseFontSize.value,
   );
   const canDecreaseSelectedFontSize = computed(
     () => selectedBaseFontSize.value > BOARD_ITEM_FONT_SIZE_MIN,
@@ -287,6 +304,67 @@ export function useBoardSelection(options: BoardSelectionOptions) {
   const selectedTextAlign = computed<BoardTextAlign>(
     () => selectedNodes.value[0]?.data.style.textAlign ?? 'center',
   );
+
+  /**
+   * Метки начертания/маркера для тулбара, когда элемент просто ВЫДЕЛЕН, а не
+   * активно редактируется — тот же fallback «весь текст», что `resolveFormatRange`
+   * в `use-rich-text-editing.ts` уже применяет при схлопнутом курсоре внутри
+   * активного редактора (18.7), только распространённый на случай, когда
+   * редактор вообще не открыт. До этого начертание/маркер работали ТОЛЬКО во
+   * время реального редактирования — просто выделенный элемент не давал их
+   * применить вовсе, хотя цвет текста и размер шрифта прекрасно патчатся без
+   * входа в редактирование (баг, найден пользователем 26.08.2026). Источник —
+   * первый выделенный узел с непустым текстовым контентом, как и
+   * `selectedColor`/`selectedTextColor` выше. `null` — нет текста (нечего
+   * форматировать), `{}` — текст есть, но без активных меток.
+   */
+  const selectedActiveMarks = computed<BoardTextMark | null>(() => {
+    const content = selectedNodes.value[0]?.data.content;
+    if (!content || !isTextBearingContent(content)) return null;
+    const runs = runsFromContent(content);
+    const text = runsPlainText(runs);
+    if (text.length === 0) return null;
+    return getActiveMarks(runs, 0, text.length);
+  });
+
+  /**
+   * Патчит начертание/маркер сразу в данных (`content.runs`), без живого
+   * `editableEl` — companion к `applyRangePatch` в `use-rich-text-editing.ts`,
+   * которая делает то же самое, но поверх DOM активного редактора. Действует
+   * на ВСЕ выделенные узлы с непустым текстом (сравни с `patchSelected`, но с
+   * пропуском узлов без подходящего контента — не каждый узел в выделении
+   * обязан быть текстовым). Направление тоггла берётся из состояния ПЕРВОГО
+   * узла (`selectedActiveMarks`) — при смешанном выделении все узлы после
+   * клика синхронизируются к одному состоянию, как и у большинства редакторов.
+   */
+  function patchSelectedWholeTextMark(patch: (marks: BoardTextMark) => BoardTextMark): void {
+    const ops: BoardOp[] = [];
+    for (const node of selectedNodes.value) {
+      const content = node.data.content;
+      if (!isTextBearingContent(content)) continue;
+      const runs = runsFromContent(content);
+      const text = runsPlainText(runs);
+      if (text.length === 0) continue;
+      const nextRuns = applyMarkToRange(runs, 0, text.length, patch);
+      const hasFormatting = nextRuns.some((run) => run.marks);
+      ops.push({
+        type: 'item.patch',
+        clientOpId: uuid(),
+        id: node.id,
+        patch: { content: { ...content, text, runs: hasFormatting ? nextRuns : undefined } },
+      });
+    }
+    if (ops.length) void options.applyOps(ops);
+  }
+
+  function toggleSelectedMark(key: FormatMarkKey): void {
+    const active = selectedActiveMarks.value;
+    patchSelectedWholeTextMark((marks) => ({ ...marks, [key]: !active?.[key] }));
+  }
+
+  function setSelectedHighlight(color: BoardHighlightColor | null): void {
+    patchSelectedWholeTextMark((marks) => ({ ...marks, highlight: color ?? undefined }));
+  }
 
   /**
    * Единый переключатель «тип элемента» (12.7) — конвертирует ЛЮБОЕ выделение
@@ -405,51 +483,106 @@ export function useBoardSelection(options: BoardSelectionOptions) {
   }
 
   /**
-   * Тулбар шагает по ОТОБРАЖАЕМОМУ (масштабированному) размеру шрифта, но
-   * сохраняется базовый. При `scale` > шага стэппера `Math.round(targetFontSize /
-   * scale)` откатывается обратно к `currentBase` (шаг в 2px displayed — меньше 1px
-   * base) — клик по +/- молча ничего не менял бы, и оставался бы «залипшим», раз
-   * при следующем клике currentBase/displayed те же самые. Гарантируем минимум
-   * ±1 к базе в сторону клика, если точный пересчёт откатился к текущему значению.
-   * Длинный текст может быть ужат ниже масштабированной базы. В таком случае
-   * +/- меняет настройку пользователя на ту же дельту, а не понижает её до
-   * fit-результата, который всё равно не поместится. Берём разницу displayed
-   * с целевым fontSize (а не хардкодим шаг стэппера) — иначе значение молча
-   * разойдётся с FONT_SIZE_STEP в BoardSelectionToolbar.vue при его смене.
+   * Явная установка размера (степпер +/- или прямой ввод числа) — сама по
+   * себе решение пользователя зафиксировать конкретное значение (26.08.2026,
+   * по референсу Miro): переключает режим в `manual`, даже если сам номер
+   * численно не поменялся (см. финальную проверку ниже) — иначе выбор того
+   * же числа, что уже показывает `auto`-режим, не переключил бы его.
+   *
+   * `fontSize` — это ЦЕЛЕВОЕ отображаемое значение (степпер шагает от
+   * `currentFontSize` в `BoardSelectionToolbar.vue`, т.е. от того, что реально
+   * нарисовано, включая масштабирование по боксу в `auto`). Раз результат
+   * ЛЮБОГО вызова этой функции — `manual`, а в `manual` отображаемое ВСЕГДА
+   * равно базе (никакого масштабирования по боксу), новая база — это просто
+   * `fontSize` как есть, без какого-либо пересчёта под текущий scale.
+   *
+   * Раньше (до режима manual) здесь был пересчёт через `unscaleFontSizeStep` —
+   * он транслировал целевой ОТОБРАЖАЕМЫЙ размер обратно в базу для дефолтной
+   * геометрии, ПРЕДПОЛАГАЯ, что результат останется в `auto` (масштабируемым).
+   * С момента, когда каждый вызов уводит в `manual`, это предположение больше
+   * не верно — тот пересчёт давал НЕОЖИДАННЫЙ скачок вниз (баг, найден живой
+   * проверкой 26.08.2026): на увеличенном боксе показывалось 30px, клик «+2»
+   * переключал в manual и рисовал 21px вместо ожидаемых 32 — пользователь
+   * нажал «увеличить», а шрифт визуально уменьшился.
    */
   function setSelectedFontSize(fontSize: number): void {
     const selected = selectedNodes.value[0];
     if (!selected) return;
-    const defaults = textDefaultDimensions(selected.data.content);
-    const scale = selectedTextScale(selected);
     const currentBase = selectedBaseFontSize.value;
-    const displayed = selectedFontSize.value;
-    const scaledBase =
-      defaults === null
-        ? currentBase
-        : getScaledFontSize(
-            currentBase,
-            selected.dimensions.width,
-            selected.dimensions.height,
-            defaults.width,
-            defaults.height,
-          );
-
-    const nextBase =
-      scale === null || displayed !== scaledBase
-        ? currentBase + (fontSize - displayed)
-        : unscaleFontSizeStep(currentBase, fontSize, scale);
+    const wasManual = selectedFontSizeMode.value === 'manual';
     const clampedBase = Math.min(
       BOARD_ITEM_FONT_SIZE_MAX,
-      Math.max(BOARD_ITEM_FONT_SIZE_MIN, nextBase),
+      Math.max(BOARD_ITEM_FONT_SIZE_MIN, fontSize),
     );
-    if (clampedBase === currentBase) return;
+    if (clampedBase === currentBase && wasManual) return;
+    // Якорь (`fontSizeBoxWidth/Height`) сбрасывается на ТЕКУЩИЙ бокс каждого узла —
+    // это число валидно именно для него ПРЯМО СЕЙЧАС, а не для геометрии на момент
+    // последнего resize в auto (см. `setSelectedFontSizeMode` ниже: без этого сброса
+    // последующий resize в manual считал бы расхождение от устаревшего якоря).
     patchSelected((node) => ({
       type: 'item.patch',
       clientOpId: uuid(),
       id: node.id,
-      patch: { style: { fontSize: clampedBase } },
+      patch: {
+        style: {
+          fontSize: clampedBase,
+          fontSizeMode: 'manual',
+          fontSizeBoxWidth: node.data.width,
+          fontSizeBoxHeight: node.data.height,
+        },
+      },
     }));
+  }
+
+  /**
+   * Переключатель «Авто» в тулбаре (26.08.2026, по референсу Miro). Обратно в
+   * `manual` — просто флаг, само число уже актуально для текущего бокса (в
+   * `auto` инвариант «fontSize верен для текущей геометрии» поддерживается на
+   * каждом resize). В `auto` — ДОСЧИТЫВАЕТ пропущенные изменения бокса: пока
+   * был активен `manual`, resize двигал бокс, но не трогал ни `fontSize`, ни
+   * якорь (`fontSizeBoxWidth/Height`), поэтому к моменту переключения они
+   * могут заметно разойтись с текущей геометрией узла. Пересчитываем один раз
+   * пропорционально этому расхождению (якорь → текущий бокс) — так само
+   * переключение уже показывает верный для текущего размера стикера шрифт, не
+   * дожидаясь следующего resize (баг из живой проверки: `manual=4` → resize
+   * 2x → переключение на `auto` не меняло число, хотя бокс уже вырос).
+   */
+  function setSelectedFontSizeMode(mode: BoardFontSizeMode): void {
+    if (selectedFontSizeMode.value === mode) return;
+    if (mode === 'manual') {
+      patchSelected((node) => ({
+        type: 'item.patch',
+        clientOpId: uuid(),
+        id: node.id,
+        patch: { style: { fontSizeMode: mode } },
+      }));
+      return;
+    }
+    patchSelected((node) => {
+      const base = node.data.style.fontSize ?? FIT_FONT_MAX;
+      const anchorWidth = node.data.style.fontSizeBoxWidth ?? node.data.width;
+      const anchorHeight = node.data.style.fontSizeBoxHeight ?? node.data.height;
+      const nextFontSize = Math.min(
+        BOARD_ITEM_FONT_SIZE_MAX,
+        Math.max(
+          BOARD_ITEM_FONT_SIZE_MIN,
+          getScaledFontSize(base, node.data.width, node.data.height, anchorWidth, anchorHeight),
+        ),
+      );
+      return {
+        type: 'item.patch',
+        clientOpId: uuid(),
+        id: node.id,
+        patch: {
+          style: {
+            fontSize: nextFontSize,
+            fontSizeMode: mode,
+            fontSizeBoxWidth: node.data.width,
+            fontSizeBoxHeight: node.data.height,
+          },
+        },
+      };
+    });
   }
 
   function setSelectedTextColor(textColor: BoardColorHex): void {
@@ -873,10 +1006,12 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     selectedForm,
     selectedColor,
     selectedFontSize,
+    selectedFontSizeMode,
     canIncreaseSelectedFontSize,
     canDecreaseSelectedFontSize,
     selectedTextColor,
     selectedTextAlign,
+    selectedActiveMarks,
     canGroupSelection,
     canUngroupSelection,
     contextMenu,
@@ -896,8 +1031,11 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     setSelectedForm,
     setSelectedColor,
     setSelectedFontSize,
+    setSelectedFontSizeMode,
     setSelectedTextColor,
     setSelectedTextAlign,
+    toggleSelectedMark,
+    setSelectedHighlight,
     setSelectedEmoji,
     setSelectedSticker,
     setSelectedGiphy,
