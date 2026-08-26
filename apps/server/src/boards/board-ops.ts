@@ -451,6 +451,32 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
     return { type: 'image', url: c.url, width: c.width, height: c.height };
   }
 
+  // Для giphy — id (Giphy-идентификатор GIF, не URL — сервер сам резолвит и
+  // проксирует медиа по нему, см. giphy.plugin.ts) + width/height обязательны
+  if (c.type === 'giphy') {
+    const GIPHY_ID_PATTERN = /^[A-Za-z0-9]{1,64}$/;
+    if (typeof c.id !== 'string' || !GIPHY_ID_PATTERN.test(c.id)) {
+      throw new ValidationError('Недопустимый идентификатор GIF');
+    }
+    if (
+      typeof c.width !== 'number' ||
+      !Number.isFinite(c.width) ||
+      c.width < 1 ||
+      c.width > BOARD_ITEM_MAX_SIZE
+    ) {
+      throw new ValidationError('Некорректная ширина GIF');
+    }
+    if (
+      typeof c.height !== 'number' ||
+      !Number.isFinite(c.height) ||
+      c.height < 1 ||
+      c.height > BOARD_ITEM_MAX_SIZE
+    ) {
+      throw new ValidationError('Некорректная высота GIF');
+    }
+    return { type: 'giphy', id: c.id, width: c.width, height: c.height };
+  }
+
   // Для остальных типов (sticky, shape, text) — text обязателен
   if (typeof c.text !== 'string' || c.text.length > BOARD_ITEM_TEXT_MAX_LENGTH) {
     throw new ValidationError('Слишком длинный текст элемента');

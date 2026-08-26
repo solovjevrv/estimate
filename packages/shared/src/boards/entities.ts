@@ -12,7 +12,7 @@ import type { PersonalStickerFormat } from './personal-stickers';
  * требует миграции схемы благодаря дискриминированному union по `type`.
  */
 export type BoardItemType =
-  'sticky' | 'shape' | 'text' | 'image' | 'emoji' | 'sticker' | 'frame' | 'group';
+  'sticky' | 'shape' | 'text' | 'image' | 'emoji' | 'sticker' | 'giphy' | 'frame' | 'group';
 export const BOARD_ITEM_TYPES: readonly BoardItemType[] = [
   'sticky',
   'shape',
@@ -20,6 +20,7 @@ export const BOARD_ITEM_TYPES: readonly BoardItemType[] = [
   'image',
   'emoji',
   'sticker',
+  'giphy',
   'frame',
   'group',
 ];
@@ -202,6 +203,23 @@ export interface BoardStickerContent {
 }
 
 /**
+ * GIF из Giphy (21.9). Хранит только `id` — сервер проксирует Giphy целиком
+ * (клиент никогда не обращается к api.giphy.com/media.giphy.com напрямую, см.
+ * `apps/server/src/boards/giphy.plugin.ts`), поэтому content намеренно НЕ
+ * содержит сырого внешнего URL: `url` в BoardImageContent — путь к НАШЕЙ
+ * доске (BOARD_IMAGE_URL_PATTERN), а не куда угодно, тогда как чужой домен
+ * от Giphy пришлось бы валидировать отдельным SSRF-белым-списком. `width`/
+ * `height` — исходный размер полноразмерного рендишна (aspect ratio при
+ * размещении), а не превью из пикера.
+ */
+export interface BoardGiphyContent {
+  type: 'giphy';
+  id: string;
+  width: number;
+  height: number;
+}
+
+/**
  * Фрейм (14.3) — видимый контейнер с заголовком, в который вкладываются другие
  * элементы (их `parentId` указывает на фрейм). Фрейм сам не вкладывается ни в
  * один другой элемент (т.е. `parentId` у фрейма всегда null) — вложенность
@@ -230,6 +248,7 @@ export type BoardItemContent =
   | BoardImageContent
   | BoardEmojiContent
   | BoardStickerContent
+  | BoardGiphyContent
   | BoardFrameContent
   | BoardGroupContent;
 

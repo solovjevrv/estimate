@@ -101,6 +101,7 @@ import BoardCursor from './BoardCursor.vue';
 import BoardEdgeToolbar from './BoardEdgeToolbar.vue';
 import BoardFollowingBanner from './BoardFollowingBanner.vue';
 import BoardFloatingEdge from './BoardFloatingEdge.vue';
+import BoardGiphyNode from './BoardGiphyNode.vue';
 import BoardImageNode from './BoardImageNode.vue';
 import BoardPresencePanel from './BoardPresencePanel.vue';
 import BoardShapeNode from './BoardShapeNode.vue';
@@ -160,6 +161,7 @@ const nodeTypes = markRaw({
   image: BoardImageNode,
   emoji: BoardEmojiNode,
   sticker: BoardStickerNode,
+  giphy: BoardGiphyNode,
   // Фрейм и группа (14.3) — один и тот же компонент, различаются content.type
   frame: BoardFrameNode,
   group: BoardFrameNode,
@@ -341,6 +343,7 @@ const {
   createImage,
   createEmojiAtCenter,
   createStickerAtCenter,
+  createGiphyAtCenter,
   cancelPendingEdit,
   onPaneClick: onPaneClickForCreation,
   onPaneDoubleClick,
@@ -436,6 +439,7 @@ const {
   setSelectedTextAlign,
   setSelectedEmoji,
   setSelectedSticker,
+  setSelectedGiphy,
   replaceSelectedImage,
   groupSelection,
   ungroupSelection,
@@ -776,6 +780,7 @@ useBoardHotkeys({
         v-model="activeTool"
         @emoji="createEmojiAtCenter"
         @sticker="createStickerAtCenter"
+        @giphy="createGiphyAtCenter"
       />
 
       <BoardSelectionToolbar
@@ -809,6 +814,7 @@ useBoardHotkeys({
         @replace-image="replaceSelectedImage"
         @emoji="setSelectedEmoji"
         @sticker="setSelectedSticker"
+        @giphy="setSelectedGiphy"
       />
 
       <BoardEdgeToolbar

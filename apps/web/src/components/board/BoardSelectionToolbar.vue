@@ -70,6 +70,7 @@ import {
   type BoardTextAlign,
   type BoardTextMark,
   type EmojiSequence,
+  type GiphyGifSummary,
   type PersonalStickerFormat,
 } from '@poker/shared';
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
@@ -78,6 +79,7 @@ import { useI18n } from 'vue-i18n';
 import { HIGHLIGHT_CSS } from '../../features/boards/rich-text/board-rich-text';
 import type { FormatMarkKey } from '../../features/boards/composables/use-rich-text-editing';
 import type { ItemFormKind } from '../../features/boards/board-item-form';
+import BoardGiphyPicker from './BoardGiphyPicker.vue';
 import BoardStickerPicker from './BoardStickerPicker.vue';
 import EmojiPicker from '../EmojiPicker.vue';
 import BoardColorPickerMenu from './BoardColorPickerMenu.vue';
@@ -105,6 +107,8 @@ const FORM_ICONS: Record<ItemFormKind, string> = {
   // Никогда не рендерится через FORM_OPTIONS (стикер не в списке) — только для
   // exhaustiveness Record<ItemFormKind, string>, сам пикер у стикера свой (см. isSticker)
   sticker: 'i-lucide-sticker',
+  // Аналогично стикеру — свой пикер (см. isGiphy), сюда никогда не доходит
+  giphy: 'i-lucide-clapperboard',
   // Фрейм/группа (14.3) — не в FORM_OPTIONS, но нужны иконки для Record
   frame: 'i-lucide-frame',
   group: 'i-lucide-ungroup',
@@ -171,6 +175,7 @@ const emit = defineEmits<{
   replaceImage: [];
   emoji: [emoji: EmojiSequence];
   sticker: [pack: string, id: string, format?: PersonalStickerFormat];
+  giphy: [gif: GiphyGifSummary];
 }>();
 
 const { t } = useI18n();
@@ -188,6 +193,9 @@ const isEmoji = computed(() => props.currentForm === 'emoji');
 
 /** Стикер (13.4) — не имеет заливки/текста/фигуры, только выбор стикера и размер */
 const isSticker = computed(() => props.currentForm === 'sticker');
+
+/** GIF из Giphy (21.9) — не имеет заливки/текста/фигуры, только выбор GIF и размер */
+const isGiphy = computed(() => props.currentForm === 'giphy');
 
 /** Фрейм/группа (14.3) — контейнеры без переключателя формы/текстовых регуляторов
  * (Aa/выравнивание/начертание) — они бессмысленны для контейнера. */
@@ -367,6 +375,29 @@ function cancelTextColor(hex: BoardColorHex): void {
       </template>
     </UPopover>
 
+    <!-- GIF из Giphy (21.9): вместо переключателя формы — выбор GIF
+         (BoardGiphyPicker — общий с левым тулбаром) -->
+    <UPopover v-else-if="isGiphy" :content="{ side: 'top', sideOffset: 20 }">
+      <button
+        type="button"
+        class="board-selection-icon-btn"
+        :aria-label="t('board.giphyPickerLabel')"
+      >
+        <UIcon name="i-lucide-clapperboard" class="size-3.5" />
+      </button>
+
+      <template #content="{ close }">
+        <BoardGiphyPicker
+          @select="
+            (gif: GiphyGifSummary) => {
+              emit('giphy', gif);
+              close();
+            }
+          "
+        />
+      </template>
+    </UPopover>
+
     <!-- Form picker — always visible (allows converting text ↔ sticky ↔ shape) -->
     <UPopover v-else-if="!isContainer" :content="{ side: 'top', sideOffset: 20 }">
       <button
@@ -405,7 +436,8 @@ function cancelTextColor(hex: BoardColorHex): void {
         props.currentForm !== 'text' &&
         !isImage &&
         !isEmoji &&
-        !isSticker
+        !isSticker &&
+        !isGiphy
       "
     >
       <div v-if="!isContainer" class="board-selection-divider" />
@@ -431,7 +463,7 @@ function cancelTextColor(hex: BoardColorHex): void {
 
     <!-- Текстовые регуляторы (Aa/выравнивание/начертание/маркер/ссылка) — картинке/эмодзи/стикеру
       они не нужны вовсе (текста нет), не только когда он сейчас не редактируется. Фрейм/группа — тоже не текстовые (14.3) -->
-    <template v-if="!isContainer && !isImage && !isEmoji && !isSticker">
+    <template v-if="!isContainer && !isImage && !isEmoji && !isSticker && !isGiphy">
       <div class="board-selection-divider" />
 
       <!-- Aa — только размер шрифта и цвет текста (гарнитура убрана, см. шапку файла) -->
