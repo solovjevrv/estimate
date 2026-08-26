@@ -121,11 +121,13 @@ onBeforeUnmount(() => {
 
 /**
  * В `auto` (26.08.2026, по референсу Miro) пересчитывает `style.fontSize`
- * пропорционально ИМЕННО ЭТОМУ resize (было `props.data.width/height` →
- * стало `width/height`) и сохраняет как новую базу — см. подробное пояснение
- * у аналогичного `onResizeEnd` в `use-board-node-editing.ts` (BoardStickyNode/
- * BoardShapeNode используют общий composable, у текста своя копия, так как
- * он не проходит через `useBoardNodeEditing`).
+ * пропорционально ИМЕННО ЭТОМУ resize (было — якорь `fontSizeBoxWidth/Height`,
+ * а не всегда `props.data.width/height`, см. пояснение в `BoardItemStyle` — →
+ * стало `width/height`) и сохраняет обе величины как новую базу/якорь — см.
+ * подробное пояснение у аналогичного `onResizeEnd` в
+ * `use-board-node-editing.ts` (BoardStickyNode/BoardShapeNode используют общий
+ * composable, у текста своя копия, так как он не проходит через
+ * `useBoardNodeEditing`).
  */
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
   const patch: {
@@ -133,17 +135,21 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
     y: number;
     width: number;
     height: number;
-    style?: { fontSize: number };
+    style?: { fontSize: number; fontSizeBoxWidth: number; fontSizeBoxHeight: number };
   } = { x, y, width, height };
   if (fontSizeMode.value === 'auto') {
+    const anchorWidth = props.data.style.fontSizeBoxWidth ?? props.data.width;
+    const anchorHeight = props.data.style.fontSizeBoxHeight ?? props.data.height;
     const nextFontSize = Math.min(
       BOARD_ITEM_FONT_SIZE_MAX,
       Math.max(
         BOARD_ITEM_FONT_SIZE_MIN,
-        getScaledFontSize(baseFontSize.value, width, height, props.data.width, props.data.height),
+        getScaledFontSize(baseFontSize.value, width, height, anchorWidth, anchorHeight),
       ),
     );
-    if (nextFontSize !== baseFontSize.value) patch.style = { fontSize: nextFontSize };
+    if (nextFontSize !== baseFontSize.value) {
+      patch.style = { fontSize: nextFontSize, fontSizeBoxWidth: width, fontSizeBoxHeight: height };
+    }
   }
   void boardSession.applyOps([
     {

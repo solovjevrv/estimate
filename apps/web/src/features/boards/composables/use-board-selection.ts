@@ -13,7 +13,10 @@ import type {
   PersonalStickerFormat,
 } from '@poker/shared';
 import { isBoardContainer } from '@poker/shared';
-import { FIT_FONT_MAX } from '../../../features/boards/composables/use-fit-font-size';
+import {
+  FIT_FONT_MAX,
+  getScaledFontSize,
+} from '../../../features/boards/composables/use-fit-font-size';
 import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@poker/shared';
 import { computed, ref, shallowRef } from 'vue';
 
@@ -512,28 +515,74 @@ export function useBoardSelection(options: BoardSelectionOptions) {
       Math.max(BOARD_ITEM_FONT_SIZE_MIN, fontSize),
     );
     if (clampedBase === currentBase && wasManual) return;
+    // Якорь (`fontSizeBoxWidth/Height`) сбрасывается на ТЕКУЩИЙ бокс каждого узла —
+    // это число валидно именно для него ПРЯМО СЕЙЧАС, а не для геометрии на момент
+    // последнего resize в auto (см. `setSelectedFontSizeMode` ниже: без этого сброса
+    // последующий resize в manual считал бы расхождение от устаревшего якоря).
     patchSelected((node) => ({
       type: 'item.patch',
       clientOpId: uuid(),
       id: node.id,
-      patch: { style: { fontSize: clampedBase, fontSizeMode: 'manual' } },
+      patch: {
+        style: {
+          fontSize: clampedBase,
+          fontSizeMode: 'manual',
+          fontSizeBoxWidth: node.data.width,
+          fontSizeBoxHeight: node.data.height,
+        },
+      },
     }));
   }
 
   /**
-   * Переключатель «Авто» в тулбаре (26.08.2026) — возврат к масштабированию
-   * шрифта вместе с боксом. Само сохранённое число (`style.fontSize`) не
-   * трогаем: в `auto` оно снова становится «базой для дефолтной геометрии» —
-   * тем же значением, которым уже было до перехода в `manual`.
+   * Переключатель «Авто» в тулбаре (26.08.2026, по референсу Miro). Обратно в
+   * `manual` — просто флаг, само число уже актуально для текущего бокса (в
+   * `auto` инвариант «fontSize верен для текущей геометрии» поддерживается на
+   * каждом resize). В `auto` — ДОСЧИТЫВАЕТ пропущенные изменения бокса: пока
+   * был активен `manual`, resize двигал бокс, но не трогал ни `fontSize`, ни
+   * якорь (`fontSizeBoxWidth/Height`), поэтому к моменту переключения они
+   * могут заметно разойтись с текущей геометрией узла. Пересчитываем один раз
+   * пропорционально этому расхождению (якорь → текущий бокс) — так само
+   * переключение уже показывает верный для текущего размера стикера шрифт, не
+   * дожидаясь следующего resize (баг из живой проверки: `manual=4` → resize
+   * 2x → переключение на `auto` не меняло число, хотя бокс уже вырос).
    */
   function setSelectedFontSizeMode(mode: BoardFontSizeMode): void {
     if (selectedFontSizeMode.value === mode) return;
-    patchSelected((node) => ({
-      type: 'item.patch',
-      clientOpId: uuid(),
-      id: node.id,
-      patch: { style: { fontSizeMode: mode } },
-    }));
+    if (mode === 'manual') {
+      patchSelected((node) => ({
+        type: 'item.patch',
+        clientOpId: uuid(),
+        id: node.id,
+        patch: { style: { fontSizeMode: mode } },
+      }));
+      return;
+    }
+    patchSelected((node) => {
+      const base = node.data.style.fontSize ?? FIT_FONT_MAX;
+      const anchorWidth = node.data.style.fontSizeBoxWidth ?? node.data.width;
+      const anchorHeight = node.data.style.fontSizeBoxHeight ?? node.data.height;
+      const nextFontSize = Math.min(
+        BOARD_ITEM_FONT_SIZE_MAX,
+        Math.max(
+          BOARD_ITEM_FONT_SIZE_MIN,
+          getScaledFontSize(base, node.data.width, node.data.height, anchorWidth, anchorHeight),
+        ),
+      );
+      return {
+        type: 'item.patch',
+        clientOpId: uuid(),
+        id: node.id,
+        patch: {
+          style: {
+            fontSize: nextFontSize,
+            fontSizeMode: mode,
+            fontSizeBoxWidth: node.data.width,
+            fontSizeBoxHeight: node.data.height,
+          },
+        },
+      };
+    });
   }
 
   function setSelectedTextColor(textColor: BoardColorHex): void {

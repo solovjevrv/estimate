@@ -525,6 +525,27 @@ describe('useBoardSelection — font size clamping', () => {
     expect(op.patch.style.fontSize).toBe(BOARD_ITEM_FONT_SIZE_MAX);
   });
 
+  it('setSelectedFontSize re-anchors fontSizeBoxWidth/Height to the current box (26.08.2026)', () => {
+    // Иначе следующий resize в manual считал бы расхождение от устаревшего
+    // якоря, оставшегося от предыдущего auto-периода — а не от бокса, каким
+    // он был в момент, когда пользователь только что явно задал это число.
+    const a = flowNode(
+      item('a', {
+        content: { type: 'frame', title: 'F' },
+        width: 240,
+        height: 160,
+        style: { color: '#fff', fontSize: 20, fontSizeBoxWidth: 120, fontSizeBoxHeight: 80 },
+      }),
+      { x: 0, y: 0 },
+      { width: 240, height: 160 },
+    );
+    const { api, applyOps } = makeSelection({ selectedNodes: [a] });
+    api.setSelectedFontSize(32);
+    const op = lastOps(applyOps)[0]!;
+    expect(op.patch.style.fontSizeBoxWidth).toBe(240);
+    expect(op.patch.style.fontSizeBoxHeight).toBe(160);
+  });
+
   it('setSelectedFontSize still switches auto to manual even when the clamped number is unchanged (26.08.2026)', () => {
     const a = flowNode(
       item('a', {
@@ -551,7 +572,9 @@ describe('useBoardSelection — font size clamping', () => {
     expect(applyOps).not.toHaveBeenCalled();
   });
 
-  it('setSelectedFontSizeMode switches back to auto without touching the stored fontSize', () => {
+  it('setSelectedFontSizeMode switches back to auto without changing fontSize when the box never moved while manual', () => {
+    // Якорь не задан явно — по умолчанию считается равным текущему боксу
+    // узла (120x80, см. `item()`), значит расхождения нет и число не меняется.
     const a = flowNode(
       item('a', {
         content: { type: 'frame', title: 'F' },
@@ -562,7 +585,43 @@ describe('useBoardSelection — font size clamping', () => {
     api.setSelectedFontSizeMode('auto');
     const op = lastOps(applyOps)[0]!;
     expect(op.patch.style.fontSizeMode).toBe('auto');
-    expect(op.patch.style.fontSize).toBeUndefined();
+    expect(op.patch.style.fontSize).toBe(30);
+    expect(op.patch.style.fontSizeBoxWidth).toBe(120);
+    expect(op.patch.style.fontSizeBoxHeight).toBe(80);
+  });
+
+  it('setSelectedFontSizeMode(auto) catches up on box growth that happened while manual (26.08.2026, Miro-style)', () => {
+    // Ровно репортнутый пользователем сценарий: manual=4 установлен на боксе
+    // 90x90 (якорь), затем стикер увеличен вдвое (180x180) БЕЗ изменения
+    // fontSize (manual не трогает его при resize) — переключение на auto
+    // должно досчитать это расхождение одним пересчётом, а не ждать
+    // следующего resize.
+    const a = flowNode(
+      item('a', {
+        content: { type: 'sticky', text: 'x' },
+        width: 180,
+        height: 180,
+        style: {
+          color: '#fff',
+          fontSize: 4,
+          fontSizeMode: 'manual',
+          fontSizeBoxWidth: 90,
+          fontSizeBoxHeight: 90,
+        },
+      }),
+      { x: 0, y: 0 },
+      { width: 180, height: 180 },
+    );
+    const { api, applyOps } = makeSelection({ selectedNodes: [a] });
+    api.setSelectedFontSizeMode('auto');
+    const op = lastOps(applyOps)[0]!;
+    expect(op.patch.style.fontSizeMode).toBe('auto');
+    // getScaledFontSize floor's ниже FIT_FONT_MIN=10 (та же авто-fit защита от
+    // переполнения, что и внутри resize) — математически 4*2=8, но 10 — то же
+    // число, что видел пользователь в живом репорте этого бага.
+    expect(op.patch.style.fontSize).toBe(10);
+    expect(op.patch.style.fontSizeBoxWidth).toBe(180);
+    expect(op.patch.style.fontSizeBoxHeight).toBe(180);
   });
 
   it('setSelectedFontSizeMode is a no-op when already in the target mode', () => {

@@ -131,15 +131,20 @@ export function useBoardNodeEditing<TContent extends BoardItemContent & { text: 
    * геометрия резайза не зависит от библиотеки.
    *
    * В `auto` (26.08.2026, по референсу Miro) resize ещё и пересчитывает
-   * `style.fontSize` пропорционально ИМЕННО ЭТОМУ действию (старые
-   * `data.value.width/height` → новые `width/height`), сохраняя результат
-   * как новую базу — а не оставляет реактивному `useFitFontSize` каждый раз
-   * заново домножать на отношение к ФИКСИРОВАННОЙ геометрии элемента по
+   * `style.fontSize` пропорционально ИМЕННО ЭТОМУ действию (якорь
+   * `fontSizeBoxWidth/Height` → новые `width/height`), сохраняя оба значения
+   * как новую базу/якорь — а не оставляет реактивному `useFitFontSize` каждый
+   * раз заново домножать на отношение к ФИКСИРОВАННОЙ геометрии элемента по
    * умолчанию (так было раньше). Раньше переключение auto↔manual могло дать
    * неожиданный скачок числа — база оставалась «как для дефолтного бокса»,
    * даже если бокс давно не дефолтного размера, и при возврате в auto тут же
-   * пересчитывалась с нуля от него. Теперь база ВСЕГДА актуальна для текущего
-   * бокса в обоих режимах — просто в `manual` resize её не трогает вовсе.
+   * пересчитывалась с нуля от него. Теперь база актуальна для текущего бокса
+   * в `auto` сразу после КАЖДОГО resize — а в `manual` resize её (и якорь)
+   * намеренно НЕ трогает вовсе, оставляя якорь «отставшим» от текущего
+   * бокса — расхождение накапливается и досчитывается одним пересчётом при
+   * обратном переключении в `auto` (`setSelectedFontSizeMode` в
+   * `use-board-selection.ts`), а не молча теряется (баг из живой проверки:
+   * `manual=4` → resize 2x → переключение на `auto` не меняло число).
    */
   function onResizeEnd({ params: { x, y, width, height } }: { params: BoardResizeParams }): void {
     const patch: {
@@ -147,17 +152,25 @@ export function useBoardNodeEditing<TContent extends BoardItemContent & { text: 
       y: number;
       width: number;
       height: number;
-      style?: { fontSize: number };
+      style?: { fontSize: number; fontSizeBoxWidth: number; fontSizeBoxHeight: number };
     } = { x, y, width, height };
     if (fontSizeMode.value === 'auto') {
+      const anchorWidth = data.value.style.fontSizeBoxWidth ?? data.value.width;
+      const anchorHeight = data.value.style.fontSizeBoxHeight ?? data.value.height;
       const nextFontSize = Math.min(
         BOARD_ITEM_FONT_SIZE_MAX,
         Math.max(
           BOARD_ITEM_FONT_SIZE_MIN,
-          getScaledFontSize(baseFontSize.value, width, height, data.value.width, data.value.height),
+          getScaledFontSize(baseFontSize.value, width, height, anchorWidth, anchorHeight),
         ),
       );
-      if (nextFontSize !== baseFontSize.value) patch.style = { fontSize: nextFontSize };
+      if (nextFontSize !== baseFontSize.value) {
+        patch.style = {
+          fontSize: nextFontSize,
+          fontSizeBoxWidth: width,
+          fontSizeBoxHeight: height,
+        };
+      }
     }
     void boardSession.applyOps([
       {

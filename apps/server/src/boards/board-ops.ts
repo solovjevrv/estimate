@@ -116,6 +116,12 @@ function validateFontSizeMode(fontSizeMode: unknown): BoardItemStyle['fontSizeMo
   return fontSizeMode as BoardItemStyle['fontSizeMode'];
 }
 
+/** Якорная геометрия для `fontSize` (см. `BoardItemStyle.fontSizeBoxWidth/Height`) — опциональное число, границы как у геометрии элемента. */
+function validateFontSizeBoxDimension(value: unknown, field: string): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  return requireFinite(value, field, 1, BOARD_ITEM_MAX_SIZE);
+}
+
 function validateStyle(style: unknown): BoardItemStyle {
   if (typeof style !== 'object' || style === null) {
     throw new ValidationError('Не указан стиль элемента');
@@ -124,6 +130,8 @@ function validateStyle(style: unknown): BoardItemStyle {
     color?: unknown;
     fontSize?: unknown;
     fontSizeMode?: unknown;
+    fontSizeBoxWidth?: unknown;
+    fontSizeBoxHeight?: unknown;
     fontFamily?: unknown;
     textColor?: unknown;
     textAlign?: unknown;
@@ -131,13 +139,27 @@ function validateStyle(style: unknown): BoardItemStyle {
   const color = requireColorHex(s.color, 'элемента');
   const fontSize = validateFontSize(s.fontSize);
   const fontSizeMode = validateFontSizeMode(s.fontSizeMode);
+  const fontSizeBoxWidth = validateFontSizeBoxDimension(s.fontSizeBoxWidth, 'ширина якоря шрифта');
+  const fontSizeBoxHeight = validateFontSizeBoxDimension(
+    s.fontSizeBoxHeight,
+    'высота якоря шрифта',
+  );
   const fontFamily = validateFontFamily(s.fontFamily);
   const textColor =
     s.textColor === undefined || s.textColor === null
       ? undefined
       : requireColorHex(s.textColor, 'текста');
   const textAlign = validateTextAlign(s.textAlign);
-  return { color, fontSize, fontSizeMode, fontFamily, textColor, textAlign };
+  return {
+    color,
+    fontSize,
+    fontSizeMode,
+    fontSizeBoxWidth,
+    fontSizeBoxHeight,
+    fontFamily,
+    textColor,
+    textAlign,
+  };
 }
 
 function validateCurveOffset(value: unknown): { x: number; y: number } | null {
