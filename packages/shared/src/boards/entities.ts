@@ -275,14 +275,18 @@ export type BoardTextAlign = 'left' | 'center' | 'right';
 export const BOARD_TEXT_ALIGNS: readonly BoardTextAlign[] = ['left', 'center', 'right'];
 
 /**
- * Границы ручного размера шрифта (12.9). Шире дефолтного диапазона авто-fit
- * (`FIT_FONT_MIN/MAX` = 10–20 в `use-fit-font-size.ts`) — заданное здесь
- * значение является БАЗОВЫМ размером для дефолтной геометрии элемента. При
- * resize оно масштабируется вместе с боксом, а авто-fit при длинном тексте
- * всё равно может ужать итоговый шрифт вплоть до `BOARD_ITEM_FONT_SIZE_MIN`.
+ * Границы ручного размера шрифта (12.9, диапазон 4–64 по референсу Miro —
+ * 26.08.2026). Шире дефолтного диапазона авто-fit (`FIT_FONT_MIN/MAX` = 10–20
+ * в `use-fit-font-size.ts`) — заданное здесь значение является БАЗОВЫМ
+ * размером для дефолтной геометрии элемента. В `auto`-режиме (`fontSizeMode`)
+ * оно масштабируется вместе с боксом при resize, и авто-fit при длинном
+ * тексте всё равно может ужать итоговый шрифт вплоть до
+ * `BOARD_ITEM_FONT_SIZE_MIN`/`FIT_FONT_MIN`. В `manual` эта защита от
+ * переполнения отключена намеренно — пользователь явно выбрал число, и оно
+ * должно отображаться ровно таким, каким выбрано (см. `use-fit-font-size.ts`).
  */
-export const BOARD_ITEM_FONT_SIZE_MIN = 10;
-export const BOARD_ITEM_FONT_SIZE_MAX = 48;
+export const BOARD_ITEM_FONT_SIZE_MIN = 4;
+export const BOARD_ITEM_FONT_SIZE_MAX = 64;
 
 /**
  * Режим размера шрифта (26.08.2026, по референсу Miro — решение пользователя):

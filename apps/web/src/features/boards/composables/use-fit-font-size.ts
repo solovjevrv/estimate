@@ -179,9 +179,19 @@ export function useFitFontSize(
       return longestWordWidth(text.value, (word) => ctx.measureText(word).width) > availableWidth;
     };
 
-    while (size > FIT_FONT_MIN && (content.scrollHeight > availableHeight || wordTooWide(size))) {
-      size -= 1;
-      content.style.fontSize = `${size}px`;
+    // В `manual` пользователь явно выбрал число (26.08.2026) — оно должно
+    // отображаться ровно таким, каким выбрано, а не молча ужиматься этим
+    // циклом, если бокс тесноват. Тихая подмена введённого значения на
+    // другое (баг, найден пользователем: ввёл 48 — увидел 39, без единой
+    // подсказки почему) противоречит самому смыслу «ручного» размера —
+    // в отличие от `auto`, где эта защита от переполнения обязательна и
+    // ожидаема (текст здесь всё равно может визуально не влезть, но это
+    // сознательный компромисс пользователя, а не наш «умный» пересчёт).
+    if (mode.value !== 'manual') {
+      while (size > FIT_FONT_MIN && (content.scrollHeight > availableHeight || wordTooWide(size))) {
+        size -= 1;
+        content.style.fontSize = `${size}px`;
+      }
     }
     fontSize.value = size;
 
