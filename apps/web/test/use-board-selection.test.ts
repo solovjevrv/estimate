@@ -198,6 +198,7 @@ describe('useBoardSelection — selectedForm', () => {
       [item('d', { content: { type: 'image', url: 'u', width: 1, height: 1 } }), 'image'],
       [item('e', { content: { type: 'emoji', emoji: '👍' } }), 'emoji'],
       [item('f', { content: { type: 'sticker', pack: 'p', id: 's' } }), 'sticker'],
+      [item('f2', { content: { type: 'giphy', id: 'abc123', width: 100, height: 80 } }), 'giphy'],
       [item('g', { content: { type: 'frame', title: 'F' } }), 'frame'],
       [item('h', { content: { type: 'group' } }), 'group'],
     ];
@@ -558,6 +559,26 @@ describe('useBoardSelection — emoji/sticker/image', () => {
       pack: 'pack2',
       id: 'id2',
     });
+  });
+
+  it('setSelectedGiphy only patches giphy nodes', () => {
+    const gif = flowNode(
+      item('g1', { content: { type: 'giphy', id: 'old', width: 1, height: 1 } }),
+    );
+    const sticky = flowNode(item('s1'));
+    const { api, applyOps } = makeSelection({ selectedNodes: [gif, sticky] });
+    api.setSelectedGiphy({
+      id: 'new',
+      title: 'New',
+      previewWidth: 10,
+      previewHeight: 8,
+      width: 480,
+      height: 384,
+    });
+    const ops = lastOps(applyOps);
+    expect(ops).toHaveLength(1);
+    expect(ops[0]!.id).toBe('g1');
+    expect(ops[0]!.patch.content).toEqual({ type: 'giphy', id: 'new', width: 480, height: 384 });
   });
 });
 

@@ -6,6 +6,7 @@ import type {
   BoardOp,
   BoardTextAlign,
   EmojiSequence,
+  GiphyGifSummary,
   PersonalStickerFormat,
 } from '@poker/shared';
 import { isBoardContainer } from '@poker/shared';
@@ -200,6 +201,7 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     if (content?.type === 'image') return 'image';
     if (content?.type === 'emoji') return 'emoji';
     if (content?.type === 'sticker') return 'sticker';
+    if (content?.type === 'giphy') return 'giphy';
     if (content?.type === 'frame') return 'frame';
     if (content?.type === 'group') return 'group';
     return 'sticky';
@@ -313,9 +315,9 @@ export function useBoardSelection(options: BoardSelectionOptions) {
    * (текст картинки теряется, url/width/height отбрасываются).
    */
   function setSelectedForm(kind: ItemFormKind): void {
-    // Конвертация В картинку/эмодзи/стикер через общий пикер не поддерживается (нужен файл
-    // или конкретный выбранный символ/пак) — у всех трёх свой отдельный путь создания/замены
-    if (kind === 'image' || kind === 'emoji' || kind === 'sticker') return;
+    // Конвертация В картинку/эмодзи/стикер/GIF через общий пикер не поддерживается (нужен
+    // файл или конкретный выбранный символ/пак/GIF) — у всех свой отдельный путь создания/замены
+    if (kind === 'image' || kind === 'emoji' || kind === 'sticker' || kind === 'giphy') return;
     // Фрейм/группа (14.3) — контейнеры, конвертировать их в другие типы или наоборот
     // через общий переключатель не поддерживается — они управляются отдельными действиями
     if (kind === 'frame' || kind === 'group') return;
@@ -325,7 +327,12 @@ export function useBoardSelection(options: BoardSelectionOptions) {
       const content = node.data.content;
       let newContent: BoardItemContent;
       if (kind === 'sticky') {
-        if (content.type === 'image' || content.type === 'emoji' || content.type === 'sticker') {
+        if (
+          content.type === 'image' ||
+          content.type === 'emoji' ||
+          content.type === 'sticker' ||
+          content.type === 'giphy'
+        ) {
           // Конвертация из картинки/эмодзи/стикера — просто создаём пустой стикер
           newContent = { type: 'sticky', text: '' };
         } else if (content.type === 'frame' || content.type === 'group') {
@@ -335,7 +342,12 @@ export function useBoardSelection(options: BoardSelectionOptions) {
           newContent = { type: 'sticky', text, ...(runs?.length ? { runs } : {}) };
         }
       } else if (kind === 'text') {
-        if (content.type === 'image' || content.type === 'emoji' || content.type === 'sticker') {
+        if (
+          content.type === 'image' ||
+          content.type === 'emoji' ||
+          content.type === 'sticker' ||
+          content.type === 'giphy'
+        ) {
           // Конвертация из картинки/эмодзи/стикера — пустой текст
           newContent = { type: 'text', text: '' };
         } else if (content.type === 'frame' || content.type === 'group') {
@@ -346,7 +358,12 @@ export function useBoardSelection(options: BoardSelectionOptions) {
         }
       } else {
         // kind is a BoardShapeKind
-        if (content.type === 'image' || content.type === 'emoji' || content.type === 'sticker') {
+        if (
+          content.type === 'image' ||
+          content.type === 'emoji' ||
+          content.type === 'sticker' ||
+          content.type === 'giphy'
+        ) {
           // Конвертация из картинки/эмодзи/стикера в фигуру — пустой текст
           newContent = { type: 'shape', shape: kind, text: '' };
         } else if (content.type === 'frame' || content.type === 'group') {
@@ -480,6 +497,21 @@ export function useBoardSelection(options: BoardSelectionOptions) {
         clientOpId: uuid(),
         id: node.id,
         patch: { content },
+      }));
+    if (ops.length) void options.applyOps(ops);
+  }
+
+  /** Смена GIF (21.9) — патчим content.id/width/height (метаданные aspect ratio нового GIF),
+   *  геометрию самого элемента (бокс) не трогаем — рендер (`StickerMedia`-подобный object-contain)
+   *  сам вписывает новый GIF в существующий бокс, как и при замене картинки. */
+  function setSelectedGiphy(gif: GiphyGifSummary): void {
+    const ops: BoardOp[] = selectedNodes.value
+      .filter((node) => node.data.content.type === 'giphy')
+      .map((node) => ({
+        type: 'item.patch',
+        clientOpId: uuid(),
+        id: node.id,
+        patch: { content: { type: 'giphy', id: gif.id, width: gif.width, height: gif.height } },
       }));
     if (ops.length) void options.applyOps(ops);
   }
@@ -868,6 +900,7 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     setSelectedTextAlign,
     setSelectedEmoji,
     setSelectedSticker,
+    setSelectedGiphy,
     replaceSelectedImage,
     groupSelection,
     ungroupSelection,

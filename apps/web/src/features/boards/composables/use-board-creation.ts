@@ -1,4 +1,10 @@
-import type { BoardItem, BoardOp, EmojiSequence, PersonalStickerFormat } from '@poker/shared';
+import type {
+  BoardItem,
+  BoardOp,
+  EmojiSequence,
+  GiphyGifSummary,
+  PersonalStickerFormat,
+} from '@poker/shared';
 import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_MAX_ITEMS } from '@poker/shared';
 import { useToast } from '@nuxt/ui/composables';
 import { ref, type Ref } from 'vue';
@@ -70,6 +76,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
   createImage: (center: { x: number; y: number }, file: File) => Promise<void>;
   createEmojiAtCenter: (emoji: EmojiSequence) => void;
   createStickerAtCenter: (pack: string, id: string, format?: PersonalStickerFormat) => void;
+  createGiphyAtCenter: (gif: GiphyGifSummary) => void;
 
   cancelPendingEdit: () => void;
 
@@ -261,6 +268,39 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
     ]);
   }
 
+  /** Вставка GIF из Giphy (21.9) — аналогично картинке (13.2): естественный размер
+   *  GIF вписывается в дефолтный бокс с сохранением пропорций, не растягивается на
+   *  фиксированный квадрат, как стикер/эмодзи. */
+  function createGiphyAtCenter(gif: GiphyGifSummary): void {
+    options.breakFollowOnEdit();
+    if (!options.canEdit() || !canCreateItem()) return;
+    const rect = options.getCanvasRect();
+    if (!rect) return;
+    const center = options.project({ x: rect.width / 2, y: rect.height / 2 });
+    const { width, height } = fitImageToDefaultBox(gif.width, gif.height);
+
+    const itemId = uuid();
+    void options.applyOps([
+      {
+        type: 'item.create',
+        clientOpId: uuid(),
+        item: {
+          id: itemId,
+          parentId: options.findContainerAt(center)?.id ?? null,
+          x: center.x - width / 2,
+          y: center.y - height / 2,
+          width,
+          height,
+          rotation: 0,
+          zIndex: nextZIndexAbove(options.getItems()),
+          content: { type: 'giphy', id: gif.id, width: gif.width, height: gif.height },
+          style: { color: STICKY_DEFAULT_COLOR },
+          reactions: [],
+        },
+      },
+    ]);
+  }
+
   /** Создаёт скрытый input[type=file], возвращает выбранный файл или null при отмене */
   function pickImageFile(): Promise<File | null> {
     return new Promise((resolve) => {
@@ -404,6 +444,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
     createImage,
     createEmojiAtCenter,
     createStickerAtCenter,
+    createGiphyAtCenter,
     cancelPendingEdit,
     onPaneClick,
     onPaneDoubleClick,

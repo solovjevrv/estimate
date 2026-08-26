@@ -46,6 +46,16 @@ export interface TelegramConfig {
   botToken: string;
 }
 
+/**
+ * Giphy API — ключ для поиска/показа GIF на досках (21.9). Фича полностью
+ * выключена, если ключ не задан: роуты не регистрируются вовсе (как у
+ * Telegram Bot API выше). Сервер целиком проксирует Giphy — ключ на клиент
+ * никогда не попадает, и клиент никогда не обращается к Giphy напрямую.
+ */
+export interface GiphyConfig {
+  apiKey: string;
+}
+
 export interface Config {
   port: number;
   host: string;
@@ -72,6 +82,8 @@ export interface Config {
   objectStorage?: ObjectStorageConfig;
   /** Telegram Bot API (21.6) — выключена без токена */
   telegram?: TelegramConfig;
+  /** Giphy API (21.9) — выключена без ключа */
+  giphy?: GiphyConfig;
 }
 
 /**
@@ -174,6 +186,16 @@ export function loadTelegramConfig(): TelegramConfig | undefined {
   return { botToken };
 }
 
+/**
+ * Giphy API (21.9) — без ключа фича полностью выключена: роуты поиска/показа
+ * GIF не регистрируются вовсе (см. app.ts).
+ */
+export function loadGiphyConfig(): GiphyConfig | undefined {
+  const apiKey = process.env.GIPHY_API_KEY;
+  if (!apiKey) return undefined;
+  return { apiKey };
+}
+
 export function loadConfig(): Config {
   loadDotenv();
 
@@ -205,5 +227,6 @@ export function loadConfig(): Config {
       process.env.STICKERS_ASSETS_DIR ?? join(process.cwd(), 'assets', 'sticker-packs'),
     objectStorage: loadObjectStorageConfig(),
     telegram: loadTelegramConfig(),
+    giphy: loadGiphyConfig(),
   };
 }

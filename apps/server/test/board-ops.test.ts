@@ -89,6 +89,26 @@ function imageCreateOp(
   };
 }
 
+function giphyCreateOp(id: string, gifId: string = 'abc123'): BoardOp {
+  return {
+    type: 'item.create',
+    clientOpId: randomUUID(),
+    item: {
+      id,
+      parentId: null,
+      x: 10,
+      y: 20,
+      width: 300,
+      height: 200,
+      rotation: 0,
+      zIndex: 0,
+      content: { type: 'giphy', id: gifId, width: 480, height: 384 } as BoardItem['content'],
+      style: { color: '#FCEB96' },
+      reactions: [],
+    },
+  };
+}
+
 function emojiCreateOp(id: string, emoji: string = '👍'): BoardOp {
   return {
     type: 'item.create',
@@ -384,6 +404,50 @@ describe('applyBoardOp — item.create', () => {
       id: '01',
       format: 'gif',
     };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('принимает валидный giphy-элемент (21.9)', () => {
+    const state = emptyState();
+    const id = randomUUID();
+
+    applyBoardOp(state, giphyCreateOp(id), BOARD_ID, ACTOR);
+
+    expect(state.items.get(id)?.content).toEqual({
+      type: 'giphy',
+      id: 'abc123',
+      width: 480,
+      height: 384,
+    });
+  });
+
+  it('отклоняет giphy-элемент с недопустимым id (спецсимволы)', () => {
+    const state = emptyState();
+    const op = giphyCreateOp(randomUUID(), 'not valid!');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('отклоняет giphy-элемент с пустым id', () => {
+    const state = emptyState();
+    const op = giphyCreateOp(randomUUID(), '');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('отклоняет giphy-элемент без width/height', () => {
+    const state = emptyState();
+    const op = giphyCreateOp(randomUUID());
+    (op as { item: { content: unknown } }).item.content = { type: 'giphy', id: 'abc123' };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('отклоняет giphy-элемент с шириной больше BOARD_ITEM_MAX_SIZE', () => {
+    const state = emptyState();
+    const op = giphyCreateOp(randomUUID());
+    (op as { item: { content: { width: number } } }).item.content.width = 999_999;
 
     expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
   });

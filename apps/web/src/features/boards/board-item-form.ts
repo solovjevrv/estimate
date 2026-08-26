@@ -13,5 +13,6 @@ export type ItemFormKind =
   | 'image'
   | 'emoji'
   | 'sticker'
+  | 'giphy'
   | 'frame'
   | 'group';

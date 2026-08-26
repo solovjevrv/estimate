@@ -28,6 +28,7 @@ async function main(): Promise<void> {
       boardAssetsDir: config.boardAssetsDir,
       objectStorage,
       telegram: config.telegram,
+      giphy: config.giphy,
     },
     { logger: true },
   );

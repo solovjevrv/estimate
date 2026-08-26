@@ -387,6 +387,34 @@ describe('useBoardCreation', () => {
     });
   });
 
+  describe('createGiphyAtCenter', () => {
+    it('создаёт giphy в центре canvas, вписывая натуральный размер в дефолтный бокс', () => {
+      const options = makeOptions();
+      const api = useBoardCreation(options);
+
+      api.createGiphyAtCenter({
+        id: 'abc123',
+        title: 'Funny cat',
+        previewWidth: 100,
+        previewHeight: 80,
+        width: 2000,
+        height: 1000,
+      });
+
+      const ops = options.applyOps.mock.calls[0]?.[0] ?? [];
+      expect(ops).toHaveLength(1);
+      const item = ops[0]!.item;
+      const fitted = fitImageToDefaultBox(2000, 1000);
+      expect(item.width).toBe(fitted.width);
+      expect(item.height).toBe(fitted.height);
+      expect(item.x).toBe(200 - fitted.width / 2);
+      expect(item.y).toBe(150 - fitted.height / 2);
+      expect(item.content).toEqual({ type: 'giphy', id: 'abc123', width: 2000, height: 1000 });
+      // pendingEditId НЕ выставляется для giphy
+      expect(api.pendingEditId.value).toBe(null);
+    });
+  });
+
   describe('createShape', () => {
     it('создаёт shape с правильными defaults и pendingEditId', () => {
       const options = makeOptions();

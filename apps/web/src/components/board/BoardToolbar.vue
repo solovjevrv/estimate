@@ -24,7 +24,8 @@
 import { useI18n } from 'vue-i18n';
 
 import type { BoardTool } from '../../features/boards/board-tools';
-import type { EmojiSequence, PersonalStickerFormat } from '@poker/shared';
+import type { EmojiSequence, GiphyGifSummary, PersonalStickerFormat } from '@poker/shared';
+import BoardGiphyPicker from './BoardGiphyPicker.vue';
 import BoardStickerPicker from './BoardStickerPicker.vue';
 import EmojiPicker from '../EmojiPicker.vue';
 
@@ -39,6 +40,8 @@ const emit = defineEmits<{
   emoji: [emoji: EmojiSequence];
   /** Стикер выбран из пикера — вставить на доску (13.4). format — только у личных Telegram-паков (21.7) */
   sticker: [pack: string, id: string, format?: PersonalStickerFormat];
+  /** GIF выбран из пикера Giphy — вставить на доску (21.9) */
+  giphy: [gif: GiphyGifSummary];
 }>();
 
 const { t } = useI18n();
@@ -133,6 +136,26 @@ function isActive(value: BoardTool): boolean {
           @select="
             (pack, id, format) => {
               emit('sticker', pack, id, format);
+              close();
+            }
+          "
+        />
+      </template>
+    </UPopover>
+
+    <!-- GIF из Giphy (21.9) — не "инструмент": кнопка открывает поповер с
+         BoardGiphyPicker (общий с «Заменить GIF» в тулбаре выделения),
+         клик по GIF сразу вставляет его на доску в центр вьюпорта. -->
+    <UPopover :content="{ side: 'right', sideOffset: 20 }">
+      <button type="button" class="board-toolbar-btn" :aria-label="t('board.toolGiphy')">
+        <UIcon name="i-lucide-clapperboard" class="size-[19px]" />
+      </button>
+
+      <template #content="{ close }">
+        <BoardGiphyPicker
+          @select="
+            (gif: GiphyGifSummary) => {
+              emit('giphy', gif);
               close();
             }
           "

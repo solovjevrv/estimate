@@ -104,11 +104,12 @@ const MARK_KEYS = ['bold', 'italic', 'underline', 'strike'] as const;
 type BoolMarkKey = (typeof MARK_KEYS)[number];
 
 export function runsFromContent(content: BoardItemContent): BoardTextRun[] {
-  // Картинка, эмодзи, стикер, фрейм и группа не имеют текстового содержимого — возвращаем пустый массив
+  // Картинка, эмодзи, стикер, GIF, фрейм и группа не имеют текстового содержимого — возвращаем пустый массив
   if (
     content.type === 'image' ||
     content.type === 'emoji' ||
     content.type === 'sticker' ||
+    content.type === 'giphy' ||
     content.type === 'frame' ||
     content.type === 'group'
   )
