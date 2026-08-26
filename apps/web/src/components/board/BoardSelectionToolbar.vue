@@ -215,10 +215,18 @@ const FORMAT_BUTTONS: readonly { key: FormatMarkKey; icon: string }[] = [
   { key: 'strike', icon: 'i-lucide-strikethrough' },
 ];
 
-/** Начертание/маркер доступны при редактировании и непустом тексте (18.7): при
- *  схлопнутом курсоре `activeMarks` вычисляются по всему тексту, и кнопки
- *  применяют действие к нему */
-const formattingDisabled = computed(() => !props.editingText || props.activeMarks === null);
+/**
+ * Начертание/маркер доступны при непустом тексте — не только во время
+ * активного редактирования (18.7: при схлопнутом курсоре `activeMarks`
+ * вычисляются по всему тексту), но и когда элемент просто ВЫДЕЛЕН, а
+ * редактор ещё не открыт (26.08.2026, баг с живой проверки: раньше в этом
+ * случае начертание/маркер были недоступны, хотя цвет текста и размер
+ * шрифта прекрасно патчатся без входа в редактирование). `null` в
+ * `activeMarks` — надёжный сигнал «нет текста» в обоих случаях, см.
+ * `BoardCanvas.vue` (передаёт метки живого редактора либо метки первого
+ * выделенного узла, `selectedActiveMarks` в `use-board-selection.ts`).
+ */
+const formattingDisabled = computed(() => props.activeMarks === null);
 /** Ссылка требует ЯВНОГО выделения (18.7): без него показываем подсказку, а не форму URL */
 const linkUnavailable = computed(() => !props.editingText || !props.hasTextSelection);
 /** Ключи начертания, активные в activeMarks — вход для общего BoardFormatButtons.vue */

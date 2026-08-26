@@ -1,10 +1,12 @@
 import type {
   BoardColorHex,
+  BoardHighlightColor,
   BoardItem,
   BoardItemContent,
   BoardItemPatchOp,
   BoardOp,
   BoardTextAlign,
+  BoardTextMark,
   EmojiSequence,
   GiphyGifSummary,
   PersonalStickerFormat,
@@ -21,11 +23,25 @@ import { computed, ref, shallowRef } from 'vue';
 import type { BoardEffectiveFontSizeRegistry } from '../context/board-canvas-keys';
 import type { ItemFormKind } from '../board-item-form';
 import type { BoardContextMenuTarget } from '../board-context-menu';
+import type { FormatMarkKey } from './use-rich-text-editing';
 import {
   type BoardSelectionEdge,
   type BoardSelectionNode,
 } from '../../../features/boards/adapters/vue-flow-adapter';
 import { uuid } from '../../../features/boards/infrastructure/uuid';
+import {
+  applyMarkToRange,
+  getActiveMarks,
+  runsFromContent,
+  runsPlainText,
+} from '../rich-text/board-rich-text';
+
+/** Стикер/фигура/текст — единственные типы с текстовым содержимым (runs/text) */
+function isTextBearingContent(
+  content: BoardItemContent,
+): content is Extract<BoardItemContent, { type: 'sticky' | 'shape' | 'text' }> {
+  return content.type === 'sticky' || content.type === 'shape' || content.type === 'text';
+}
 
 export interface BoardSelectionOptions {
   canEdit: () => boolean;
@@ -287,6 +303,67 @@ export function useBoardSelection(options: BoardSelectionOptions) {
   const selectedTextAlign = computed<BoardTextAlign>(
     () => selectedNodes.value[0]?.data.style.textAlign ?? 'center',
   );
+
+  /**
+   * Метки начертания/маркера для тулбара, когда элемент просто ВЫДЕЛЕН, а не
+   * активно редактируется — тот же fallback «весь текст», что `resolveFormatRange`
+   * в `use-rich-text-editing.ts` уже применяет при схлопнутом курсоре внутри
+   * активного редактора (18.7), только распространённый на случай, когда
+   * редактор вообще не открыт. До этого начертание/маркер работали ТОЛЬКО во
+   * время реального редактирования — просто выделенный элемент не давал их
+   * применить вовсе, хотя цвет текста и размер шрифта прекрасно патчатся без
+   * входа в редактирование (баг, найден пользователем 26.08.2026). Источник —
+   * первый выделенный узел с непустым текстовым контентом, как и
+   * `selectedColor`/`selectedTextColor` выше. `null` — нет текста (нечего
+   * форматировать), `{}` — текст есть, но без активных меток.
+   */
+  const selectedActiveMarks = computed<BoardTextMark | null>(() => {
+    const content = selectedNodes.value[0]?.data.content;
+    if (!content || !isTextBearingContent(content)) return null;
+    const runs = runsFromContent(content);
+    const text = runsPlainText(runs);
+    if (text.length === 0) return null;
+    return getActiveMarks(runs, 0, text.length);
+  });
+
+  /**
+   * Патчит начертание/маркер сразу в данных (`content.runs`), без живого
+   * `editableEl` — companion к `applyRangePatch` в `use-rich-text-editing.ts`,
+   * которая делает то же самое, но поверх DOM активного редактора. Действует
+   * на ВСЕ выделенные узлы с непустым текстом (сравни с `patchSelected`, но с
+   * пропуском узлов без подходящего контента — не каждый узел в выделении
+   * обязан быть текстовым). Направление тоггла берётся из состояния ПЕРВОГО
+   * узла (`selectedActiveMarks`) — при смешанном выделении все узлы после
+   * клика синхронизируются к одному состоянию, как и у большинства редакторов.
+   */
+  function patchSelectedWholeTextMark(patch: (marks: BoardTextMark) => BoardTextMark): void {
+    const ops: BoardOp[] = [];
+    for (const node of selectedNodes.value) {
+      const content = node.data.content;
+      if (!isTextBearingContent(content)) continue;
+      const runs = runsFromContent(content);
+      const text = runsPlainText(runs);
+      if (text.length === 0) continue;
+      const nextRuns = applyMarkToRange(runs, 0, text.length, patch);
+      const hasFormatting = nextRuns.some((run) => run.marks);
+      ops.push({
+        type: 'item.patch',
+        clientOpId: uuid(),
+        id: node.id,
+        patch: { content: { ...content, text, runs: hasFormatting ? nextRuns : undefined } },
+      });
+    }
+    if (ops.length) void options.applyOps(ops);
+  }
+
+  function toggleSelectedMark(key: FormatMarkKey): void {
+    const active = selectedActiveMarks.value;
+    patchSelectedWholeTextMark((marks) => ({ ...marks, [key]: !active?.[key] }));
+  }
+
+  function setSelectedHighlight(color: BoardHighlightColor | null): void {
+    patchSelectedWholeTextMark((marks) => ({ ...marks, highlight: color ?? undefined }));
+  }
 
   /**
    * Единый переключатель «тип элемента» (12.7) — конвертирует ЛЮБОЕ выделение
@@ -877,6 +954,7 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     canDecreaseSelectedFontSize,
     selectedTextColor,
     selectedTextAlign,
+    selectedActiveMarks,
     canGroupSelection,
     canUngroupSelection,
     contextMenu,
@@ -898,6 +976,8 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     setSelectedFontSize,
     setSelectedTextColor,
     setSelectedTextAlign,
+    toggleSelectedMark,
+    setSelectedHighlight,
     setSelectedEmoji,
     setSelectedSticker,
     setSelectedGiphy,

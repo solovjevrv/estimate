@@ -425,6 +425,7 @@ const {
   canDecreaseSelectedFontSize,
   selectedTextColor,
   selectedTextAlign,
+  selectedActiveMarks,
   canGroupSelection,
   canUngroupSelection,
   contextMenu,
@@ -438,6 +439,8 @@ const {
   setSelectedFontSize,
   setSelectedTextColor,
   setSelectedTextAlign,
+  toggleSelectedMark,
+  setSelectedHighlight,
   setSelectedEmoji,
   setSelectedSticker,
   setSelectedGiphy,
@@ -796,7 +799,7 @@ useBoardHotkeys({
         :current-text-color="selectedTextColor"
         :current-text-align="selectedTextAlign"
         :editing-text="!!activeTextEditor"
-        :active-marks="activeTextEditor?.activeMarks.value ?? null"
+        :active-marks="activeTextEditor ? activeTextEditor.activeMarks.value : selectedActiveMarks"
         :has-text-selection="activeTextEditor?.hasTextSelection.value ?? false"
         @color="setSelectedColor"
         @color-preview="previewSelectedColor"
@@ -807,8 +810,10 @@ useBoardHotkeys({
         @text-color-preview="previewSelectedTextColor"
         @text-color-cancel="cancelSelectedTextColorPreview"
         @text-align="setSelectedTextAlign"
-        @toggle-mark="activeTextEditor?.toggle($event)"
-        @set-highlight="activeTextEditor?.setHighlight($event)"
+        @toggle-mark="activeTextEditor ? activeTextEditor.toggle($event) : toggleSelectedMark($event)"
+        @set-highlight="
+          activeTextEditor ? activeTextEditor.setHighlight($event) : setSelectedHighlight($event)
+        "
         @set-link="activeTextEditor?.setLink($event)"
         @duplicate="duplicateSelected"
         @delete="deleteSelected"
