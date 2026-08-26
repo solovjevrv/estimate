@@ -535,7 +535,7 @@ describe('useBoardSelection — font size clamping', () => {
     expect(op.patch.style.fontSize).toBe(BOARD_ITEM_FONT_SIZE_MAX);
   });
 
-  it('setSelectedFontSize is a no-op once already at MAX (clampedBase === currentBase)', () => {
+  it('setSelectedFontSize still switches auto to manual even when the clamped number is unchanged (26.08.2026)', () => {
     const a = flowNode(
       item('a', {
         content: { type: 'frame', title: 'F' },
@@ -544,7 +544,57 @@ describe('useBoardSelection — font size clamping', () => {
     );
     const { api, applyOps } = makeSelection({ selectedNodes: [a] });
     api.setSelectedFontSize(BOARD_ITEM_FONT_SIZE_MAX + 100);
+    const op = lastOps(applyOps)[0]!;
+    expect(op.patch.style.fontSize).toBe(BOARD_ITEM_FONT_SIZE_MAX);
+    expect(op.patch.style.fontSizeMode).toBe('manual');
+  });
+
+  it('setSelectedFontSize is a true no-op once already manual and clamped value is unchanged', () => {
+    const a = flowNode(
+      item('a', {
+        content: { type: 'frame', title: 'F' },
+        style: { color: '#fff', fontSize: BOARD_ITEM_FONT_SIZE_MAX, fontSizeMode: 'manual' },
+      }),
+    );
+    const { api, applyOps } = makeSelection({ selectedNodes: [a] });
+    api.setSelectedFontSize(BOARD_ITEM_FONT_SIZE_MAX + 100);
     expect(applyOps).not.toHaveBeenCalled();
+  });
+
+  it('setSelectedFontSizeMode switches back to auto without touching the stored fontSize', () => {
+    const a = flowNode(
+      item('a', {
+        content: { type: 'frame', title: 'F' },
+        style: { color: '#fff', fontSize: 30, fontSizeMode: 'manual' },
+      }),
+    );
+    const { api, applyOps } = makeSelection({ selectedNodes: [a] });
+    api.setSelectedFontSizeMode('auto');
+    const op = lastOps(applyOps)[0]!;
+    expect(op.patch.style.fontSizeMode).toBe('auto');
+    expect(op.patch.style.fontSize).toBeUndefined();
+  });
+
+  it('setSelectedFontSizeMode is a no-op when already in the target mode', () => {
+    const a = flowNode(
+      item('a', { content: { type: 'frame', title: 'F' }, style: { color: '#fff', fontSize: 20 } }),
+    );
+    const { api, applyOps } = makeSelection({ selectedNodes: [a] });
+    api.setSelectedFontSizeMode('auto');
+    expect(applyOps).not.toHaveBeenCalled();
+  });
+
+  it('manual mode: selectedFontSize does not scale with box dimensions (geometry fallback)', () => {
+    const shrunk = flowNode(
+      item('a', {
+        content: { type: 'sticky', text: 'x' },
+        style: { color: '#fff', fontSize: 20, fontSizeMode: 'manual' },
+      }),
+      { x: 0, y: 0 },
+      { width: 60, height: 40 },
+    );
+    const { api } = makeSelection({ selectedNodes: [shrunk] });
+    expect(api.selectedFontSize.value).toBe(20);
   });
 });
 

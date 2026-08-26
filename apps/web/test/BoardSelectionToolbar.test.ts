@@ -38,6 +38,7 @@ function mountToolbar(props: Record<string, unknown> = {}) {
       currentColor: '#FF0000',
       currentForm: 'sticky',
       currentFontSize: 16,
+      currentFontSizeMode: 'auto',
       currentTextColor: '#1A1A1A',
       currentTextAlign: 'left',
       editingText: true,

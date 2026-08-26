@@ -284,10 +284,26 @@ export const BOARD_TEXT_ALIGNS: readonly BoardTextAlign[] = ['left', 'center', '
 export const BOARD_ITEM_FONT_SIZE_MIN = 10;
 export const BOARD_ITEM_FONT_SIZE_MAX = 48;
 
+/**
+ * Режим размера шрифта (26.08.2026, по референсу Miro — решение пользователя):
+ * `auto` (по умолчанию, в т.ч. для всех элементов до этой задачи) — текущее
+ * поведение, `fontSize` масштабируется вместе с боксом при resize
+ * (`getScaledFontSize`). `manual` — пользователь явно задал конкретное
+ * значение (стрелки степпера или прямой ввод числа) — при resize бокса
+ * размер остаётся зафиксированным, НЕ масштабируется. В обоих режимах
+ * авто-сжатие при переполнении длинным текстом (`useFitFontSize`) всё
+ * равно работает как защита от обрезки — это не то же самое, что
+ * масштабирование под геометрию бокса.
+ */
+export type BoardFontSizeMode = 'auto' | 'manual';
+export const BOARD_FONT_SIZE_MODES: readonly BoardFontSizeMode[] = ['auto', 'manual'];
+
 export interface BoardItemStyle {
   color: BoardColorHex;
   /** Базовый размер для дефолтной геометрии; не задано — используется 20px */
   fontSize?: number;
+  /** Не задано — `auto` (масштабируется с боксом, как было до этой задачи) */
+  fontSizeMode?: BoardFontSizeMode;
   /** Не задано — `sans` (Manrope, как было до 12.9) */
   fontFamily?: BoardFontFamily;
   /** Цвет текста отдельно от заливки; не задано — автоконтраст от `color` (`readableTextColor`) */

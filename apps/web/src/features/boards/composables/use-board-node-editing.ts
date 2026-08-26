@@ -51,6 +51,7 @@ export function useBoardNodeEditing<TContent extends BoardItemContent & { text: 
   const fontFamily = computed(() => boardFontFamilyCss(data.value.style.fontFamily));
   const textAlign = computed(() => data.value.style.textAlign ?? 'center');
   const baseFontSize = computed(() => data.value.style.fontSize ?? FIT_FONT_MAX);
+  const fontSizeMode = computed(() => data.value.style.fontSizeMode ?? 'auto');
 
   // `ref="contentBox"`/`ref="text"` в шаблоне вызывающего компонента — как и
   // `ref="editable"` внутри useRichTextEditing, регистрация template ref
@@ -104,6 +105,7 @@ export function useBoardNodeEditing<TContent extends BoardItemContent & { text: 
     baseFontSize,
     defaultWidth,
     defaultHeight,
+    fontSizeMode,
   );
 
   /** Тулбар должен показывать отрисованный, а не сохранённый базовый размер. */

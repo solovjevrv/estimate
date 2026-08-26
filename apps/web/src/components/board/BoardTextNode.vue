@@ -37,6 +37,7 @@ const textColor = computed(
 const fontFamily = computed(() => boardFontFamilyCss(props.data.style.fontFamily));
 const textAlign = computed(() => props.data.style.textAlign ?? 'left');
 const baseFontSize = computed(() => props.data.style.fontSize ?? FIT_FONT_MAX);
+const fontSizeMode = computed(() => props.data.style.fontSizeMode ?? 'auto');
 
 const contentBoxEl = useTemplateRef<HTMLDivElement>('contentBox');
 const textEl = useTemplateRef<HTMLSpanElement>('text');
@@ -95,6 +96,7 @@ const fontSize = useFitFontSize(
   baseFontSize,
   TEXT_DEFAULT_WIDTH,
   TEXT_DEFAULT_HEIGHT,
+  fontSizeMode,
 );
 
 let reportedItemId: string | null = null;

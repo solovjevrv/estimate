@@ -15,6 +15,7 @@ import {
   BOARD_EDGE_LINE_KINDS,
   BOARD_EDGE_MARKER_KINDS,
   BOARD_FONT_FAMILIES,
+  BOARD_FONT_SIZE_MODES,
   BOARD_FRAME_TITLE_MAX_LENGTH,
   BOARD_HIGHLIGHT_COLORS,
   BOARD_ITEM_FONT_SIZE_MAX,
@@ -107,6 +108,14 @@ function validateTextAlign(textAlign: unknown): BoardItemStyle['textAlign'] {
   return textAlign as BoardItemStyle['textAlign'];
 }
 
+function validateFontSizeMode(fontSizeMode: unknown): BoardItemStyle['fontSizeMode'] {
+  if (fontSizeMode === undefined || fontSizeMode === null) return undefined;
+  if (!(BOARD_FONT_SIZE_MODES as readonly unknown[]).includes(fontSizeMode)) {
+    throw new ValidationError('Недопустимый режим размера шрифта');
+  }
+  return fontSizeMode as BoardItemStyle['fontSizeMode'];
+}
+
 function validateStyle(style: unknown): BoardItemStyle {
   if (typeof style !== 'object' || style === null) {
     throw new ValidationError('Не указан стиль элемента');
@@ -114,19 +123,21 @@ function validateStyle(style: unknown): BoardItemStyle {
   const s = style as {
     color?: unknown;
     fontSize?: unknown;
+    fontSizeMode?: unknown;
     fontFamily?: unknown;
     textColor?: unknown;
     textAlign?: unknown;
   };
   const color = requireColorHex(s.color, 'элемента');
   const fontSize = validateFontSize(s.fontSize);
+  const fontSizeMode = validateFontSizeMode(s.fontSizeMode);
   const fontFamily = validateFontFamily(s.fontFamily);
   const textColor =
     s.textColor === undefined || s.textColor === null
       ? undefined
       : requireColorHex(s.textColor, 'текста');
   const textAlign = validateTextAlign(s.textAlign);
-  return { color, fontSize, fontFamily, textColor, textAlign };
+  return { color, fontSize, fontSizeMode, fontFamily, textColor, textAlign };
 }
 
 function validateCurveOffset(value: unknown): { x: number; y: number } | null {

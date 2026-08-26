@@ -440,6 +440,7 @@ export default {
     },
     textOptionsLabel: 'Text options',
     fontSizeLabel: 'Size',
+    fontSizeAuto: 'Auto',
     fontSizeDecrease: 'Decrease font size',
     fontSizeIncrease: 'Increase font size',
     textColorLabel: 'Text color',

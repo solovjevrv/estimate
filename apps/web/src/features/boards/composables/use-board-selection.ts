@@ -1,5 +1,6 @@
 import type {
   BoardColorHex,
+  BoardFontSizeMode,
   BoardHighlightColor,
   BoardItem,
   BoardItemContent,
@@ -15,7 +16,6 @@ import { isBoardContainer } from '@poker/shared';
 import {
   FIT_FONT_MAX,
   getScaledFontSize,
-  unscaleFontSizeStep,
 } from '../../../features/boards/composables/use-fit-font-size';
 import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@poker/shared';
 import { computed, ref, shallowRef } from 'vue';
@@ -256,30 +256,29 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     return options.textDefaultDimensions(content);
   }
 
-  function selectedTextScale(node: BoardSelectionNode): number | null {
-    const defaults = textDefaultDimensions(node.data.content);
-    if (!defaults) return null;
-    return Math.min(
-      node.dimensions.width / defaults.width,
-      node.dimensions.height / defaults.height,
-    );
-  }
-
   /** Сохранённый базовый размер — только для изменения +/- и его границ. */
   const selectedBaseFontSize = computed<number>(
     () => selectedNodes.value[0]?.data.style.fontSize ?? FIT_FONT_MAX,
   );
 
+  /** Не задано — `auto` (масштабируется с боксом, как было до этой задачи). */
+  const selectedFontSizeMode = computed<BoardFontSizeMode>(
+    () => selectedNodes.value[0]?.data.style.fontSizeMode ?? 'auto',
+  );
+
   /**
    * Тулбар показывает размер, который реально нарисовал node. Пока node ещё не
-   * смонтирован, fallback применяет геометрическое масштабирование; после DOM-fit
-   * registry заменяет его точным значением с учётом длины и форматирования текста.
+   * смонтирован, fallback применяет геометрическое масштабирование (только в
+   * `auto` — в `manual` размер зафиксирован пользователем и не зависит от
+   * геометрии бокса, см. `BoardFontSizeMode`); после DOM-fit registry
+   * заменяет его точным значением с учётом длины и форматирования текста.
    */
   const selectedFontSize = computed<number>(() => {
     const node = selectedNodes.value[0];
     if (!node) return FIT_FONT_MAX;
     const measured = fontSizeSizes.value.get(node.id);
     if (measured !== undefined) return measured;
+    if (selectedFontSizeMode.value === 'manual') return selectedBaseFontSize.value;
     const defaults = textDefaultDimensions(node.data.content);
     if (!defaults) return selectedBaseFontSize.value;
     return getScaledFontSize(
@@ -499,50 +498,59 @@ export function useBoardSelection(options: BoardSelectionOptions) {
   }
 
   /**
-   * Тулбар шагает по ОТОБРАЖАЕМОМУ (масштабированному) размеру шрифта, но
-   * сохраняется базовый. При `scale` > шага стэппера `Math.round(targetFontSize /
-   * scale)` откатывается обратно к `currentBase` (шаг в 2px displayed — меньше 1px
-   * base) — клик по +/- молча ничего не менял бы, и оставался бы «залипшим», раз
-   * при следующем клике currentBase/displayed те же самые. Гарантируем минимум
-   * ±1 к базе в сторону клика, если точный пересчёт откатился к текущему значению.
-   * Длинный текст может быть ужат ниже масштабированной базы. В таком случае
-   * +/- меняет настройку пользователя на ту же дельту, а не понижает её до
-   * fit-результата, который всё равно не поместится. Берём разницу displayed
-   * с целевым fontSize (а не хардкодим шаг стэппера) — иначе значение молча
-   * разойдётся с FONT_SIZE_STEP в BoardSelectionToolbar.vue при его смене.
+   * Явная установка размера (степпер +/- или прямой ввод числа) — сама по
+   * себе решение пользователя зафиксировать конкретное значение (26.08.2026,
+   * по референсу Miro): переключает режим в `manual`, даже если сам номер
+   * численно не поменялся (см. финальную проверку ниже) — иначе выбор того
+   * же числа, что уже показывает `auto`-режим, не переключил бы его.
+   *
+   * `fontSize` — это ЦЕЛЕВОЕ отображаемое значение (степпер шагает от
+   * `currentFontSize` в `BoardSelectionToolbar.vue`, т.е. от того, что реально
+   * нарисовано, включая масштабирование по боксу в `auto`). Раз результат
+   * ЛЮБОГО вызова этой функции — `manual`, а в `manual` отображаемое ВСЕГДА
+   * равно базе (никакого масштабирования по боксу), новая база — это просто
+   * `fontSize` как есть, без какого-либо пересчёта под текущий scale.
+   *
+   * Раньше (до режима manual) здесь был пересчёт через `unscaleFontSizeStep` —
+   * он транслировал целевой ОТОБРАЖАЕМЫЙ размер обратно в базу для дефолтной
+   * геометрии, ПРЕДПОЛАГАЯ, что результат останется в `auto` (масштабируемым).
+   * С момента, когда каждый вызов уводит в `manual`, это предположение больше
+   * не верно — тот пересчёт давал НЕОЖИДАННЫЙ скачок вниз (баг, найден живой
+   * проверкой 26.08.2026): на увеличенном боксе показывалось 30px, клик «+2»
+   * переключал в manual и рисовал 21px вместо ожидаемых 32 — пользователь
+   * нажал «увеличить», а шрифт визуально уменьшился.
    */
   function setSelectedFontSize(fontSize: number): void {
     const selected = selectedNodes.value[0];
     if (!selected) return;
-    const defaults = textDefaultDimensions(selected.data.content);
-    const scale = selectedTextScale(selected);
     const currentBase = selectedBaseFontSize.value;
-    const displayed = selectedFontSize.value;
-    const scaledBase =
-      defaults === null
-        ? currentBase
-        : getScaledFontSize(
-            currentBase,
-            selected.dimensions.width,
-            selected.dimensions.height,
-            defaults.width,
-            defaults.height,
-          );
-
-    const nextBase =
-      scale === null || displayed !== scaledBase
-        ? currentBase + (fontSize - displayed)
-        : unscaleFontSizeStep(currentBase, fontSize, scale);
+    const wasManual = selectedFontSizeMode.value === 'manual';
     const clampedBase = Math.min(
       BOARD_ITEM_FONT_SIZE_MAX,
-      Math.max(BOARD_ITEM_FONT_SIZE_MIN, nextBase),
+      Math.max(BOARD_ITEM_FONT_SIZE_MIN, fontSize),
     );
-    if (clampedBase === currentBase) return;
+    if (clampedBase === currentBase && wasManual) return;
     patchSelected((node) => ({
       type: 'item.patch',
       clientOpId: uuid(),
       id: node.id,
-      patch: { style: { fontSize: clampedBase } },
+      patch: { style: { fontSize: clampedBase, fontSizeMode: 'manual' } },
+    }));
+  }
+
+  /**
+   * Переключатель «Авто» в тулбаре (26.08.2026) — возврат к масштабированию
+   * шрифта вместе с боксом. Само сохранённое число (`style.fontSize`) не
+   * трогаем: в `auto` оно снова становится «базой для дефолтной геометрии» —
+   * тем же значением, которым уже было до перехода в `manual`.
+   */
+  function setSelectedFontSizeMode(mode: BoardFontSizeMode): void {
+    if (selectedFontSizeMode.value === mode) return;
+    patchSelected((node) => ({
+      type: 'item.patch',
+      clientOpId: uuid(),
+      id: node.id,
+      patch: { style: { fontSizeMode: mode } },
     }));
   }
 
@@ -967,6 +975,7 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     selectedForm,
     selectedColor,
     selectedFontSize,
+    selectedFontSizeMode,
     canIncreaseSelectedFontSize,
     canDecreaseSelectedFontSize,
     selectedTextColor,
@@ -991,6 +1000,7 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     setSelectedForm,
     setSelectedColor,
     setSelectedFontSize,
+    setSelectedFontSizeMode,
     setSelectedTextColor,
     setSelectedTextAlign,
     toggleSelectedMark,

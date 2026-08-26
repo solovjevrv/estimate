@@ -426,6 +426,7 @@ const {
   selectedTextColor,
   selectedTextAlign,
   selectedActiveMarks,
+  selectedFontSizeMode,
   canGroupSelection,
   canUngroupSelection,
   contextMenu,
@@ -437,6 +438,7 @@ const {
   setSelectedColor,
   setSelectedForm,
   setSelectedFontSize,
+  setSelectedFontSizeMode,
   setSelectedTextColor,
   setSelectedTextAlign,
   toggleSelectedMark,
@@ -794,6 +796,7 @@ useBoardHotkeys({
         :current-color="selectedColor"
         :current-form="selectedForm"
         :current-font-size="selectedFontSize"
+        :current-font-size-mode="selectedFontSizeMode"
         :can-increase-font-size="canIncreaseSelectedFontSize"
         :can-decrease-font-size="canDecreaseSelectedFontSize"
         :current-text-color="selectedTextColor"
@@ -806,6 +809,7 @@ useBoardHotkeys({
         @color-cancel="cancelSelectedColorPreview"
         @form="setSelectedForm"
         @font-size="setSelectedFontSize"
+        @font-size-mode="setSelectedFontSizeMode"
         @text-color="setSelectedTextColor"
         @text-color-preview="previewSelectedTextColor"
         @text-color-cancel="cancelSelectedTextColorPreview"

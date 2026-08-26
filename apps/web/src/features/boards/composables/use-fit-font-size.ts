@@ -52,6 +52,8 @@
  */
 import { nextTick, ref, watch, type Ref } from 'vue';
 
+import type { BoardFontSizeMode } from '@poker/shared';
+
 export const FIT_FONT_MIN = 10;
 /** Базовый размер текста для геометрии элемента по умолчанию. */
 export const FIT_FONT_MAX = 20;
@@ -122,6 +124,15 @@ export function useFitFontSize(
   baseFontSize: Ref<number> = ref(FIT_FONT_MAX),
   defaultWidth: number,
   defaultHeight: number,
+  /**
+   * `auto` (по умолчанию) — базовый размер масштабируется вместе с боксом
+   * (текущее поведение). `manual` (26.08.2026, решение пользователя, по
+   * референсу Miro) — пользователь явно задал конкретное число, resize бокса
+   * его не трогает: старт всегда с `baseFontSize` как есть, без масштабирования.
+   * Авто-сжатие при переполнении ниже работает одинаково в обоих режимах —
+   * это защита от обрезки длинным текстом, не масштабирование под геометрию.
+   */
+  mode: Ref<BoardFontSizeMode> = ref('auto'),
 ): Ref<number> {
   const fontSize = ref(baseFontSize.value);
 
@@ -144,13 +155,16 @@ export function useFitFontSize(
     const shouldManageHeight = manageHeight.value;
     if (shouldManageHeight) content.style.height = 'auto';
 
-    let size = getScaledFontSize(
-      baseFontSize.value,
-      width.value,
-      height.value,
-      defaultWidth,
-      defaultHeight,
-    );
+    let size =
+      mode.value === 'manual'
+        ? baseFontSize.value
+        : getScaledFontSize(
+            baseFontSize.value,
+            width.value,
+            height.value,
+            defaultWidth,
+            defaultHeight,
+          );
     content.style.fontSize = `${size}px`;
 
     // Учитываем не только базовое начертание — жирный/курсив внутри отдельных
@@ -179,7 +193,7 @@ export function useFitFontSize(
   // contentEl — тоже источник: при переключении edit/view меняется САМ элемент
   // (textarea <-> span), а текст в моменте переключения ещё не изменился —
   // без этого источника новый элемент остался бы без применённого fontSize
-  watch([text, width, height, contentEl, baseFontSize], recompute, { immediate: true });
+  watch([text, width, height, contentEl, baseFontSize, mode], recompute, { immediate: true });
 
   return fontSize;
 }
