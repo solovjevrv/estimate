@@ -22,11 +22,20 @@ import {
 } from '../context/board-canvas-keys';
 import { readableTextColor } from '../domain/board-colors';
 import { boardFontFamilyCss } from '../config/board-item-defaults';
-import type { ResizeDirection } from '../domain/board-snap';
+import { resizeAxisFlags, resizeRectFromOrigin } from '../domain/board-snap';
 import { FIT_FONT_MAX, getScaledFontSize, useFitFontSize } from './use-fit-font-size';
 import { useRichTextEditing } from './use-rich-text-editing';
 import { useBoardSessionStore } from '../../../stores/board-session';
 
+/**
+ * `x`/`y` используются ТОЛЬКО для сравнения с координатой на момент
+ * `resizeStart` (детект инвертирующего хендла — `resizeAxisFlags` в
+ * `board-snap.ts`), НЕ как позиция для патча напрямую: `@vue-flow/node-resizer`
+ * берёт их из `node.position`, которое для дочернего узла (`parentNode`
+ * задан) хранит координаты ОТНОСИТЕЛЬНО родителя, а не абсолютные, как того
+ * всегда требует домен (см. `resizeRectFromOrigin` — найденный пользователем
+ * 27.08.2026 баг: карточка внутри фрейма улетала при resize).
+ */
 export interface BoardResizeParams {
   x: number;
   y: number;
@@ -34,9 +43,8 @@ export interface BoardResizeParams {
   height: number;
 }
 
-export interface BoardResizeParamsWithDirection extends BoardResizeParams {
-  direction: ResizeDirection;
-}
+/** Координаты резайзера ДО жеста — момент `resizeStart`, точка отсчёта для `resizeAxisFlags`. */
+export type BoardResizeStartParams = Pick<BoardResizeParams, 'x' | 'y'>;
 
 export interface UseBoardNodeEditingOptions<TContent extends BoardItemContent & { text: string }> {
   itemId: string;
@@ -136,32 +144,37 @@ export function useBoardNodeEditing<TContent extends BoardItemContent & { text: 
   });
 
   /**
-   * Последнее известное `direction` этого resize-жеста (22.3) — есть только у
-   * `OnResize` (живой тик), а `OnResizeEnd`'s `ResizeParams` его не содержит
-   * (см. `@vue-flow/node-resizer`'s `types.d.ts`), при этом направление не
-   * меняется в рамках одного жеста (один и тот же угол/сторона тянется от
-   * `resizeStart` до `resizeEnd`) — запоминаем на каждом `onResize` и просто
-   * используем то же значение на resize-end.
+   * Координаты резайзера на момент `resizeStart` (до какого-либо движения) —
+   * точка отсчёта для `resizeAxisFlags` (см. `board-snap.ts`: сравнение
+   * ТЕКУЩИХ `x`/`y` с этими стартовыми говорит, инвертирующий ли хендл тянут,
+   * НЕ знак `direction` резайзера — тот кодирует рост/сжатие, а не сторону).
    */
-  let lastResizeDirection: ResizeDirection = [0, 0];
+  let resizeStart: BoardResizeStartParams = { x: 0, y: 0 };
+
+  function onResizeStart({ params: { x, y } }: { params: BoardResizeStartParams }): void {
+    resizeStart = { x, y };
+  }
+
+  function originRect() {
+    return {
+      id: itemId,
+      x: data.value.x,
+      y: data.value.y,
+      width: data.value.width,
+      height: data.value.height,
+    };
+  }
 
   /**
    * Live-подсказка выравнивания во время resize (22.3) — только гиды, без
    * мутации геометрии: сама геометрия по-прежнему рисуется библиотекой, снап
    * применяется один раз на resize-end (тот же принцип, что и у drag, 19.30).
    */
-  function onResize({
-    params: { x, y, width, height, direction },
-  }: {
-    params: BoardResizeParamsWithDirection;
-  }): void {
-    lastResizeDirection = direction;
-    resizeSnap?.updateGuides(
-      itemId,
-      { id: itemId, x, y, width, height },
-      direction,
-      lockAspectRatio,
-    );
+  function onResize({ params: { x, y, width, height } }: { params: BoardResizeParams }): void {
+    const origin = originRect();
+    const flags = resizeAxisFlags(resizeStart.x, resizeStart.y, origin, x, y, width, height);
+    const rect = resizeRectFromOrigin(origin, width, height, flags);
+    resizeSnap?.updateGuides(itemId, rect, flags, lockAspectRatio);
   }
 
   /**
@@ -192,12 +205,10 @@ export function useBoardNodeEditing<TContent extends BoardItemContent & { text: 
    * из события резайза.
    */
   function onResizeEnd({ params: { x, y, width, height } }: { params: BoardResizeParams }): void {
-    const snapped = resizeSnap?.applySnap(
-      itemId,
-      { id: itemId, x, y, width, height },
-      lastResizeDirection,
-      lockAspectRatio,
-    ) ?? { x, y, width, height };
+    const origin = originRect();
+    const flags = resizeAxisFlags(resizeStart.x, resizeStart.y, origin, x, y, width, height);
+    const rect = resizeRectFromOrigin(origin, width, height, flags);
+    const snapped = resizeSnap?.applySnap(itemId, rect, flags, lockAspectRatio) ?? rect;
     resizeSnap?.clearGuides();
     const patch: {
       x: number;
@@ -260,6 +271,7 @@ export function useBoardNodeEditing<TContent extends BoardItemContent & { text: 
     onEditableCompositionEnd,
     onEditablePaste,
     onEditableDrop,
+    onResizeStart,
     onResize,
     onResizeEnd,
   };

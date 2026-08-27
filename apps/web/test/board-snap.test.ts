@@ -3,12 +3,31 @@ import { describe, expect, it } from 'vitest';
 import {
   computeResizeSnapGuides,
   computeSnapGuides,
+  resizeAxisFlags,
+  resizeRectFromOrigin,
   SNAP_THRESHOLD_PX,
+  type ResizeAxisFlags,
   type SnapRect,
 } from '../src/features/boards/domain/board-snap';
 
 function rect(id: string, x: number, y: number, width = 100, height = 100): SnapRect {
   return { id, x, y, width, height };
+}
+
+/** `ResizeAxisFlags` для тестов — читается как старый `direction: [dx, dy]`
+ * (`x`/`y` — активна ли ось, `invertX`/`invertY` — подвижен ли левый/верхний
+ * край), но явно, без знака, который раньше путал рост/сжатие с краем
+ * (см. пояснение в `board-snap.ts`). */
+function axisFlags(
+  x: 'inactive' | 'left' | 'right',
+  y: 'inactive' | 'top' | 'bottom',
+): ResizeAxisFlags {
+  return {
+    xActive: x !== 'inactive',
+    invertX: x === 'left',
+    yActive: y !== 'inactive',
+    invertY: y === 'top',
+  };
 }
 
 describe('computeSnapGuides', () => {
@@ -212,7 +231,7 @@ describe('computeResizeSnapGuides', () => {
     // resizing: right=100. b: left=105 (x=105), diff=5 < 8
     const result = computeResizeSnapGuides(
       rect('a', 0, 0, 100, 100),
-      [1, 0],
+      axisFlags('right', 'inactive'),
       [rect('b', 105, 0, 50, 50)],
     );
     expect(result.rect).toMatchObject({ x: 0, y: 0, width: 105, height: 100 });
@@ -224,7 +243,7 @@ describe('computeResizeSnapGuides', () => {
     // resizing: x=50,width=100 → right=150 (анкер). b: left=45, diff=5 < 8
     const result = computeResizeSnapGuides(
       rect('a', 50, 0, 100, 100),
-      [-1, 0],
+      axisFlags('left', 'inactive'),
       [rect('b', 45, 0, 20, 20)],
     );
     // right edge (150) должен остаться на месте: x + width = 45 + 105 = 150
@@ -232,11 +251,11 @@ describe('computeResizeSnapGuides', () => {
     expect(result.rect.x + result.rect.width).toBe(150);
   });
 
-  it('не трогает ось, которая не участвует в этом resize-жесте (direction=0 на оси)', () => {
-    // direction=[0,1] — только Y активна, X-совпадение (пусть и в пороге) игнорируется
+  it('не трогает ось, которая не участвует в этом resize-жесте (xActive=false)', () => {
+    // только Y активна, X-совпадение (пусть и в пороге) игнорируется
     const result = computeResizeSnapGuides(
       rect('a', 0, 0, 100, 100),
-      [0, 1],
+      axisFlags('inactive', 'bottom'),
       [rect('b', 103, 0, 100, 100)], // X-края почти совпадают, но X здесь неактивен
     );
     expect(result.rect).toMatchObject({ x: 0, width: 100 });
@@ -246,7 +265,7 @@ describe('computeResizeSnapGuides', () => {
   it('не снапит за пределами порога — rect не меняется, guides пустой', () => {
     const result = computeResizeSnapGuides(
       rect('a', 0, 0, 100, 100),
-      [1, 1],
+      axisFlags('right', 'bottom'),
       [rect('b', 200, 200, 50, 50)],
     );
     expect(result.rect).toEqual(rect('a', 0, 0, 100, 100));
@@ -260,7 +279,7 @@ describe('computeResizeSnapGuides', () => {
     // пропорция стикера не искажается снапом.
     const result = computeResizeSnapGuides(
       rect('a', 0, 0, 100, 100),
-      [1, 1],
+      axisFlags('right', 'bottom'),
       [rect('bx', 106, 0, 10, 10), rect('by', 0, 103, 10, 10)],
       SNAP_THRESHOLD_PX,
       { lockAspectRatio: true },
@@ -274,7 +293,7 @@ describe('computeResizeSnapGuides', () => {
   it('lockAspectRatio: без конфликта (совпала только одна ось) вторая сторона всё равно пересчитывается пропорционально', () => {
     const result = computeResizeSnapGuides(
       rect('a', 0, 0, 100, 100),
-      [1, 1],
+      axisFlags('right', 'bottom'),
       [rect('bx', 106, 0, 10, 10)],
       SNAP_THRESHOLD_PX,
       { lockAspectRatio: true },
@@ -286,5 +305,77 @@ describe('computeResizeSnapGuides', () => {
 describe('SNAP_THRESHOLD_PX', () => {
   it('константа порога доступна для экспорта', () => {
     expect(SNAP_THRESHOLD_PX).toBe(8);
+  });
+});
+
+describe('resizeAxisFlags (27.08.2026 — регрессия «стикер во фрейме улетает при resize»)', () => {
+  const origin = rect('a', 50, 50, 100, 100);
+
+  it('неинвертирующий хендл (bottom-right), РОСТ: x/y резайзера не меняются от старта → invert=false', () => {
+    const flags = resizeAxisFlags(50, 50, origin, 50, 50, 140, 130);
+    expect(flags).toEqual({ xActive: true, invertX: false, yActive: true, invertY: false });
+  });
+
+  it('тот же неинвертирующий хендл, СЖАТИЕ: x/y резайзера всё ещё не меняются → invert=false несмотря на уменьшение размера', () => {
+    // Именно этот сценарий раньше давал баг: старый код судил инверсию по
+    // знаку роста/сжатия (`direction`), а не по факту движения координаты —
+    // сжатие через тот же самый (неподвижный) хендл ошибочно считалось
+    // инвертирующим, и x/y пересчитывались, хотя резайзер их не двигал.
+    const flags = resizeAxisFlags(50, 50, origin, 50, 50, 70, 80);
+    expect(flags).toEqual({ xActive: true, invertX: false, yActive: true, invertY: false });
+  });
+
+  it('инвертирующий хендл (top-left), РОСТ: x/y резайзера уходят от старта → invert=true', () => {
+    // Рост через top-left — x/y уменьшаются (двигаются от старта)
+    const flags = resizeAxisFlags(50, 50, origin, 10, 20, 140, 130);
+    expect(flags).toEqual({ xActive: true, invertX: true, yActive: true, invertY: true });
+  });
+
+  it('тот же инвертирующий хендл, СЖАТИЕ: x/y резайзера всё ещё уходят от старта → invert=true', () => {
+    const flags = resizeAxisFlags(50, 50, origin, 80, 70, 70, 80);
+    expect(flags).toEqual({ xActive: true, invertX: true, yActive: true, invertY: true });
+  });
+
+  it('чистое вертикальное перетаскивание — width не меняется → xActive=false', () => {
+    const flags = resizeAxisFlags(50, 50, origin, 50, 50, 100, 130);
+    expect(flags).toEqual({ xActive: false, invertX: false, yActive: true, invertY: false });
+  });
+});
+
+describe('resizeRectFromOrigin', () => {
+  const origin = rect('a', 50, 50, 100, 100);
+
+  it('неинвертирующий хендл: x/y не двигаются ни при росте, ни при сжатии', () => {
+    const flags: ResizeAxisFlags = { xActive: true, invertX: false, yActive: true, invertY: false };
+    expect(resizeRectFromOrigin(origin, 140, 130, flags)).toMatchObject({
+      x: 50,
+      y: 50,
+      width: 140,
+      height: 130,
+    });
+    expect(resizeRectFromOrigin(origin, 70, 80, flags)).toMatchObject({
+      x: 50,
+      y: 50,
+      width: 70,
+      height: 80,
+    });
+  });
+
+  it('инвертирующий хендл: противоположный край (right/bottom) остаётся на месте', () => {
+    const flags: ResizeAxisFlags = { xActive: true, invertX: true, yActive: true, invertY: true };
+    // origin: right=150, bottom=150
+    const grown = resizeRectFromOrigin(origin, 140, 130, flags);
+    expect(grown.x + grown.width).toBe(150);
+    expect(grown.y + grown.height).toBe(150);
+    const shrunk = resizeRectFromOrigin(origin, 70, 80, flags);
+    expect(shrunk.x + shrunk.width).toBe(150);
+    expect(shrunk.y + shrunk.height).toBe(150);
+  });
+
+  it('оси независимы: инверсия по X не задевает Y и наоборот', () => {
+    const flags: ResizeAxisFlags = { xActive: true, invertX: true, yActive: true, invertY: false };
+    const result = resizeRectFromOrigin(origin, 70, 80, flags);
+    expect(result.x + result.width).toBe(150); // X инвертирован — правый край фиксирован
+    expect(result.y).toBe(50); // Y не инвертирован — верх фиксирован
   });
 });

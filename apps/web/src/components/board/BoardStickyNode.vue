@@ -48,6 +48,7 @@ const {
   onEditableCompositionEnd,
   onEditablePaste,
   onEditableDrop,
+  onResizeStart,
   onResize,
   onResizeEnd,
 } = useBoardNodeEditing({
@@ -156,6 +157,7 @@ watch(
       :max-width="STICKY_MAX_WIDTH"
       :max-height="STICKY_MAX_HEIGHT"
       keep-aspect-ratio
+      @resize-start="onResizeStart"
       @resize="onResize"
       @resize-end="onResizeEnd"
     />
