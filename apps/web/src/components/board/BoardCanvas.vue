@@ -445,6 +445,7 @@ const {
   setSelectedEmoji,
   setSelectedSticker,
   setSelectedGiphy,
+  setSelectedFrameSize,
   replaceSelectedImage,
   groupSelection,
   ungroupSelection,
@@ -834,6 +835,7 @@ useBoardHotkeys({
         @emoji="setSelectedEmoji"
         @sticker="setSelectedSticker"
         @giphy="setSelectedGiphy"
+        @frame-size="setSelectedFrameSize"
       />
 
       <BoardEdgeToolbar

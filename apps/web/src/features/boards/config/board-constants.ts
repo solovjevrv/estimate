@@ -37,3 +37,47 @@ export const FRAME_MIN_HEIGHT = 120;
  */
 export const FRAME_MAX_WIDTH = BOARD_ITEM_MAX_SIZE;
 export const FRAME_MAX_HEIGHT = BOARD_ITEM_MAX_SIZE;
+
+/**
+ * Шаблоны размера/пропорций фрейма (22.4.2, тулбар иконок-кнопок по референсу
+ * Miro) — чисто клиентская таблица, не часть домена: применение шаблона просто
+ * патчит `width`/`height` выделенного фрейма (`item.patch`), как обычный ресайз,
+ * без отдельного поля-состояния на `BoardItem` (сервер не отличает фрейм,
+ * подогнанный под A4, от подогнанного вручную под те же пиксели).
+ *
+ * `custom` НЕ входит в этот список — в отличие от остальных, это не
+ * фиксированный размер, а обозначение «свободная форма» (как в Miro): клик по
+ * нему в тулбаре не меняет геометрию, поэтому ему нечего сопоставлять здесь
+ * (см. обработку в `BoardSelectionToolbar.vue`/`use-board-selection.ts`).
+ *
+ * Размеры — логические px канваса при 96dpi-эквиваленте (A4/Letter) либо
+ * распространённые эталонные значения (16:9/4:3/телефон/планшет/браузер) —
+ * собственный выбор проекта, не выгружены из недокументированного API Miro.
+ */
+export type FrameSizePresetKey =
+  | 'custom'
+  | 'a4'
+  | 'letter'
+  | 'widescreen'
+  | 'standard'
+  | 'square'
+  | 'phone'
+  | 'tablet'
+  | 'browser';
+
+export interface FrameSizePreset {
+  key: Exclude<FrameSizePresetKey, 'custom'>;
+  width: number;
+  height: number;
+}
+
+export const FRAME_SIZE_PRESETS: readonly FrameSizePreset[] = [
+  { key: 'a4', width: 794, height: 1123 },
+  { key: 'letter', width: 816, height: 1056 },
+  { key: 'widescreen', width: 1280, height: 720 },
+  { key: 'standard', width: 1024, height: 768 },
+  { key: 'square', width: 800, height: 800 },
+  { key: 'phone', width: 375, height: 812 },
+  { key: 'tablet', width: 768, height: 1024 },
+  { key: 'browser', width: 1440, height: 900 },
+];

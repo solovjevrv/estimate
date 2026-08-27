@@ -707,6 +707,35 @@ describe('useBoardSelection — emoji/sticker/image', () => {
   });
 });
 
+describe('useBoardSelection — setSelectedFrameSize (22.4.2)', () => {
+  it('patches width/height of a selected frame to the preset dimensions', () => {
+    const frame = flowNode(item('f1', { content: { type: 'frame', title: 'F' } }));
+    const { api, applyOps } = makeSelection({ selectedNodes: [frame] });
+    api.setSelectedFrameSize('square');
+    const ops = lastOps(applyOps);
+    expect(ops).toHaveLength(1);
+    expect(ops[0]!.id).toBe('f1');
+    expect(ops[0]!.patch).toEqual({ width: 800, height: 800 });
+  });
+
+  it('ignores non-frame nodes even when a frame is selected alongside them', () => {
+    const frame = flowNode(item('f1', { content: { type: 'frame', title: 'F' } }));
+    const sticky = flowNode(item('s1'));
+    const { api, applyOps } = makeSelection({ selectedNodes: [frame, sticky] });
+    api.setSelectedFrameSize('a4');
+    const ops = lastOps(applyOps);
+    expect(ops).toHaveLength(1);
+    expect(ops[0]!.id).toBe('f1');
+  });
+
+  it('"custom" is a no-op — free-form size, does not call applyOps at all', () => {
+    const frame = flowNode(item('f1', { content: { type: 'frame', title: 'F' } }));
+    const { api, applyOps } = makeSelection({ selectedNodes: [frame] });
+    api.setSelectedFrameSize('custom');
+    expect(applyOps).not.toHaveBeenCalled();
+  });
+});
+
 describe('useBoardSelection — layer ops', () => {
   it('bringSelectedToFront stacks above current max (max+1, max+2, ...)', () => {
     const a = flowNode(item('a'));
