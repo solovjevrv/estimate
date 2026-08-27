@@ -74,8 +74,9 @@ vi.mock('../src/features/emoji/config/skin-tone', () => ({
   SKIN_TONES: skinTones,
 }));
 
-async function mountPicker() {
+async function mountPicker(props?: { initiallyCollapsed?: boolean }) {
   const wrapper = mount(EmojiPicker, {
+    props,
     global: { plugins: [createAppI18n('ru')] },
   });
   // onMounted асинхронно (await import) — даём микрозадаче резолва
@@ -87,12 +88,43 @@ async function mountPicker() {
 }
 
 describe('EmojiPicker', () => {
-  it('рендерит секции по группам из каталога', async () => {
+  it('по умолчанию (реакции) рендерит сразу все категории', async () => {
     const wrapper = await mountPicker();
 
+    // recent пустой — секция не рендерится; обе группы каталога видны сразу
     const sections = wrapper.findAll('[data-testid="emoji-picker-section"]');
-    // 2 группы (smileys-emotion, people-body) — recent пустой, секция не рендерится
     expect(sections).toHaveLength(2);
+    expect(wrapper.find('[data-testid="emoji-picker-show-all"]').exists()).toBe(false);
+  });
+
+  it('initiallyCollapsed: изначально рендерит только первую категорию', async () => {
+    const wrapper = await mountPicker({ initiallyCollapsed: true });
+
+    const sections = wrapper.findAll('[data-testid="emoji-picker-section"]');
+    expect(sections).toHaveLength(1);
+    expect(sections[0]!.text()).toContain('Смайлы и эмоции');
+    expect(wrapper.find('[data-testid="emoji-picker-show-all"]').exists()).toBe(true);
+  });
+
+  it('initiallyCollapsed: клик по «Показать все категории» разворачивает остальные секции', async () => {
+    const wrapper = await mountPicker({ initiallyCollapsed: true });
+
+    await wrapper.find('[data-testid="emoji-picker-show-all"]').trigger('click');
+    await wrapper.vm.$nextTick();
+
+    const sections = wrapper.findAll('[data-testid="emoji-picker-section"]');
+    expect(sections).toHaveLength(2);
+    expect(wrapper.find('[data-testid="emoji-picker-show-all"]').exists()).toBe(false);
+  });
+
+  it('initiallyCollapsed: клик по вкладке второй категории тоже разворачивает все секции', async () => {
+    const wrapper = await mountPicker({ initiallyCollapsed: true });
+
+    const tabs = wrapper.findAll('.emoji-picker-tab');
+    await tabs[tabs.length - 1]!.trigger('click');
+    await wrapper.vm.$nextTick();
+
+    expect(wrapper.findAll('[data-testid="emoji-picker-section"]')).toHaveLength(2);
   });
 
   it('ввод в поиск фильтрует по label', async () => {

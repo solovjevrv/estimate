@@ -8,8 +8,20 @@
  * Структура похожа на BoardStickerPicker.vue: верхняя строка вкладок со скроллом
  * к секциям, ниже — один скролл с секциями по категорориям. Добавлено: поле
  * поиска и строка выбора тона кожи.
+ *
+ * Свёрнутый режим (`initiallyCollapsed`, решение пользователя 27.08.2026 — полный
+ * каталог сразу слишком объёмный): изначально в скролле рендерится только
+ * «Недавние» + первая категория, остальные подгружаются в разметку по клику на
+ * вкладку категории или на кнопку «Показать все категории». Поиск сразу снимает
+ * свёртку (иначе результаты в других категориях были бы не видны).
+ *
+ * Проп по умолчанию выключен (`false`) — быстрая реакция на карточке участника
+ * и на стикере (10.10/13.х) должна давать доступ к любому эмодзи сразу, без
+ * лишнего клика «показать всё»; включается точечно только там, где пикер
+ * реально используется для обзора каталога (вставка эмодзи-элемента на доску,
+ * «Заменить эмодзи» в тулбаре выделения).
  */
-import { computed, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import type { EmojiCatalogEntry, SkinToneId } from '@poker/shared';
@@ -22,6 +34,9 @@ import {
   SKIN_TONES,
 } from '../features/emoji/config/skin-tone';
 
+const props = withDefaults(defineProps<{ initiallyCollapsed?: boolean }>(), {
+  initiallyCollapsed: false,
+});
 const emit = defineEmits<{ select: [emoji: string] }>();
 const { t, locale } = useI18n();
 
@@ -106,13 +121,28 @@ const groupsWithEntries = computed(() =>
   EMOJI_GROUPS.filter((g) => (byGroup.value.get(g.id) ?? []).length > 0 || loading.value),
 );
 
+const expanded = ref(!props.initiallyCollapsed);
+/** Поиск сам снимает свёртку — иначе результаты вне первой категории были бы скрыты */
+const showAll = computed(() => expanded.value || normalizedQuery.value !== '');
+const visibleGroups = computed(() =>
+  showAll.value ? groupsWithEntries.value : groupsWithEntries.value.slice(0, 1),
+);
+
+function showAllCategories(): void {
+  expanded.value = true;
+}
+
 const sectionEls = new Map<string, HTMLElement>();
 function setSectionRef(key: string, el: Element | null): void {
   if (el) sectionEls.set(key, el as HTMLElement);
   else sectionEls.delete(key);
 }
-function scrollToSection(key: string): void {
-  sectionEls.get(key)?.scrollIntoView({ block: 'start' });
+async function scrollToSection(key: string): Promise<void> {
+  if (!showAll.value) {
+    expanded.value = true;
+    await nextTick();
+  }
+  sectionEls.get(key)?.scrollIntoView?.({ block: 'start' });
 }
 </script>
 
@@ -204,7 +234,7 @@ function scrollToSection(key: string): void {
       </section>
 
       <section
-        v-for="group in groupsWithEntries"
+        v-for="group in visibleGroups"
         :key="group.id"
         :ref="(el) => setSectionRef(group.id, el as Element | null)"
         data-testid="emoji-picker-section"
@@ -235,18 +265,40 @@ function scrollToSection(key: string): void {
         {{ t('emojiPicker.noResults') }}
       </p>
     </div>
+
+    <!-- Вне скролла — иначе кнопка требует докрутки вниз, чтобы попасть в зону
+         клика (нашли живой проверкой Playwright: элемент за пределами видимой
+         области попапа после scrollIntoView) -->
+    <button
+      v-if="!showAll && groupsWithEntries.length > 1"
+      type="button"
+      data-testid="emoji-picker-show-all"
+      class="emoji-picker-show-all"
+      @click="showAllCategories"
+    >
+      {{ t('emojiPicker.showAllCategories') }}
+    </button>
   </div>
 </template>
 
 <style scoped>
+/* max-height через --reka-popper-available-height (задаёт Reka на #content
+   попапа) — попап может открыться низко на экране (например, «Заменить
+   эмодзи» у элемента у нижнего края холста), тогда без этого ограничения
+   попап уезжает за нижнюю границу вьюпорта целиком, а кнопка «Показать все
+   категории» становится физически недостижимой (нашли живой проверкой
+   Playwright — 720px вьюпорт, попап уходил на 900+px). Скролл ниже — flex,
+   поэтому сам сжимается под оставшееся место, остальные блоки не трогает. */
 .emoji-picker {
   display: flex;
   flex-direction: column;
   width: 372px;
+  max-height: min(560px, var(--reka-popper-available-height, 560px));
   padding: 6px;
 }
 
 .emoji-picker-search {
+  flex-shrink: 0;
   padding: 8px 8px 6px;
 }
 
@@ -262,6 +314,7 @@ function scrollToSection(key: string): void {
 
 .emoji-picker-skin-row {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
@@ -314,6 +367,21 @@ function scrollToSection(key: string): void {
   padding: 8px 8px 6px;
   overflow-x: auto;
   border-bottom: 1px solid var(--ui-border);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-border) transparent;
+}
+
+.emoji-picker-tabs::-webkit-scrollbar {
+  height: 4px;
+}
+
+.emoji-picker-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.emoji-picker-tabs::-webkit-scrollbar-thumb {
+  background: var(--ui-border);
+  border-radius: 2px;
 }
 
 .emoji-picker-tab {
@@ -338,12 +406,28 @@ function scrollToSection(key: string): void {
 
 .emoji-picker-scroll {
   display: flex;
+  flex: 1 1 420px;
   flex-direction: column;
   gap: 14px;
-  max-height: 420px;
+  min-height: 0;
   padding: 10px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-border) transparent;
+}
+
+.emoji-picker-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.emoji-picker-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.emoji-picker-scroll::-webkit-scrollbar-thumb {
+  background: var(--ui-border);
+  border-radius: 2px;
 }
 
 .emoji-picker-heading {
@@ -357,6 +441,7 @@ function scrollToSection(key: string): void {
   display: grid;
   grid-template-columns: repeat(8, 32px);
   gap: 4px;
+  justify-content: center;
 }
 
 .emoji-picker-item {
@@ -370,6 +455,25 @@ function scrollToSection(key: string): void {
   background: transparent;
   border: none;
   border-radius: 6px;
+}
+
+.emoji-picker-show-all {
+  flex-shrink: 0;
+  margin: 4px 4px 2px;
+  padding: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-ink2);
+  text-align: center;
+  cursor: pointer;
+  background: var(--ui-bg-elevated);
+  border: none;
+  border-radius: 8px;
+}
+
+.emoji-picker-show-all:hover {
+  color: var(--brand-ink);
+  background: var(--ui-border);
 }
 
 .emoji-picker-item:hover {
