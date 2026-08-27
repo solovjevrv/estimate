@@ -10,7 +10,7 @@ import { createAppI18n } from '../src/i18n';
  * одна запись со skins, остальные без них. Используется вместо реального
  * каталога — vi.mock перехватывает и динамический import('@poker/shared/emoji/catalog').
  */
-const { fixtureCatalog, skinTones, recentEmoji } = vi.hoisted(() => {
+const { fixtureCatalog, skinTones, recentEmoji, preferredSkinTone } = vi.hoisted(() => {
   const catalog: EmojiCatalogEntry[] = [
     {
       unicode: '🔥',
@@ -56,7 +56,14 @@ const { fixtureCatalog, skinTones, recentEmoji } = vi.hoisted(() => {
     { id: 'dark', swatch: '#8D5524' },
   ];
 
-  return { fixtureCatalog: catalog, skinTones: tones, recentEmoji: [] as string[] };
+  return {
+    fixtureCatalog: catalog,
+    skinTones: tones,
+    recentEmoji: [] as string[],
+    // Мутируемый объект — UI выбора тона временно скрыт (27.08.2026), но
+    // ранее сохранённое предпочтение из localStorage по-прежнему применяется
+    preferredSkinTone: { value: null as string | null },
+  };
 });
 
 vi.mock('@poker/shared/emoji/catalog', () => ({
@@ -69,7 +76,7 @@ vi.mock('../src/features/emoji/infrastructure/recent-emoji', () => ({
 }));
 
 vi.mock('../src/features/emoji/config/skin-tone', () => ({
-  getPreferredSkinTone: () => null,
+  getPreferredSkinTone: () => preferredSkinTone.value,
   setPreferredSkinTone: () => {},
   SKIN_TONES: skinTones,
 }));
@@ -113,9 +120,8 @@ describe('EmojiPicker', () => {
     await wrapper.find('[data-testid="emoji-picker-show-all"]').trigger('click');
     await wrapper.vm.$nextTick();
 
-    // Обе группы каталога, строка тона кожи и вкладки категорий — всё сразу
+    // Обе группы каталога и вкладки категорий — всё сразу (тон кожи временно скрыт)
     expect(wrapper.findAll('[data-testid="emoji-picker-section"]')).toHaveLength(2);
-    expect(wrapper.find('[data-testid="emoji-picker-skin-tone"]').exists()).toBe(true);
     expect(wrapper.findAll('.emoji-picker-tab').length).toBeGreaterThan(0);
     expect(wrapper.find('[data-testid="emoji-picker-show-all"]').exists()).toBe(false);
   });
@@ -175,27 +181,28 @@ describe('EmojiPicker', () => {
     expect(wrapper.emitted('select')![0]).toEqual(['🔥']);
   });
 
-  it('выбор тона кожи меняет отображаемый глиф для entry со skins', async () => {
-    const wrapper = await mountPicker();
-
-    // Выбираем тон 'light'
-    const skinBtn = wrapper.find('[data-testid="emoji-picker-skin-tone"]').findAll('button')[1]!; // [0] = default, [1] = light
-    await skinBtn.trigger('click');
-    await wrapper.vm.$nextTick();
-
-    const items = wrapper.findAll('[data-testid="emoji-picker-item"]').map((b) => b.text());
-    expect(items).toContain('👋🏻');
+  // UI выбора тона кожи временно скрыт (27.08.2026) — но ранее сохранённое в
+  // localStorage предпочтение по-прежнему молча применяется при рендере
+  it('ранее сохранённый тон кожи применяется к отображаемому глифу entry со skins', async () => {
+    preferredSkinTone.value = 'light';
+    try {
+      const wrapper = await mountPicker();
+      const items = wrapper.findAll('[data-testid="emoji-picker-item"]').map((b) => b.text());
+      expect(items).toContain('👋🏻');
+    } finally {
+      preferredSkinTone.value = null;
+    }
   });
 
-  it('выбор тона кожи не влияет на entry без skins', async () => {
-    const wrapper = await mountPicker();
-
-    const skinBtn = wrapper.find('[data-testid="emoji-picker-skin-tone"]').findAll('button')[1]!; // light
-    await skinBtn.trigger('click');
-    await wrapper.vm.$nextTick();
-
-    const items = wrapper.findAll('[data-testid="emoji-picker-item"]').map((b) => b.text());
-    expect(items).toContain('🔥');
+  it('сохранённый тон кожи не влияет на entry без skins', async () => {
+    preferredSkinTone.value = 'light';
+    try {
+      const wrapper = await mountPicker();
+      const items = wrapper.findAll('[data-testid="emoji-picker-item"]').map((b) => b.text());
+      expect(items).toContain('🔥');
+    } finally {
+      preferredSkinTone.value = null;
+    }
   });
 
   it('пустой результат поиска показывает noResults', async () => {

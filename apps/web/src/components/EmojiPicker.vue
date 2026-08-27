@@ -7,15 +7,16 @@
  *
  * Структура похожа на BoardStickerPicker.vue: верхняя строка вкладок со скроллом
  * к секциям, ниже — один скролл с секциями по категорориям. Добавлено: поле
- * поиска и строка выбора тона кожи.
+ * поиска. Строка выбора тона кожи временно скрыта из UI (решение пользователя
+ * 27.08.2026, "пока не нужен") — см. комментарий у `skinTone` ниже.
  *
  * Свёрнутый режим (`initiallyCollapsed`, решение пользователя 27.08.2026 — полный
  * каталог сразу слишком объёмный, следующая итерация 27.08.2026 — свернуть ещё
- * сильнее): изначально видны только поиск и «Недавние» — ни строки тона кожи,
- * ни вкладок категорий, ни самих категорий. Разворот («Показать все категории»)
- * сразу открывает полный пикер целиком (тон кожи + вкладки + все категории), не
- * промежуточную «первую категорию». Поиск сам снимает свёртку (иначе результаты
- * вне «Недавних» были бы не видны, а тон кожи недоступен для их выбора).
+ * сильнее): изначально видны только поиск и «Недавние» — ни вкладок категорий,
+ * ни самих категорий. Разворот («Показать все категории») сразу открывает
+ * полный пикер целиком (вкладки + все категории), не промежуточную «первую
+ * категорию». Поиск сам снимает свёртку (иначе результаты вне «Недавних» были
+ * бы не видны).
  *
  * Проп `initiallyCollapsed` по умолчанию выключен (`false`) — используется
  * там, где сам компонент это явно указывает (сейчас — все места: вставка
@@ -30,11 +31,7 @@ import type { EmojiCatalogEntry, SkinToneId } from '@poker/shared';
 import { EMOJI_GROUPS } from '@poker/shared';
 
 import { addRecentEmoji, getRecentEmoji } from '../features/emoji/infrastructure/recent-emoji';
-import {
-  getPreferredSkinTone,
-  setPreferredSkinTone,
-  SKIN_TONES,
-} from '../features/emoji/config/skin-tone';
+import { getPreferredSkinTone } from '../features/emoji/config/skin-tone';
 
 const props = withDefaults(defineProps<{ initiallyCollapsed?: boolean }>(), {
   initiallyCollapsed: false,
@@ -49,6 +46,9 @@ function groupLabel(group: { labelEn: string; labelRu: string }): string {
 const catalog = ref<readonly EmojiCatalogEntry[]>([]);
 const loading = ref(true);
 const query = ref('');
+/** Выбор тона кожи временно скрыт из UI (решение пользователя 27.08.2026, "пока"
+ *  не нужен) — ранее сохранённое предпочтение из localStorage всё ещё
+ *  применяется молча, элементы управления вернуть можно из истории git. */
 const skinTone = ref<SkinToneId | null>(getPreferredSkinTone());
 const recent = ref<string[]>([]);
 
@@ -62,11 +62,6 @@ onMounted(async () => {
 function displayGlyph(entry: EmojiCatalogEntry): string {
   const tone = skinTone.value;
   return (tone && entry.skins?.[tone]) || entry.unicode;
-}
-
-function pickTone(tone: SkinToneId | null): void {
-  skinTone.value = tone;
-  setPreferredSkinTone(tone);
 }
 
 function pick(entry: EmojiCatalogEntry): void {
@@ -154,31 +149,6 @@ function scrollToSection(key: string): void {
         :placeholder="t('emojiPicker.searchPlaceholder')"
         class="emoji-picker-search-input"
       />
-    </div>
-
-    <!-- Выбор тона кожи — только вместе с полным пикером (27.08.2026, ещё сильнее свернуть) -->
-    <div v-if="showAll" data-testid="emoji-picker-skin-tone" class="emoji-picker-skin-row">
-      <span class="emoji-picker-skin-label">{{ t('emojiPicker.skinToneLabel') }}</span>
-      <button
-        type="button"
-        :class="{ 'emoji-picker-skin-active': !skinTone }"
-        class="emoji-picker-skin-option"
-        :aria-label="t('emojiPicker.defaultToneLabel')"
-        @click="pickTone(null)"
-      >
-        <span class="emoji-picker-skin-default">✕</span>
-      </button>
-      <button
-        v-for="tone in SKIN_TONES"
-        :key="tone.id"
-        type="button"
-        :class="{ 'emoji-picker-skin-active': skinTone === tone.id }"
-        class="emoji-picker-skin-option"
-        :aria-label="tone.id"
-        @click="pickTone(tone.id as SkinToneId)"
-      >
-        <span class="emoji-picker-skin-swatch" :style="{ backgroundColor: tone.swatch }" />
-      </button>
     </div>
 
     <!-- Вкладки категорий — только вместе с полным пикером, свернуто им скроллить некуда -->
