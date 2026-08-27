@@ -309,6 +309,15 @@ function scrollToSection(key: string): void {
   font-size: 13px;
 }
 
+/* Попап автофокусит это поле при открытии (Reka переносит фокус внутрь
+   контента) — без своего стиля фокуса вместо этого был виден голый браузерный
+   outline (нашли по скриншоту пользователя), не в цвет акцента приложения */
+.emoji-picker-search-input:focus-visible {
+  outline: none;
+  border-color: var(--ui-color-primary-500);
+  box-shadow: 0 0 0 1px var(--ui-color-primary-500);
+}
+
 .emoji-picker-skin-row {
   display: flex;
   flex-shrink: 0;
