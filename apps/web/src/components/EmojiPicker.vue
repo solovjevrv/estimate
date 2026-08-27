@@ -289,7 +289,7 @@ function scrollToSection(key: string): void {
 .emoji-picker {
   display: flex;
   flex-direction: column;
-  width: 372px;
+  width: 260px;
   max-height: min(560px, var(--reka-popper-available-height, 560px));
   padding: 6px;
 }
@@ -318,16 +318,36 @@ function scrollToSection(key: string): void {
   box-shadow: 0 0 0 1px var(--ui-color-primary-500);
 }
 
+/* overflow-x:auto + flex-shrink:0 на детях — при узком попапе (260px) строка
+   не помещается целиком, а без flex-shrink:0 браузер сжимал круглые кнопки по
+   ширине вместо переполнения (эффект «сплющенных» овалов, нашли по скриншоту) */
 .emoji-picker-skin-row {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
+  overflow-x: auto;
   border-bottom: 1px solid var(--ui-border);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-border) transparent;
+}
+
+.emoji-picker-skin-row::-webkit-scrollbar {
+  height: 4px;
+}
+
+.emoji-picker-skin-row::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.emoji-picker-skin-row::-webkit-scrollbar-thumb {
+  background: var(--ui-border);
+  border-radius: 2px;
 }
 
 .emoji-picker-skin-label {
+  flex-shrink: 0;
   font-size: 12px;
   font-weight: 600;
   color: var(--brand-ink2);
@@ -336,6 +356,7 @@ function scrollToSection(key: string): void {
 
 .emoji-picker-skin-option {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   width: 28px;
@@ -420,7 +441,7 @@ function scrollToSection(key: string): void {
   flex-direction: column;
   gap: 14px;
   min-height: 0;
-  max-height: 420px;
+  max-height: 190px;
   padding: 10px;
   overflow-x: hidden;
   overflow-y: auto;
@@ -450,7 +471,7 @@ function scrollToSection(key: string): void {
 
 .emoji-picker-grid {
   display: grid;
-  grid-template-columns: repeat(8, 32px);
+  grid-template-columns: repeat(6, 32px);
   gap: 4px;
   justify-content: center;
 }
