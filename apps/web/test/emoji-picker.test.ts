@@ -97,34 +97,27 @@ describe('EmojiPicker', () => {
     expect(wrapper.find('[data-testid="emoji-picker-show-all"]').exists()).toBe(false);
   });
 
-  it('initiallyCollapsed: изначально рендерит только первую категорию', async () => {
+  it('initiallyCollapsed: изначально нет категорий, тона кожи и вкладок — только поиск и кнопка', async () => {
     const wrapper = await mountPicker({ initiallyCollapsed: true });
 
-    const sections = wrapper.findAll('[data-testid="emoji-picker-section"]');
-    expect(sections).toHaveLength(1);
-    expect(sections[0]!.text()).toContain('Смайлы и эмоции');
+    // recent пустой — секций вообще нет, каталог полностью свёрнут
+    expect(wrapper.findAll('[data-testid="emoji-picker-section"]')).toHaveLength(0);
+    expect(wrapper.find('[data-testid="emoji-picker-skin-tone"]').exists()).toBe(false);
+    expect(wrapper.find('.emoji-picker-tab').exists()).toBe(false);
     expect(wrapper.find('[data-testid="emoji-picker-show-all"]').exists()).toBe(true);
   });
 
-  it('initiallyCollapsed: клик по «Показать все категории» разворачивает остальные секции', async () => {
+  it('initiallyCollapsed: клик по «Показать все категории» открывает полный пикер', async () => {
     const wrapper = await mountPicker({ initiallyCollapsed: true });
 
     await wrapper.find('[data-testid="emoji-picker-show-all"]').trigger('click');
     await wrapper.vm.$nextTick();
 
-    const sections = wrapper.findAll('[data-testid="emoji-picker-section"]');
-    expect(sections).toHaveLength(2);
-    expect(wrapper.find('[data-testid="emoji-picker-show-all"]').exists()).toBe(false);
-  });
-
-  it('initiallyCollapsed: клик по вкладке второй категории тоже разворачивает все секции', async () => {
-    const wrapper = await mountPicker({ initiallyCollapsed: true });
-
-    const tabs = wrapper.findAll('.emoji-picker-tab');
-    await tabs[tabs.length - 1]!.trigger('click');
-    await wrapper.vm.$nextTick();
-
+    // Обе группы каталога, строка тона кожи и вкладки категорий — всё сразу
     expect(wrapper.findAll('[data-testid="emoji-picker-section"]')).toHaveLength(2);
+    expect(wrapper.find('[data-testid="emoji-picker-skin-tone"]').exists()).toBe(true);
+    expect(wrapper.findAll('.emoji-picker-tab').length).toBeGreaterThan(0);
+    expect(wrapper.find('[data-testid="emoji-picker-show-all"]').exists()).toBe(false);
   });
 
   it('ввод в поиск фильтрует по label', async () => {

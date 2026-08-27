@@ -10,10 +10,12 @@
  * поиска и строка выбора тона кожи.
  *
  * Свёрнутый режим (`initiallyCollapsed`, решение пользователя 27.08.2026 — полный
- * каталог сразу слишком объёмный): изначально в скролле рендерится только
- * «Недавние» + первая категория, остальные подгружаются в разметку по клику на
- * вкладку категории или на кнопку «Показать все категории». Поиск сразу снимает
- * свёртку (иначе результаты в других категориях были бы не видны).
+ * каталог сразу слишком объёмный, следующая итерация 27.08.2026 — свернуть ещё
+ * сильнее): изначально видны только поиск и «Недавние» — ни строки тона кожи,
+ * ни вкладок категорий, ни самих категорий. Разворот («Показать все категории»)
+ * сразу открывает полный пикер целиком (тон кожи + вкладки + все категории), не
+ * промежуточную «первую категорию». Поиск сам снимает свёртку (иначе результаты
+ * вне «Недавних» были бы не видны, а тон кожи недоступен для их выбора).
  *
  * Проп по умолчанию выключен (`false`) — быстрая реакция на карточке участника
  * и на стикере (10.10/13.х) должна давать доступ к любому эмодзи сразу, без
@@ -21,7 +23,7 @@
  * реально используется для обзора каталога (вставка эмодзи-элемента на доску,
  * «Заменить эмодзи» в тулбаре выделения).
  */
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import type { EmojiCatalogEntry, SkinToneId } from '@poker/shared';
@@ -122,11 +124,9 @@ const groupsWithEntries = computed(() =>
 );
 
 const expanded = ref(!props.initiallyCollapsed);
-/** Поиск сам снимает свёртку — иначе результаты вне первой категории были бы скрыты */
+/** Поиск сам снимает свёртку — иначе результаты вне «Недавних» были бы скрыты */
 const showAll = computed(() => expanded.value || normalizedQuery.value !== '');
-const visibleGroups = computed(() =>
-  showAll.value ? groupsWithEntries.value : groupsWithEntries.value.slice(0, 1),
-);
+const visibleGroups = computed(() => (showAll.value ? groupsWithEntries.value : []));
 
 function showAllCategories(): void {
   expanded.value = true;
@@ -137,11 +137,8 @@ function setSectionRef(key: string, el: Element | null): void {
   if (el) sectionEls.set(key, el as HTMLElement);
   else sectionEls.delete(key);
 }
-async function scrollToSection(key: string): Promise<void> {
-  if (!showAll.value) {
-    expanded.value = true;
-    await nextTick();
-  }
+/** Вкладки видны только вместе с полным пикером (showAll) — свёртку разворачивать уже не нужно */
+function scrollToSection(key: string): void {
   sectionEls.get(key)?.scrollIntoView?.({ block: 'start' });
 }
 </script>
@@ -159,8 +156,8 @@ async function scrollToSection(key: string): Promise<void> {
       />
     </div>
 
-    <!-- Выбор тона кожи -->
-    <div data-testid="emoji-picker-skin-tone" class="emoji-picker-skin-row">
+    <!-- Выбор тона кожи — только вместе с полным пикером (27.08.2026, ещё сильнее свернуть) -->
+    <div v-if="showAll" data-testid="emoji-picker-skin-tone" class="emoji-picker-skin-row">
       <span class="emoji-picker-skin-label">{{ t('emojiPicker.skinToneLabel') }}</span>
       <button
         type="button"
@@ -184,8 +181,8 @@ async function scrollToSection(key: string): Promise<void> {
       </button>
     </div>
 
-    <!-- Вкладки категорий -->
-    <div class="emoji-picker-tabs">
+    <!-- Вкладки категорий — только вместе с полным пикером, свернуто им скроллить некуда -->
+    <div v-if="showAll" class="emoji-picker-tabs">
       <button
         v-if="recent.length > 0"
         type="button"
@@ -209,8 +206,8 @@ async function scrollToSection(key: string): Promise<void> {
       </button>
     </div>
 
-    <!-- Скролл с секциями -->
-    <div class="emoji-picker-scroll">
+    <!-- Скролл с секциями — пусто и не рендерится, если свёрнуто и «Недавних» нет -->
+    <div v-if="recent.length > 0 || showAll" class="emoji-picker-scroll">
       <section
         v-if="recent.length > 0"
         :ref="(el) => setSectionRef('recent', el as Element | null)"
@@ -270,7 +267,7 @@ async function scrollToSection(key: string): Promise<void> {
          клика (нашли живой проверкой Playwright: элемент за пределами видимой
          области попапа после scrollIntoView) -->
     <button
-      v-if="!showAll && groupsWithEntries.length > 1"
+      v-if="!showAll"
       type="button"
       data-testid="emoji-picker-show-all"
       class="emoji-picker-show-all"
