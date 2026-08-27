@@ -401,12 +401,17 @@ function scrollToSection(key: string): void {
   background: var(--ui-border);
 }
 
+/* flex-basis auto (не фиксированные 420px) — размер по контенту: свёрнутый вид
+   с парой «Недавних» не должен раздувать попап до полной высоты; max-height —
+   потолок для развёрнутого каталога, flex-shrink всё равно ужимает и его,
+   если целиком не помещается в --reka-popper-available-height (см. .emoji-picker) */
 .emoji-picker-scroll {
   display: flex;
-  flex: 1 1 420px;
+  flex: 0 1 auto;
   flex-direction: column;
   gap: 14px;
   min-height: 0;
+  max-height: 420px;
   padding: 10px;
   overflow-x: hidden;
   overflow-y: auto;
