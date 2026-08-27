@@ -343,18 +343,24 @@ watch(
 }
 
 /* Бейджи уже стоящих реакций — в отличие от кнопки-триггера видны всегда,
-   это персистентное содержимое карточки, а не служебный элемент управления */
+   это персистентное содержимое карточки, а не служебный элемент управления.
+   height/min-width вместо симметричного padding — иначе rounded-full на
+   прямоугольнике уже своей высоты давал не круг, а таблетку; line-height:1
+   плотно прижимал цветной эмодзи-глиф к верхней границе вместо центра (оба —
+   по скриншоту пользователя). Со счётчиком бейдж всё равно шире min-width. */
 .board-reaction-badge {
   display: flex;
-  cursor: pointer;
   align-items: center;
+  justify-content: center;
   gap: 2px;
+  height: 34px;
+  min-width: 34px;
+  padding: 0 5px;
+  cursor: pointer;
   border-radius: 999px;
   border: 1px solid color-mix(in srgb, var(--brand-ink2) 22%, transparent);
   background: var(--brand-surface);
-  padding: 2px 6px;
-  font-size: 1.05rem;
-  line-height: 1;
+  font-size: 1.21rem;
   box-shadow: var(--brand-shadow-card);
 }
 
