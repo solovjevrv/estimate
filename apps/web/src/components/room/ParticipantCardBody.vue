@@ -145,7 +145,7 @@ function onBadgeClick(emoji: EmojiSequence): void {
           :aria-label="
             t('room.reactionBadgeLabel', { emoji: reaction.emoji, count: reaction.count })
           "
-          class="border-[var(--brand-ink2)]/45 hover:bg-[var(--brand-border)] flex cursor-pointer items-center gap-0.5 rounded-full border-[1.5px] bg-[var(--brand-surface)] px-1.5 py-0.5 text-xl leading-none shadow-[var(--brand-shadow-card)] dark:border-transparent"
+          class="border-[var(--brand-ink2)]/45 hover:bg-[var(--brand-border)] flex cursor-pointer items-center gap-0.5 rounded-full border-[1.5px] bg-[var(--brand-surface)] px-1.5 py-0.5 text-[23px] shadow-[var(--brand-shadow-card)] dark:border-transparent"
           :class="
             reaction.reactedByMe ? 'shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]' : ''
           "
