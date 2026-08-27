@@ -306,6 +306,7 @@ watch(
 
         <template #content="{ close }">
           <EmojiPicker
+            initially-collapsed
             @select="
               (emoji: string) => {
                 onPickEmoji(emoji, close);
