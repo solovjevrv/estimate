@@ -39,6 +39,16 @@
  * иначе пользователь случайно превратил бы всю подпись в ссылку, поставив cursor
  * в текст и кликнув иконку ссылки.
  *
+ * Фрейм (22.4, по референсу Miro): заголовок фрейма — обычная строка (`content.title`),
+ * не rich-text с runs, поэтому из полного текстового набора ему подходит только
+ * «Aa» (размер + цвет, те же generic-поля `BoardItemStyle.fontSize/textColor`, что
+ * и у остальных типов) — БЕЗ переключателя «Авто»/ручной (у фрейма нет масштабирования
+ * шрифта с боксом — это была бы отдельная незапрошенная механика) и БЕЗ выравнивания/
+ * начертания/маркера/ссылки (нечего форматировать внутри одной строки). Плюс новая
+ * кнопка «Размер» — шаблоны геометрии фрейма (A4/Letter/16:9/4:3/1:1/телефон/планшет/
+ * браузер/свободный, `FRAME_SIZE_PRESETS` в `board-constants.ts`) — патчит `width`/
+ * `height` напрямую, как обычный ресайз, без нового поля в домене.
+ *
  * Только эти три попапа несут
  * `data-board-text-toolbar` (`BOARD_TEXT_TOOLBAR_SELECTOR` в
  * `board-rich-text.ts`) на содержимом: Reka сама переносит фокус ВНУТРЬ
@@ -77,6 +87,7 @@ import {
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import type { FrameSizePresetKey } from '../../features/boards/config/board-constants';
 import { HIGHLIGHT_CSS } from '../../features/boards/rich-text/board-rich-text';
 import type { FormatMarkKey } from '../../features/boards/composables/use-rich-text-editing';
 import type { ItemFormKind } from '../../features/boards/board-item-form';
@@ -85,6 +96,7 @@ import BoardStickerPicker from './BoardStickerPicker.vue';
 import EmojiPicker from '../EmojiPicker.vue';
 import BoardColorPickerMenu from './BoardColorPickerMenu.vue';
 import BoardFormatButtons from './BoardFormatButtons.vue';
+import BoardFrameSizeMenu from './BoardFrameSizeMenu.vue';
 
 export type { ItemFormKind };
 
@@ -181,6 +193,7 @@ const emit = defineEmits<{
   emoji: [emoji: EmojiSequence];
   sticker: [pack: string, id: string, format?: PersonalStickerFormat];
   giphy: [gif: GiphyGifSummary];
+  frameSize: [preset: FrameSizePresetKey];
 }>();
 
 const { t } = useI18n();
@@ -202,11 +215,12 @@ const isSticker = computed(() => props.currentForm === 'sticker');
 /** GIF из Giphy (21.9) — не имеет заливки/текста/фигуры, только выбор GIF и размер */
 const isGiphy = computed(() => props.currentForm === 'giphy');
 
-/** Фрейм/группа (14.3) — контейнеры без переключателя формы/текстовых регуляторов
- * (Aa/выравнивание/начертание) — они бессмысленны для контейнера. */
+/** Фрейм/группа (14.3) — контейнеры без переключателя формы (бессмысленен для контейнера). */
 const isContainer = computed(() => props.currentForm === 'frame' || props.currentForm === 'group');
 /** Фрейм — видимый контейнер, у него ЕСТЬ заливка (в отличие от невидимой группы) —
- * цвет можно менять и после создания, не только в момент задания дефолта */
+ * цвет можно менять и после создания, не только в момент задания дефолта. С 22.4.1
+ * у фрейма также есть свой (усечённый) набор текстовых регуляторов — см. блок ниже
+ * в шаблоне и шапку файла. */
 const isFrame = computed(() => props.currentForm === 'frame');
 /** Группа — единственная форма вообще без каких-либо регуляторов в этом тулбаре
  * (ни формы, ни цвета, ни текста) — используется, чтобы не рисовать "осиротевший"
@@ -493,9 +507,29 @@ function cancelTextColor(hex: BoardColorHex): void {
       </UPopover>
     </template>
 
+    <!-- Размер фрейма (22.4.2, по референсу Miro) — шаблоны геометрии, только у фрейма -->
+    <template v-if="isFrame">
+      <div class="board-selection-divider" />
+
+      <UPopover :content="{ side: 'top', sideOffset: 20 }">
+        <button
+          type="button"
+          class="board-selection-icon-btn"
+          :aria-label="t('board.frameSizeLabel')"
+        >
+          <UIcon name="i-lucide-ruler" class="size-3.5" />
+        </button>
+
+        <template #content>
+          <BoardFrameSizeMenu @select="(preset: FrameSizePresetKey) => emit('frameSize', preset)" />
+        </template>
+      </UPopover>
+    </template>
+
     <!-- Текстовые регуляторы (Aa/выравнивание/начертание/маркер/ссылка) — картинке/эмодзи/стикеру
-      они не нужны вовсе (текста нет), не только когда он сейчас не редактируется. Фрейм/группа — тоже не текстовые (14.3) -->
-    <template v-if="!isContainer && !isImage && !isEmoji && !isSticker && !isGiphy">
+      они не нужны вовсе (текста нет), не только когда он сейчас не редактируется. Группа — тоже не
+      текстовая (14.3). Фрейм (22.4.1) — только «Aa» (см. `v-if="!isFrame"` ниже у остального) -->
+    <template v-if="(!isContainer || isFrame) && !isImage && !isEmoji && !isSticker && !isGiphy">
       <div class="board-selection-divider" />
 
       <!-- Aa — только размер шрифта и цвет текста (гарнитура убрана, см. шапку файла) -->
@@ -514,6 +548,7 @@ function cancelTextColor(hex: BoardColorHex): void {
               <span class="board-text-menu-label">{{ t('board.fontSizeLabel') }}</span>
               <div class="board-fontsize-controls">
                 <button
+                  v-if="!isFrame"
                   type="button"
                   class="board-fontsize-auto-btn"
                   :class="{ 'board-fontsize-auto-btn-active': currentFontSizeMode === 'auto' }"
@@ -570,106 +605,109 @@ function cancelTextColor(hex: BoardColorHex): void {
         </template>
       </UPopover>
 
-      <div class="board-selection-divider" />
+      <!-- Выравнивание/начертание/маркер/ссылка — заголовок фрейма (22.4.1) их не несёт,
+           это одна строка без rich-text runs, форматировать внутри неё нечего -->
+      <template v-if="!isFrame">
+        <div class="board-selection-divider" />
 
-      <!-- Выравнивание — своя кнопка (было строкой внутри Aa) -->
-      <UPopover :content="{ side: 'top', sideOffset: 20 }">
-        <button
-          type="button"
-          class="board-selection-icon-btn"
-          :aria-label="t('board.textAlignLabel')"
-        >
-          <UIcon :name="ALIGN_ICONS[props.currentTextAlign]" class="size-3.5" />
-        </button>
+        <!-- Выравнивание — своя кнопка (было строкой внутри Aa) -->
+        <UPopover :content="{ side: 'top', sideOffset: 20 }">
+          <button
+            type="button"
+            class="board-selection-icon-btn"
+            :aria-label="t('board.textAlignLabel')"
+          >
+            <UIcon :name="ALIGN_ICONS[props.currentTextAlign]" class="size-3.5" />
+          </button>
 
-        <template #content>
-          <div class="board-form-menu" data-testid="board-form-menu">
-            <button
-              v-for="align in BOARD_TEXT_ALIGNS"
-              :key="align"
-              type="button"
-              class="board-form-menu-item"
-              :class="{ 'board-form-menu-item-active': align === props.currentTextAlign }"
-              :aria-label="t(`board.aligns.${align}`)"
-              :title="t(`board.aligns.${align}`)"
-              @click="emit('textAlign', align)"
-            >
-              <UIcon :name="ALIGN_ICONS[align]" class="size-4" />
-            </button>
-          </div>
-        </template>
-      </UPopover>
+          <template #content>
+            <div class="board-form-menu" data-testid="board-form-menu">
+              <button
+                v-for="align in BOARD_TEXT_ALIGNS"
+                :key="align"
+                type="button"
+                class="board-form-menu-item"
+                :class="{ 'board-form-menu-item-active': align === props.currentTextAlign }"
+                :aria-label="t(`board.aligns.${align}`)"
+                :title="t(`board.aligns.${align}`)"
+                @click="emit('textAlign', align)"
+              >
+                <UIcon :name="ALIGN_ICONS[align]" class="size-4" />
+              </button>
+            </div>
+          </template>
+        </UPopover>
 
-      <div class="board-selection-divider" />
+        <div class="board-selection-divider" />
 
-      <!--
+        <!--
        Начертание (12.13) — к целевому диапазону внутри редактируемого текста: при
        схлопнутом курсоре (18.7) — ко всему непустому тексту. Разметка/иконки/классы —
        общий `BoardFormatButtons.vue` (12.18, переиспользуется и BoardEdgeToolbar.vue),
        он же несёт `@mousedown.prevent`/`onFocusOutside`, нужные, чтобы фокус не уходил
        с contenteditable — см. пояснение в шапке файла.
       -->
-      <BoardFormatButtons
-        :active-keys="activeFormatKeys"
-        :disabled="formattingDisabled"
-        @toggle="emit('toggleMark', $event)"
-      />
+        <BoardFormatButtons
+          :active-keys="activeFormatKeys"
+          :disabled="formattingDisabled"
+          @toggle="emit('toggleMark', $event)"
+        />
 
-      <div class="board-selection-divider" />
+        <div class="board-selection-divider" />
 
-      <!-- Маркер (12.13) — та же логика mousedown.prevent/onFocusOutside, что и у начертания.
+        <!-- Маркер (12.13) — та же логика mousedown.prevent/onFocusOutside, что и у начертания.
            Целевой диапазон — либо выделение, либо весь непустой текст при схлопнутом курсоре (18.7) -->
-      <UPopover
-        :content="{
-          side: 'top',
-          sideOffset: 20,
-          onFocusOutside: (event: Event) => event.preventDefault(),
-        }"
-      >
-        <button
-          type="button"
-          class="board-selection-icon-btn"
-          :class="{ 'board-selection-icon-btn-active': !!activeMarks?.highlight }"
-          :aria-label="t('board.highlightLabel')"
-          @mousedown.prevent
+        <UPopover
+          :content="{
+            side: 'top',
+            sideOffset: 20,
+            onFocusOutside: (event: Event) => event.preventDefault(),
+          }"
         >
-          <UIcon name="i-lucide-highlighter" class="size-3.5" />
-        </button>
+          <button
+            type="button"
+            class="board-selection-icon-btn"
+            :class="{ 'board-selection-icon-btn-active': !!activeMarks?.highlight }"
+            :aria-label="t('board.highlightLabel')"
+            @mousedown.prevent
+          >
+            <UIcon name="i-lucide-highlighter" class="size-3.5" />
+          </button>
 
-        <template #content>
-          <div class="board-text-menu-swatches board-inline-menu" data-board-text-toolbar>
-            <button
-              v-for="hl in BOARD_HIGHLIGHT_COLORS"
-              :key="hl"
-              type="button"
-              class="board-highlight-swatch"
-              data-testid="board-highlight-swatch"
-              :class="{ 'board-selection-swatch-active': hl === activeMarks?.highlight }"
-              :style="{ backgroundColor: HIGHLIGHT_CSS[hl] }"
-              :disabled="formattingDisabled"
-              :aria-label="t(`board.highlights.${hl}`)"
-              :title="t(`board.highlights.${hl}`)"
-              @mousedown.prevent
-              @click="emit('setHighlight', hl === activeMarks?.highlight ? null : hl)"
-            />
-            <button
-              v-if="activeMarks?.highlight"
-              type="button"
-              class="board-color-add-btn"
-              :aria-label="t('board.highlightClear')"
-              :title="t('board.highlightClear')"
-              @mousedown.prevent
-              @click="emit('setHighlight', null)"
-            >
-              <UIcon name="i-lucide-x" class="size-3.5" />
-            </button>
-          </div>
-        </template>
-      </UPopover>
+          <template #content>
+            <div class="board-text-menu-swatches board-inline-menu" data-board-text-toolbar>
+              <button
+                v-for="hl in BOARD_HIGHLIGHT_COLORS"
+                :key="hl"
+                type="button"
+                class="board-highlight-swatch"
+                data-testid="board-highlight-swatch"
+                :class="{ 'board-selection-swatch-active': hl === activeMarks?.highlight }"
+                :style="{ backgroundColor: HIGHLIGHT_CSS[hl] }"
+                :disabled="formattingDisabled"
+                :aria-label="t(`board.highlights.${hl}`)"
+                :title="t(`board.highlights.${hl}`)"
+                @mousedown.prevent
+                @click="emit('setHighlight', hl === activeMarks?.highlight ? null : hl)"
+              />
+              <button
+                v-if="activeMarks?.highlight"
+                type="button"
+                class="board-color-add-btn"
+                :aria-label="t('board.highlightClear')"
+                :title="t('board.highlightClear')"
+                @mousedown.prevent
+                @click="emit('setHighlight', null)"
+              >
+                <UIcon name="i-lucide-x" class="size-3.5" />
+              </button>
+            </div>
+          </template>
+        </UPopover>
 
-      <div class="board-selection-divider" />
+        <div class="board-selection-divider" />
 
-      <!--
+        <!--
       Ссылка (12.13) — открытие попапа тоже гасит mousedown (фокус остаётся на
       contenteditable), но поле URL всё равно требует НАСТОЯЩЕГО фокуса, чтобы
       в него печатать — это единственный момент, когда фокус реально уходит
@@ -677,56 +715,61 @@ function cancelTextColor(hex: BoardColorHex): void {
       содержимое ЭТОГО попапа несёт `data-board-text-toolbar` — см. шапку файла
       и `BOARD_TEXT_TOOLBAR_SELECTOR` в `board-rich-text.ts`.
     -->
-      <UPopover v-model:open="linkPopoverOpen" :content="{ side: 'top', sideOffset: 20 }">
-        <button
-          type="button"
-          class="board-selection-icon-btn"
-          :class="{ 'board-selection-icon-btn-active': !!activeMarks?.link }"
-          :disabled="!editingText"
-          :aria-label="t('board.linkLabel')"
-          @mousedown.prevent
-        >
-          <UIcon name="i-lucide-link" class="size-3.5" />
-        </button>
+        <UPopover v-model:open="linkPopoverOpen" :content="{ side: 'top', sideOffset: 20 }">
+          <button
+            type="button"
+            class="board-selection-icon-btn"
+            :class="{ 'board-selection-icon-btn-active': !!activeMarks?.link }"
+            :disabled="!editingText"
+            :aria-label="t('board.linkLabel')"
+            @mousedown.prevent
+          >
+            <UIcon name="i-lucide-link" class="size-3.5" />
+          </button>
 
-        <template #content>
-          <div class="board-link-menu" data-board-text-toolbar>
-            <!-- Кнопка-триггер активна уже в момент редактирования (иначе клик по ней
+          <template #content>
+            <div class="board-link-menu" data-board-text-toolbar>
+              <!-- Кнопка-триггер активна уже в момент редактирования (иначе клик по ней
                 без предварительного выделения молча ничего не делал бы) — подсказка
                 вместо формы, пока нет ЯВНОГО выделения (ссылка требует выбора фрагмента, 18.7) -->
-            <span v-if="linkUnavailable" class="board-link-hint">
-              {{ t('board.linkSelectTextHint') }}
-            </span>
-            <form v-else class="board-link-form" @submit.prevent="submitLink">
-              <input
-                ref="linkInput"
-                v-model="linkDraft"
-                type="text"
-                inputmode="url"
-                class="board-link-input"
-                data-testid="board-link-input"
-                placeholder="https://..."
-                @input="linkError = false"
-                @keydown.esc.stop.prevent="linkPopoverOpen = false"
-              />
-              <button type="submit" class="board-link-apply-btn" data-testid="board-link-apply-btn">
-                {{ t('board.linkApply') }}
-              </button>
-              <button
-                v-if="activeMarks?.link"
-                type="button"
-                class="board-color-add-btn"
-                :aria-label="t('board.linkRemove')"
-                :title="t('board.linkRemove')"
-                @click="clearLink"
-              >
-                <UIcon name="i-lucide-link-2-off" class="size-3.5" />
-              </button>
-            </form>
-            <span v-if="linkError" class="board-link-error">{{ t('board.linkInvalid') }}</span>
-          </div>
-        </template>
-      </UPopover>
+              <span v-if="linkUnavailable" class="board-link-hint">
+                {{ t('board.linkSelectTextHint') }}
+              </span>
+              <form v-else class="board-link-form" @submit.prevent="submitLink">
+                <input
+                  ref="linkInput"
+                  v-model="linkDraft"
+                  type="text"
+                  inputmode="url"
+                  class="board-link-input"
+                  data-testid="board-link-input"
+                  placeholder="https://..."
+                  @input="linkError = false"
+                  @keydown.esc.stop.prevent="linkPopoverOpen = false"
+                />
+                <button
+                  type="submit"
+                  class="board-link-apply-btn"
+                  data-testid="board-link-apply-btn"
+                >
+                  {{ t('board.linkApply') }}
+                </button>
+                <button
+                  v-if="activeMarks?.link"
+                  type="button"
+                  class="board-color-add-btn"
+                  :aria-label="t('board.linkRemove')"
+                  :title="t('board.linkRemove')"
+                  @click="clearLink"
+                >
+                  <UIcon name="i-lucide-link-2-off" class="size-3.5" />
+                </button>
+              </form>
+              <span v-if="linkError" class="board-link-error">{{ t('board.linkInvalid') }}</span>
+            </div>
+          </template>
+        </UPopover>
+      </template>
     </template>
 
     <!-- Группа — единственная форма без единого регулятора выше (14.3): без этого

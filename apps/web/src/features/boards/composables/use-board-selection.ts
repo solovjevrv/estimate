@@ -21,6 +21,13 @@ import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@poker/share
 import { computed, ref, shallowRef } from 'vue';
 
 import type { BoardEffectiveFontSizeRegistry } from '../context/board-canvas-keys';
+import type { FrameSizePresetKey } from '../config/board-constants';
+import {
+  emojiSwapOps,
+  frameSizePresetOps,
+  giphySwapOps,
+  stickerSwapOps,
+} from './use-board-selection-ops';
 import type { ItemFormKind } from '../board-item-form';
 import type { BoardContextMenuTarget } from '../board-context-menu';
 import type { FormatMarkKey } from './use-rich-text-editing';
@@ -604,48 +611,26 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     }));
   }
 
-  /** Смена эмодзи (13.3) — патчим content.emoji */
-  /** Смена эмодзи (13.3) — как и замена картинки, не-эмодзи в смешанном выделении пропускаются */
+  /** Смена эмодзи/стикера/GIF/шаблона размера фрейма — билдеры опов вынесены
+   * в `use-board-selection-ops.ts` (лимит `max-lines`), здесь только вызов
+   * с текущим выделением и коммит через `applyOps`. */
   function setSelectedEmoji(emoji: EmojiSequence): void {
-    const ops: BoardOp[] = selectedNodes.value
-      .filter((node) => node.data.content.type === 'emoji')
-      .map((node) => ({
-        type: 'item.patch',
-        clientOpId: uuid(),
-        id: node.id,
-        patch: { content: { type: 'emoji', emoji } },
-      }));
+    const ops = emojiSwapOps(emoji, selectedNodes.value);
     if (ops.length) void options.applyOps(ops);
   }
 
-  /** Смена стикера (13.4) — патчим content.pack и content.id, не-стикеры пропускаются */
   function setSelectedSticker(pack: string, id: string, format?: PersonalStickerFormat): void {
-    const content = format
-      ? { type: 'sticker' as const, pack, id, format }
-      : { type: 'sticker' as const, pack, id };
-    const ops: BoardOp[] = selectedNodes.value
-      .filter((node) => node.data.content.type === 'sticker')
-      .map((node) => ({
-        type: 'item.patch',
-        clientOpId: uuid(),
-        id: node.id,
-        patch: { content },
-      }));
+    const ops = stickerSwapOps(pack, id, format, selectedNodes.value);
     if (ops.length) void options.applyOps(ops);
   }
 
-  /** Смена GIF (21.9) — патчим content.id/width/height (метаданные aspect ratio нового GIF),
-   *  геометрию самого элемента (бокс) не трогаем — рендер (`StickerMedia`-подобный object-contain)
-   *  сам вписывает новый GIF в существующий бокс, как и при замене картинки. */
   function setSelectedGiphy(gif: GiphyGifSummary): void {
-    const ops: BoardOp[] = selectedNodes.value
-      .filter((node) => node.data.content.type === 'giphy')
-      .map((node) => ({
-        type: 'item.patch',
-        clientOpId: uuid(),
-        id: node.id,
-        patch: { content: { type: 'giphy', id: gif.id, width: gif.width, height: gif.height } },
-      }));
+    const ops = giphySwapOps(gif, selectedNodes.value);
+    if (ops.length) void options.applyOps(ops);
+  }
+
+  function setSelectedFrameSize(preset: FrameSizePresetKey): void {
+    const ops = frameSizePresetOps(preset, selectedNodes.value);
     if (ops.length) void options.applyOps(ops);
   }
 
@@ -1039,6 +1024,7 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     setSelectedEmoji,
     setSelectedSticker,
     setSelectedGiphy,
+    setSelectedFrameSize,
     replaceSelectedImage,
     groupSelection,
     ungroupSelection,

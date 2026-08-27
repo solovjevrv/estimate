@@ -14,6 +14,13 @@
  * Ресайз фрейма пишет в `node.style.width/height` (как у стикера, 12.7-баг),
  * поэтому зеркалируем тот же патчинг `style.width/height` из `boardItemToNode`:
  * NodeResizer сам не знает о нашем абстрактном `item.width/height`.
+ *
+ * Размер/цвет текста заголовка (22.4.1) — те же generic-поля `BoardItemStyle`,
+ * что у остальных типов, тулбар выделения (`BoardSelectionToolbar.vue`) для
+ * фрейма показывает усечённый набор («Aa», без режима auto/выравнивания/
+ * начертания — заголовок это одна строка без rich-text). Шаблоны размера/
+ * пропорций фрейма (22.4.2, `FRAME_SIZE_PRESETS`) патчат `width`/`height`
+ * напрямую из тулбара — сюда попадают тем же путём, что и обычный ресайз.
  */
 import { BOARD_FRAME_TITLE_MAX_LENGTH, type BoardItem } from '@poker/shared';
 import { NodeResizer, type OnResize, type OnResizeEnd } from '@vue-flow/node-resizer';
@@ -24,7 +31,8 @@ import {
   BOARD_CAN_EDIT_KEY,
   BOARD_RESIZE_SNAP_KEY,
 } from '../../features/boards/context/board-canvas-keys';
-import { darkenHex } from '../../features/boards/domain/board-colors';
+import { FIT_FONT_MAX } from '../../features/boards/composables/use-fit-font-size';
+import { darkenHex, readableTextColor } from '../../features/boards/domain/board-colors';
 import {
   FRAME_MAX_HEIGHT,
   FRAME_MAX_WIDTH,
@@ -74,6 +82,25 @@ const strokeColor = computed(() => darkenHex(props.data.style.color, 0.25));
  * у стикера/фигуры — `setSelectedColor` в BoardCanvas.vue общий для всех типов.
  */
 const fillColor = computed(() => `color-mix(in oklch, ${props.data.style.color} 14%, transparent)`);
+
+/**
+ * Размер/цвет текста заголовка (22.4.1) — те же generic-поля `BoardItemStyle`,
+ * что и у остальных типов (стикер/фигура/текст), просто без режима «Авто»
+ * (масштабирование шрифта с боксом здесь неприменимо — заголовок не занимает
+ * весь бокс фрейма, это отдельная строка НАД ним, см. шапку файла) — тулбар
+ * (`BoardSelectionToolbar.vue`) для фрейма скрывает переключатель режима и
+ * всегда пишет фиксированное число. `FIT_FONT_MAX` — тот же фоллбэк, что
+ * `selectedBaseFontSize` в `use-board-selection.ts` показывает в тулбаре при
+ * незаданном style.fontSize — иначе тулбар и рендер разошлись бы в цифрах.
+ */
+const titleFontSize = computed(() => props.data.style.fontSize ?? FIT_FONT_MAX);
+const titleColor = computed(
+  () => props.data.style.textColor ?? readableTextColor(props.data.style.color),
+);
+/** Смещение плашки заголовка вверх от рамки фрейма — зависит от выбранного
+ * размера шрифта (22.4.1): фиксированный отступ (было -28px под шрифт ~14px)
+ * при увеличении шрифта наезжал бы на рамку фрейма. */
+const titleBarTop = computed(() => `${-(titleFontSize.value * 1.2 + 14)}px`);
 
 /** Локальный черновик заголовка — синхронизируем с prop при смене */
 const titleDraft = ref('');
@@ -163,18 +190,28 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
     />
     <!-- Заголовок — НАД фреймом, не внутри (как в Miro): фрейм это мини-холст,
          заголовок не должен перекрывать содержимое -->
-    <div v-if="!isGroup && (canEdit || frameTitle)" class="board-frame-title-bar nodrag">
+    <div
+      v-if="!isGroup && (canEdit || frameTitle)"
+      class="board-frame-title-bar nodrag"
+      :style="{ top: titleBarTop }"
+    >
       <input
         v-if="canEdit"
         v-model="titleDraft"
         class="board-frame-title"
+        :style="{ color: titleColor, fontSize: `${titleFontSize}px` }"
         :maxlength="BOARD_FRAME_TITLE_MAX_LENGTH"
         :disabled="!!lockedBy"
         :placeholder="t('board.frameTitlePlaceholder')"
         @focus="onTitleFocus"
         @blur="commitTitle"
       />
-      <span v-else class="board-frame-title board-frame-title-readonly">{{ frameTitle }}</span>
+      <span
+        v-else
+        class="board-frame-title board-frame-title-readonly"
+        :style="{ color: titleColor, fontSize: `${titleFontSize}px` }"
+        >{{ frameTitle }}</span
+      >
       <span v-if="lockedBy" class="board-frame-title-lock">
         {{ t('board.editingBy', { name: lockedBy.name }) }}
       </span>
@@ -194,7 +231,10 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
      style.color конкретного фрейма; здесь только дефолт-фоллбэк */
   background: color-mix(in oklch, var(--ui-primary) 4%, transparent);
 }
-/* Заголовок — над рамкой фрейма (отрицательный top), не внутри неё (Miro) */
+/* Заголовок — над рамкой фрейма (отрицательный top), не внутри неё (Miro).
+   `top` — инлайн (`titleBarTop`, 22.4.1): зависит от выбранного размера
+   шрифта заголовка, статичное число здесь — фоллбэк на случай отсутствия
+   инлайн-стиля (не должен фактически применяться). */
 .board-frame-title-bar {
   position: absolute;
   top: -28px;
@@ -207,6 +247,8 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
 .board-frame-title {
   min-width: 0;
   overflow: hidden;
+  /* Фоллбэк — фактический цвет/размер приходят инлайн (`titleColor`/
+     `titleFontSize`, 22.4.1), те же generic-поля стиля, что у остальных типов. */
   color: var(--brand-ink);
   white-space: nowrap;
   text-overflow: ellipsis;

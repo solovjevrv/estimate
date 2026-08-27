@@ -348,3 +348,67 @@ describe('BoardSelectionToolbar — форматирование без выде
     wrapper.unmount();
   });
 });
+
+describe('BoardSelectionToolbar — фрейм (22.4.1/22.4.2)', () => {
+  it('показывает «Aa» и кнопку размера фрейма, но не выравнивание/начертание/маркер/ссылку', () => {
+    const wrapper = mountToolbar({ currentForm: 'frame' });
+
+    expect(wrapper.find('.board-text-options-btn').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Размер фрейма"]').exists()).toBe(true);
+    expect(wrapper.find('[aria-label="Выравнивание"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Начертание"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Маркер"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Ссылка"]').exists()).toBe(false);
+
+    wrapper.unmount();
+  });
+
+  it('«Aa» для фрейма не показывает переключатель «Авто» — нет масштабирования шрифта с боксом', async () => {
+    const wrapper = mountToolbar({ currentForm: 'frame' });
+
+    await openTextOptionsPopover(wrapper);
+    expect(document.querySelector('.board-fontsize-auto-btn')).toBeNull();
+
+    wrapper.unmount();
+  });
+
+  it('группа не показывает ни «Aa», ни размер фрейма, ни цвет (14.3 — невидимый контейнер)', () => {
+    const wrapper = mountToolbar({ currentForm: 'group' });
+
+    expect(wrapper.find('.board-text-options-btn').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Размер фрейма"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Цвет"]').exists()).toBe(false);
+
+    wrapper.unmount();
+  });
+
+  it('клик по пресету в попапе «Размер фрейма» эмитит frameSize с ключом пресета', async () => {
+    const wrapper = mountToolbar({ currentForm: 'frame' });
+
+    await wrapper.find('[aria-label="Размер фрейма"]').trigger('click');
+    await nextTick();
+    const items = document.querySelectorAll<HTMLButtonElement>('.board-frame-size-item');
+    // custom + 8 пресетов (FRAME_SIZE_PRESETS)
+    expect(items.length).toBe(9);
+    items[1]!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+
+    expect(wrapper.emitted('frameSize')?.[0]).toEqual(['a4']);
+
+    wrapper.unmount();
+  });
+
+  it('клик по «Custom» эмитит frameSize с ключом custom (обработка no-op — на стороне composable)', async () => {
+    const wrapper = mountToolbar({ currentForm: 'frame' });
+
+    await wrapper.find('[aria-label="Размер фрейма"]').trigger('click');
+    await nextTick();
+    const items = document.querySelectorAll<HTMLButtonElement>('.board-frame-size-item');
+    items[0]!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await nextTick();
+
+    expect(wrapper.emitted('frameSize')?.[0]).toEqual(['custom']);
+
+    wrapper.unmount();
+  });
+});
