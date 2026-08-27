@@ -388,12 +388,8 @@ function cancelTextColor(hex: BoardColorHex): void {
 
       <template #content="{ close }">
         <EmojiPicker
-          @select="
-            (emoji: string) => {
-              emit('emoji', emoji);
-              close();
-            }
-          "
+          initially-collapsed
+          @select="(emoji: string) => (emit('emoji', emoji), close())"
         />
       </template>
     </UPopover>

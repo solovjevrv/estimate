@@ -7,7 +7,22 @@
  *
  * Структура похожа на BoardStickerPicker.vue: верхняя строка вкладок со скроллом
  * к секциям, ниже — один скролл с секциями по категорориям. Добавлено: поле
- * поиска и строка выбора тона кожи.
+ * поиска. Строка выбора тона кожи временно скрыта из UI (решение пользователя
+ * 27.08.2026, "пока не нужен") — см. комментарий у `skinTone` ниже.
+ *
+ * Свёрнутый режим (`initiallyCollapsed`, решение пользователя 27.08.2026 — полный
+ * каталог сразу слишком объёмный, следующая итерация 27.08.2026 — свернуть ещё
+ * сильнее): изначально видны только поиск и «Недавние» — ни вкладок категорий,
+ * ни самих категорий. Разворот («Показать все категории») сразу открывает
+ * полный пикер целиком (вкладки + все категории), не промежуточную «первую
+ * категорию». Поиск сам снимает свёртку (иначе результаты вне «Недавних» были
+ * бы не видны).
+ *
+ * Проп `initiallyCollapsed` по умолчанию выключен (`false`) — используется
+ * там, где сам компонент это явно указывает (сейчас — все места: вставка
+ * эмодзи-элемента на доску, «Заменить эмодзи» в тулбаре выделения, реакция на
+ * стикер (13.х), реакция на карточке участника в комнате (10.10); решение
+ * пользователя 27.08.2026, единообразно для всех точек входа).
  */
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -16,12 +31,11 @@ import type { EmojiCatalogEntry, SkinToneId } from '@poker/shared';
 import { EMOJI_GROUPS } from '@poker/shared';
 
 import { addRecentEmoji, getRecentEmoji } from '../features/emoji/infrastructure/recent-emoji';
-import {
-  getPreferredSkinTone,
-  setPreferredSkinTone,
-  SKIN_TONES,
-} from '../features/emoji/config/skin-tone';
+import { getPreferredSkinTone } from '../features/emoji/config/skin-tone';
 
+const props = withDefaults(defineProps<{ initiallyCollapsed?: boolean }>(), {
+  initiallyCollapsed: false,
+});
 const emit = defineEmits<{ select: [emoji: string] }>();
 const { t, locale } = useI18n();
 
@@ -32,6 +46,9 @@ function groupLabel(group: { labelEn: string; labelRu: string }): string {
 const catalog = ref<readonly EmojiCatalogEntry[]>([]);
 const loading = ref(true);
 const query = ref('');
+/** Выбор тона кожи временно скрыт из UI (решение пользователя 27.08.2026, "пока"
+ *  не нужен) — ранее сохранённое предпочтение из localStorage всё ещё
+ *  применяется молча, элементы управления вернуть можно из истории git. */
 const skinTone = ref<SkinToneId | null>(getPreferredSkinTone());
 const recent = ref<string[]>([]);
 
@@ -45,11 +62,6 @@ onMounted(async () => {
 function displayGlyph(entry: EmojiCatalogEntry): string {
   const tone = skinTone.value;
   return (tone && entry.skins?.[tone]) || entry.unicode;
-}
-
-function pickTone(tone: SkinToneId | null): void {
-  skinTone.value = tone;
-  setPreferredSkinTone(tone);
 }
 
 function pick(entry: EmojiCatalogEntry): void {
@@ -106,13 +118,23 @@ const groupsWithEntries = computed(() =>
   EMOJI_GROUPS.filter((g) => (byGroup.value.get(g.id) ?? []).length > 0 || loading.value),
 );
 
+const expanded = ref(!props.initiallyCollapsed);
+/** Поиск сам снимает свёртку — иначе результаты вне «Недавних» были бы скрыты */
+const showAll = computed(() => expanded.value || normalizedQuery.value !== '');
+const visibleGroups = computed(() => (showAll.value ? groupsWithEntries.value : []));
+
+function showAllCategories(): void {
+  expanded.value = true;
+}
+
 const sectionEls = new Map<string, HTMLElement>();
 function setSectionRef(key: string, el: Element | null): void {
   if (el) sectionEls.set(key, el as HTMLElement);
   else sectionEls.delete(key);
 }
+/** Вкладки видны только вместе с полным пикером (showAll) — свёртку разворачивать уже не нужно */
 function scrollToSection(key: string): void {
-  sectionEls.get(key)?.scrollIntoView({ block: 'start' });
+  sectionEls.get(key)?.scrollIntoView?.({ block: 'start' });
 }
 </script>
 
@@ -129,33 +151,8 @@ function scrollToSection(key: string): void {
       />
     </div>
 
-    <!-- Выбор тона кожи -->
-    <div data-testid="emoji-picker-skin-tone" class="emoji-picker-skin-row">
-      <span class="emoji-picker-skin-label">{{ t('emojiPicker.skinToneLabel') }}</span>
-      <button
-        type="button"
-        :class="{ 'emoji-picker-skin-active': !skinTone }"
-        class="emoji-picker-skin-option"
-        :aria-label="t('emojiPicker.defaultToneLabel')"
-        @click="pickTone(null)"
-      >
-        <span class="emoji-picker-skin-default">✕</span>
-      </button>
-      <button
-        v-for="tone in SKIN_TONES"
-        :key="tone.id"
-        type="button"
-        :class="{ 'emoji-picker-skin-active': skinTone === tone.id }"
-        class="emoji-picker-skin-option"
-        :aria-label="tone.id"
-        @click="pickTone(tone.id as SkinToneId)"
-      >
-        <span class="emoji-picker-skin-swatch" :style="{ backgroundColor: tone.swatch }" />
-      </button>
-    </div>
-
-    <!-- Вкладки категорий -->
-    <div class="emoji-picker-tabs">
+    <!-- Вкладки категорий — только вместе с полным пикером, свернуто им скроллить некуда -->
+    <div v-if="showAll" class="emoji-picker-tabs">
       <button
         v-if="recent.length > 0"
         type="button"
@@ -179,8 +176,8 @@ function scrollToSection(key: string): void {
       </button>
     </div>
 
-    <!-- Скролл с секциями -->
-    <div class="emoji-picker-scroll">
+    <!-- Скролл с секциями — пусто и не рендерится, если свёрнуто и «Недавних» нет -->
+    <div v-if="recent.length > 0 || showAll" class="emoji-picker-scroll">
       <section
         v-if="recent.length > 0"
         :ref="(el) => setSectionRef('recent', el as Element | null)"
@@ -204,7 +201,7 @@ function scrollToSection(key: string): void {
       </section>
 
       <section
-        v-for="group in groupsWithEntries"
+        v-for="group in visibleGroups"
         :key="group.id"
         :ref="(el) => setSectionRef(group.id, el as Element | null)"
         data-testid="emoji-picker-section"
@@ -235,18 +232,40 @@ function scrollToSection(key: string): void {
         {{ t('emojiPicker.noResults') }}
       </p>
     </div>
+
+    <!-- Вне скролла — иначе кнопка требует докрутки вниз, чтобы попасть в зону
+         клика (нашли живой проверкой Playwright: элемент за пределами видимой
+         области попапа после scrollIntoView) -->
+    <button
+      v-if="!showAll"
+      type="button"
+      data-testid="emoji-picker-show-all"
+      class="emoji-picker-show-all"
+      @click="showAllCategories"
+    >
+      {{ t('emojiPicker.showAllCategories') }}
+    </button>
   </div>
 </template>
 
 <style scoped>
+/* max-height через --reka-popper-available-height (задаёт Reka на #content
+   попапа) — попап может открыться низко на экране (например, «Заменить
+   эмодзи» у элемента у нижнего края холста), тогда без этого ограничения
+   попап уезжает за нижнюю границу вьюпорта целиком, а кнопка «Показать все
+   категории» становится физически недостижимой (нашли живой проверкой
+   Playwright — 720px вьюпорт, попап уходил на 900+px). Скролл ниже — flex,
+   поэтому сам сжимается под оставшееся место, остальные блоки не трогает. */
 .emoji-picker {
   display: flex;
   flex-direction: column;
-  width: 372px;
+  width: 260px;
+  max-height: min(560px, var(--reka-popper-available-height, 560px));
   padding: 6px;
 }
 
 .emoji-picker-search {
+  flex-shrink: 0;
   padding: 8px 8px 6px;
 }
 
@@ -260,15 +279,45 @@ function scrollToSection(key: string): void {
   font-size: 13px;
 }
 
+/* Попап автофокусит это поле при открытии (Reka переносит фокус внутрь
+   контента) — без своего стиля фокуса вместо этого был виден голый браузерный
+   outline (нашли по скриншоту пользователя), не в цвет акцента приложения */
+.emoji-picker-search-input:focus-visible {
+  outline: none;
+  border-color: var(--ui-color-primary-500);
+  box-shadow: 0 0 0 1px var(--ui-color-primary-500);
+}
+
+/* overflow-x:auto + flex-shrink:0 на детях — при узком попапе (260px) строка
+   не помещается целиком, а без flex-shrink:0 браузер сжимал круглые кнопки по
+   ширине вместо переполнения (эффект «сплющенных» овалов, нашли по скриншоту) */
 .emoji-picker-skin-row {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 6px;
   padding: 6px 8px;
+  overflow-x: auto;
   border-bottom: 1px solid var(--ui-border);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-border) transparent;
+}
+
+.emoji-picker-skin-row::-webkit-scrollbar {
+  height: 4px;
+}
+
+.emoji-picker-skin-row::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.emoji-picker-skin-row::-webkit-scrollbar-thumb {
+  background: var(--ui-border);
+  border-radius: 2px;
 }
 
 .emoji-picker-skin-label {
+  flex-shrink: 0;
   font-size: 12px;
   font-weight: 600;
   color: var(--brand-ink2);
@@ -277,6 +326,7 @@ function scrollToSection(key: string): void {
 
 .emoji-picker-skin-option {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   justify-content: center;
   width: 28px;
@@ -314,6 +364,21 @@ function scrollToSection(key: string): void {
   padding: 8px 8px 6px;
   overflow-x: auto;
   border-bottom: 1px solid var(--ui-border);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-border) transparent;
+}
+
+.emoji-picker-tabs::-webkit-scrollbar {
+  height: 4px;
+}
+
+.emoji-picker-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.emoji-picker-tabs::-webkit-scrollbar-thumb {
+  background: var(--ui-border);
+  border-radius: 2px;
 }
 
 .emoji-picker-tab {
@@ -336,14 +401,35 @@ function scrollToSection(key: string): void {
   background: var(--ui-border);
 }
 
+/* flex-basis auto (не фиксированные 420px) — размер по контенту: свёрнутый вид
+   с парой «Недавних» не должен раздувать попап до полной высоты; max-height —
+   потолок для развёрнутого каталога, flex-shrink всё равно ужимает и его,
+   если целиком не помещается в --reka-popper-available-height (см. .emoji-picker) */
 .emoji-picker-scroll {
   display: flex;
+  flex: 0 1 auto;
   flex-direction: column;
   gap: 14px;
-  max-height: 420px;
+  min-height: 0;
+  max-height: 190px;
   padding: 10px;
   overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--ui-border) transparent;
+}
+
+.emoji-picker-scroll::-webkit-scrollbar {
+  width: 4px;
+}
+
+.emoji-picker-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.emoji-picker-scroll::-webkit-scrollbar-thumb {
+  background: var(--ui-border);
+  border-radius: 2px;
 }
 
 .emoji-picker-heading {
@@ -355,8 +441,9 @@ function scrollToSection(key: string): void {
 
 .emoji-picker-grid {
   display: grid;
-  grid-template-columns: repeat(8, 32px);
+  grid-template-columns: repeat(6, 32px);
   gap: 4px;
+  justify-content: center;
 }
 
 .emoji-picker-item {
@@ -370,6 +457,25 @@ function scrollToSection(key: string): void {
   background: transparent;
   border: none;
   border-radius: 6px;
+}
+
+.emoji-picker-show-all {
+  flex-shrink: 0;
+  margin: 4px 4px 2px;
+  padding: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--brand-ink2);
+  text-align: center;
+  cursor: pointer;
+  background: var(--ui-bg-elevated);
+  border: none;
+  border-radius: 8px;
+}
+
+.emoji-picker-show-all:hover {
+  color: var(--brand-ink);
+  background: var(--ui-border);
 }
 
 .emoji-picker-item:hover {

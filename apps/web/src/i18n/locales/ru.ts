@@ -568,5 +568,6 @@ export default {
     noResults: 'Ничего не найдено',
     skinToneLabel: 'Тон кожи',
     defaultToneLabel: 'По умолчанию',
+    showAllCategories: 'Показать все категории',
   },
 };

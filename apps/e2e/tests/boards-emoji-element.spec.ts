@@ -8,6 +8,11 @@ import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
  * промежуточного клика по холсту), выбор сразу вставляет элемент в центр
  * вьюпорта; тулбар выделения — только замена эмодзи/дублировать/удалить (как
  * у картинки, никаких форма/цвет/текстовых регуляторов).
+ *
+ * В обзорном контексте (вставка/замена на доске) пикер открывается свёрнутым —
+ * только «Недавние» + первая категория (22.х, решение пользователя — полный
+ * каталог сразу слишком объёмный). fire/rocket — в категории «Путешествия и
+ * места», не первой, поэтому тест разворачивает список кнопкой перед выбором.
  */
 test.describe('Доски: эмодзи', () => {
   test('вставка через тулбар, персистентность после reload и упрощённый тулбар выделения', async ({
@@ -33,6 +38,7 @@ test.describe('Доски: эмодзи', () => {
 
     // Клик по инструменту сразу открывает список — без клика по холсту
     await board.toolbarButton('Эмодзи').click();
+    await page.getByRole('button', { name: 'Показать все категории' }).click();
     await page.getByRole('button', { name: 'fire', exact: true }).click();
 
     const emojiNode = board.emojiNodes.first();
@@ -61,6 +67,7 @@ test.describe('Доски: эмодзи', () => {
 
     // Замена эмодзи через тулбар выделения
     await toolbar.getByLabel('Заменить эмодзи').click();
+    await page.getByRole('button', { name: 'Показать все категории' }).click();
     await page.getByRole('button', { name: 'rocket', exact: true }).click();
     await expect(board.emojiNodes.first()).toContainText('🚀');
     await expect(board.emojiNodes).toHaveCount(1);

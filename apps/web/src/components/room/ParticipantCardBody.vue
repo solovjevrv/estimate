@@ -131,7 +131,11 @@ function onBadgeClick(emoji: EmojiSequence): void {
            Каждая уникальная реакция — свой отдельный бейдж (не общий контейнер на всех), как
            реакции на сообщение в Telegram; одинаковые от нескольких участников схлопнуты в один
            бейдж со счётчиком. Бейдж кликабелен на любой карточке, включая свою (10.12): у кого
-           реакции ещё нет — ставит её тем же эмодзи, у кого уже есть своя — снимает (выделена рамкой). -->
+           реакции ещё нет — ставит её тем же эмодзи, у кого уже есть своя — снимает (выделена рамкой).
+           h-[34px]/min-w-[34px] вместо асимметричного px/py — иначе rounded-full на прямоугольнике
+           уже/выше самого себя даёт не круг, а таблетку (нашли по скриншоту пользователя); со
+           счётчиком бейдж всё равно раздаётся вширь за счёт min-w. -->
+
       <TransitionGroup
         tag="div"
         name="badge-pop"
@@ -145,7 +149,7 @@ function onBadgeClick(emoji: EmojiSequence): void {
           :aria-label="
             t('room.reactionBadgeLabel', { emoji: reaction.emoji, count: reaction.count })
           "
-          class="border-[var(--brand-ink2)]/45 hover:bg-[var(--brand-border)] flex cursor-pointer items-center gap-0.5 rounded-full border-[1.5px] bg-[var(--brand-surface)] px-1.5 py-0.5 text-xl leading-none shadow-[var(--brand-shadow-card)] dark:border-transparent"
+          class="border-[var(--brand-ink2)]/45 hover:bg-[var(--brand-border)] flex h-[34px] min-w-[34px] cursor-pointer items-center justify-center gap-0.5 rounded-full border-[1.5px] bg-[var(--brand-surface)] px-1 text-[23px] shadow-[var(--brand-shadow-card)] dark:border-transparent"
           :class="
             reaction.reactedByMe ? 'shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]' : ''
           "
@@ -184,6 +188,7 @@ function onBadgeClick(emoji: EmojiSequence): void {
 
         <template #content="{ close }">
           <EmojiPicker
+            initially-collapsed
             @select="
               (emoji) => {
                 onPickEmoji(emoji, close);

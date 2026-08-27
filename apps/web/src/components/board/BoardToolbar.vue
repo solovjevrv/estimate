@@ -113,6 +113,7 @@ function isActive(value: BoardTool): boolean {
 
       <template #content="{ close }">
         <EmojiPicker
+          initially-collapsed
           @select="
             (emoji: string) => {
               emit('emoji', emoji);

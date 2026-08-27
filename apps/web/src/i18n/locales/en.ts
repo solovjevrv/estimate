@@ -567,5 +567,6 @@ export default {
     noResults: 'No results',
     skinToneLabel: 'Skin tone',
     defaultToneLabel: 'Default',
+    showAllCategories: 'Show all categories',
   },
 };
