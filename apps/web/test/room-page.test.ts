@@ -1766,17 +1766,30 @@ describe('реакции-эмодзи на карточке участника (
 
     const trigger = document.body.querySelector('[aria-label="Поставить реакцию участнику Мария"]');
     (trigger as HTMLElement).click();
-    // Пикер грузит каталог эмодзи лениво (await import(...) в onMounted, 21.4) —
+    // Пикер открывается свёрнутым (только «Недавние» + кнопка «Показать все
+    // категории», 27.08.2026) — разворачиваем перед поиском конкретного эмодзи.
+    // Каталог эмодзи грузится лениво (await import(...) в onMounted, 21.4) —
     // на холодном раннере CI трансформация 31k-строчного сгенерированного файла
     // не укладывается в дефолтный таймаут vi.waitFor (1000мс), даём больше времени
     await vi.waitFor(
       () => {
         const buttons = Array.from(document.body.querySelectorAll('button'));
-        const found = buttons.find((b) => b.getAttribute('aria-label') === 'thumbs up');
+        const found = buttons.find(
+          (b) => b.getAttribute('data-testid') === 'emoji-picker-show-all',
+        );
         expect(found).not.toBeUndefined();
       },
       { timeout: 5000 },
     );
+    const showAllBtn = Array.from(document.body.querySelectorAll('button')).find(
+      (b) => b.getAttribute('data-testid') === 'emoji-picker-show-all',
+    );
+    (showAllBtn as HTMLElement).click();
+    await vi.waitFor(() => {
+      const buttons = Array.from(document.body.querySelectorAll('button'));
+      const found = buttons.find((b) => b.getAttribute('aria-label') === 'thumbs up');
+      expect(found).not.toBeUndefined();
+    });
 
     const emojiButton = Array.from(document.body.querySelectorAll('button')).find(
       (b) => b.getAttribute('aria-label') === 'thumbs up',
@@ -1971,6 +1984,17 @@ describe('реакции-эмодзи на карточке участника (
 
     const trigger = document.body.querySelector('[aria-label="Поставить реакцию участнику Иван"]');
     (trigger as HTMLElement).click();
+    // Пикер открывается свёрнутым — разворачиваем перед поиском конкретного эмодзи
+    await vi.waitFor(() => {
+      const buttons = Array.from(document.body.querySelectorAll('button'));
+      expect(buttons.some((b) => b.getAttribute('data-testid') === 'emoji-picker-show-all')).toBe(
+        true,
+      );
+    });
+    const showAllBtn = Array.from(document.body.querySelectorAll('button')).find(
+      (b) => b.getAttribute('data-testid') === 'emoji-picker-show-all',
+    );
+    (showAllBtn as HTMLElement).click();
     await vi.waitFor(() => {
       const buttons = Array.from(document.body.querySelectorAll('button'));
       expect(buttons.some((b) => b.getAttribute('aria-label') === 'party popper')).toBe(true);

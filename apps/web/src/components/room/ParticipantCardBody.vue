@@ -184,6 +184,7 @@ function onBadgeClick(emoji: EmojiSequence): void {
 
         <template #content="{ close }">
           <EmojiPicker
+            initially-collapsed
             @select="
               (emoji) => {
                 onPickEmoji(emoji, close);

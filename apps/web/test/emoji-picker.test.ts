@@ -88,7 +88,7 @@ async function mountPicker(props?: { initiallyCollapsed?: boolean }) {
 }
 
 describe('EmojiPicker', () => {
-  it('по умолчанию (реакции) рендерит сразу все категории', async () => {
+  it('по умолчанию (initiallyCollapsed не передан) рендерит сразу все категории', async () => {
     const wrapper = await mountPicker();
 
     // recent пустой — секция не рендерится; обе группы каталога видны сразу
