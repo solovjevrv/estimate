@@ -7,7 +7,7 @@
 import type { InjectionKey, Ref } from 'vue';
 
 import type { BoardTextEditorHandle } from '../rich-text/board-rich-text';
-import type { ResizeDirection, SnapRect } from '../domain/board-snap';
+import type { ResizeAxisFlags, SnapRect } from '../domain/board-snap';
 
 export const BOARD_CAN_EDIT_KEY: InjectionKey<Ref<boolean>> = Symbol('boardCanEdit');
 export const BOARD_PENDING_EDIT_ID_KEY: InjectionKey<Ref<string | null>> =
@@ -47,14 +47,14 @@ export interface BoardResizeSnapContext {
   updateGuides(
     itemId: string,
     rect: SnapRect,
-    direction: ResizeDirection,
+    flags: ResizeAxisFlags,
     lockAspectRatio: boolean,
   ): void;
   /** Финальный снап на resize-end — возвращает скорректированный rect (тот же rect, если снапа не было). */
   applySnap(
     itemId: string,
     rect: SnapRect,
-    direction: ResizeDirection,
+    flags: ResizeAxisFlags,
     lockAspectRatio: boolean,
   ): SnapRect;
   clearGuides(): void;
