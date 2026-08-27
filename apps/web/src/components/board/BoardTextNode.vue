@@ -6,7 +6,12 @@ import {
   type BoardTextContent,
 } from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
-import { NodeResizer, type OnResize, type OnResizeEnd } from '@vue-flow/node-resizer';
+import {
+  NodeResizer,
+  type OnResize,
+  type OnResizeEnd,
+  type OnResizeStart,
+} from '@vue-flow/node-resizer';
 import { computed, inject, onBeforeUnmount, ref, toRef, useTemplateRef, watch } from 'vue';
 
 import {
@@ -22,7 +27,7 @@ import {
   TEXT_MIN_HEIGHT,
   TEXT_MIN_WIDTH,
 } from '../../features/boards/config/board-item-defaults';
-import type { ResizeDirection } from '../../features/boards/domain/board-snap';
+import { resizeAxisFlags, resizeRectFromOrigin } from '../../features/boards/domain/board-snap';
 import {
   FIT_FONT_MAX,
   getScaledFontSize,
@@ -122,14 +127,32 @@ onBeforeUnmount(() => {
   if (reportedItemId) effectiveFontSizes?.remove(reportedItemId);
 });
 
-/** Последнее известное `direction` жеста (22.3) — см. пояснение у аналогичного
- * поля в `use-board-node-editing.ts` (`OnResizeEnd`'s `ResizeParams` его не содержит). */
-let lastResizeDirection: ResizeDirection = [0, 0];
+/** Координаты резайзера на момент `resizeStart` — точка отсчёта для
+ * `resizeAxisFlags` (см. `use-board-node-editing.ts`/`board-snap.ts`). */
+let resizeStart = { x: 0, y: 0 };
+
+function onResizeStart({ params: { x, y } }: OnResizeStart): void {
+  resizeStart = { x, y };
+}
+
+/** Геометрия ДО жеста — заведомо абсолютная (`BoardItem.x/y`), в отличие от
+ * `params.x/y` резайзера (см. `resizeRectFromOrigin`). */
+function originRect() {
+  return {
+    id: props.id,
+    x: props.data.x,
+    y: props.data.y,
+    width: props.data.width,
+    height: props.data.height,
+  };
+}
 
 /** Live-подсказка выравнивания во время resize (22.3) — см. `use-board-node-editing.ts`. */
-function onResize({ params: { x, y, width, height, direction } }: OnResize): void {
-  lastResizeDirection = direction;
-  resizeSnap?.updateGuides(props.id, { id: props.id, x, y, width, height }, direction, false);
+function onResize({ params: { x, y, width, height } }: OnResize): void {
+  const origin = originRect();
+  const flags = resizeAxisFlags(resizeStart.x, resizeStart.y, origin, x, y, width, height);
+  const rect = resizeRectFromOrigin(origin, width, height, flags);
+  resizeSnap?.updateGuides(props.id, rect, flags, false);
 }
 
 /**
@@ -144,12 +167,10 @@ function onResize({ params: { x, y, width, height, direction } }: OnResize): voi
  * же, ДО пересчёта шрифта — см. тот же порядок в `use-board-node-editing.ts`.
  */
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
-  const snapped = resizeSnap?.applySnap(
-    props.id,
-    { id: props.id, x, y, width, height },
-    lastResizeDirection,
-    false,
-  ) ?? { x, y, width, height };
+  const origin = originRect();
+  const flags = resizeAxisFlags(resizeStart.x, resizeStart.y, origin, x, y, width, height);
+  const rect = resizeRectFromOrigin(origin, width, height, flags);
+  const snapped = resizeSnap?.applySnap(props.id, rect, flags, false) ?? rect;
   resizeSnap?.clearGuides();
   const patch: {
     x: number;
@@ -207,6 +228,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       :min-height="TEXT_MIN_HEIGHT"
       :max-width="TEXT_MAX_WIDTH"
       :max-height="TEXT_MAX_HEIGHT"
+      @resize-start="onResizeStart"
       @resize="onResize"
       @resize-end="onResizeEnd"
     />

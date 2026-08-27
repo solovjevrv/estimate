@@ -221,15 +221,11 @@ export function computeSnapGuides(
  * Направляющие и выравнивание при изменении размера (22.3) — в отличие от
  * `computeSnapGuides` (перемещение целиком, три ключа на элемент — лево/центр/
  * право сравниваются СВОИМИ ЖЕ ключами у статичных), при resize подвижен
- * только КОНКРЕТНЫЙ край, который тянет пользователь: `direction` — тот же
- * `[dx, dy]` (-1/0/1 по каждой оси), что отдаёт `@vue-flow/node-resizer` в
- * `OnResize`/`ResizeParamsWithDirection` (0 — эта ось вообще не меняется в
- * этом жесте, у `OnResizeEnd` такого поля уже нет — вызывающий код запоминает
- * последнее значение с `@resize`). Подвижный край сравнивается со ВСЕМИ тремя
- * точками (лево/центр/право или верх/центр/низ) каждого статичного элемента —
- * выровнять правый край растягиваемой фигуры по центру соседней так же
- * осмысленно, как и по её левому/правому краю (в отличие от drag, здесь нет
- * симметричного «свой ключ ищет тот же ключ»).
+ * только КОНКРЕТНЫЙ край, который тянет пользователь. Подвижный край
+ * сравнивается со ВСЕМИ тремя точками (лево/центр/право или верх/центр/низ)
+ * каждого статичного элемента — выровнять правый край растягиваемой фигуры по
+ * центру соседней так же осмысленно, как и по её левому/правому краю (в
+ * отличие от drag, здесь нет симметричного «свой ключ ищет тот же ключ»).
  *
  * `lockAspectRatio` (стикер/картинка/эмодзи/стикер-пак/GIF — фиксированное
  * соотношение сторон, `keep-aspect-ratio` у `NodeResizer`): обе стороны
@@ -239,12 +235,61 @@ export function computeSnapGuides(
  * точное (меньше diff), вторую сторону пересчитываем от актуального
  * соотношения `width/height`, а не от независимого совпадения.
  */
+
 /**
- * `readonly number[]`, не кортеж `[number, number]` — таким его типизирует
- * сама `@vue-flow/node-resizer` (`ResizeParamsWithDirection.direction`), не
- * гарантируя длину на уровне типов. Индексация ниже везде через `?? 0`.
+ * Какой край активен на каждой оси в этом resize-жесте — НЕ то же самое, что
+ * `direction` из `@vue-flow/node-resizer` (`ResizeParamsWithDirection`):
+ * знак `direction` кодирует РОСТ/СЖАТИЕ размера (`deltaWidth > 0 ? 1 : -1`),
+ * лишь дополнительно инвертированный для «левых»/«верхних» хендлов — то есть
+ * для одного и того же (неподвижного слева) хендла «right» знак СМЕНИТСЯ
+ * между ростом и сжатием, хотя неподвижный край как был левым, так и остался.
+ * Использовать знак `direction` как индикатор «какой край подвижен» —
+ * баг (найден пользователем 27.08.2026): сжатие через хендл, не меняющий
+ * позицию (например, «bottom-right»), давало `direction < 0` и код ошибочно
+ * пересчитывал `x`/`y`, будто подвижен левый/верхний край — карточка
+ * дёргалась в сторону при каждом уменьшении размера.
+ *
+ * `invert` — надёжный сигнал, не зависящий от роста/сжатия: сравнение
+ * координаты резайзера (`params.x`/`y`, что бы они ни означали — абсолютные
+ * или относительно родителя, см. `resizeRectFromOrigin`) с её значением на
+ * МОМЕНТ `resizeStart`, до какого-либо движения. Библиотека меняет позицию
+ * ТОЛЬКО когда тянут «левый»/«верхний» хендл (см. её исходники) — значит,
+ * если координата изменилась хоть раз за жест, значит хендл инвертирующий,
+ * и это НЕ зависит от того, растёт итоговый размер или уменьшается.
+ * `active` — менялась ли эта ось в этом жесте вообще (по размеру, не по
+ * координате): чистое вертикальное перетаскивание не должно предлагать
+ * снап по X.
  */
-export type ResizeDirection = readonly number[];
+export interface ResizeAxisFlags {
+  xActive: boolean;
+  invertX: boolean;
+  yActive: boolean;
+  invertY: boolean;
+}
+
+/**
+ * Строит `ResizeAxisFlags` из состояния на момент `resizeStart` (`startX`/
+ * `startY` — координаты резайзера ДО жеста, что бы они ни означали) и
+ * текущего тика (`x`/`y`/`width`/`height` — те же поля события резайза,
+ * `origin` — геометрия элемента ДО жеста, `BoardItem.x/y/width/height`,
+ * заведомо абсолютная и не меняющаяся до фактического патча на resize-end).
+ */
+export function resizeAxisFlags(
+  startX: number,
+  startY: number,
+  origin: SnapRect,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): ResizeAxisFlags {
+  return {
+    xActive: width !== origin.width,
+    invertX: x !== startX,
+    yActive: height !== origin.height,
+    invertY: y !== startY,
+  };
+}
 
 export interface ResizeSnapOptions {
   lockAspectRatio?: boolean;
@@ -301,20 +346,21 @@ function bestMatchY(
 
 /**
  * Устанавливает РАЗМЕР (не координату края) вдоль оси, сохраняя фиксированным
- * тот край, который в этом resize-жесте неподвижен (по знаку `direction`) —
- * общая арифметика и для снапа к найденной координате края (вызывающий код
- * сам переводит её в размер), и для пересчёта второй стороны при
- * `lockAspectRatio` (там размер приходит уже готовым, из соотношения).
+ * тот край, который в этом resize-жесте неподвижен (`invert` — см.
+ * `ResizeAxisFlags`) — общая арифметика и для снапа к найденной координате
+ * края (вызывающий код сам переводит её в размер), и для пересчёта второй
+ * стороны при `lockAspectRatio` (там размер приходит уже готовым, из
+ * соотношения).
  */
-function resizeAxis(rect: SnapRect, axis: 'x' | 'y', direction: number, newSize: number): SnapRect {
+function resizeAxis(rect: SnapRect, axis: 'x' | 'y', invert: boolean, newSize: number): SnapRect {
   if (axis === 'x') {
-    if (direction < 0) {
+    if (invert) {
       const right = rect.x + rect.width;
       return { ...rect, x: right - newSize, width: newSize };
     }
     return { ...rect, width: newSize };
   }
-  if (direction < 0) {
+  if (invert) {
     const bottom = rect.y + rect.height;
     return { ...rect, y: bottom - newSize, height: newSize };
   }
@@ -350,15 +396,21 @@ function makeResizeGuide(
 
 export function computeResizeSnapGuides(
   resizing: SnapRect,
-  direction: ResizeDirection,
+  flags: ResizeAxisFlags,
   staticNodes: readonly SnapRect[],
   threshold = SNAP_THRESHOLD_PX,
   options: ResizeSnapOptions = {},
 ): ResizeSnapResult {
-  const dx = direction[0] ?? 0;
-  const dy = direction[1] ?? 0;
-  const activeXKey: SnapAlignKeyX | null = dx > 0 ? 'right' : dx < 0 ? 'left' : null;
-  const activeYKey: SnapAlignKeyY | null = dy > 0 ? 'bottom' : dy < 0 ? 'top' : null;
+  const activeXKey: SnapAlignKeyX | null = flags.xActive
+    ? flags.invertX
+      ? 'left'
+      : 'right'
+    : null;
+  const activeYKey: SnapAlignKeyY | null = flags.yActive
+    ? flags.invertY
+      ? 'top'
+      : 'bottom'
+    : null;
 
   const xMatch = activeXKey ? bestMatchX(resizing, activeXKey, staticNodes, threshold) : null;
   const yMatch = activeYKey ? bestMatchY(resizing, activeYKey, staticNodes, threshold) : null;
@@ -376,24 +428,57 @@ export function computeResizeSnapGuides(
   if (useX && xMatch && activeXKey) {
     const newWidth =
       activeXKey === 'right' ? xMatch.value - rect.x : rect.x + rect.width - xMatch.value;
-    rect = resizeAxis(rect, 'x', dx, newWidth);
+    rect = resizeAxis(rect, 'x', flags.invertX, newWidth);
     guides.push(makeResizeGuide('vertical', xMatch.value, xMatch.sourceId, rect, staticNodes));
   }
   if (useY && yMatch && activeYKey) {
     const newHeight =
       activeYKey === 'bottom' ? yMatch.value - rect.y : rect.y + rect.height - yMatch.value;
-    rect = resizeAxis(rect, 'y', dy, newHeight);
+    rect = resizeAxis(rect, 'y', flags.invertY, newHeight);
     guides.push(makeResizeGuide('horizontal', yMatch.value, yMatch.sourceId, rect, staticNodes));
   }
 
   if (options.lockAspectRatio && (useX || useY) && resizing.width > 0 && resizing.height > 0) {
     const ratio = resizing.width / resizing.height;
     if (useX && !useY) {
-      rect = resizeAxis(rect, 'y', dy, rect.width / ratio);
+      rect = resizeAxis(rect, 'y', flags.invertY, rect.width / ratio);
     } else if (useY && !useX) {
-      rect = resizeAxis(rect, 'x', dx, rect.height * ratio);
+      rect = resizeAxis(rect, 'x', flags.invertX, rect.height * ratio);
     }
   }
 
   return { guides, rect };
+}
+
+/**
+ * Строит АБСОЛЮТНЫЙ прямоугольник по итогам resize-жеста из заведомо
+ * абсолютного стартового прямоугольника (`origin` — геометрия элемента ДО
+ * жеста, `BoardItem.x/y/width/height`, не меняется до фактического патча на
+ * resize-end) и новых `width`/`height` от резайзера — те же `resizeAxis`,
+ * что и внутри `computeResizeSnapGuides`.
+ *
+ * Обязательна для КАЖДОГО вызывающего resize-кода (найдено пользователем
+ * 27.08.2026 на элементе внутри фрейма): `@vue-flow/node-resizer` берёт
+ * стартовые `x`/`y` из `node.position`, а для дочернего узла (`parentNode`
+ * задан) это координаты ОТНОСИТЕЛЬНО родителя, не абсолютные — тогда как
+ * домен хранит `x`/`y` АБСОЛЮТНЫМИ ВСЕГДА (см. `vue-flow-adapter.ts`).
+ * Патчить `item.x/y` значениями `params.x/y` из события резайза напрямую
+ * нельзя: для элемента без родителя это случайно совпадает (родитель ==
+ * канвас, относительное == абсолютному), поэтому баг не был замечен раньше,
+ * но для ребёнка фрейма/группы это давало абсолютные координаты, случайно
+ * съехавшие на позицию родителя, — карточка "улетала" при любом resize.
+ * `width`/`height` эта проблема не касается (размер не зависит от системы
+ * координат), поэтому они по-прежнему берутся из события резайза как есть —
+ * пересчитываем только x/y, от заведомо верного `origin`, используя `invert`
+ * из `ResizeAxisFlags` (не знак `direction` резайзера — см. пояснение там же).
+ */
+export function resizeRectFromOrigin(
+  origin: SnapRect,
+  width: number,
+  height: number,
+  flags: ResizeAxisFlags,
+): SnapRect {
+  let rect = resizeAxis(origin, 'x', flags.invertX, width);
+  rect = resizeAxis(rect, 'y', flags.invertY, height);
+  return rect;
 }

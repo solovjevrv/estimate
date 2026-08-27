@@ -23,7 +23,12 @@
  * напрямую из тулбара — сюда попадают тем же путём, что и обычный ресайз.
  */
 import { BOARD_FRAME_TITLE_MAX_LENGTH, type BoardItem } from '@poker/shared';
-import { NodeResizer, type OnResize, type OnResizeEnd } from '@vue-flow/node-resizer';
+import {
+  NodeResizer,
+  type OnResize,
+  type OnResizeEnd,
+  type OnResizeStart,
+} from '@vue-flow/node-resizer';
 import { computed, inject, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -39,7 +44,7 @@ import {
   FRAME_MIN_HEIGHT,
   FRAME_MIN_WIDTH,
 } from '../../features/boards/config/board-constants';
-import type { ResizeDirection } from '../../features/boards/domain/board-snap';
+import { resizeAxisFlags, resizeRectFromOrigin } from '../../features/boards/domain/board-snap';
 import { uuid } from '../../features/boards/infrastructure/uuid';
 import { useBoardSessionStore } from '../../stores/board-session';
 import type { NodeProps } from '@vue-flow/core';
@@ -132,21 +137,40 @@ function commitTitle(): void {
   ]);
 }
 
-/** См. `use-board-node-editing.ts` — тот же паттерн snap guides при resize (22.3). */
-let lastResizeDirection: ResizeDirection = [0, 0];
+/** Координаты резайзера на момент `resizeStart` — точка отсчёта для
+ * `resizeAxisFlags` (см. `use-board-node-editing.ts`/`board-snap.ts`). */
+let resizeStart = { x: 0, y: 0 };
 
-function onResize({ params: { x, y, width, height, direction } }: OnResize): void {
-  lastResizeDirection = direction;
-  resizeSnap?.updateGuides(props.id, { id: props.id, x, y, width, height }, direction, false);
+function onResizeStart({ params: { x, y } }: OnResizeStart): void {
+  resizeStart = { x, y };
+}
+
+/** Геометрия ДО жеста — заведомо абсолютная (`BoardItem.x/y`), в отличие от
+ * `params.x/y` резайзера (см. `resizeRectFromOrigin`). У фрейма `parentId`
+ * всегда null, поэтому этот баг здесь не проявлялся, но проще держать один
+ * и тот же путь построения rect'а, а не полагаться на этот инвариант. */
+function originRect() {
+  return {
+    id: props.id,
+    x: props.data.x,
+    y: props.data.y,
+    width: props.data.width,
+    height: props.data.height,
+  };
+}
+
+function onResize({ params: { x, y, width, height } }: OnResize): void {
+  const origin = originRect();
+  const flags = resizeAxisFlags(resizeStart.x, resizeStart.y, origin, x, y, width, height);
+  const rect = resizeRectFromOrigin(origin, width, height, flags);
+  resizeSnap?.updateGuides(props.id, rect, flags, false);
 }
 
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
-  const snapped = resizeSnap?.applySnap(
-    props.id,
-    { id: props.id, x, y, width, height },
-    lastResizeDirection,
-    false,
-  ) ?? { x, y, width, height };
+  const origin = originRect();
+  const flags = resizeAxisFlags(resizeStart.x, resizeStart.y, origin, x, y, width, height);
+  const rect = resizeRectFromOrigin(origin, width, height, flags);
+  const snapped = resizeSnap?.applySnap(props.id, rect, flags, false) ?? rect;
   resizeSnap?.clearGuides();
   void boardSession.applyOps([
     {
@@ -179,6 +203,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       :min-height="FRAME_MIN_HEIGHT"
       :max-width="FRAME_MAX_WIDTH"
       :max-height="FRAME_MAX_HEIGHT"
+      @resize-start="onResizeStart"
       @resize="onResize"
       @resize-end="onResizeEnd"
     />

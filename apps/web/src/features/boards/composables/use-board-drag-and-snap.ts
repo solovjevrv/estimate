@@ -22,7 +22,7 @@ import {
   computeResizeSnapGuides,
   computeSnapGuides,
   SNAP_THRESHOLD_PX,
-  type ResizeDirection,
+  type ResizeAxisFlags,
   type SnapGuide,
   type SnapRect,
 } from '../../../features/boards/domain/board-snap';
@@ -79,13 +79,13 @@ export interface BoardDragAndSnap {
   updateResizeGuides: (
     itemId: string,
     rect: SnapRect,
-    direction: ResizeDirection,
+    flags: ResizeAxisFlags,
     lockAspectRatio: boolean,
   ) => void;
   applyResizeSnap: (
     itemId: string,
     rect: SnapRect,
-    direction: ResizeDirection,
+    flags: ResizeAxisFlags,
     lockAspectRatio: boolean,
   ) => SnapRect;
   clearResizeGuides: () => void;
@@ -356,11 +356,11 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
   function updateResizeGuides(
     itemId: string,
     rect: SnapRect,
-    direction: ResizeDirection,
+    flags: ResizeAxisFlags,
     lockAspectRatio: boolean,
   ): void {
     const threshold = SNAP_THRESHOLD_PX / Math.max(getZoom(), 0.1);
-    const result = computeResizeSnapGuides(rect, direction, staticRectsExcept(itemId), threshold, {
+    const result = computeResizeSnapGuides(rect, flags, staticRectsExcept(itemId), threshold, {
       lockAspectRatio,
     });
     if (!guidesEqual(result.guides, activeSnapGuides.value)) {
@@ -371,11 +371,11 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
   function applyResizeSnap(
     itemId: string,
     rect: SnapRect,
-    direction: ResizeDirection,
+    flags: ResizeAxisFlags,
     lockAspectRatio: boolean,
   ): SnapRect {
     const threshold = SNAP_THRESHOLD_PX / Math.max(getZoom(), 0.1);
-    return computeResizeSnapGuides(rect, direction, staticRectsExcept(itemId), threshold, {
+    return computeResizeSnapGuides(rect, flags, staticRectsExcept(itemId), threshold, {
       lockAspectRatio,
     }).rect;
   }

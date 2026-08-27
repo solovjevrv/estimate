@@ -42,6 +42,7 @@ const {
   onEditableCompositionEnd,
   onEditablePaste,
   onEditableDrop,
+  onResizeStart,
   onResize,
   onResizeEnd,
 } = useBoardNodeEditing({
@@ -103,6 +104,7 @@ const DIAMOND_CLIP_PATH = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
       :min-height="SHAPE_MIN_HEIGHT"
       :max-width="SHAPE_MAX_WIDTH"
       :max-height="SHAPE_MAX_HEIGHT"
+      @resize-start="onResizeStart"
       @resize="onResize"
       @resize-end="onResizeEnd"
     />

@@ -5,7 +5,12 @@
  *  байты с Giphy, клиент никогда не обращается к Giphy напрямую. */
 import type { BoardGiphyContent, BoardItem } from '@poker/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
-import { NodeResizer, type OnResize, type OnResizeEnd } from '@vue-flow/node-resizer';
+import {
+  NodeResizer,
+  type OnResize,
+  type OnResizeEnd,
+  type OnResizeStart,
+} from '@vue-flow/node-resizer';
 import { computed, inject, ref } from 'vue';
 
 import {
@@ -19,7 +24,7 @@ import {
   IMAGE_MIN_HEIGHT,
   IMAGE_MIN_WIDTH,
 } from '../../features/boards/config/board-item-defaults';
-import type { ResizeDirection } from '../../features/boards/domain/board-snap';
+import { resizeAxisFlags, resizeRectFromOrigin } from '../../features/boards/domain/board-snap';
 import { useBoardSessionStore } from '../../stores/board-session';
 
 const props = defineProps<NodeProps<BoardItem>>();
@@ -31,21 +36,38 @@ const resizeSnap = inject(BOARD_RESIZE_SNAP_KEY, null);
 const content = computed(() => props.data.content as BoardGiphyContent);
 const mediaUrl = computed(() => giphyMediaUrl(content.value.id, 'full'));
 
-/** См. `use-board-node-editing.ts` — тот же паттерн snap guides при resize (22.3). */
-let lastResizeDirection: ResizeDirection = [0, 0];
+/** Координаты резайзера на момент `resizeStart` — точка отсчёта для
+ * `resizeAxisFlags` (см. `use-board-node-editing.ts`/`board-snap.ts`). */
+let resizeStart = { x: 0, y: 0 };
 
-function onResize({ params: { x, y, width, height, direction } }: OnResize): void {
-  lastResizeDirection = direction;
-  resizeSnap?.updateGuides(props.id, { id: props.id, x, y, width, height }, direction, true);
+function onResizeStart({ params: { x, y } }: OnResizeStart): void {
+  resizeStart = { x, y };
+}
+
+/** Геометрия ДО жеста — заведомо абсолютная (`BoardItem.x/y`), в отличие от
+ * `params.x/y` резайзера (см. `resizeRectFromOrigin`). */
+function originRect() {
+  return {
+    id: props.id,
+    x: props.data.x,
+    y: props.data.y,
+    width: props.data.width,
+    height: props.data.height,
+  };
+}
+
+function onResize({ params: { x, y, width, height } }: OnResize): void {
+  const origin = originRect();
+  const flags = resizeAxisFlags(resizeStart.x, resizeStart.y, origin, x, y, width, height);
+  const rect = resizeRectFromOrigin(origin, width, height, flags);
+  resizeSnap?.updateGuides(props.id, rect, flags, true);
 }
 
 function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
-  const snapped = resizeSnap?.applySnap(
-    props.id,
-    { id: props.id, x, y, width, height },
-    lastResizeDirection,
-    true,
-  ) ?? { x, y, width, height };
+  const origin = originRect();
+  const flags = resizeAxisFlags(resizeStart.x, resizeStart.y, origin, x, y, width, height);
+  const rect = resizeRectFromOrigin(origin, width, height, flags);
+  const snapped = resizeSnap?.applySnap(props.id, rect, flags, true) ?? rect;
   resizeSnap?.clearGuides();
   void boardSession.applyOps([
     {
@@ -72,6 +94,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
       :max-width="IMAGE_MAX_WIDTH"
       :max-height="IMAGE_MAX_HEIGHT"
       keep-aspect-ratio
+      @resize-start="onResizeStart"
       @resize="onResize"
       @resize-end="onResizeEnd"
     />
