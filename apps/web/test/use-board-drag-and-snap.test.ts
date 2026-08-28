@@ -794,3 +794,171 @@ describe('useBoardDragAndSnap — reset', () => {
     expect(() => api.reset()).not.toThrow();
   });
 });
+
+describe('useBoardDragAndSnap — равные отступы, 22.6', () => {
+  it('показывает activeGapGuides и снапит позицию при совпадении с эталонным зазором на доске', () => {
+    // Эталон: A(0..100) и B(300..400), gap=200. Перетаскиваемый узел стартует
+    // так, что его зазор до D(800..900) почти совпадает (202 vs 200) — то же
+    // геометрическое устройство, что и в board-snap.test.ts «равные отступы».
+    const itemA = item('A', { x: 0, y: 0, width: 100, height: 100 });
+    const itemB = item('B', { x: 300, y: 0, width: 100, height: 100 });
+    const itemD = item('D', { x: 800, y: 0, width: 100, height: 100 });
+    const draggedItem = item('dragged-1', { x: 498, y: 0, width: 100, height: 100 });
+
+    const nodeA = flowNode(itemA, { x: 0, y: 0 }, { width: 100, height: 100 });
+    const nodeB = flowNode(itemB, { x: 300, y: 0 }, { width: 100, height: 100 });
+    const nodeD = flowNode(itemD, { x: 800, y: 0 }, { width: 100, height: 100 });
+    const draggedNode = flowNode(draggedItem, { x: 498, y: 0 }, { width: 100, height: 100 });
+
+    const { api, applyOps } = makeDrag({
+      items: [itemA, itemB, itemD, draggedItem],
+      flowNodes: [nodeA, nodeB, nodeD, draggedNode],
+    });
+
+    api.onNodeDragStart(nodeEvent([draggedNode]));
+    api.onNodeDrag(nodeEvent([draggedNode]));
+
+    expect(api.activeGapGuides.value).toHaveLength(2);
+    expect(api.activeGapGuides.value.every((g) => g.gap === 200)).toBe(true);
+
+    api.onNodeDragStop(nodeEvent([draggedNode]));
+
+    const { ops } = lastApplyOps(applyOps);
+    const patch = ops.find(
+      (o): o is BoardItemPatchOp => o.type === 'item.patch' && o.id === 'dragged-1',
+    );
+    expect(patch).toBeDefined();
+    expect(patch!.patch.x).toBe(500);
+    expect(api.activeGapGuides.value).toEqual([]);
+  });
+
+  it('не показывает гиды, если ни один зазор не совпал ни с одним эталоном', () => {
+    const itemA = item('A', { x: 0, y: 0, width: 100, height: 100 });
+    const itemB = item('B', { x: 300, y: 0, width: 100, height: 100 });
+    const draggedItem = item('dragged-1', { x: 1000, y: 0, width: 100, height: 100 });
+
+    const nodeA = flowNode(itemA, { x: 0, y: 0 }, { width: 100, height: 100 });
+    const nodeB = flowNode(itemB, { x: 300, y: 0 }, { width: 100, height: 100 });
+    const draggedNode = flowNode(draggedItem, { x: 1000, y: 0 }, { width: 100, height: 100 });
+
+    const { api } = makeDrag({
+      items: [itemA, itemB, draggedItem],
+      flowNodes: [nodeA, nodeB, draggedNode],
+    });
+
+    api.onNodeDragStart(nodeEvent([draggedNode]));
+    api.onNodeDrag(nodeEvent([draggedNode]));
+
+    expect(api.activeGapGuides.value).toEqual([]);
+  });
+
+  it('reset() очищает activeGapGuides', () => {
+    const itemA = item('A', { x: 0, y: 0, width: 100, height: 100 });
+    const itemB = item('B', { x: 300, y: 0, width: 100, height: 100 });
+    const itemD = item('D', { x: 800, y: 0, width: 100, height: 100 });
+    const draggedItem = item('dragged-1', { x: 498, y: 0, width: 100, height: 100 });
+
+    const nodeA = flowNode(itemA, { x: 0, y: 0 }, { width: 100, height: 100 });
+    const nodeB = flowNode(itemB, { x: 300, y: 0 }, { width: 100, height: 100 });
+    const nodeD = flowNode(itemD, { x: 800, y: 0 }, { width: 100, height: 100 });
+    const draggedNode = flowNode(draggedItem, { x: 498, y: 0 }, { width: 100, height: 100 });
+
+    const { api } = makeDrag({
+      items: [itemA, itemB, itemD, draggedItem],
+      flowNodes: [nodeA, nodeB, nodeD, draggedNode],
+    });
+
+    api.onNodeDragStart(nodeEvent([draggedNode]));
+    api.onNodeDrag(nodeEvent([draggedNode]));
+    expect(api.activeGapGuides.value.length).toBeGreaterThan(0);
+
+    api.reset();
+
+    expect(api.activeGapGuides.value).toEqual([]);
+  });
+});
+
+describe('useBoardDragAndSnap — линейка точных расстояний (Alt/Option), 22.8', () => {
+  it('без Alt — activeMeasureGuides пуст, даже если рядом есть соседи', () => {
+    const staticItem = item('static-1', { x: 300, y: 0, width: 100, height: 100 });
+    const draggedItem = item('dragged-1', { x: 0, y: 0, width: 100, height: 100 });
+    const staticNode = flowNode(staticItem, { x: 300, y: 0 }, { width: 100, height: 100 });
+    const draggedNode = flowNode(draggedItem, { x: 0, y: 0 }, { width: 100, height: 100 });
+
+    const { api } = makeDrag({
+      items: [staticItem, draggedItem],
+      flowNodes: [staticNode, draggedNode],
+    });
+
+    api.onNodeDragStart(nodeEvent([draggedNode]));
+    api.onNodeDrag(nodeEvent([draggedNode]));
+
+    expect(api.activeMeasureGuides.value).toEqual([]);
+  });
+
+  it('с зажатым Alt — показывает фактический зазор до соседа, БЕЗ порога совпадения', () => {
+    // Зазор 200px — намеренно ничему не «эталонному» не совпадающий (в отличие
+    // от гипотетического equal-gap кейса), Alt-режим обязан показать его всё равно.
+    const staticItem = item('static-1', { x: 300, y: 0, width: 100, height: 100 });
+    const draggedItem = item('dragged-1', { x: 0, y: 0, width: 100, height: 100 });
+    const staticNode = flowNode(staticItem, { x: 300, y: 0 }, { width: 100, height: 100 });
+    const draggedNode = flowNode(draggedItem, { x: 0, y: 0 }, { width: 100, height: 100 });
+
+    const { api } = makeDrag({
+      items: [staticItem, draggedItem],
+      flowNodes: [staticNode, draggedNode],
+    });
+
+    api.onNodeDragStart(nodeEvent([draggedNode]));
+    api.onNodeDrag(nodeEvent([draggedNode], { altKey: true }));
+
+    expect(api.activeMeasureGuides.value).toHaveLength(1);
+    expect(api.activeMeasureGuides.value[0]).toMatchObject({ axis: 'horizontal', gap: 200 });
+  });
+
+  it('отпустили Alt посреди драга — activeMeasureGuides снова пуст на следующем тике', () => {
+    const staticItem = item('static-1', { x: 300, y: 0, width: 100, height: 100 });
+    const draggedItem = item('dragged-1', { x: 0, y: 0, width: 100, height: 100 });
+    const staticNode = flowNode(staticItem, { x: 300, y: 0 }, { width: 100, height: 100 });
+    const draggedNode = flowNode(draggedItem, { x: 0, y: 0 }, { width: 100, height: 100 });
+
+    const { api } = makeDrag({
+      items: [staticItem, draggedItem],
+      flowNodes: [staticNode, draggedNode],
+    });
+
+    api.onNodeDragStart(nodeEvent([draggedNode]));
+    api.onNodeDrag(nodeEvent([draggedNode], { altKey: true }));
+    expect(api.activeMeasureGuides.value.length).toBeGreaterThan(0);
+
+    api.onNodeDrag(nodeEvent([draggedNode]));
+
+    expect(api.activeMeasureGuides.value).toEqual([]);
+  });
+
+  it('очищает activeMeasureGuides на dragStop и reset()', () => {
+    const staticItem = item('static-1', { x: 300, y: 0, width: 100, height: 100 });
+    const draggedItem = item('dragged-1', { x: 0, y: 0, width: 100, height: 100 });
+    const staticNode = flowNode(staticItem, { x: 300, y: 0 }, { width: 100, height: 100 });
+    const draggedNode = flowNode(draggedItem, { x: 0, y: 0 }, { width: 100, height: 100 });
+
+    const { api } = makeDrag({
+      items: [staticItem, draggedItem],
+      flowNodes: [staticNode, draggedNode],
+    });
+
+    api.onNodeDragStart(nodeEvent([draggedNode]));
+    api.onNodeDrag(nodeEvent([draggedNode], { altKey: true }));
+    expect(api.activeMeasureGuides.value.length).toBeGreaterThan(0);
+
+    api.onNodeDragStop(nodeEvent([draggedNode]));
+    expect(api.activeMeasureGuides.value).toEqual([]);
+
+    api.onNodeDragStart(nodeEvent([draggedNode]));
+    api.onNodeDrag(nodeEvent([draggedNode], { altKey: true }));
+    expect(api.activeMeasureGuides.value.length).toBeGreaterThan(0);
+
+    api.reset();
+    expect(api.activeMeasureGuides.value).toEqual([]);
+  });
+});

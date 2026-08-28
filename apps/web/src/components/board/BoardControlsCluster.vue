@@ -25,6 +25,7 @@ const emit = defineEmits<{
   undo: [];
   redo: [];
   toggleFullscreen: [];
+  help: [];
 }>();
 
 const { t } = useI18n();
@@ -61,6 +62,12 @@ const { t } = useI18n();
       @click="emit('toggleFullscreen')"
     >
       <UIcon :name="isFullscreen ? 'i-lucide-shrink' : 'i-lucide-expand'" />
+    </ControlButton>
+    <div class="board-controls-divider" />
+    <!-- Список хоткеев (22.9) — дискаверабилити: Shift/Alt-режимы при драге
+    и остальные хоткеи иначе никак не видны пользователю в UI -->
+    <ControlButton :aria-label="t('board.hotkeysButton')" @click="emit('help')">
+      <UIcon name="i-lucide-circle-help" />
     </ControlButton>
   </Controls>
 </template>
