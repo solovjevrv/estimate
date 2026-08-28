@@ -1,4 +1,4 @@
-import type { GiphyGifSummary } from '@poker/shared';
+import type { GiphyGifSummary } from '@estimate/shared';
 
 import type { GiphyClient } from './giphy-client';
 

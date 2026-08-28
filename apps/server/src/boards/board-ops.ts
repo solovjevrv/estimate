@@ -42,9 +42,9 @@ import {
   type BoardTextMark,
   type BoardTextRun,
   type PersonalStickerFormat,
-} from '@poker/shared';
+} from '@estimate/shared';
 
-import { isValidEmojiSequence } from '@poker/shared/emoji/validate';
+import { isValidEmojiSequence } from '@estimate/shared/emoji/validate';
 import { ValidationError } from '../errors';
 
 export interface BoardOpState {

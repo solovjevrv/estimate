@@ -1,4 +1,4 @@
-import type { BoardPresenceEntry } from '@poker/shared';
+import type { BoardPresenceEntry } from '@estimate/shared';
 import { computed, ref, type Ref, watch } from 'vue';
 
 import {

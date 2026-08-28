@@ -47,4 +47,4 @@ async function stickerPacksPluginImpl(
   );
 }
 
-export const stickerPacksPlugin = fp(stickerPacksPluginImpl, { name: 'poker-sticker-packs' });
+export const stickerPacksPlugin = fp(stickerPacksPluginImpl, { name: 'estimate-sticker-packs' });

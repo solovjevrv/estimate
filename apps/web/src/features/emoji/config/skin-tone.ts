@@ -1,6 +1,6 @@
-import type { SkinToneId } from '@poker/shared';
+import type { SkinToneId } from '@estimate/shared';
 
-const STORAGE_KEY = 'poker-emoji-skin-tone';
+const STORAGE_KEY = 'estimate-emoji-skin-tone';
 
 export const SKIN_TONES: readonly { id: SkinToneId; swatch: string }[] = [
   { id: 'light', swatch: '#F7DECE' },

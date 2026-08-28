@@ -6,7 +6,7 @@ import {
   BOARD_COLOR_PALETTE,
   BOARD_ITEM_FONT_SIZE_MAX,
   BOARD_ITEM_FONT_SIZE_MIN,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 import BoardEdgeToolbar from '../src/components/board/BoardEdgeToolbar.vue';
 import { createAppI18n } from '../src/i18n';

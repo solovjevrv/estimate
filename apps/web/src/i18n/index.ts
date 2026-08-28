@@ -16,7 +16,7 @@ export type MessageSchema = typeof ru;
 /** Аннотация не косметическая: без неё пропущенный английский ключ всплыл бы только у пользователя */
 const messages: Record<Locale, MessageSchema> = { ru, en };
 
-const STORAGE_KEY = 'poker:locale';
+const STORAGE_KEY = 'estimate:locale';
 
 function isLocale(value: string | null): value is Locale {
   return value !== null && (LOCALES as readonly string[]).includes(value);

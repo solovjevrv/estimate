@@ -1,6 +1,6 @@
 -- WARNING: self-referencing FK в schema.ts намеренно НЕ описан через .references()
 -- (TS25707 циркулярная типизация Drizzle). Если кто-то запустит
--- `pnpm --filter @poker/server db:generate`, Drizzle сгенерирует миграцию
+-- `pnpm --filter @estimate/server db:generate`, Drizzle сгенерирует миграцию
 -- DROP CONSTRAINT — DB-level safety net будет потерян, но приложение
 -- продолжит работать (осираение детей эмулируется в board-ops.ts item.delete).
 -- Не запускать db:generate без ручной проверки.

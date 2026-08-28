@@ -1,4 +1,4 @@
-import type { BoardItem, BoardOp } from '@poker/shared';
+import type { BoardItem, BoardOp } from '@estimate/shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { useBoardDragAndSnap } from '../src/features/boards/composables/use-board-drag-and-snap';

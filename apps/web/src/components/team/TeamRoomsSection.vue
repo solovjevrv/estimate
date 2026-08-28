@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Room } from '@poker/shared';
+import type { Room } from '@estimate/shared';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 

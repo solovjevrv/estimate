@@ -3,7 +3,7 @@
  * комнат, досок и команд. Здесь проверяется сама развилка: она одна на все три
  * домена, и её ошибка означает не косметический баг, а дырку в доступе.
  */
-import type { TeamRole } from '@poker/shared';
+import type { TeamRole } from '@estimate/shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { type Membership, TeamAccess, requireRole } from '../src/access';

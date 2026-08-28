@@ -4,8 +4,8 @@ import type {
   EmojiSequence,
   GiphyGifSummary,
   PersonalStickerFormat,
-} from '@poker/shared';
-import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_MAX_ITEMS } from '@poker/shared';
+} from '@estimate/shared';
+import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_MAX_ITEMS } from '@estimate/shared';
 import { useToast } from '@nuxt/ui/composables';
 import { nextTick, ref, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';

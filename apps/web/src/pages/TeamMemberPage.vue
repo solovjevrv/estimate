@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TeamMemberProfile } from '@poker/shared';
+import type { TeamMemberProfile } from '@estimate/shared';
 import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 

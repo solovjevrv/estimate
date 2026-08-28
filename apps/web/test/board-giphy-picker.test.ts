@@ -6,7 +6,7 @@
 import { mount } from '@vue/test-utils';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { GiphyGifSummary } from '@poker/shared';
+import type { GiphyGifSummary } from '@estimate/shared';
 import { createAppI18n } from '../src/i18n';
 import { ApiError } from '../src/lib/api';
 

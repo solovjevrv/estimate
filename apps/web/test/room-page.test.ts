@@ -1,6 +1,6 @@
 import ui from '@nuxt/ui/vue-plugin';
-import type { AuthUser, Participant, Room, RoomState, Round, RoundResult } from '@poker/shared';
-import { TIMER_DEFAULT_DURATION_SEC, WS_SERVER_EVENTS } from '@poker/shared';
+import type { AuthUser, Participant, Room, RoomState, Round, RoundResult } from '@estimate/shared';
+import { TIMER_DEFAULT_DURATION_SEC, WS_SERVER_EVENTS } from '@estimate/shared';
 import { mount } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

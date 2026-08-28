@@ -1,4 +1,4 @@
-import type { BoardEdge, BoardItem, BoardOp } from '@poker/shared';
+import type { BoardEdge, BoardItem, BoardOp } from '@estimate/shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { persistBoardOps } from '../src/boards/board-ops.persistence';

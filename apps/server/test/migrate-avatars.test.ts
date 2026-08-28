@@ -27,7 +27,7 @@ describe('migrateAvatars', () => {
   let storage: FakeObjectStorage;
 
   beforeEach(() => {
-    legacyDir = mkdtempSync(join(tmpdir(), 'poker-migrate-'));
+    legacyDir = mkdtempSync(join(tmpdir(), 'estimate-migrate-'));
     storage = new FakeObjectStorage();
   });
 

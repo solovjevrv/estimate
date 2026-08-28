@@ -287,6 +287,6 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
 }
 
 export const roomsPlugin = fp(roomsPluginImpl, {
-  name: 'poker-rooms',
-  dependencies: ['poker-auth'],
+  name: 'estimate-rooms',
+  dependencies: ['estimate-auth'],
 });

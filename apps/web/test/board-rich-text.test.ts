@@ -1,4 +1,4 @@
-import type { BoardItemContent, BoardTextRun } from '@poker/shared';
+import type { BoardItemContent, BoardTextRun } from '@estimate/shared';
 import { describe, expect, it } from 'vitest';
 
 import {

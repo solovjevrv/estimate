@@ -1,4 +1,4 @@
-import type { PersonalStickerFormat } from '@poker/shared';
+import type { PersonalStickerFormat } from '@estimate/shared';
 
 /**
  * Стикер-паки (13.4) — статичные webp-стикеры в MinIO, без загрузки и без БД.

@@ -1,4 +1,4 @@
-import type { BoardEdgeStyle, BoardOp } from '@poker/shared';
+import type { BoardEdgeStyle, BoardOp } from '@estimate/shared';
 import { ref, type Ref } from 'vue';
 
 export interface UseEdgeCurveOffsetOptions {

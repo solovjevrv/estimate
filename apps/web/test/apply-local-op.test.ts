@@ -1,4 +1,4 @@
-import type { BoardCommittedOp, BoardEdge, BoardItem } from '@poker/shared';
+import type { BoardCommittedOp, BoardEdge, BoardItem } from '@estimate/shared';
 import { describe, expect, it } from 'vitest';
 
 import {

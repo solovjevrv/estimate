@@ -12,7 +12,7 @@ import {
   type StartRoundPayload,
   type SubmitVotePayload,
   type UpdateLinksPayload,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 import { TeamAccess } from '../access';
 import { UsersRepository } from '../auth';

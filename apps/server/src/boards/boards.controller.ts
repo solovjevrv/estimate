@@ -1,6 +1,6 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
-import type { BoardShareRole } from '@poker/shared';
+import type { BoardShareRole } from '@estimate/shared';
 
 import type { BoardsService } from './boards.service';
 

@@ -1,4 +1,4 @@
-import type { BoardOp } from '@poker/shared';
+import type { BoardOp } from '@estimate/shared';
 import { ref, type Ref } from 'vue';
 
 import type { BoardFlowNode } from '../adapters/vue-flow-adapter';

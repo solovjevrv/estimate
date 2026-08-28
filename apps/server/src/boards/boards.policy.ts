@@ -5,7 +5,7 @@ import {
   type BoardAccessLevel,
   type BoardShareRole,
   type TeamRole,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 /** Уровень доступа, который даёт владение личной доской или членство в её команде. */
 export function resolveMembershipBoardAccess(

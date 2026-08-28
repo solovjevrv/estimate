@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BoardItem, BoardImageContent } from '@poker/shared';
+import type { BoardItem, BoardImageContent } from '@estimate/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import {
   NodeResizer,

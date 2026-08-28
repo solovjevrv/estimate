@@ -4,7 +4,7 @@ import {
   BOARD_ITEM_FONT_SIZE_MIN,
   type BoardItem,
   type BoardTextContent,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import {
   NodeResizer,

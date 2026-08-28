@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
-import { trimText } from '@poker/shared';
+import { trimText } from '@estimate/shared';
 import { computed, reactive, watch } from 'vue';
 
 import { nextEntityModalValue } from '../lib/entity-text-modal';

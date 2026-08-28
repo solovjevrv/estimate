@@ -1,5 +1,5 @@
-import type { BoardEdge, BoardItem, BoardOp, BoardItemStyle } from '@poker/shared';
-import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@poker/shared';
+import type { BoardEdge, BoardItem, BoardOp, BoardItemStyle } from '@estimate/shared';
+import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@estimate/shared';
 import { ref } from 'vue';
 import { describe, expect, it, vi } from 'vitest';
 

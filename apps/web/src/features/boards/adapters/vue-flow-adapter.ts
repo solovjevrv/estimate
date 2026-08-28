@@ -13,7 +13,7 @@ import type {
   BoardEdgeDash,
   BoardEdgeMarker,
   BoardItem,
-} from '@poker/shared';
+} from '@estimate/shared';
 import {
   MarkerType,
   type Edge,

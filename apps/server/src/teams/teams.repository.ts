@@ -1,6 +1,6 @@
 import { randomBytes } from 'node:crypto';
 
-import type { Team, TeamMember, TeamMemberProfile, TeamRole } from '@poker/shared';
+import type { Team, TeamMember, TeamMemberProfile, TeamRole } from '@estimate/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
 import { schema } from '../db';

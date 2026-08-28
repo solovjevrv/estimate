@@ -1,4 +1,4 @@
-import { hasTeamRole, type TeamRole } from '@poker/shared';
+import { hasTeamRole, type TeamRole } from '@estimate/shared';
 
 import type { DbExecutor } from '../common/db-executor';
 import { ForbiddenError, NotFoundError } from '../errors';

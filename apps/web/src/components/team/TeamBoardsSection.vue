@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BoardSummary } from '@poker/shared';
+import type { BoardSummary } from '@estimate/shared';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 

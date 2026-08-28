@@ -21,7 +21,7 @@ import type {
   BoardItemContent,
   BoardTextMark,
   BoardTextRun,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 /**
  * DOM-узел, уход фокуса в который НЕ должен коммитить редактирование текста

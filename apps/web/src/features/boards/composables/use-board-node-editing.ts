@@ -13,7 +13,7 @@ import {
   type BoardItem,
   type BoardItemContent,
   type BoardTextRun,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { computed, inject, onBeforeUnmount, useTemplateRef, watch, type Ref } from 'vue';
 
 import {

@@ -1,7 +1,7 @@
 /**
  * Генератор каталога emoji (21.4).
  *
- * Запуск: pnpm --filter @poker/shared generate:emoji
+ * Запуск: pnpm --filter @estimate/shared generate:emoji
  *
  * Собирает EMOJI_CATALOG из открытого датасета emojibase-data:
  * - packages/shared/node_modules/emojibase-data/en/data.json  (английские метки + теги)
@@ -155,7 +155,7 @@ function main() {
 
   const lines = [];
   lines.push('// СГЕНЕРИРОВАНО — не редактировать руками.');
-  lines.push('// Пересобрать: pnpm --filter @poker/shared generate:emoji');
+  lines.push('// Пересобрать: pnpm --filter @estimate/shared generate:emoji');
   lines.push('// Источник: emojibase-data@17.0.0, shortcodes preset: emojibase.json');
   lines.push("import type { EmojiCatalogEntry } from './index';");
   lines.push('');

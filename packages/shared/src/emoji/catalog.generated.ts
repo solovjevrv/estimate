@@ -1,5 +1,5 @@
 // СГЕНЕРИРОВАНО — не редактировать руками.
-// Пересобрать: pnpm --filter @poker/shared generate:emoji
+// Пересобрать: pnpm --filter @estimate/shared generate:emoji
 // Источник: emojibase-data@17.0.0, shortcodes preset: emojibase.json
 import type { EmojiCatalogEntry } from './index';
 

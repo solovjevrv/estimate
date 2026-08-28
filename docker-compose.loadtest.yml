@@ -11,12 +11,12 @@
 # Ровно это и произошло при первом прогоне (см. PROGRESS_ARCHIVE.md, 6.3) —
 # имена сервисов здесь дополнительно уникальны (loadtest-*), но именно `name:`
 # ниже — единственная настоящая гарантия изоляции.
-name: poker-loadtest
+name: estimate-loadtest
 
 services:
   loadtest-postgres:
     image: postgres:18-alpine
-    container_name: poker-postgres-loadtest
+    container_name: estimate-postgres-loadtest
     environment:
       POSTGRES_USER: loadtest
       POSTGRES_PASSWORD: loadtest
@@ -36,8 +36,8 @@ services:
     build:
       context: .
       dockerfile: apps/server/Dockerfile
-    image: poker-server-loadtest
-    container_name: poker-server-loadtest
+    image: estimate-server-loadtest
+    container_name: estimate-server-loadtest
     environment:
       NODE_ENV: production
       PORT: 3000

@@ -1,4 +1,4 @@
-import { BOARD_SHAPE_KINDS } from '@poker/shared';
+import { BOARD_SHAPE_KINDS } from '@estimate/shared';
 
 /**
  * Вид формы/контента элемента доски — используется единым переключателем

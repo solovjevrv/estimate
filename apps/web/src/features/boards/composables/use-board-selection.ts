@@ -11,13 +11,13 @@ import type {
   EmojiSequence,
   GiphyGifSummary,
   PersonalStickerFormat,
-} from '@poker/shared';
-import { isBoardContainer } from '@poker/shared';
+} from '@estimate/shared';
+import { isBoardContainer } from '@estimate/shared';
 import {
   FIT_FONT_MAX,
   getScaledFontSize,
 } from '../../../features/boards/composables/use-fit-font-size';
-import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@poker/shared';
+import { BOARD_ITEM_FONT_SIZE_MAX, BOARD_ITEM_FONT_SIZE_MIN } from '@estimate/shared';
 import { computed, ref, shallowRef } from 'vue';
 
 import type { BoardEffectiveFontSizeRegistry } from '../context/board-canvas-keys';

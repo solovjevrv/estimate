@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { TeamMember, TeamRole } from '@poker/shared';
+import type { TeamMember, TeamRole } from '@estimate/shared';
 import { useI18n } from 'vue-i18n';
 
 import { roleBadgeColor, teamAvatarColor } from '../../lib/team-roles';

@@ -12,6 +12,6 @@ export default defineConfig({
   out: './drizzle',
   dialect: 'postgresql',
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? 'postgres://poker:poker@localhost:5432/poker',
+    url: process.env.DATABASE_URL ?? 'postgres://estimate:estimate@localhost:5432/estimate',
   },
 });

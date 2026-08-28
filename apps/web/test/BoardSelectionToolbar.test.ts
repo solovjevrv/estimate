@@ -2,7 +2,7 @@ import { mount, type VueWrapper } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
 import { nextTick } from 'vue';
 
-import { BOARD_COLOR_PALETTE } from '@poker/shared';
+import { BOARD_COLOR_PALETTE } from '@estimate/shared';
 
 import BoardSelectionToolbar from '../src/components/board/BoardSelectionToolbar.vue';
 import { createAppI18n } from '../src/i18n';

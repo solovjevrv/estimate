@@ -25,13 +25,13 @@ jobs:
       postgres:
         image: postgres:18-alpine
         env:
-          POSTGRES_USER: poker
-          POSTGRES_PASSWORD: poker
-          POSTGRES_DB: poker
+          POSTGRES_USER: estimate
+          POSTGRES_PASSWORD: estimate
+          POSTGRES_DB: estimate
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U poker -d poker"
+          --health-cmd "pg_isready -U estimate -d estimate"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
@@ -50,7 +50,7 @@ jobs:
           - 9000:9000
         command: server /data
     env:
-      DATABASE_URL: postgres://poker:poker@localhost:5432/poker
+      DATABASE_URL: postgres://estimate:estimate@localhost:5432/estimate
       MINIO_ENDPOINT: localhost
       MINIO_PORT: 9000
       MINIO_USE_SSL: 'false'
@@ -59,7 +59,7 @@ jobs:
       # ролей имеет смысл в проде (см. minio-init в docker-compose.prod.yml), не здесь.
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin123
-      MINIO_BUCKET: poker-assets
+      MINIO_BUCKET: estimate-assets
     steps:
       - name: Checkout
         uses: actions/checkout@v5

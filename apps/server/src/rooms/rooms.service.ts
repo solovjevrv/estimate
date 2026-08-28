@@ -3,7 +3,7 @@ import {
   type Room,
   type RoomStats,
   type RoundHistoryEntry,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 import { TeamAccess } from '../access';
 import type { Db } from '../db';

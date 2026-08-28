@@ -1,6 +1,6 @@
 /** История раундов: открыта так же, как и сама комната, отдельным REST-запросом (5.7) */
-import type { DeckType, RoundHistoryEntry } from '@poker/shared';
-import { tshirtLabel } from '@poker/shared';
+import type { DeckType, RoundHistoryEntry } from '@estimate/shared';
+import { tshirtLabel } from '@estimate/shared';
 import { ref, watch, onBeforeUnmount, type Ref } from 'vue';
 
 import { getRoundHistory } from '../api/rooms-api';

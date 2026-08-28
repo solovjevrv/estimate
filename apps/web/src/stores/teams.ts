@@ -1,5 +1,5 @@
 /** Команды пользователя: список, карточка с составом и работа с приглашениями. */
-import type { Team, TeamMember, TeamMemberProfile, TeamRole, TeamWithRole } from '@poker/shared';
+import type { Team, TeamMember, TeamMemberProfile, TeamRole, TeamWithRole } from '@estimate/shared';
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 

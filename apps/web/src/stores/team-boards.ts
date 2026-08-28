@@ -1,5 +1,5 @@
 /** Доски команды для дашборда: активные и заархивированные. */
-import type { BoardSummary } from '@poker/shared';
+import type { BoardSummary } from '@estimate/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 

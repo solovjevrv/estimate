@@ -3,7 +3,7 @@
  * внешних HTTP-зависимостей (Node 24 — глобальный fetch), тот же приём, что
  * и у `telegram-client.ts` (21.6).
  */
-import type { GiphyGifSummary } from '@poker/shared';
+import type { GiphyGifSummary } from '@estimate/shared';
 
 export class GiphyApiError extends Error {}
 

@@ -270,6 +270,6 @@ async function personalStickersPluginImpl(
 }
 
 export const personalStickersPlugin = fp(personalStickersPluginImpl, {
-  name: 'poker-personal-stickers',
-  dependencies: ['poker-auth'],
+  name: 'estimate-personal-stickers',
+  dependencies: ['estimate-auth'],
 });

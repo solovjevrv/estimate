@@ -1,4 +1,4 @@
-import type { AuthUser } from '@poker/shared';
+import type { AuthUser } from '@estimate/shared';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 

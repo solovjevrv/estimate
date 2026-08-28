@@ -1,4 +1,4 @@
-import type { Board } from '@poker/shared';
+import type { Board } from '@estimate/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {

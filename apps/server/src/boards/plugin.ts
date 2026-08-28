@@ -276,6 +276,6 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
 }
 
 export const boardsPlugin = fp(boardsPluginImpl, {
-  name: 'poker-boards',
-  dependencies: ['poker-auth'],
+  name: 'estimate-boards',
+  dependencies: ['estimate-auth'],
 });

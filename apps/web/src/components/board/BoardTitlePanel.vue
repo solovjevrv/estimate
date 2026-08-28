@@ -4,7 +4,7 @@
  * (12.5). Вынесена из `BoardCanvas.vue` (17.1) — чисто презентационная,
  * пункты меню и вычисление подзаголовка остаются у родителя.
  */
-import type { Board } from '@poker/shared';
+import type { Board } from '@estimate/shared';
 import type { DropdownMenuItem } from '@nuxt/ui';
 import { Panel } from '@vue-flow/core';
 import { useI18n } from 'vue-i18n';

@@ -14,9 +14,9 @@ import type {
   BoardImageContent,
   BoardItemContent,
   BoardItemStyle,
-} from '@poker/shared';
+} from '@estimate/shared';
 
-export const BOARD_CLIPBOARD_SOURCE = 'poker-board';
+export const BOARD_CLIPBOARD_SOURCE = 'estimate-board';
 export const BOARD_CLIPBOARD_VERSION = 1;
 
 export interface BoardClipboardImageContent {

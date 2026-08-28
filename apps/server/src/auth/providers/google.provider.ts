@@ -1,5 +1,5 @@
 import fastifyOauth2, { type ProviderConfiguration } from '@fastify/oauth2';
-import type { AuthProvider } from '@poker/shared';
+import type { AuthProvider } from '@estimate/shared';
 
 import { OAuthProvider, type OAuthProfile } from './oauth-provider';
 

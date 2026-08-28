@@ -1,4 +1,4 @@
-import type { BoardEdge, BoardItem } from '@poker/shared';
+import type { BoardEdge, BoardItem } from '@estimate/shared';
 import { MarkerType } from '@vue-flow/core';
 import { afterEach, describe, expect, it } from 'vitest';
 

@@ -22,7 +22,7 @@
  * пропорций фрейма (22.4.2, `FRAME_SIZE_PRESETS`) патчат `width`/`height`
  * напрямую из тулбара — сюда попадают тем же путём, что и обычный ресайз.
  */
-import { BOARD_FRAME_TITLE_MAX_LENGTH, type BoardItem } from '@poker/shared';
+import { BOARD_FRAME_TITLE_MAX_LENGTH, type BoardItem } from '@estimate/shared';
 import {
   NodeResizer,
   type OnResize,

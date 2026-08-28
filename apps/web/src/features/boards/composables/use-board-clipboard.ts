@@ -4,7 +4,7 @@ import {
   type BoardItem,
   type BoardItemContent,
   type BoardOp,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { nextTick } from 'vue';
 
 import {

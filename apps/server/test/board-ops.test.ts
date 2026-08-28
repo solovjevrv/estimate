@@ -11,7 +11,7 @@ import {
   type BoardEdge,
   type BoardItem,
   type BoardOp,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { describe, expect, it } from 'vitest';
 
 import { applyBoardOp, type BoardOpState } from '../src/boards/board-ops';

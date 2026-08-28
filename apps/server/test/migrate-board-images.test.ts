@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { boardImageUrl, type AuthUser } from '@poker/shared';
+import { boardImageUrl, type AuthUser } from '@estimate/shared';
 import { inArray } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -45,7 +45,7 @@ describe('migrateBoardImages', () => {
   let storage: FakeObjectStorage;
 
   beforeEach(() => {
-    legacyDir = mkdtempSync(join(tmpdir(), 'poker-migrate-board-images-'));
+    legacyDir = mkdtempSync(join(tmpdir(), 'estimate-migrate-board-images-'));
     storage = new FakeObjectStorage();
   });
 

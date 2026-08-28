@@ -1,4 +1,4 @@
-import type { EmojiSequence } from '@poker/shared';
+import type { EmojiSequence } from '@estimate/shared';
 
 /**
  * Одна и та же реакция от нескольких участников схлопнута в одну запись со

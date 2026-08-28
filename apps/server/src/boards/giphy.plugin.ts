@@ -161,4 +161,4 @@ async function giphyPluginImpl(app: FastifyInstance, opts: { giphy: GiphyConfig 
   });
 }
 
-export const giphyPlugin = fp(giphyPluginImpl, { name: 'poker-giphy' });
+export const giphyPlugin = fp(giphyPluginImpl, { name: 'estimate-giphy' });

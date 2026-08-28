@@ -1,5 +1,5 @@
-import type { BoardItem, BoardOp, EmojiSequence } from '@poker/shared';
-import { BOARD_MAX_ITEMS } from '@poker/shared';
+import type { BoardItem, BoardOp, EmojiSequence } from '@estimate/shared';
+import { BOARD_MAX_ITEMS } from '@estimate/shared';
 import type { Mock } from 'vitest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { nextTick } from 'vue';

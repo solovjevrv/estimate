@@ -83,7 +83,7 @@ import {
   type EmojiSequence,
   type GiphyGifSummary,
   type PersonalStickerFormat,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 

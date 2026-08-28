@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useToast } from '@nuxt/ui/composables';
-import { BOARD_TITLE_MAX_LENGTH, type BoardSummary } from '@poker/shared';
+import { BOARD_TITLE_MAX_LENGTH, type BoardSummary } from '@estimate/shared';
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';

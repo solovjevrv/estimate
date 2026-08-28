@@ -9,7 +9,7 @@ import {
   hasTeamRole,
   isTextLengthInRange,
   trimText,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 import { requireRole } from '../access';
 import { type Db, isForeignKeyViolation, isUniqueViolation } from '../db';

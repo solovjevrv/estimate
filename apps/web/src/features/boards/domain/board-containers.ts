@@ -1,4 +1,4 @@
-import type { BoardItem } from '@poker/shared';
+import type { BoardItem } from '@estimate/shared';
 
 /**
  * ФРЕЙМ (не группа!), в чьи границы попадает точка — фрейм задуман как

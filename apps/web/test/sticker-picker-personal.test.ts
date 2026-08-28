@@ -12,7 +12,7 @@ import { mount } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { PersonalStickerPackSummary } from '@poker/shared';
+import type { PersonalStickerPackSummary } from '@estimate/shared';
 import { createAppI18n } from '../src/i18n';
 
 const mockApi = vi.hoisted(() => ({

@@ -1,5 +1,5 @@
 import fastifyMultipart from '@fastify/multipart';
-import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_IMAGE_MAX_BYTES } from '@poker/shared';
+import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_IMAGE_MAX_BYTES } from '@estimate/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
@@ -172,6 +172,6 @@ async function boardImagesPluginImpl(
 }
 
 export const boardImagesPlugin = fp(boardImagesPluginImpl, {
-  name: 'poker-board-images',
-  dependencies: ['poker-auth'],
+  name: 'estimate-board-images',
+  dependencies: ['estimate-auth'],
 });

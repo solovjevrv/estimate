@@ -1,6 +1,6 @@
 /** Колода, раунд, голосование, вскрытие карт и подсветка результата — ядро стола */
 import { useToast } from '@nuxt/ui/composables';
-import { DECK_CARDS, tshirtLabel, type DeckType, type Round } from '@poker/shared';
+import { DECK_CARDS, tshirtLabel, type DeckType, type Round } from '@estimate/shared';
 import { computed, ref, watch, type ComputedRef, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 

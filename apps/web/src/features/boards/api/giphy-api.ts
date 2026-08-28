@@ -1,5 +1,5 @@
 /** REST-слой Giphy (21.9): единственное место, знающее URL `/api/giphy/*`. */
-import type { GiphyGifSummary } from '@poker/shared';
+import type { GiphyGifSummary } from '@estimate/shared';
 
 import { api } from '../../../lib/api';
 

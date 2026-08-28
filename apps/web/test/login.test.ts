@@ -8,7 +8,7 @@ import App from '../src/App.vue';
 import { createAppI18n } from '../src/i18n';
 import { createAppRouter } from '../src/router';
 
-const REDIRECT_KEY = 'poker:post-login-redirect';
+const REDIRECT_KEY = 'estimate:post-login-redirect';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {

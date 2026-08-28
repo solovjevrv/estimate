@@ -1,5 +1,5 @@
 import ui from '@nuxt/ui/vue-plugin';
-import type { AuthUser, Board } from '@poker/shared';
+import type { AuthUser, Board } from '@estimate/shared';
 import { mount } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import { afterEach, describe, expect, it, vi } from 'vitest';

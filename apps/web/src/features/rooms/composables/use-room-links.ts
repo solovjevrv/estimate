@@ -1,7 +1,7 @@
 /** Форма ссылок Jira/Confluence комнаты — редактирование с версионированием против гонки с рассылкой */
 import type { FormError } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { isHttpUrl, trimText } from '@poker/shared';
+import { isHttpUrl, trimText } from '@estimate/shared';
 import { reactive, ref, watch, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 

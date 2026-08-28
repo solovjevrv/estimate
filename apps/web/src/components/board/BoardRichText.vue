@@ -7,7 +7,7 @@
  * без стилей/размера обёртки, это остаётся заботой компонента-хозяина
  * (у стикера и фигуры разное позиционирование бокса).
  */
-import type { BoardTextRun } from '@poker/shared';
+import type { BoardTextRun } from '@estimate/shared';
 
 import { markCssProperties } from '../../features/boards/rich-text/board-rich-text';
 

@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { schema } from '@poker/server/db';
+import { schema } from '@estimate/server/db';
 
 import { boardLocators } from '../src/board-locators';
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
@@ -12,7 +12,7 @@ import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
  * реального TELEGRAM_BOT_TOKEN в .env и гоняется вручную при внедрении фич, способных
  * повлиять на клиентский рендер стикеров (смена renderer/lottie-web/StickerMedia.vue и т.п.):
  *
- *   pnpm --filter @poker/e2e test:perf
+ *   pnpm --filter @estimate/e2e test:perf
  *
  * Импортирует один реальный анимированный Telegram-пак и размножает один и тот же
  * стикер на 100 позиций доски напрямую в БД (не 100 живых скачиваний из Telegram — здесь

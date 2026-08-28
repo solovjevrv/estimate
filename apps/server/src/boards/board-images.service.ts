@@ -4,7 +4,7 @@ import { randomBytes } from 'node:crypto';
 import { join } from 'node:path';
 import type { Readable } from 'node:stream';
 
-import { boardImageUrl, isBoardImageUrl } from '@poker/shared';
+import { boardImageUrl, isBoardImageUrl } from '@estimate/shared';
 import sharp from 'sharp';
 
 import { ValidationError } from '../errors';

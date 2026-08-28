@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { FIBONACCI_DECK } from '@poker/shared';
+import { FIBONACCI_DECK } from '@estimate/shared';
 
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
 

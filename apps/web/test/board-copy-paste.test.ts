@@ -1,4 +1,4 @@
-import type { BoardItemContent, BoardItemStyle } from '@poker/shared';
+import type { BoardItemContent, BoardItemStyle } from '@estimate/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {

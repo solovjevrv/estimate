@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
-import { UsersRepository } from '@poker/server/auth/testkit';
-import { createDb, schema } from '@poker/server/db';
+import { UsersRepository } from '@estimate/server/auth/testkit';
+import { createDb, schema } from '@estimate/server/db';
 import { like } from 'drizzle-orm';
 
 import { createAuthMinter } from './auth';

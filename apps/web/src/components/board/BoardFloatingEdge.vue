@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { BOARD_EDGE_LABEL_MAX_LENGTH, type BoardEdge } from '@poker/shared';
+import { BOARD_EDGE_LABEL_MAX_LENGTH, type BoardEdge } from '@estimate/shared';
 import {
   BaseEdge,
   EdgeLabelRenderer,

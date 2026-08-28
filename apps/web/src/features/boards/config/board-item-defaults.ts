@@ -2,7 +2,7 @@
  * Значения по умолчанию и границы для создания/резайза стикеров (12.6) —
  * держим их отдельно от компонентов, чтобы холст и тулбар их не дублировали.
  */
-import type { BoardColorHex, BoardFontFamily } from '@poker/shared';
+import type { BoardColorHex, BoardFontFamily } from '@estimate/shared';
 
 import { theme } from '../../../lib/theme';
 

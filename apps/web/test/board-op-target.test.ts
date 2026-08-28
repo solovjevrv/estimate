@@ -1,4 +1,4 @@
-import type { BoardCommittedOp, BoardEdge, BoardItem, BoardOp } from '@poker/shared';
+import type { BoardCommittedOp, BoardEdge, BoardItem, BoardOp } from '@estimate/shared';
 import { describe, expect, it } from 'vitest';
 
 import { opTargetKey } from '../src/features/boards/domain/board-op-target';

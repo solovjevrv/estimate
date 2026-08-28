@@ -2,13 +2,13 @@ import { randomUUID } from 'node:crypto';
 
 import fastifyJwt from '@fastify/jwt';
 import { type Browser, type BrowserContext, test as base } from '@playwright/test';
-import { ACCESS_COOKIE, TokenService, UsersRepository } from '@poker/server/auth/testkit';
-import { createDb } from '@poker/server/db';
-import type { AuthUser } from '@poker/shared';
+import { ACCESS_COOKIE, TokenService, UsersRepository } from '@estimate/server/auth/testkit';
+import { createDb } from '@estimate/server/db';
+import type { AuthUser } from '@estimate/shared';
 import Fastify from 'fastify';
 
 /** Домен-маркер: по нему глобальный teardown отличает e2e-пользователей от прочих данных БД */
-export const E2E_EMAIL_DOMAIN = 'poker-e2e.test';
+export const E2E_EMAIL_DOMAIN = 'estimate-e2e.test';
 /** Префикс имени: у комнат нет отдельного маркера, поэтому чистим по имени */
 export const E2E_ROOM_PREFIX = 'E2E ';
 

@@ -1,6 +1,6 @@
 /** REST-слой досок: единственное место, знающее URL `/api/boards`, FormData и коды ответов. */
-import type { Board, BoardShareRole, BoardSnapshot, BoardSummary } from '@poker/shared';
-import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_IMAGE_MAX_BYTES } from '@poker/shared';
+import type { Board, BoardShareRole, BoardSnapshot, BoardSummary } from '@estimate/shared';
+import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_IMAGE_MAX_BYTES } from '@estimate/shared';
 import { ApiError, api } from '../../../lib/api';
 
 export interface BoardAsset {

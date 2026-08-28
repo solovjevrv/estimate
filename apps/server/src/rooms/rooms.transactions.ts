@@ -1,4 +1,4 @@
-import type { Room, RoomRole } from '@poker/shared';
+import type { Room, RoomRole } from '@estimate/shared';
 
 import { TeamAccess } from '../access';
 import type { DbExecutor } from '../common/db-executor';
