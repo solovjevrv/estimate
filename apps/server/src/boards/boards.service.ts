@@ -50,6 +50,8 @@ export interface BoardJoinRequest {
   userId: string | null;
   guestName?: string;
   guestToken?: string;
+  /** Клиент сообщает, поддерживает ли он диаграммы (rollout-совместимость 23.2) */
+  supportsDiagrams?: boolean;
 }
 
 export interface BoardJoinResult {
@@ -231,6 +233,7 @@ export class BoardsService {
           avatarUrl: user.avatarUrl,
           isGuest: false,
           access: effectiveAccess,
+          supportsDiagrams: request.supportsDiagrams ?? false,
         },
       };
     }
@@ -252,6 +255,7 @@ export class BoardsService {
         avatarUrl: null,
         isGuest: true,
         access: board.shareRole,
+        supportsDiagrams: request.supportsDiagrams ?? false,
       },
     };
   }

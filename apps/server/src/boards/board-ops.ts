@@ -42,6 +42,13 @@ import {
   type BoardTextMark,
   type BoardTextRun,
   type PersonalStickerFormat,
+  type BoardDiagramContent,
+  type BoardDiagramNotation,
+  type BoardDiagramKind,
+  BOARD_DIAGRAM_NOTATIONS,
+  UML_DIAGRAM_KINDS,
+  BPMN_DIAGRAM_KINDS,
+  isValidDiagramContent,
 } from '@estimate/shared';
 
 import { isValidEmojiSequence } from '@estimate/shared/emoji/validate';
@@ -409,6 +416,8 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
     id?: unknown;
     title?: unknown;
     format?: unknown;
+    notation?: unknown;
+    kind?: unknown;
   };
 
   // Для emoji — валидный Unicode-эмодзи из каталога (21.4)
@@ -529,8 +538,42 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
       ...(runs ? { runs } : {}),
     };
   }
-  if (c.type === 'text') {
+   if (c.type === 'text') {
     return { type: 'text', text: c.text, ...(runs ? { runs } : {}) };
+  }
+
+  // Диаграмма (23.1) — notation, kind, text (+ опциональные runs).
+  // Серверная валидация: notation ∈ каталог, kind ∈ per-notation catalog,
+  // text ≤ BOARD_ITEM_TEXT_MAX_LENGTH, runs согласованы с text (общий паттерн).
+  // Затем clean-объект проходит через isValidDiagramContent из @estimate/shared,
+  // который сверяет структуру (UML class/enum attributes+operations, BPMN event
+  // eventDefinition) ровно для данной (notation, kind). Лишние поля отбрасываются.
+  if (c.type === 'diagram') {
+    if (!BOARD_DIAGRAM_NOTATIONS.includes(c.notation as BoardDiagramNotation)) {
+      throw new ValidationError('Недопустимая нотация диаграммы');
+    }
+    const notation = c.notation as BoardDiagramNotation;
+    // kind ∈ per-notation catalog; тот же чек есть в isValidDiagramContent,
+    // но здесь даём понятное сообщение до clean-объекта
+    const allowedKinds = (notation === 'uml' ? UML_DIAGRAM_KINDS : BPMN_DIAGRAM_KINDS) as readonly string[];
+    if (!allowedKinds.includes(c.kind as string)) {
+      throw new ValidationError('Недопустимый тип элемента диаграммы');
+    }
+    if (typeof c.text !== 'string' || c.text.length > BOARD_ITEM_TEXT_MAX_LENGTH) {
+      throw new ValidationError('Слишком длинный текст элемента');
+    }
+    const validRuns = validateRuns(c.runs, c.text);
+    const clean = {
+      type: 'diagram' as const,
+      notation,
+      kind: c.kind as BoardDiagramKind,
+      text: c.text,
+      ...(validRuns ? { runs: validRuns } : {}),
+    } as BoardDiagramContent;
+    if (!isValidDiagramContent(clean)) {
+      throw new ValidationError('Недопустимое содержимое диаграммы');
+    }
+    return clean;
   }
   throw new ValidationError('Неизвестный тип элемента');
 }

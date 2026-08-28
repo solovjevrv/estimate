@@ -43,11 +43,19 @@ import {
   runsPlainText,
 } from '../rich-text/board-rich-text';
 
-/** Стикер/фигура/текст — единственные типы с текстовым содержимым (runs/text) */
+/** Стикер/фигура/текст/диаграмма — типы с текстовым содержимым (runs/text) */
 function isTextBearingContent(
   content: BoardItemContent,
-): content is Extract<BoardItemContent, { type: 'sticky' | 'shape' | 'text' }> {
-  return content.type === 'sticky' || content.type === 'shape' || content.type === 'text';
+): content is Extract<
+  BoardItemContent,
+  { type: 'sticky' | 'shape' | 'text' | 'diagram' }
+> {
+  return (
+    content.type === 'sticky' ||
+    content.type === 'shape' ||
+    content.type === 'text' ||
+    content.type === 'diagram'
+  );
 }
 
 export interface BoardSelectionOptions {

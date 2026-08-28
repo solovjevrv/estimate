@@ -6,6 +6,7 @@ import {
   type ApplyBoardOpsPayload,
   type ApplyBoardOpsResult,
   type BoardAwarenessPayload,
+  type BoardOp,
   type BoardOpsBatch,
   type BoardPresenceEntry,
   type JoinBoardPayload,
@@ -62,6 +63,15 @@ export class BoardsGateway {
           const ops = payload?.ops;
           if (!ops || ops.length === 0) {
             throw new ValidationError('Пустой список операций');
+          }
+          // Rollout-совместимость (23.2): клиенты без поддержки диаграмм не
+          // должны создавать/patchить элементы diagram. Сервер отбрасывает
+          // такие батчи, пока фича не развёрнута для всех — это не
+          // data-loss, а защита от «потерянного обновления» на старых клиентах,
+          // которым сервер просто не рассылает diagram-операции в catchup/snapshot
+          // (они сами по себе проходят валидацию через validateContent).
+          if (!identity.supportsDiagrams && this.opsContainDiagram(ops)) {
+            throw new ValidationError('Элементы диаграмм не поддерживаются этим клиентом');
           }
           const { revision, ops: committed } = await this.service.applyOps(identity, boardId, ops);
           const batch: BoardOpsBatch = { revision, ops: committed };
@@ -131,6 +141,7 @@ export class BoardsGateway {
       userId: socket.data.userId,
       guestName: payload.guestName,
       guestToken: payload.guestToken,
+      supportsDiagrams: payload.supportsDiagrams,
     });
 
     // Из прошлой доски выходим полностью, иначе сокет продолжит получать её рассылки
@@ -186,6 +197,23 @@ export class BoardsGateway {
       throw new ForbiddenError('Сначала войдите на доску');
     }
     return { boardId, identity };
+  }
+
+  /**
+   * Проверяет, содержит ли батч операций хотя бы одну операцию с элементом
+   * типа diagram (23.2 rollout-совместимость). Используется для отклонения
+   * diagram-операций от клиентов без supportsDiagrams.
+   */
+  private opsContainDiagram(ops: BoardOp[]): boolean {
+    return ops.some((op) => {
+      if (op.type === 'item.create') {
+        return op.item.content.type === 'diagram';
+      }
+      if (op.type === 'item.patch') {
+        return op.patch.content?.type === 'diagram';
+      }
+      return false;
+    });
   }
 
   private pushToBuffer(boardId: string, batch: BoardOpsBatch): void {

@@ -184,6 +184,26 @@ function isActive(value: BoardTool): boolean {
     >
       <UIcon name="i-lucide-frame" class="size-[19px]" />
     </button>
+    <button
+      type="button"
+      class="board-toolbar-btn"
+      :class="{ 'board-toolbar-btn-active': isActive('diagram-uml-actor') }"
+      :aria-label="t('board.toolDiagramUmlActor')"
+      :aria-pressed="isActive('diagram-uml-actor')"
+      @click="tool = 'diagram-uml-actor'"
+    >
+      <UIcon name="i-lucide-user" class="size-[19px]" />
+    </button>
+    <button
+      type="button"
+      class="board-toolbar-btn"
+      :class="{ 'board-toolbar-btn-active': isActive('diagram-bpmn-task') }"
+      :aria-label="t('board.toolDiagramBpmnTask')"
+      :aria-pressed="isActive('diagram-bpmn-task')"
+      @click="tool = 'diagram-bpmn-task'"
+    >
+      <UIcon name="i-lucide-square-check" class="size-[19px]" />
+    </button>
   </div>
 </template>
 

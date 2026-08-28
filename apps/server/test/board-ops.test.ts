@@ -201,6 +201,35 @@ function childItemOp(id: string, parentId: string): BoardOp {
   return op;
 }
 
+function diagramCreateOp(
+  id: string,
+  notation: 'uml' | 'bpmn',
+  kind: string,
+  text = '',
+  x = 10,
+  y = 20,
+  width = 120,
+  height = 120,
+): BoardOp {
+  return {
+    type: 'item.create',
+    clientOpId: randomUUID(),
+    item: {
+      id,
+      parentId: null,
+      x,
+      y,
+      width,
+      height,
+      rotation: 0,
+      zIndex: 0,
+      content: { type: 'diagram', notation, kind, text } as BoardItem['content'],
+      style: { color: '#A8CAFF' },
+      reactions: [],
+    },
+  };
+}
+
 describe('applyBoardOp — item.create', () => {
   it('создаёт стикер в пустом состоянии', () => {
     const state = emptyState();
@@ -2382,7 +2411,7 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
     expect(state.items.get(childId)!.parentId).toBeNull();
   });
 
-  it('patch content.type НЕ осирает, если тип остаётся контейнером (frame → group)', () => {
+   it('patch content.type НЕ осирает, если тип остаётся контейнером (frame → group)', () => {
     const state = emptyState();
     const frameId = randomUUID();
     const childId = randomUUID();
@@ -2404,5 +2433,180 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
     expect(state.items.get(frameId)!.content.type).toBe('group');
     // Дети НЕ осираются — group тоже контейнер
     expect(state.items.get(childId)!.parentId).toBe(frameId);
+  });
+});
+
+describe('applyBoardOp — диаграммные элементы (23.1)', () => {
+  it('создаёт UML actor', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    applyBoardOp(state, diagramCreateOp(id, 'uml', 'actor', 'Customer'), BOARD_ID, ACTOR);
+
+    const item = state.items.get(id)!;
+    expect(item.content).toEqual({ type: 'diagram', notation: 'uml', kind: 'actor', text: 'Customer' });
+  });
+
+  it('создаёт BPMN task', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    applyBoardOp(state, diagramCreateOp(id, 'bpmn', 'task', 'Собрать заказ'), BOARD_ID, ACTOR);
+
+    const item = state.items.get(id)!;
+    expect(item.content).toEqual({
+      type: 'diagram',
+      notation: 'bpmn',
+      kind: 'task',
+      text: 'Собрать заказ',
+    });
+  });
+
+  it('создаёт элемент диаграммы с runs (форматированный текст)', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    const op = diagramCreateOp(id, 'uml', 'actor', 'Customer');
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'diagram',
+      notation: 'uml',
+      kind: 'actor',
+      text: 'Customer',
+      runs: [{ text: 'Customer' }],
+    };
+
+    applyBoardOp(state, op, BOARD_ID, ACTOR);
+
+    const item = state.items.get(id)!;
+    expect(item.content).toEqual({
+      type: 'diagram',
+      notation: 'uml',
+      kind: 'actor',
+      text: 'Customer',
+      runs: [{ text: 'Customer' }],
+    });
+  });
+
+  it('отклоняет diagram с некорректной нотацией', () => {
+    const state = emptyState();
+    const op = diagramCreateOp(randomUUID(), 'invalid' as never, 'actor');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('отклоняет diagram с kind не из каталога для notation', () => {
+    const state = emptyState();
+    const op = diagramCreateOp(randomUUID(), 'uml', 'task');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('отклоняет diagram с некорректным kind для BPMN', () => {
+    const state = emptyState();
+    const op = diagramCreateOp(randomUUID(), 'bpmn', 'actor');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('отклоняет diagram с некорректным kind для UML', () => {
+    const state = emptyState();
+    const op = diagramCreateOp(randomUUID(), 'uml', 'gateway');
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('отклоняет слишком длинный text у diagram', () => {
+    const state = emptyState();
+    const op = diagramCreateOp(randomUUID(), 'uml', 'actor', 'x'.repeat(3000));
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('отклоняет diagram с runs, чья конкатенация не совпадает с text', () => {
+    const state = emptyState();
+    const op = diagramCreateOp(randomUUID(), 'uml', 'actor', 'Customer');
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'diagram',
+      notation: 'uml',
+      kind: 'actor',
+      text: 'Customer',
+      runs: [{ text: 'Другой текст' }],
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('отклоняет diagram с неизвестными лишними полями (отбрасываются clean, а не проходят)', () => {
+    const state = emptyState();
+    const op = diagramCreateOp(randomUUID(), 'uml', 'actor', 'Customer');
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'diagram',
+      notation: 'uml',
+      kind: 'actor',
+      text: 'Customer',
+      evil: true,
+    };
+
+    applyBoardOp(state, op, BOARD_ID, ACTOR);
+
+    const item = state.items.get((op as { item: { id: string } }).item.id)!;
+    expect(item.content).not.toHaveProperty('evil');
+  });
+
+  it('patch content текста diagram', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    applyBoardOp(state, diagramCreateOp(id, 'uml', 'actor', 'Customer'), BOARD_ID, ACTOR);
+
+    applyBoardOp(
+      state,
+      {
+        type: 'item.patch',
+        clientOpId: randomUUID(),
+        id,
+        patch: { content: { type: 'diagram', notation: 'uml', kind: 'actor', text: 'Admin' } },
+      },
+      BOARD_ID,
+      ACTOR,
+    );
+
+    expect(state.items.get(id)!.content).toEqual({
+      type: 'diagram',
+      notation: 'uml',
+      kind: 'actor',
+      text: 'Admin',
+    });
+  });
+
+  it('patch content diagram с недопустимым kind отклоняется', () => {
+    const state = emptyState();
+    const id = randomUUID();
+    applyBoardOp(state, diagramCreateOp(id, 'uml', 'actor', 'Customer'), BOARD_ID, ACTOR);
+
+    expect(() =>
+      applyBoardOp(
+        state,
+        {
+          type: 'item.patch',
+          clientOpId: randomUUID(),
+          id,
+           patch: { content: { type: 'diagram', notation: 'uml', kind: 'task', text: 'X' } as never },
+        },
+        BOARD_ID,
+        ACTOR,
+      ),
+    ).toThrow(ValidationError);
+  });
+
+  it('diagram является не-контейнером и может иметь parentId только на существующий контейнер', () => {
+    const state = emptyState();
+    const frameId = randomUUID();
+    applyBoardOp(state, frameCreateOp(frameId), BOARD_ID, ACTOR);
+
+    const id = randomUUID();
+    const op = diagramCreateOp(id, 'uml', 'actor');
+    (op as { item: { parentId: unknown } }).item.parentId = frameId;
+    applyBoardOp(state, op, BOARD_ID, ACTOR);
+
+    const item = state.items.get(id)!;
+    expect(item.parentId).toBe(frameId);
+    expect(item.content.type).toBe('diagram');
   });
 });

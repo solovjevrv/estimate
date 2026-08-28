@@ -71,11 +71,14 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     // что и при первом входе
     const guestName = ownGuestName ?? undefined;
 
-    const result: JoinBoardResult = await emitWithAck(active, BOARD_WS_EVENTS.JOIN, {
+     const result: JoinBoardResult = await emitWithAck(active, BOARD_WS_EVENTS.JOIN, {
       boardId: id,
       guestName,
       guestToken: guestTokens.read(id),
-      // При первом входе на доску (ещё не видели ни одной ревизии) полный
+      // Клиент поддерживает элементы диаграмм (23.2) — это разрешает серверу
+      // принимать и рассылать diagram-операции и в догоне, и в снимке
+      supportsDiagrams: true,
+      // При первом входе на доску (ещя не видели ни одной ревизии) полный
       // снимок дешевле, чем прогонять пустой догон — присылаем только на реконнекте
       sinceRevision: ctx.reconnect ? optimistic.revision.value : undefined,
     });

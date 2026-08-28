@@ -70,6 +70,25 @@ function stickyItem(
   };
 }
 
+function diagramItem(
+  over: Partial<BoardItem> = {},
+): Omit<BoardItem, 'boardId' | 'createdBy' | 'updatedAt'> {
+  return {
+    id: randomUUID(),
+    parentId: null,
+    x: 10,
+    y: 10,
+    width: 160,
+    height: 160,
+    rotation: 0,
+    zIndex: 0,
+    content: { type: 'diagram', notation: 'uml', kind: 'actor', text: 'Customer' },
+    style: { color: '#A8CAFF' },
+    reactions: [],
+    ...over,
+  };
+}
+
 describeDb('WS-канал досок', () => {
   let db: ReturnType<typeof createDb>['db'];
   let pool: ReturnType<typeof createDb>['pool'];
@@ -156,10 +175,12 @@ describeDb('WS-канал досок', () => {
     client: Socket,
     boardId: string,
     sinceRevision?: number,
+    supportsDiagrams?: boolean,
   ): Promise<JoinBoardResult> {
     const ack = await emit<JoinBoardResult>(client, BOARD_WS_EVENTS.JOIN, {
       boardId,
       sinceRevision,
+      ...(supportsDiagrams !== undefined ? { supportsDiagrams } : {}),
     });
     if (!ack.ok) {
       throw new Error(`не удалось войти на доску: ${ack.message}`);
@@ -594,9 +615,116 @@ describeDb('WS-канал досок', () => {
       // Барьер вместо произвольной паузы: следующее событие того же сокета с ack
       // гарантированно обработано сервером после awareness — порядок доставки
       // для одного сокета сохраняется
-      await joinBoard(guestClient, boardId);
+       await joinBoard(guestClient, boardId);
 
       expect(received).toBe(false);
+    });
+  });
+
+  describe('rollout-совместимость diagram (23.2)', () => {
+    it('клиент с supportsDiagrams: true можеш создать элемент diagram', async () => {
+      const owner = await newUser('diagram-create-owner');
+      const boardId = await newBoard(owner);
+      const sender = connect(owner);
+      const viewer = connect(owner);
+      await joinBoard(sender, boardId, undefined, true);
+      await joinBoard(viewer, boardId, undefined, true);
+
+      const opsPromise = waitFor<BoardOpsBatch>(viewer, BOARD_WS_SERVER_EVENTS.OPS);
+      const ack = await emit<ApplyBoardOpsResult>(sender, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: 'd1', item: diagramItem() }],
+      });
+      const broadcast = await opsPromise;
+
+      expect(ack.ok).toBe(true);
+      expect(broadcast.ops[0]!.type).toBe('item.create');
+      if (broadcast.ops[0]!.type === 'item.create') {
+        expect(broadcast.ops[0]!.item.content.type).toBe('diagram');
+      }
+    });
+
+    it('клиент без supportsDiagrams (или false) не может создать элемент diagram — отклоняется', async () => {
+      const owner = await newUser('diagram-reject-owner');
+      const boardId = await newBoard(owner);
+      const client = connect(owner);
+      // supportsDiagrams не передаётся — клиент «старый», без поддержки диаграмм
+      await joinBoard(client, boardId);
+
+      const ack = await emit<ApplyBoardOpsResult>(client, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: 'd2', item: diagramItem() }],
+      });
+
+      expect(ack.ok).toBe(false);
+      if (!ack.ok) expect(ack.error).toBe('bad_request');
+    });
+
+    it('клиент с supportsDiagrams: false также отклоняется при попытке создать diagram', async () => {
+      const owner = await newUser('diagram-reject-false-owner');
+      const boardId = await newBoard(owner);
+      const client = connect(owner);
+      await joinBoard(client, boardId, undefined, false);
+
+      const ack = await emit<ApplyBoardOpsResult>(client, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: 'd3', item: diagramItem() }],
+      });
+
+      expect(ack.ok).toBe(false);
+      if (!ack.ok) expect(ack.error).toBe('bad_request');
+    });
+
+    it('клиент с поддержкой diagram получает элемент в снимке при пересоздании', async () => {
+      const owner = await newUser('diagram-snapshot-owner');
+      const boardId = await newBoard(owner);
+      const creator = connect(owner);
+      await joinBoard(creator, boardId, undefined, true);
+
+      const item = diagramItem();
+      await emit<ApplyBoardOpsResult>(creator, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: 'd4', item }],
+      });
+
+      // Новый клиент с supportsDiagrams:true видит diagram-элемент в снимке
+      const fresh = await joinBoard(connect(owner), boardId, undefined, true);
+      expect(fresh.snapshot?.items).toHaveLength(1);
+      expect(fresh.snapshot?.items[0]!.content.type).toBe('diagram');
+
+      // Новый клиент без supportsDiagrams тоже видит элемент в снимке (данные
+      // на доске не исчезают — сервер просто не рассылает diagram-операции
+      // в catchup новым клиентам без поддержки, но snapshot содержит всё)
+      const oldClient = await joinBoard(connect(owner), boardId);
+      expect(oldClient.snapshot?.items).toHaveLength(1);
+      expect(oldClient.snapshot?.items[0]!.content.type).toBe('diagram');
+    });
+
+    it('patch diagram-контента от клиента без поддержки отклоняется', async () => {
+      const owner = await newUser('diagram-patch-reject-owner');
+      const boardId = await newBoard(owner);
+      const creator = connect(owner);
+      await joinBoard(creator, boardId, undefined, true);
+
+      // Создаём diagram элемент через поддерживающего клиента
+      const item = diagramItem();
+      await emit<ApplyBoardOpsResult>(creator, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: 'd5', item }],
+      });
+
+      // Новый клиент без поддержки пытается закоммитить патч содержимого diagram
+      const oldClient = connect(owner);
+      await joinBoard(oldClient, boardId);
+
+      const ack = await emit<ApplyBoardOpsResult>(oldClient, BOARD_WS_EVENTS.APPLY, {
+        ops: [
+          {
+            type: 'item.patch',
+            clientOpId: 'd5-patch',
+            id: item.id,
+            patch: { content: { type: 'diagram', notation: 'uml', kind: 'actor', text: 'Admin' } },
+          },
+        ],
+      });
+
+      expect(ack.ok).toBe(false);
+      if (!ack.ok) expect(ack.error).toBe('bad_request');
     });
   });
 });
