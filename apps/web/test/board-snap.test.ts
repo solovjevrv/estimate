@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   computeEqualGapGuides,
+  computeMeasureGuides,
   computeResizeSnapGuides,
   computeSnapGuides,
   resizeAxisFlags,
@@ -559,5 +560,55 @@ describe('равные отступы (gap) — 22.6', () => {
 
     expect(result.guides).toEqual([]);
     expect(result.positions.size).toBe(0);
+  });
+});
+
+describe('линейка точных расстояний (Alt/Option) — 22.8', () => {
+  it('показывает зазор до ближайшего соседа с каждой из 4 сторон, БЕЗ порога совпадения', () => {
+    // d окружён соседями со всех сторон разными, ничем не связанными зазорами —
+    // в отличие от computeEqualGapGuides здесь совпадение не требуется вовсе.
+    // d: x=200,y=200,w=100,h=100 → left=200,right=300,top=200,bottom=300
+    const left = rect('L', 0, 200, 100, 100); // right=100, gapLeft = 200-100=100
+    const right = rect('R', 450, 200, 100, 100); // gapRight = 450-300=150
+    const top = rect('T', 200, 0, 100, 100); // bottom=100, gapTop = 200-100=100
+    const bottom = rect('B', 200, 500, 100, 100); // gapBottom = 500-300=200
+    const dragged = rect('d', 200, 200, 100, 100);
+
+    const result = computeMeasureGuides([dragged], [left, right, top, bottom]);
+
+    expect(result).toHaveLength(4);
+    const byAxis = (axis: 'horizontal' | 'vertical') => result.filter((g) => g.axis === axis);
+    expect(
+      byAxis('horizontal')
+        .map((g) => g.gap)
+        .sort((a, b) => a - b),
+    ).toEqual([100, 150]);
+    expect(
+      byAxis('vertical')
+        .map((g) => g.gap)
+        .sort((a, b) => a - b),
+    ).toEqual([100, 200]);
+  });
+
+  it('без соседей с какой-то стороны — просто нет гида на эту сторону, не падает', () => {
+    const right = rect('right', 300, 0, 100, 100);
+    const dragged = rect('d', 0, 0, 100, 100);
+
+    const result = computeMeasureGuides([dragged], [right]);
+
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({ axis: 'horizontal', gap: 200 });
+  });
+
+  it('без единого соседа — пустой результат', () => {
+    const dragged = rect('d', 0, 0, 100, 100);
+    expect(computeMeasureGuides([dragged], [])).toEqual([]);
+  });
+
+  it('не считает соседей, не пересекающихся по перпендикулярной оси', () => {
+    const farRow = rect('far', 300, 5000, 100, 100); // formально справа, но другая «строка»
+    const dragged = rect('d', 0, 0, 100, 100);
+
+    expect(computeMeasureGuides([dragged], [farRow])).toEqual([]);
   });
 });

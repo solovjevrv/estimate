@@ -877,3 +877,88 @@ describe('useBoardDragAndSnap — равные отступы, 22.6', () => {
     expect(api.activeGapGuides.value).toEqual([]);
   });
 });
+
+describe('useBoardDragAndSnap — линейка точных расстояний (Alt/Option), 22.8', () => {
+  it('без Alt — activeMeasureGuides пуст, даже если рядом есть соседи', () => {
+    const staticItem = item('static-1', { x: 300, y: 0, width: 100, height: 100 });
+    const draggedItem = item('dragged-1', { x: 0, y: 0, width: 100, height: 100 });
+    const staticNode = flowNode(staticItem, { x: 300, y: 0 }, { width: 100, height: 100 });
+    const draggedNode = flowNode(draggedItem, { x: 0, y: 0 }, { width: 100, height: 100 });
+
+    const { api } = makeDrag({
+      items: [staticItem, draggedItem],
+      flowNodes: [staticNode, draggedNode],
+    });
+
+    api.onNodeDragStart(nodeEvent([draggedNode]));
+    api.onNodeDrag(nodeEvent([draggedNode]));
+
+    expect(api.activeMeasureGuides.value).toEqual([]);
+  });
+
+  it('с зажатым Alt — показывает фактический зазор до соседа, БЕЗ порога совпадения', () => {
+    // Зазор 200px — намеренно ничему не «эталонному» не совпадающий (в отличие
+    // от гипотетического equal-gap кейса), Alt-режим обязан показать его всё равно.
+    const staticItem = item('static-1', { x: 300, y: 0, width: 100, height: 100 });
+    const draggedItem = item('dragged-1', { x: 0, y: 0, width: 100, height: 100 });
+    const staticNode = flowNode(staticItem, { x: 300, y: 0 }, { width: 100, height: 100 });
+    const draggedNode = flowNode(draggedItem, { x: 0, y: 0 }, { width: 100, height: 100 });
+
+    const { api } = makeDrag({
+      items: [staticItem, draggedItem],
+      flowNodes: [staticNode, draggedNode],
+    });
+
+    api.onNodeDragStart(nodeEvent([draggedNode]));
+    api.onNodeDrag(nodeEvent([draggedNode], { altKey: true }));
+
+    expect(api.activeMeasureGuides.value).toHaveLength(1);
+    expect(api.activeMeasureGuides.value[0]).toMatchObject({ axis: 'horizontal', gap: 200 });
+  });
+
+  it('отпустили Alt посреди драга — activeMeasureGuides снова пуст на следующем тике', () => {
+    const staticItem = item('static-1', { x: 300, y: 0, width: 100, height: 100 });
+    const draggedItem = item('dragged-1', { x: 0, y: 0, width: 100, height: 100 });
+    const staticNode = flowNode(staticItem, { x: 300, y: 0 }, { width: 100, height: 100 });
+    const draggedNode = flowNode(draggedItem, { x: 0, y: 0 }, { width: 100, height: 100 });
+
+    const { api } = makeDrag({
+      items: [staticItem, draggedItem],
+      flowNodes: [staticNode, draggedNode],
+    });
+
+    api.onNodeDragStart(nodeEvent([draggedNode]));
+    api.onNodeDrag(nodeEvent([draggedNode], { altKey: true }));
+    expect(api.activeMeasureGuides.value.length).toBeGreaterThan(0);
+
+    api.onNodeDrag(nodeEvent([draggedNode]));
+
+    expect(api.activeMeasureGuides.value).toEqual([]);
+  });
+
+  it('очищает activeMeasureGuides на dragStop и reset()', () => {
+    const staticItem = item('static-1', { x: 300, y: 0, width: 100, height: 100 });
+    const draggedItem = item('dragged-1', { x: 0, y: 0, width: 100, height: 100 });
+    const staticNode = flowNode(staticItem, { x: 300, y: 0 }, { width: 100, height: 100 });
+    const draggedNode = flowNode(draggedItem, { x: 0, y: 0 }, { width: 100, height: 100 });
+
+    const { api } = makeDrag({
+      items: [staticItem, draggedItem],
+      flowNodes: [staticNode, draggedNode],
+    });
+
+    api.onNodeDragStart(nodeEvent([draggedNode]));
+    api.onNodeDrag(nodeEvent([draggedNode], { altKey: true }));
+    expect(api.activeMeasureGuides.value.length).toBeGreaterThan(0);
+
+    api.onNodeDragStop(nodeEvent([draggedNode]));
+    expect(api.activeMeasureGuides.value).toEqual([]);
+
+    api.onNodeDragStart(nodeEvent([draggedNode]));
+    api.onNodeDrag(nodeEvent([draggedNode], { altKey: true }));
+    expect(api.activeMeasureGuides.value.length).toBeGreaterThan(0);
+
+    api.reset();
+    expect(api.activeMeasureGuides.value).toEqual([]);
+  });
+});

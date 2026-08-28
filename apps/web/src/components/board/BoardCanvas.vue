@@ -26,9 +26,12 @@
  * 12.9: контекстное меню по правой кнопке (`BoardContextMenu.vue`) — слои
  * (вперёд/назад) и дублирование теперь там, а не в тулбаре выделения; хоткеи
  * (`use-board-hotkeys.ts`) — Delete/Backspace, Ctrl(Cmd)+A/D/0/1, Escape,
- * Shift+drag по одной оси; размер/шрифт/цвет/выравнивание текста — в
- * `BoardSelectionToolbar.vue`; инструмент «Стрелка» в левом тулбаре —
- * affordance поверх уже рабочего drag-от-хендла (см. `onConnect` ниже).
+ * Shift+drag по одной оси, Alt/Option+drag — линейка точных расстояний до
+ * соседей (22.8, см. `use-board-drag-and-snap.ts`); размер/шрифт/цвет/
+ * выравнивание текста — в `BoardSelectionToolbar.vue`; инструмент «Стрелка» в
+ * левом тулбаре — affordance поверх уже рабочего drag-от-хендла (см.
+ * `onConnect` ниже). Полный список хоткеев для пользователя — модалка
+ * `BoardHotkeysModal.vue` за иконкой «?» в `BoardControlsCluster.vue`.
  */
 import { BOARD_OPS_BATCH_MAX, type Board, type BoardEdge, type BoardItem } from '@estimate/shared';
 import type { DropdownMenuItem } from '@nuxt/ui';
@@ -50,6 +53,7 @@ import {
   onBeforeUnmount,
   onMounted,
   provide,
+  ref,
   shallowRef,
   useTemplateRef,
   watch,
@@ -106,6 +110,7 @@ import BoardImageNode from './BoardImageNode.vue';
 import BoardPresencePanel from './BoardPresencePanel.vue';
 import BoardShapeNode from './BoardShapeNode.vue';
 import BoardGapGuides from './BoardGapGuides.vue';
+import BoardHotkeysModal from './BoardHotkeysModal.vue';
 import BoardSnapGuides from './BoardSnapGuides.vue';
 import BoardStickyNode from './BoardStickyNode.vue';
 import BoardTextNode from './BoardTextNode.vue';
@@ -242,6 +247,9 @@ const {
 
 const rootEl = useTemplateRef<HTMLElement>('root');
 
+/** Модалка списка хоткеев (22.9) — открывается иконкой «?» в `BoardControlsCluster.vue` */
+const hotkeysModalOpen = ref(false);
+
 /**
  * Управление viewport, fullscreen, follow-mode и cursor/camera awareness
  * вынесено в `useBoardViewport` (19.31). Обёртка над Vue Flow передаётся
@@ -322,7 +330,12 @@ const dragAndSnap = useBoardDragAndSnap({
 
 // Деструктурируем ref-ы на верхний уровень: Vue 3 автораспаковывает ref,
 // объявленный как top-level const в <script setup>, в шаблоне без .value.
-const { activeSnapGuides, activeGapGuides, isDragging: dragIsDragging } = dragAndSnap;
+const {
+  activeSnapGuides,
+  activeGapGuides,
+  activeMeasureGuides,
+  isDragging: dragIsDragging,
+} = dragAndSnap;
 
 watch(
   flowNodes,
@@ -797,6 +810,13 @@ useBoardHotkeys({
         :viewport-y="viewport.y"
         :viewport-zoom="viewport.zoom"
       />
+      <BoardGapGuides
+        v-if="activeMeasureGuides.length"
+        :guides="activeMeasureGuides"
+        :viewport-x="viewport.x"
+        :viewport-y="viewport.y"
+        :viewport-zoom="viewport.zoom"
+      />
       <BoardToolbar
         v-if="canEdit"
         v-model="activeTool"
@@ -937,8 +957,14 @@ useBoardHotkeys({
         @undo="boardSession.undo()"
         @redo="boardSession.redo()"
         @toggle-fullscreen="toggleFullscreen"
+        @help="hotkeysModalOpen = true"
       />
     </VueFlow>
+
+    <!-- Список хоткеев (22.9) — статический контент, без зависимости от данных
+    доски, поэтому живёт локально здесь, а не поднят на BoardPage.vue как
+    Share/Rename/Archive (тем модалкам нужен board-проп и вызовы API) -->
+    <BoardHotkeysModal v-model="hotkeysModalOpen" />
 
     <!-- Чужие курсоры участников (14.1) — позиционируются в world-координатах,
          как в Miro: курсор рисуется на том же месте у всех зрителей. `key` по

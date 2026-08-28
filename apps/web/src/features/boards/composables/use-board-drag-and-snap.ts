@@ -20,6 +20,7 @@ import { ref, type Ref } from 'vue';
 import { BOARD_DRAG_THROTTLE_MS } from '../../../features/boards/config/board-constants';
 import {
   computeEqualGapGuides,
+  computeMeasureGuides,
   computeResizeSnapGuides,
   computeSnapGuides,
   SNAP_THRESHOLD_PX,
@@ -70,6 +71,8 @@ export interface BoardDragAndSnap {
   activeSnapGuides: Ref<SnapGuide[]>;
   /** Направляющие равных отступов (22.6) — отдельный канал от `activeSnapGuides`: другой визуальный язык (лейбл с px), считаются только при move, не при resize. */
   activeGapGuides: Ref<GapGuide[]>;
+  /** Линейка точных расстояний при зажатом Alt/Option (22.8) — показывается ВМЕСТО `activeGapGuides` на время удержания, не влияет на снап. */
+  activeMeasureGuides: Ref<GapGuide[]>;
   isDragging: Ref<boolean>;
 
   onNodeDragStart: (event: BoardDragEvent) => void;
@@ -110,6 +113,8 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
   const activeSnapGuides = ref<SnapGuide[]>([]);
   /** Активные направляющие равных отступов (22.6) для отрисовки во время drag */
   const activeGapGuides = ref<GapGuide[]>([]);
+  /** Линейка точных расстояний при зажатом Alt/Option (22.8) для отрисовки во время drag */
+  const activeMeasureGuides = ref<GapGuide[]>([]);
   /** Флаг активного drag — Map.size не реактивен, поэтому отдельный ref для Canvas */
   const isDragging = ref(false);
 
@@ -337,6 +342,8 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
   function computeCombinedSnap(event: BoardDragEvent): {
     alignResult: ReturnType<typeof computeSnapGuides>;
     gapResult: ReturnType<typeof computeEqualGapGuides>;
+    draggedRects: SnapRect[];
+    staticRects: SnapRect[];
   } {
     const dragged = event.nodes;
     const draggedIds = new Set(dragged.map((n) => n.id));
@@ -351,7 +358,7 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
       return snapped ? { ...d, x: snapped.x, y: snapped.y } : d;
     });
     const gapResult = computeEqualGapGuides(effectiveRects, staticRects, threshold);
-    return { alignResult, gapResult };
+    return { alignResult, gapResult, draggedRects, staticRects };
   }
 
   function updateSnapGuides(event: BoardDragEvent): void {
@@ -359,14 +366,29 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     if (dragged.length === 0) {
       if (activeSnapGuides.value.length > 0) activeSnapGuides.value = [];
       if (activeGapGuides.value.length > 0) activeGapGuides.value = [];
+      if (activeMeasureGuides.value.length > 0) activeMeasureGuides.value = [];
       return;
     }
-    const { alignResult, gapResult } = computeCombinedSnap(event);
+    const { alignResult, gapResult, draggedRects, staticRects } = computeCombinedSnap(event);
     if (!guidesEqual(alignResult.guides, activeSnapGuides.value)) {
       activeSnapGuides.value = alignResult.guides;
     }
-    if (!gapGuidesEqual(gapResult.guides, activeGapGuides.value)) {
-      activeGapGuides.value = gapResult.guides;
+
+    // Alt/Option (22.8, Figma Measure Tool) — режим точного расстояния до
+    // ближайших соседей, без порога совпадения (в отличие от 22.6). Взято
+    // прямо из исходного MouseEvent жеста — то же самое, что читает
+    // `applyAxisLock` для Shift, отдельный keydown/keyup-слушатель не нужен.
+    // Взаимоисключает авто-детект равных отступов (22.6): одновременный показ
+    // обоих в одном месте задваивал бы линию/лейбл — режим просмотра, снап
+    // (`applySnapPosition`) от него не зависит и продолжает считаться как обычно.
+    const altHeld = event.event instanceof MouseEvent && event.event.altKey;
+    const measureGuides = altHeld ? computeMeasureGuides(draggedRects, staticRects) : [];
+    if (!gapGuidesEqual(measureGuides, activeMeasureGuides.value)) {
+      activeMeasureGuides.value = measureGuides;
+    }
+    const gapGuides = altHeld ? [] : gapResult.guides;
+    if (!gapGuidesEqual(gapGuides, activeGapGuides.value)) {
+      activeGapGuides.value = gapGuides;
     }
   }
 
@@ -541,6 +563,7 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     applySnapPosition(event);
     activeSnapGuides.value = [];
     activeGapGuides.value = [];
+    activeMeasureGuides.value = [];
     for (const node of event.nodes) {
       const start = dragStartPositions.get(node.id);
       const moved =
@@ -596,6 +619,7 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
   function reset(): void {
     activeSnapGuides.value = [];
     activeGapGuides.value = [];
+    activeMeasureGuides.value = [];
     for (const throttler of dragThrottlers.values()) {
       throttler.cancel();
     }
@@ -607,6 +631,7 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
   return {
     activeSnapGuides,
     activeGapGuides,
+    activeMeasureGuides,
     isDragging,
     onNodeDragStart,
     onNodeDrag,

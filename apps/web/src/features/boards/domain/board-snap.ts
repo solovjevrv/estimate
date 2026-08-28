@@ -765,6 +765,40 @@ export function computeEqualGapGuides(
 }
 
 /**
+ * Линейка точных расстояний (22.8, Alt/Option — по референсу Figma Measure
+ * Tool) — для каждого перетаскиваемого элемента находит ближайшего статичного
+ * соседа по каждой из 4 сторон (лево/право/верх/низ) и возвращает ФАКТИЧЕСКИЙ
+ * зазор до него, БЕЗ порога совпадения (в отличие от `computeEqualGapGuides`,
+ * который показывает гид только при равенстве двух зазоров) — просто число,
+ * что бы оно ни было. Только по осям, без диагонали (решение пользователя).
+ * Переиспользует те же геометрические хелперы (`nearestNeighborX/Y`,
+ * `gapGuideX/Y`), что и 22.6 — то же понятие «соседа» (пересечение по
+ * перпендикулярной оси), тот же визуальный формат гида.
+ *
+ * Чисто визуальный режим просмотра: не возвращает positions и не влияет на
+ * снап — вызывающий composable решает, когда его показывать (пока зажат Alt),
+ * а фактическая позиция при отпускании по-прежнему считается отдельно
+ * (`computeSnapGuides`/`computeEqualGapGuides`).
+ */
+export function computeMeasureGuides(
+  dragged: readonly SnapRect[],
+  staticNodes: readonly SnapRect[],
+): GapGuide[] {
+  const guides: GapGuide[] = [];
+  for (const d of dragged) {
+    const leftX = nearestNeighborX(d, staticNodes, 'left');
+    if (leftX) guides.push(gapGuideX(leftX, d, d.x - (leftX.x + leftX.width)));
+    const rightX = nearestNeighborX(d, staticNodes, 'right');
+    if (rightX) guides.push(gapGuideX(d, rightX, rightX.x - (d.x + d.width)));
+    const topY = nearestNeighborY(d, staticNodes, 'top');
+    if (topY) guides.push(gapGuideY(topY, d, d.y - (topY.y + topY.height)));
+    const bottomY = nearestNeighborY(d, staticNodes, 'bottom');
+    if (bottomY) guides.push(gapGuideY(d, bottomY, bottomY.y - (d.y + d.height)));
+  }
+  return guides;
+}
+
+/**
  * Строит АБСОЛЮТНЫЙ прямоугольник по итогам resize-жеста из заведомо
  * абсолютного стартового прямоугольника (`origin` — геометрия элемента ДО
  * жеста, `BoardItem.x/y/width/height`, не меняется до фактического патча на
