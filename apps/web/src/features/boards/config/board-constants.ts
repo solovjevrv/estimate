@@ -1,5 +1,5 @@
 /** Общие константы модуля досок — вынесены из магических чисел в BoardCanvas.vue и board-op-history.ts */
-import { BOARD_ITEM_MAX_SIZE } from '@poker/shared';
+import { BOARD_ITEM_MAX_SIZE } from '@estimate/shared';
 
 /** Интервал throttle-патчей позиции при драге (мс) */
 export const BOARD_DRAG_THROTTLE_MS = 80;

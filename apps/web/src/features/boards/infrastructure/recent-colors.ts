@@ -4,9 +4,9 @@
  * Хранит только цвета, ОТСУТСТВУЮЩИЕ в BOARD_COLOR_PALETTE — дефолтная
  * палитра и так всегда видна, дублировать её в «недавних» нет смысла.
  */
-import { BOARD_COLOR_PALETTE, type BoardColorHex } from '@poker/shared';
+import { BOARD_COLOR_PALETTE, type BoardColorHex } from '@estimate/shared';
 
-const STORAGE_KEY = 'poker-board-recent-colors';
+const STORAGE_KEY = 'estimate-board-recent-colors';
 const MAX_RECENT = 8;
 
 const DEFAULT_PALETTE_UPPER = new Set(BOARD_COLOR_PALETTE.map((hex) => hex.toUpperCase()));

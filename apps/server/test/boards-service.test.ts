@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import type { Board } from '@poker/shared';
+import type { Board } from '@estimate/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 

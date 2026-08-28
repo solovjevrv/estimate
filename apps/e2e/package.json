@@ -1,5 +1,5 @@
 {
-  "name": "@poker/e2e",
+  "name": "@estimate/e2e",
   "private": true,
   "type": "module",
   "scripts": {
@@ -11,8 +11,8 @@
   "devDependencies": {
     "@fastify/jwt": "^10.2.0",
     "@playwright/test": "^1.62.0",
-    "@poker/server": "workspace:*",
-    "@poker/shared": "workspace:*",
+    "@estimate/server": "workspace:*",
+    "@estimate/shared": "workspace:*",
     "@types/node": "^24.10.15",
     "drizzle-orm": "^0.45.2",
     "fastify": "^5.10.0",

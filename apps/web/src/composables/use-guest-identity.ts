@@ -1,8 +1,8 @@
 import { ref, type Ref } from 'vue';
 
 export const GUEST_IDENTITY_STORAGE_KEYS = {
-  room: 'poker:guest-name',
-  board: 'poker:board-guest-name',
+  room: 'estimate:guest-name',
+  board: 'estimate:board-guest-name',
 } as const;
 
 export type GuestIdentityScope = keyof typeof GUEST_IDENTITY_STORAGE_KEYS;

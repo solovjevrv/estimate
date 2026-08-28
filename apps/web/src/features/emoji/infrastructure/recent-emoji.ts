@@ -4,7 +4,7 @@
  * каждом устройстве, переживает перезагрузку страницы.
  */
 
-const STORAGE_KEY = 'poker-recent-emoji';
+const STORAGE_KEY = 'estimate-recent-emoji';
 const MAX_RECENT = 24;
 
 export function getRecentEmoji(): string[] {

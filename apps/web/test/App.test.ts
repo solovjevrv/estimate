@@ -112,9 +112,7 @@ describe('каркас приложения', () => {
 
     expect(wrapper.text()).toContain('Поддержка');
     expect(wrapper.find('a[href*="LICENSE"]').exists()).toBe(false);
-    expect(wrapper.find('a[href="https://github.com/solovjevrv/poker-planing"]').exists()).toBe(
-      false,
-    );
+    expect(wrapper.find('a[href="https://github.com/solovjevrv/estimate"]').exists()).toBe(false);
   });
 });
 

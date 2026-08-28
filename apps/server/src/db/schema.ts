@@ -1,4 +1,9 @@
-import type { BoardEdgeStyle, BoardItemContent, BoardItemStyle, ItemReaction } from '@poker/shared';
+import type {
+  BoardEdgeStyle,
+  BoardItemContent,
+  BoardItemStyle,
+  ItemReaction,
+} from '@estimate/shared';
 import { sql } from 'drizzle-orm';
 import {
   check,
@@ -205,7 +210,7 @@ export const boards = pgTable(
 
 /**
  * Элемент на доске (стикер, фигура, ...). `content`/`style` — jsonb с
- * дискриминированным union по `content.type` (см. `@poker/shared`): новый тип
+ * дискриминированным union по `content.type` (см. `@estimate/shared`): новый тип
  * элемента не требует миграции схемы, только нового случая в union и валидации
  * на сервере. Именно поэтому `type` не вынесен в отдельный enum-столбец —
  * это сделало бы каждый новый тип элемента миграцией (`ALTER TYPE ... ADD VALUE`),

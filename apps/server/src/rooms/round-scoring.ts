@@ -1,4 +1,4 @@
-import type { DeckType, RoundResult } from '@poker/shared';
+import type { DeckType, RoundResult } from '@estimate/shared';
 
 /** Минимальные данные голоса, нужные чистому подсчёту итогов раунда. */
 export interface ScoredVote {

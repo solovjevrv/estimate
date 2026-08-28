@@ -1,4 +1,4 @@
-import { ROOM_NAME_MAX_LENGTH, TEXT_INPUT_TRIM_ALLOWANCE } from '@poker/shared';
+import { ROOM_NAME_MAX_LENGTH, TEXT_INPUT_TRIM_ALLOWANCE } from '@estimate/shared';
 
 import { nullableUuidSchema } from '../http/schemas';
 

@@ -3,7 +3,7 @@
  *  отличие только в резолве URL: не сохранённый в content путь на нашей
  *  доске, а прокси-эндпоинт по id (`giphyMediaUrl`) — сервер сам стримит
  *  байты с Giphy, клиент никогда не обращается к Giphy напрямую. */
-import type { BoardGiphyContent, BoardItem } from '@poker/shared';
+import type { BoardGiphyContent, BoardItem } from '@estimate/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import {
   NodeResizer,

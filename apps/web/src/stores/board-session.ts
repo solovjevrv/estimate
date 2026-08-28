@@ -15,8 +15,8 @@ import type {
   BoardAwarenessKind,
   BoardShareRole,
   JoinBoardResult,
-} from '@poker/shared';
-import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@poker/shared';
+} from '@estimate/shared';
+import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@estimate/shared';
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 
@@ -28,7 +28,7 @@ import { createRealtimeConnection, GuestTokenStore, type JoinContext } from '../
 import { emitWithAck, type PokerSocket } from '../lib/socket';
 import { useSessionStore } from './session';
 
-const guestTokens = new GuestTokenStore('poker:board-guest:');
+const guestTokens = new GuestTokenStore('estimate:board-guest:');
 
 export const useBoardSessionStore = defineStore('boardSession', () => {
   const session = useSessionStore();

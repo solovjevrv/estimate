@@ -9,7 +9,7 @@ import {
   TSHIRT_DECK,
   type DeckType,
   type Round,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 import { isForeignKeyViolation, isUniqueViolation } from '../db/errors';
 import { ConflictError, ForbiddenError, ValidationError } from '../errors';

@@ -12,7 +12,7 @@
  * первый же запрос переводит пикер в постоянное состояние "недоступно", а не
  * ведёт на пустой бесконечный лоадер (тот же приём, что у personal-sticker-packs.ts).
  */
-import type { GiphyGifSummary } from '@poker/shared';
+import type { GiphyGifSummary } from '@estimate/shared';
 import { onBeforeUnmount, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 

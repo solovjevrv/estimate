@@ -53,7 +53,7 @@
 
 <script setup lang="ts">
 import { useToast } from '@nuxt/ui/composables';
-import type { Board, BoardShareRole } from '@poker/shared';
+import type { Board, BoardShareRole } from '@estimate/shared';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 

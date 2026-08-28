@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { BOARD_IMAGE_MAX_BYTES, boardImageUrl, type AuthUser } from '@poker/shared';
+import { BOARD_IMAGE_MAX_BYTES, boardImageUrl, type AuthUser } from '@estimate/shared';
 import { inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import sharp from 'sharp';
@@ -130,11 +130,11 @@ describeDb('картинки досок', () => {
     teamsRepository = new TeamsRepository(db);
     teamsService = new TeamsService(db, teamsRepository);
     storage = new FakeObjectStorage();
-    assetsDir = mkdtempSync(join(tmpdir(), 'poker-board-assets-'));
+    assetsDir = mkdtempSync(join(tmpdir(), 'estimate-board-assets-'));
     // Оба каталога, как в проде (app.ts регистрирует avatarPlugin и
     // boardImagesPlugin вместе) — так тест ловит коллизии между их
     // независимыми регистрациями @fastify/multipart
-    avatarsDir = mkdtempSync(join(tmpdir(), 'poker-avatars-'));
+    avatarsDir = mkdtempSync(join(tmpdir(), 'estimate-avatars-'));
     app = buildApp({
       db,
       auth: authConfig,

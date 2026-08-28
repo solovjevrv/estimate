@@ -1,5 +1,5 @@
 /** REST-слой комнат: единственное место, знающее URL `/api/rooms` и коды ответов. */
-import type { Room, RoomStats, RoundHistoryEntry } from '@poker/shared';
+import type { Room, RoomStats, RoundHistoryEntry } from '@estimate/shared';
 import { api } from '../../../lib/api';
 
 export function createRoom(name: string, teamId?: string): Promise<Room> {

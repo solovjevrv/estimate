@@ -1,14 +1,14 @@
 import { mount } from '@vue/test-utils';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { EmojiCatalogEntry } from '@poker/shared';
+import type { EmojiCatalogEntry } from '@estimate/shared';
 import EmojiPicker from '../src/components/EmojiPicker.vue';
 import { createAppI18n } from '../src/i18n';
 
 /**
  * Маленький фикстурный каталог: 2 группы (smileys-emotion, people-body),
  * одна запись со skins, остальные без них. Используется вместо реального
- * каталога — vi.mock перехватывает и динамический import('@poker/shared/emoji/catalog').
+ * каталога — vi.mock перехватывает и динамический import('@estimate/shared/emoji/catalog').
  */
 const { fixtureCatalog, skinTones, recentEmoji, preferredSkinTone } = vi.hoisted(() => {
   const catalog: EmojiCatalogEntry[] = [
@@ -66,7 +66,7 @@ const { fixtureCatalog, skinTones, recentEmoji, preferredSkinTone } = vi.hoisted
   };
 });
 
-vi.mock('@poker/shared/emoji/catalog', () => ({
+vi.mock('@estimate/shared/emoji/catalog', () => ({
   EMOJI_CATALOG: fixtureCatalog,
 }));
 

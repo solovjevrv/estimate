@@ -70,7 +70,7 @@ import {
   type BoardItemContent,
   type BoardTextMark,
   type BoardTextRun,
-} from '@poker/shared';
+} from '@estimate/shared';
 import {
   computed,
   inject,

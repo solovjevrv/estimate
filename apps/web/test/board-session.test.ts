@@ -5,8 +5,8 @@ import type {
   BoardOpsBatch,
   BoardPresenceEntry,
   JoinBoardResult,
-} from '@poker/shared';
-import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, type Board } from '@poker/shared';
+} from '@estimate/shared';
+import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, type Board } from '@estimate/shared';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 

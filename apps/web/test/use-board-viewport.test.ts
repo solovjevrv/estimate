@@ -1,4 +1,4 @@
-import type { BoardPresenceEntry } from '@poker/shared';
+import type { BoardPresenceEntry } from '@estimate/shared';
 import { nextTick, ref, shallowRef, type Ref } from 'vue';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 

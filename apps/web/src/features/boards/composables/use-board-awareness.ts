@@ -2,7 +2,7 @@ import type {
   BoardAwarenessBroadcast,
   BoardCameraAwarenessData,
   BoardPresenceEntry,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { computed, reactive, ref } from 'vue';
 
 /**

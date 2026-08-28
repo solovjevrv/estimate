@@ -13,7 +13,7 @@ import {
   type BoardShareRole,
   type BoardSnapshot,
   type BoardSummary,
-} from '@poker/shared';
+} from '@estimate/shared';
 import type { FastifyBaseLogger } from 'fastify';
 
 import { TeamAccess } from '../access';

@@ -26,13 +26,13 @@ import type {
   SubmitVotePayload,
   UpdateLinksPayload,
   WsAck,
-} from '@poker/shared';
+} from '@estimate/shared';
 import {
   BOARD_WS_EVENTS,
   BOARD_WS_SERVER_EVENTS,
   WS_EVENTS,
   WS_SERVER_EVENTS,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { io, type Socket } from 'socket.io-client';
 
 /** Отказ сервера в ответ на событие: код тот же, что в REST (`conflict`, `forbidden`, ...) */

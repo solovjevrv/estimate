@@ -1,5 +1,5 @@
 /** REST-слой сессии/авторизации: единственное место, знающее URL `/api/me`, `/api/auth` и FormData. */
-import type { AuthProvider, AuthUser } from '@poker/shared';
+import type { AuthProvider, AuthUser } from '@estimate/shared';
 import { api } from '../../../lib/api';
 
 export function getCurrentUser(): Promise<AuthUser> {

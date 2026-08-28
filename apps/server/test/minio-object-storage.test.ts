@@ -29,7 +29,7 @@ describeMinio('MinioObjectStorage (интеграционный, реальны�
     useSSL: process.env.MINIO_USE_SSL === 'true',
     accessKey: accessKey as string,
     secretKey: secretKey as string,
-    bucket: process.env.MINIO_BUCKET ?? 'poker-assets',
+    bucket: process.env.MINIO_BUCKET ?? 'estimate-assets',
   });
   const keys: string[] = [];
 

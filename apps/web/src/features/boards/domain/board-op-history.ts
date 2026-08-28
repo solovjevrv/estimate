@@ -17,7 +17,7 @@ import type {
   BoardItemPatchOp,
   BoardItemStyle,
   BoardOp,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 import type { BoardLocalState } from './apply-local-op';
 import { uuid } from '../infrastructure/uuid';

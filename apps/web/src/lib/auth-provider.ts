@@ -1,4 +1,4 @@
-import type { AuthProvider } from '@poker/shared';
+import type { AuthProvider } from '@estimate/shared';
 
 const PROVIDER_LABELS: Record<AuthProvider, string> = {
   google: 'Google',

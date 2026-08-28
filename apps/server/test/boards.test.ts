@@ -8,7 +8,7 @@
 import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 
-import { BOARD_TITLE_MAX_LENGTH, TEXT_INPUT_TRIM_ALLOWANCE, type AuthUser } from '@poker/shared';
+import { BOARD_TITLE_MAX_LENGTH, TEXT_INPUT_TRIM_ALLOWANCE, type AuthUser } from '@estimate/shared';
 import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';

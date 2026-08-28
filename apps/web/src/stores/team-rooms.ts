@@ -1,6 +1,6 @@
 /** Комнаты команды для дашборда: активные и завершённые. Отдельно от игрового
  * стора `room.ts`, который держит состояние одного стола. */
-import type { Room } from '@poker/shared';
+import type { Room } from '@estimate/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 

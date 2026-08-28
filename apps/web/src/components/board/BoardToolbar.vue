@@ -24,7 +24,7 @@
 import { useI18n } from 'vue-i18n';
 
 import type { BoardTool } from '../../features/boards/board-tools';
-import type { EmojiSequence, GiphyGifSummary, PersonalStickerFormat } from '@poker/shared';
+import type { EmojiSequence, GiphyGifSummary, PersonalStickerFormat } from '@estimate/shared';
 import BoardGiphyPicker from './BoardGiphyPicker.vue';
 import BoardStickerPicker from './BoardStickerPicker.vue';
 import EmojiPicker from '../EmojiPicker.vue';

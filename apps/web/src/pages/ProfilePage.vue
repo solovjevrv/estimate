@@ -7,7 +7,7 @@ import {
   USER_JOB_TITLE_MAX_LENGTH,
   USER_NAME_MAX_LENGTH,
   trimText,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 

@@ -5,8 +5,8 @@ import type {
   BoardItem,
   BoardOp,
   BoardOpsBatch,
-} from '@poker/shared';
-import { BOARD_WS_EVENTS, toggleItemReaction } from '@poker/shared';
+} from '@estimate/shared';
+import { BOARD_WS_EVENTS, toggleItemReaction } from '@estimate/shared';
 import { computed, ref } from 'vue';
 
 import { emitWithAck, WsError, type PokerSocket } from '../../../lib/socket';

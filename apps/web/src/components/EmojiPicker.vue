@@ -27,8 +27,8 @@
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import type { EmojiCatalogEntry, SkinToneId } from '@poker/shared';
-import { EMOJI_GROUPS } from '@poker/shared';
+import type { EmojiCatalogEntry, SkinToneId } from '@estimate/shared';
+import { EMOJI_GROUPS } from '@estimate/shared';
 
 import { addRecentEmoji, getRecentEmoji } from '../features/emoji/infrastructure/recent-emoji';
 import { getPreferredSkinTone } from '../features/emoji/config/skin-tone';
@@ -54,7 +54,7 @@ const recent = ref<string[]>([]);
 
 onMounted(async () => {
   recent.value = getRecentEmoji();
-  const mod = await import('@poker/shared/emoji/catalog');
+  const mod = await import('@estimate/shared/emoji/catalog');
   catalog.value = mod.EMOJI_CATALOG;
   loading.value = false;
 });

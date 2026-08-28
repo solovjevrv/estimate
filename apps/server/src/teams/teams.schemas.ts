@@ -1,4 +1,4 @@
-import { TEAM_ROLES } from '@poker/shared';
+import { TEAM_ROLES } from '@estimate/shared';
 
 import { uuidSchema } from '../http/schemas';
 

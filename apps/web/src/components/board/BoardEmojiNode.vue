@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { BoardItem, BoardEmojiContent } from '@poker/shared';
+import type { BoardItem, BoardEmojiContent } from '@estimate/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import {
   NodeResizer,

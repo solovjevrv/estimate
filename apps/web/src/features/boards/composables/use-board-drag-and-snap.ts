@@ -13,8 +13,8 @@
  * - throttled промежуточные операции и одну undo-запись на финале;
  * - очистка состояния при смене доски/размонтаже.
  */
-import type { BoardItem, BoardItemPatchOp, BoardOp } from '@poker/shared';
-import { isBoardContainer } from '@poker/shared';
+import type { BoardItem, BoardItemPatchOp, BoardOp } from '@estimate/shared';
+import { isBoardContainer } from '@estimate/shared';
 import { ref, type Ref } from 'vue';
 
 import { BOARD_DRAG_THROTTLE_MS } from '../../../features/boards/config/board-constants';

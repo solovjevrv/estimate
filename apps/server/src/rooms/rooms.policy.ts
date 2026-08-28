@@ -1,4 +1,4 @@
-import { hasTeamRole, type RoomRole, type TeamRole } from '@poker/shared';
+import { hasTeamRole, type RoomRole, type TeamRole } from '@estimate/shared';
 
 /**
  * Роль участника в комнате по уже прочитанным данным о владельце и членстве.

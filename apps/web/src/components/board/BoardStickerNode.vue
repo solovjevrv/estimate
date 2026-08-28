@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { useToast } from '@nuxt/ui/composables';
-import type { BoardItem, BoardStickerContent } from '@poker/shared';
+import type { BoardItem, BoardStickerContent } from '@estimate/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import {
   NodeResizer,

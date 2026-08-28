@@ -19,7 +19,7 @@
  * проверки 21.6: «Недавние» переставали пополняться в течение сессии).
  */
 import { useToast } from '@nuxt/ui/composables';
-import type { PersonalStickerFormat, PersonalStickerPackSummary } from '@poker/shared';
+import type { PersonalStickerFormat, PersonalStickerPackSummary } from '@estimate/shared';
 import { onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 

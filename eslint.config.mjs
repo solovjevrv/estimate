@@ -179,7 +179,7 @@ export default tseslint.config(
         {
           patterns: [
             {
-              group: ['@poker/web', '@poker/server', '**/apps/**'],
+              group: ['@estimate/web', '@estimate/server', '**/apps/**'],
               message: 'packages/shared — общий контракт, он не может зависеть от приложений.',
             },
           ],

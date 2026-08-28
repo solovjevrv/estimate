@@ -15,8 +15,8 @@ import type {
   BoardPresenceEntry,
   JoinBoardResult,
   WsAck,
-} from '@poker/shared';
-import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@poker/shared';
+} from '@estimate/shared';
+import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@estimate/shared';
 import { inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { type Socket, io as createClient } from 'socket.io-client';

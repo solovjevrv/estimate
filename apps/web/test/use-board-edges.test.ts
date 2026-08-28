@@ -1,4 +1,4 @@
-import type { BoardColorHex, BoardEdge, BoardEdgeStyle, BoardOp } from '@poker/shared';
+import type { BoardColorHex, BoardEdge, BoardEdgeStyle, BoardOp } from '@estimate/shared';
 import { ref } from 'vue';
 import { describe, it, expect, vi } from 'vitest';
 

@@ -7,7 +7,7 @@ import type {
   TeamMemberProfile,
   TeamRole,
   TeamWithRole,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { api } from '../../../lib/api';
 
 /** Карточка команды: состав, роль текущего пользователя и код приглашения. */

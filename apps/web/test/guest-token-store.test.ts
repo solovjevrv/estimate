@@ -2,8 +2,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { GuestTokenStore } from '../src/lib/realtime';
 
-const rooms = new GuestTokenStore('poker:guest:');
-const boards = new GuestTokenStore('poker:board-guest:');
+const rooms = new GuestTokenStore('estimate:guest:');
+const boards = new GuestTokenStore('estimate:board-guest:');
 
 afterEach(() => {
   localStorage.clear();

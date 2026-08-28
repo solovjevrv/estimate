@@ -1,4 +1,4 @@
-import type { BoardSummary } from '@poker/shared';
+import type { BoardSummary } from '@estimate/shared';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 

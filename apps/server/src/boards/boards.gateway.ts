@@ -11,7 +11,7 @@ import {
   type JoinBoardPayload,
   type JoinBoardResult,
   type WsAck,
-} from '@poker/shared';
+} from '@estimate/shared';
 import type { FastifyBaseLogger } from 'fastify';
 
 import { AppError, ForbiddenError, ValidationError } from '../errors';

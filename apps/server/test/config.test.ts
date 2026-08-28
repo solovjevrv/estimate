@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../src/config';
 
 function stubBaseEnv(): void {
-  vi.stubEnv('DATABASE_URL', 'postgres://poker:poker@localhost:5432/poker');
+  vi.stubEnv('DATABASE_URL', 'postgres://estimate:estimate@localhost:5432/estimate');
   vi.stubEnv('JWT_SECRET', 'секрет-для-тестов-длиннее-тридцати-двух-символов');
   vi.stubEnv('GOOGLE_CLIENT_ID', '');
   vi.stubEnv('GOOGLE_CLIENT_SECRET', '');
@@ -113,7 +113,7 @@ describe('loadConfig: объектное хранилище (21.1)', () => {
       useSSL: false,
       accessKey: 'app-access',
       secretKey: 'app-secret',
-      bucket: 'poker-assets',
+      bucket: 'estimate-assets',
     });
   });
 

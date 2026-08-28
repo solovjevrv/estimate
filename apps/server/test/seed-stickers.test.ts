@@ -21,7 +21,7 @@ describe('seedStickers', () => {
   let storage: FakeObjectStorage;
 
   beforeEach(() => {
-    assetsDir = mkdtempSync(join(tmpdir(), 'poker-stickers-'));
+    assetsDir = mkdtempSync(join(tmpdir(), 'estimate-stickers-'));
     storage = new FakeObjectStorage();
   });
 

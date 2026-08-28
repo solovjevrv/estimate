@@ -1,5 +1,5 @@
 /** Сессия пользователя: профиль из `/api/me` и список включённых способов входа. */
-import type { AuthProvider, AuthUser } from '@poker/shared';
+import type { AuthProvider, AuthUser } from '@estimate/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 

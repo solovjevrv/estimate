@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { GUEST_NAME_MAX_LENGTH, ROOM_NAME_MAX_LENGTH, trimText, type Room } from '@poker/shared';
+import { GUEST_NAME_MAX_LENGTH, ROOM_NAME_MAX_LENGTH, trimText, type Room } from '@estimate/shared';
 import { onBeforeUnmount, reactive, ref, watch, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 

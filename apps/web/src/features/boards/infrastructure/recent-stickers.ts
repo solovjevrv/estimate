@@ -4,7 +4,7 @@
  * браузера: своя на каждом устройстве, переживает перезагрузку страницы.
  */
 
-const STORAGE_KEY = 'poker-board-recent-stickers';
+const STORAGE_KEY = 'estimate-board-recent-stickers';
 const MAX_RECENT = 12;
 
 export interface RecentStickerRef {

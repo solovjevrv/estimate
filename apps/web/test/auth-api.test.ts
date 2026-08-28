@@ -1,4 +1,4 @@
-import type { AuthProvider, AuthUser } from '@poker/shared';
+import type { AuthProvider, AuthUser } from '@estimate/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {

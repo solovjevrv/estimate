@@ -1,5 +1,5 @@
-import type { Board, BoardEdge, BoardItem } from '@poker/shared';
-import { type BoardShareRole } from '@poker/shared';
+import type { Board, BoardEdge, BoardItem } from '@estimate/shared';
+import { type BoardShareRole } from '@estimate/shared';
 import { and, eq, sql } from 'drizzle-orm';
 
 import { schema } from '../db';

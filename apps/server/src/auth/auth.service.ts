@@ -6,7 +6,7 @@ import {
   isTextLengthInRange,
   trimOptionalText,
   trimText,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 import { UnauthorizedError, ValidationError } from '../errors';
 

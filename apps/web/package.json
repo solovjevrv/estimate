@@ -1,5 +1,5 @@
 {
-  "name": "@poker/web",
+  "name": "@estimate/web",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@nuxt/ui": "^4.10.0",
-    "@poker/shared": "workspace:*",
+    "@estimate/shared": "workspace:*",
     "@vue-flow/background": "^1.3.2",
     "@vue-flow/controls": "^1.1.3",
     "@vue-flow/core": "^1.48.2",

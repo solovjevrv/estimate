@@ -30,7 +30,7 @@
  * `BoardSelectionToolbar.vue`; инструмент «Стрелка» в левом тулбаре —
  * affordance поверх уже рабочего drag-от-хендла (см. `onConnect` ниже).
  */
-import { BOARD_OPS_BATCH_MAX, type Board, type BoardEdge, type BoardItem } from '@poker/shared';
+import { BOARD_OPS_BATCH_MAX, type Board, type BoardEdge, type BoardItem } from '@estimate/shared';
 import type { DropdownMenuItem } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
 import { Background } from '@vue-flow/background';

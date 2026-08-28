@@ -1,6 +1,6 @@
 /** Действия скрам-мастера над комнатой: архивация, переименование (7.20), исключение участника (5.8) */
 import { useToast } from '@nuxt/ui/composables';
-import type { Participant, Room } from '@poker/shared';
+import type { Participant, Room } from '@estimate/shared';
 import { ref, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 

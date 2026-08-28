@@ -2,7 +2,7 @@ import {
   BOARD_SHARE_ROLES,
   BOARD_TITLE_MAX_LENGTH,
   TEXT_INPUT_TRIM_ALLOWANCE,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 import { nullableUuidSchema } from '../http/schemas';
 

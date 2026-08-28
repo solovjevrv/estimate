@@ -1,5 +1,5 @@
-import type { Board, BoardItem, BoardStickyContent, JoinBoardResult } from '@poker/shared';
-import { BOARD_ITEM_TEXT_MAX_LENGTH, BOARD_WS_EVENTS } from '@poker/shared';
+import type { Board, BoardItem, BoardStickyContent, JoinBoardResult } from '@estimate/shared';
+import { BOARD_ITEM_TEXT_MAX_LENGTH, BOARD_WS_EVENTS } from '@estimate/shared';
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';

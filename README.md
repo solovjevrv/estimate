@@ -172,7 +172,7 @@ docker compose -f docker-compose.prod.yml run --rm --no-deps \
 
 Обязательные переменные в `.env` на сервере: `MINIO_ROOT_USER`/`MINIO_ROOT_PASSWORD` (root —
 использует только одноразовый `minio-init`, сервер их не видит) и `MINIO_ACCESS_KEY`/
-`MINIO_SECRET_KEY` (учётка уровня приложения, права только на бакет `poker-assets` — заводится
+`MINIO_SECRET_KEY` (учётка уровня приложения, права только на бакет `estimate-assets` — заводится
 тем же `minio-init` через `mc admin user add`/`mc admin policy attach`). Сервис `minio-init`
 идемпотентен — безопасно перезапускать при каждом `up`.
 

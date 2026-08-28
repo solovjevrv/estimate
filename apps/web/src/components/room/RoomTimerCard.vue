@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import type { RoomTimerState } from '@poker/shared';
-import { TIMER_DURATION_PRESETS_SEC } from '@poker/shared';
+import type { RoomTimerState } from '@estimate/shared';
+import { TIMER_DURATION_PRESETS_SEC } from '@estimate/shared';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 

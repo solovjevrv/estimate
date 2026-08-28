@@ -10,7 +10,7 @@
  * а вычисляется реактивно из заливки, поэтому смена `color` автоматически
  * сохраняет читаемость текста.
  */
-import type { BoardColorHex } from '@poker/shared';
+import type { BoardColorHex } from '@estimate/shared';
 
 function clamp01(value: number): number {
   return Math.min(1, Math.max(0, value));

@@ -46,7 +46,7 @@ Chromium через Playwright, без троттлинга CPU. Хост — р
 (CPU/Script/Layout/Recalc — время за 5-секундное окно; для CPU это доля от одного ядра.)
 
 **Обновление 26.08.2026 (задача 21.10):** добавлен постоянный perf-тест
-(`apps/e2e/tests/perf-animated-stickers.spec.ts`, `pnpm --filter @poker/e2e test:perf`,
+(`apps/e2e/tests/perf-animated-stickers.spec.ts`, `pnpm --filter @estimate/e2e test:perf`,
 гоняется вручную) — та же методика, но 100 стикеров вместо 50, уже с обоими фиксами
 21.8 (`canvas` + `IntersectionObserver`). Живой прогон: **fps=51.7, CPU=101.4%
 (превысило одно ядро), heap≈672 МиБ, 5330 DOM-узлов.** Это первое зафиксированное

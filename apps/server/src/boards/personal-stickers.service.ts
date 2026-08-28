@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 
-import type { PersonalStickerFormat, PersonalStickerPackWithStickers } from '@poker/shared';
+import type { PersonalStickerFormat, PersonalStickerPackWithStickers } from '@estimate/shared';
 
 import { NotFoundError, ValidationError } from '../errors';
 import type { ObjectStorage } from '../platform/storage';

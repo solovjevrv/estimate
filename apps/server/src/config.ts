@@ -2,7 +2,7 @@ import { hkdfSync } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { AUTH_PROVIDERS, type AuthProvider } from '@poker/shared';
+import { AUTH_PROVIDERS, type AuthProvider } from '@estimate/shared';
 
 export interface OAuthCredentials {
   clientId: string;
@@ -172,7 +172,7 @@ export function loadObjectStorageConfig(): ObjectStorageConfig | undefined {
     useSSL: process.env.MINIO_USE_SSL === 'true',
     accessKey,
     secretKey,
-    bucket: process.env.MINIO_BUCKET ?? 'poker-assets',
+    bucket: process.env.MINIO_BUCKET ?? 'estimate-assets',
   };
 }
 

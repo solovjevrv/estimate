@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 
-import { createDb } from '@poker/server/db';
+import { createDb } from '@estimate/server/db';
 import { sql } from 'drizzle-orm';
 
 const execFileAsync = promisify(execFile);

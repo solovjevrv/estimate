@@ -17,7 +17,7 @@ import {
   BOARD_TEXT_ALIGNS,
   type BoardColorHex,
   type BoardTextAlign,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 

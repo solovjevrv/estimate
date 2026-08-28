@@ -13,15 +13,15 @@ import type {
   RoomTimerState,
   Round,
   RoundResult,
-} from '@poker/shared';
-import { TIMER_DEFAULT_DURATION_SEC, WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
+} from '@estimate/shared';
+import { TIMER_DEFAULT_DURATION_SEC, WS_EVENTS, WS_SERVER_EVENTS } from '@estimate/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
 import { createRealtimeConnection, GuestTokenStore, type JoinContext } from '../lib/realtime';
 import { emitWithAck, type PokerSocket } from '../lib/socket';
 
-const guestTokens = new GuestTokenStore('poker:guest:');
+const guestTokens = new GuestTokenStore('estimate:guest:');
 
 export const useRoomStore = defineStore('room', () => {
   const state = ref<RoomState | null>(null);

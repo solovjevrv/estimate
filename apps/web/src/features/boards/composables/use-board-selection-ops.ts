@@ -1,4 +1,9 @@
-import type { BoardOp, EmojiSequence, GiphyGifSummary, PersonalStickerFormat } from '@poker/shared';
+import type {
+  BoardOp,
+  EmojiSequence,
+  GiphyGifSummary,
+  PersonalStickerFormat,
+} from '@estimate/shared';
 
 import type { BoardSelectionNode } from '../adapters/vue-flow-adapter';
 import { FRAME_SIZE_PRESETS, type FrameSizePresetKey } from '../config/board-constants';

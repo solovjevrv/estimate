@@ -6,7 +6,7 @@
  * Используется и в пикере (превью табов/сетки), и на самой доске
  * (BoardStickerNode.vue) — чтобы не дублировать этот switch в обоих местах.
  */
-import type { PersonalStickerFormat } from '@poker/shared';
+import type { PersonalStickerFormat } from '@estimate/shared';
 
 import LottieSticker from './LottieSticker.vue';
 

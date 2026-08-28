@@ -1,4 +1,4 @@
-import type { AuthProvider, AuthUser } from '@poker/shared';
+import type { AuthProvider, AuthUser } from '@estimate/shared';
 import { eq, sql } from 'drizzle-orm';
 
 import type { Db } from '../db';

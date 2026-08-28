@@ -1,4 +1,4 @@
-import type { DeckType, TeamRole } from '@poker/shared';
+import type { DeckType, TeamRole } from '@estimate/shared';
 import { getTableColumns, getTableName } from 'drizzle-orm';
 import { describe, expect, it } from 'vitest';
 
@@ -30,13 +30,13 @@ describe('схема БД', () => {
     expect(cols.value.notNull).toBe(true);
   });
 
-  it('типы колод соответствуют контракту @poker/shared', () => {
+  it('типы колод соответствуют контракту @estimate/shared', () => {
     // Присваивание типизировано: несовпадение с DeckType сломает компиляцию
     const deckValues: readonly DeckType[] = schema.deckTypeEnum.enumValues;
     expect(deckValues).toEqual(['fibonacci', 'scale_0_5', 'tshirt']);
   });
 
-  it('роли в команде соответствуют контракту @poker/shared', () => {
+  it('роли в команде соответствуют контракту @estimate/shared', () => {
     const roleValues: readonly TeamRole[] = schema.teamRoleEnum.enumValues;
     expect(roleValues).toEqual(['admin', 'member', 'guest']);
   });

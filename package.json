@@ -1,5 +1,5 @@
 {
-  "name": "poker-planing",
+  "name": "estimate",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.16.0",
@@ -11,18 +11,18 @@
     "dev": "pnpm -r --parallel dev",
     "build": "pnpm -r build",
     "typecheck": "tsc --noEmit && pnpm -r typecheck",
-    "db:generate": "pnpm --filter @poker/server db:generate",
-    "db:migrate": "pnpm --filter @poker/server db:migrate",
-    "db:studio": "pnpm --filter @poker/server db:studio",
+    "db:generate": "pnpm --filter @estimate/server db:generate",
+    "db:migrate": "pnpm --filter @estimate/server db:migrate",
+    "db:studio": "pnpm --filter @estimate/server db:studio",
     "lint": "eslint .",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "test:unit": "vitest run --project @poker/web --project @poker/shared",
-    "test:server": "vitest run --project @poker/server",
-    "test:e2e": "pnpm --filter @poker/e2e test",
-    "test:e2e:smoke": "pnpm --filter @poker/e2e test:smoke",
-    "loadtest": "pnpm --filter @poker/load-test start"
+    "test:unit": "vitest run --project @estimate/web --project @estimate/shared",
+    "test:server": "vitest run --project @estimate/server",
+    "test:e2e": "pnpm --filter @estimate/e2e test",
+    "test:e2e:smoke": "pnpm --filter @estimate/e2e test:smoke",
+    "loadtest": "pnpm --filter @estimate/load-test start"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

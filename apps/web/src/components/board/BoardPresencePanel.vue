@@ -8,7 +8,7 @@
  * референсе), аватарки — прямо на белой карточке, без своей. Вынесена из
  * `BoardCanvas.vue` (17.1).
  */
-import type { BoardPresenceEntry } from '@poker/shared';
+import type { BoardPresenceEntry } from '@estimate/shared';
 import { Panel } from '@vue-flow/core';
 import { useI18n } from 'vue-i18n';
 

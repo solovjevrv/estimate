@@ -1,5 +1,5 @@
 /** REST-слой личных стикеров: единственное место, знающее URL `/api/sticker-packs/personal/*`. */
-import type { PersonalStickerPackSummary } from '@poker/shared';
+import type { PersonalStickerPackSummary } from '@estimate/shared';
 
 import { api } from '../../../lib/api';
 

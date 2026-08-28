@@ -1,4 +1,4 @@
-import type { Board } from '@poker/shared';
+import type { Board } from '@estimate/shared';
 import { describe, expect, it } from 'vitest';
 
 import {

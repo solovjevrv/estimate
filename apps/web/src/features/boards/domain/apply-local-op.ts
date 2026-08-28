@@ -5,8 +5,8 @@
  * несут целиком собранную запись — применение сводится к простому upsert/delete
  * по id, без валидации и без мержа патча.
  */
-import type { BoardCommittedOp, BoardEdge, BoardItem } from '@poker/shared';
-import { isBoardContainer } from '@poker/shared';
+import type { BoardCommittedOp, BoardEdge, BoardItem } from '@estimate/shared';
+import { isBoardContainer } from '@estimate/shared';
 
 export interface BoardLocalState {
   items: Map<string, BoardItem>;

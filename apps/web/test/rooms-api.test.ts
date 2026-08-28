@@ -1,4 +1,4 @@
-import type { Room } from '@poker/shared';
+import type { Room } from '@estimate/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {

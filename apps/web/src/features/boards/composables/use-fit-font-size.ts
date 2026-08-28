@@ -58,7 +58,7 @@
  */
 import { nextTick, ref, watch, type Ref } from 'vue';
 
-import type { BoardFontSizeMode } from '@poker/shared';
+import type { BoardFontSizeMode } from '@estimate/shared';
 
 export const FIT_FONT_MIN = 10;
 /** Базовый размер текста для геометрии элемента по умолчанию. */

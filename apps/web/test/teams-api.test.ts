@@ -6,7 +6,7 @@ import type {
   TeamMemberProfile,
   TeamRole,
   TeamWithRole,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {

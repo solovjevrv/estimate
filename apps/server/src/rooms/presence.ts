@@ -1,4 +1,4 @@
-import type { ParticipantProfile } from '@poker/shared';
+import type { ParticipantProfile } from '@estimate/shared';
 
 /**
  * Кто сидит за столом с точки зрения сервера. Реестр присутствия общий с

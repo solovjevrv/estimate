@@ -12,7 +12,7 @@
  * Собственный курсор зритель не видит (он на клиенте отправителя не рендерится),
  * поэтому задержка интерполяции для чужого курсора допустима.
  */
-import type { BoardAwarenessBroadcast } from '@poker/shared';
+import type { BoardAwarenessBroadcast } from '@estimate/shared';
 import { useVueFlow } from '@vue-flow/core';
 import { computed } from 'vue';
 

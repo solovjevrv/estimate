@@ -1,4 +1,4 @@
-import type { BoardAccessLevel } from '@poker/shared';
+import type { BoardAccessLevel } from '@estimate/shared';
 
 /**
  * Кто сейчас смотрит доску. Реестр присутствия общий с комнатами

@@ -4,7 +4,7 @@ import type {
   BoardEdgeStyle,
   BoardOp,
   BoardTextAlign,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { computed, ref, type ComputedRef, type Ref } from 'vue';
 
 import { getEdgeAnchorParams } from '../../../features/boards/domain/floating-edge-geometry';

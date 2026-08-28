@@ -21,7 +21,7 @@ services:
     build:
       context: .
       dockerfile: apps/server/Dockerfile
-    image: poker-server
+    image: estimate-server
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -44,7 +44,7 @@ services:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
       MINIO_ENDPOINT: minio
-      MINIO_BUCKET: ${MINIO_BUCKET:-poker-assets}
+      MINIO_BUCKET: ${MINIO_BUCKET:-estimate-assets}
     volumes:
       - avatars_data:/app/apps/server/avatars
       - board_assets_data:/app/apps/server/board-assets
@@ -89,15 +89,15 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
-      MINIO_BUCKET: ${MINIO_BUCKET:-poker-assets}
+      MINIO_BUCKET: ${MINIO_BUCKET:-estimate-assets}
     entrypoint: >
       /bin/sh -c '
       mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
       mc mb --ignore-existing "local/$$MINIO_BUCKET" &&
       mc admin user add local "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY" &&
-      printf "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::%s\",\"arn:aws:s3:::%s/*\"]}]}" "$$MINIO_BUCKET" "$$MINIO_BUCKET" > /tmp/poker-app-policy.json &&
-      mc admin policy create local poker-app-policy /tmp/poker-app-policy.json &&
-      mc admin policy attach local poker-app-policy --user "$$MINIO_ACCESS_KEY"
+      printf "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::%s\",\"arn:aws:s3:::%s/*\"]}]}" "$$MINIO_BUCKET" "$$MINIO_BUCKET" > /tmp/estimate-app-policy.json &&
+      mc admin policy create local estimate-app-policy /tmp/estimate-app-policy.json &&
+      mc admin policy attach local estimate-app-policy --user "$$MINIO_ACCESS_KEY"
       '
 
   web:
@@ -106,7 +106,7 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         APP_VERSION: ${APP_VERSION:-dev}
-    image: poker-web
+    image: estimate-web
     restart: unless-stopped
     ports:
       # nginx-unprivileged слушает 8080/8443 внутри контейнера (не может биндиться на <1024)
@@ -178,7 +178,7 @@ services:
     environment:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
-      MINIO_BUCKET: ${MINIO_BUCKET:-poker-assets}
+      MINIO_BUCKET: ${MINIO_BUCKET:-estimate-assets}
     volumes:
       - object_storage_backups:/backups
     depends_on:

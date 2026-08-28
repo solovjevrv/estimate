@@ -1,4 +1,4 @@
-import type { BoardCommittedOp, BoardOp } from '@poker/shared';
+import type { BoardCommittedOp, BoardOp } from '@estimate/shared';
 
 import type { BoardOpState } from './board-ops';
 import type { BoardsRepository } from './boards.repository';

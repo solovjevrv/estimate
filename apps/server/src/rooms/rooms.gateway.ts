@@ -15,8 +15,8 @@ import {
   type SubmitVotePayload,
   type UpdateLinksPayload,
   type WsAck,
-} from '@poker/shared';
-import { isValidEmojiSequence } from '@poker/shared/emoji/validate';
+} from '@estimate/shared';
+import { isValidEmojiSequence } from '@estimate/shared/emoji/validate';
 import type { FastifyBaseLogger } from 'fastify';
 
 import { AppError, ForbiddenError, ValidationError } from '../errors';

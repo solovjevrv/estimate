@@ -6,11 +6,11 @@ RUN npm install -g pnpm@11.16.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json apps/server/
 COPY packages/shared/package.json packages/shared/
-RUN pnpm install --frozen-lockfile --filter @poker/server
+RUN pnpm install --frozen-lockfile --filter @estimate/server
 COPY tsconfig.base.json ./
 COPY packages/shared packages/shared
 COPY apps/server apps/server
-RUN pnpm --filter @poker/server build
+RUN pnpm --filter @estimate/server build
 
 FROM node:24-alpine
 WORKDIR /app
@@ -22,7 +22,7 @@ RUN npm install -g pnpm@11.16.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json apps/server/
 COPY packages/shared/package.json packages/shared/
-RUN pnpm install --prod --frozen-lockfile --filter @poker/server
+RUN pnpm install --prod --frozen-lockfile --filter @estimate/server
 COPY --from=build /app/apps/server/dist ./apps/server/dist
 COPY --from=build /app/apps/server/drizzle ./apps/server/drizzle
 COPY --from=build /app/apps/server/assets ./apps/server/assets

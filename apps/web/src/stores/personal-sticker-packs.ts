@@ -4,7 +4,7 @@
  * Используется в BoardStickerPicker.vue (секция «Мои паки») и в BoardStickerNode.vue
  * (чтобы понять, есть ли у смотрящего этот пак — §5.5).
  */
-import type { PersonalStickerPackSummary } from '@poker/shared';
+import type { PersonalStickerPackSummary } from '@estimate/shared';
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
 

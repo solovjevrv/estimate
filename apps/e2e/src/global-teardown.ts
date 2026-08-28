@@ -1,4 +1,4 @@
-import { createDb, schema } from '@poker/server/db';
+import { createDb, schema } from '@estimate/server/db';
 import { like } from 'drizzle-orm';
 
 import { E2E_EMAIL_DOMAIN, E2E_ROOM_PREFIX } from './fixtures';

@@ -1,4 +1,4 @@
-import type { DeckType, Room, RoomStats, Round } from '@poker/shared';
+import type { DeckType, Room, RoomStats, Round } from '@estimate/shared';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 

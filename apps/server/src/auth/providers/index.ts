@@ -1,4 +1,4 @@
-import type { AuthProvider } from '@poker/shared';
+import type { AuthProvider } from '@estimate/shared';
 
 import { GoogleOAuthProvider } from './google.provider';
 import { OAuthProvider } from './oauth-provider';

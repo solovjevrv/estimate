@@ -37,7 +37,7 @@
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { BOARD_COLOR_PALETTE, type BoardColorHex } from '@poker/shared';
+import { BOARD_COLOR_PALETTE, type BoardColorHex } from '@estimate/shared';
 
 import {
   addRecentColor,

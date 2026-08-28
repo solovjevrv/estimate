@@ -4,7 +4,7 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import type { Room } from '@poker/shared';
+import type { Room } from '@estimate/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TeamAccess } from '../src/access';

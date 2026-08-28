@@ -1,4 +1,4 @@
-import type { PersonalStickerFormat, PersonalStickerPackWithStickers } from '@poker/shared';
+import type { PersonalStickerFormat, PersonalStickerPackWithStickers } from '@estimate/shared';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 
 import { schema } from '../db';

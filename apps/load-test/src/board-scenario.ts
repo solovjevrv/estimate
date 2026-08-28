@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import type { BoardOpsBatch, JoinBoardResult, WsAck } from '@poker/shared';
-import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@poker/shared';
+import type { BoardOpsBatch, JoinBoardResult, WsAck } from '@estimate/shared';
+import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@estimate/shared';
 import { type Socket, io } from 'socket.io-client';
 
 import type { LatencyRecorder } from './metrics';

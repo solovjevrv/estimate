@@ -1,6 +1,6 @@
 /** Реакции-эмодзи на карточке участника (10.10) — постоянный бейдж-счётчик и одноразовая анимация (10.12) */
 import { useToast } from '@nuxt/ui/composables';
-import type { Participant, Reaction, EmojiSequence } from '@poker/shared';
+import type { Participant, Reaction, EmojiSequence } from '@estimate/shared';
 import { reactive, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 

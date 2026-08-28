@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { PersonalStickerPackSummary } from '@poker/shared';
+import type { PersonalStickerPackSummary } from '@estimate/shared';
 
 import { ApiError } from '../src/lib/api';
 
