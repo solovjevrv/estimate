@@ -488,6 +488,283 @@ export function computeResizeSnapGuides(
 }
 
 /**
+ * Равные отступы (gap) между соседними объектами при перемещении (22.6, по
+ * референсу Figma) — принципиально другое сравнение, чем `computeSnapGuides`:
+ * там сравниваются ТОЧКИ (координаты краёв/центра), здесь — РАССТОЯНИЯ между
+ * парами соседних объектов. Два независимых кейса на каждую ось, оба находят
+ * ближайших статичных соседей перетаскиваемого элемента по этой оси среди
+ * тех, что пересекаются с ним по ПЕРПЕНДИКУЛЯРНОЙ оси (иначе «зазор» — не
+ * горизонтальное/вертикальное расстояние, а диагональ, что не имеет смысла
+ * показывать пользователю):
+ *
+ * (a) Зазор перетаскиваемого элемента до соседа совпал с уже существующим
+ *     эталонным зазором между ДВУМЯ ДРУГИМИ статичными соседними объектами
+ *     где-то ещё на доске (ровно то, что описано в задаче) — подсвечиваются
+ *     ОБА зазора (тянущийся и эталонный) с одинаковым числом px.
+ * (b) Перетаскиваемый элемент оказался МЕЖДУ двумя статичными соседями и его
+ *     зазор до левого/верхнего почти равен зазору до правого/нижнего —
+ *     классическое Figma-«распределить поровну». Приоритетнее (a): если
+ *     сосед есть с обеих сторон и зазоры уже близки, показываем именно это,
+ *     а не случайное совпадение с эталоном где-то на доске.
+ *
+ * Показывается только ЛУЧШЕЕ (наименьший diff) совпадение на ось на элемент —
+ * в отличие от 22.5 (`computeSnapGuides`), где показываются ВСЕ точечные
+ * совпадения: точки — компактный визуальный язык (линия), а гэп — линия
+ * ЧИСЛОМ (px-лейбл), несколько таких меток одновременно перегружали бы экран.
+ *
+ * В отличие от `computeSnapGuides`, работает НЕ параллельно, а ПОСЛЕДОВАТЕЛЬНО
+ * с ним: composable сначала применяет point-align снап, затем считает гэпы от
+ * уже скорректированной позиции — так гэп-снап никогда не «спорит» с
+ * align-снапом за одну и ту же ось, а достраивает свободную (см.
+ * `use-board-drag-and-snap.ts`).
+ */
+
+export interface GapGuide {
+  /** 'horizontal' — зазор вдоль оси X (расстояние между left/right краями), 'vertical' — вдоль Y */
+  axis: 'horizontal' | 'vertical';
+  /** Величина зазора в canvas-координатах, округлённая для лейбла */
+  gap: number;
+  /** Координата начала зазора вдоль своей оси (canvas) — край одного объекта */
+  from: number;
+  /** Координата конца зазора вдоль своей оси (canvas) — край другого объекта */
+  to: number;
+  /** Координата поперечной оси для отрисовки маркера (canvas) — середина пересечения перпендикулярных диапазонов пары */
+  cross: number;
+}
+
+export interface GapSnapResult {
+  guides: GapGuide[];
+  /** Новые позиции для перетаскиваемых элементов, зазор которых снапнулся; без снапа элемент не попадает в карту */
+  positions: Map<string, { x: number; y: number }>;
+}
+
+function overlapsY(a: SnapRect, b: SnapRect): boolean {
+  return a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+function overlapsX(a: SnapRect, b: SnapRect): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width;
+}
+
+/** Ближайший сосед по оси X среди `candidates`, пересекающихся с `target` по Y («та же строка») */
+function nearestNeighborX(
+  target: SnapRect,
+  candidates: readonly SnapRect[],
+  side: 'left' | 'right',
+): SnapRect | null {
+  let best: SnapRect | null = null;
+  let bestDist = Infinity;
+  for (const c of candidates) {
+    if (c.id === target.id || !overlapsY(target, c)) continue;
+    const dist = side === 'left' ? target.x - (c.x + c.width) : c.x - (target.x + target.width);
+    if (dist >= 0 && dist < bestDist) {
+      bestDist = dist;
+      best = c;
+    }
+  }
+  return best;
+}
+
+/** Ближайший сосед по оси Y среди `candidates`, пересекающихся с `target` по X («тот же столбец») */
+function nearestNeighborY(
+  target: SnapRect,
+  candidates: readonly SnapRect[],
+  side: 'top' | 'bottom',
+): SnapRect | null {
+  let best: SnapRect | null = null;
+  let bestDist = Infinity;
+  for (const c of candidates) {
+    if (c.id === target.id || !overlapsX(target, c)) continue;
+    const dist = side === 'top' ? target.y - (c.y + c.height) : c.y - (target.y + target.height);
+    if (dist >= 0 && dist < bestDist) {
+      bestDist = dist;
+      best = c;
+    }
+  }
+  return best;
+}
+
+interface ReferenceGap {
+  a: SnapRect;
+  b: SnapRect;
+  gap: number;
+}
+
+/** Все существующие зазоры между статичными соседними парами вдоль оси X (одна запись на пару — от левого элемента пары) */
+function collectReferenceGapsX(staticNodes: readonly SnapRect[]): ReferenceGap[] {
+  const result: ReferenceGap[] = [];
+  for (const a of staticNodes) {
+    const b = nearestNeighborX(a, staticNodes, 'right');
+    if (b) result.push({ a, b, gap: b.x - (a.x + a.width) });
+  }
+  return result;
+}
+
+/** Все существующие зазоры между статичными соседними парами вдоль оси Y */
+function collectReferenceGapsY(staticNodes: readonly SnapRect[]): ReferenceGap[] {
+  const result: ReferenceGap[] = [];
+  for (const a of staticNodes) {
+    const b = nearestNeighborY(a, staticNodes, 'bottom');
+    if (b) result.push({ a, b, gap: b.y - (a.y + a.height) });
+  }
+  return result;
+}
+
+function gapGuideX(left: SnapRect, right: SnapRect, gap: number): GapGuide {
+  return {
+    axis: 'horizontal',
+    gap: Math.round(gap),
+    from: left.x + left.width,
+    to: right.x,
+    cross: (Math.max(left.y, right.y) + Math.min(left.y + left.height, right.y + right.height)) / 2,
+  };
+}
+
+function gapGuideY(top: SnapRect, bottom: SnapRect, gap: number): GapGuide {
+  return {
+    axis: 'vertical',
+    gap: Math.round(gap),
+    from: top.y + top.height,
+    to: bottom.y,
+    cross: (Math.max(top.x, bottom.x) + Math.min(top.x + top.width, bottom.x + bottom.width)) / 2,
+  };
+}
+
+export function computeEqualGapGuides(
+  dragged: SnapRect[],
+  staticNodes: SnapRect[],
+  threshold = SNAP_THRESHOLD_PX,
+): GapSnapResult {
+  const positions = new Map<string, { x: number; y: number }>();
+  const guides: GapGuide[] = [];
+  const refGapsX = collectReferenceGapsX(staticNodes);
+  const refGapsY = collectReferenceGapsY(staticNodes);
+
+  for (const d of dragged) {
+    // --- X axis ---
+    const leftX = nearestNeighborX(d, staticNodes, 'left');
+    const rightX = nearestNeighborX(d, staticNodes, 'right');
+    const gapLeftX = leftX ? d.x - (leftX.x + leftX.width) : null;
+    const gapRightX = rightX ? rightX.x - (d.x + d.width) : null;
+
+    let dx: number | null = null;
+    const xGuides: GapGuide[] = [];
+
+    if (
+      leftX &&
+      rightX &&
+      gapLeftX !== null &&
+      gapRightX !== null &&
+      Math.abs(gapLeftX - gapRightX) < threshold
+    ) {
+      // (b) распределение: d между двумя статичными соседями, зазоры почти равны
+      const evenGap = (gapLeftX + gapRightX) / 2;
+      dx = leftX.x + leftX.width + evenGap - d.x;
+      const movedD = { ...d, x: d.x + dx };
+      xGuides.push(gapGuideX(leftX, movedD, evenGap), gapGuideX(movedD, rightX, evenGap));
+    } else {
+      // (a) сравнение с эталонным зазором где-то ещё на доске
+      let best: {
+        neighbor: SnapRect;
+        side: 'left' | 'right';
+        ref: ReferenceGap;
+        diff: number;
+      } | null = null;
+      for (const ref of refGapsX) {
+        if (leftX && gapLeftX !== null) {
+          const diff = Math.abs(gapLeftX - ref.gap);
+          if (diff < threshold && (!best || diff < best.diff)) {
+            best = { neighbor: leftX, side: 'left', ref, diff };
+          }
+        }
+        if (rightX && gapRightX !== null) {
+          const diff = Math.abs(gapRightX - ref.gap);
+          if (diff < threshold && (!best || diff < best.diff)) {
+            best = { neighbor: rightX, side: 'right', ref, diff };
+          }
+        }
+      }
+      if (best) {
+        dx =
+          best.side === 'left'
+            ? best.neighbor.x + best.neighbor.width + best.ref.gap - d.x
+            : best.neighbor.x - best.ref.gap - d.width - d.x;
+        const movedD = { ...d, x: d.x + dx };
+        xGuides.push(
+          best.side === 'left'
+            ? gapGuideX(best.neighbor, movedD, best.ref.gap)
+            : gapGuideX(movedD, best.neighbor, best.ref.gap),
+          gapGuideX(best.ref.a, best.ref.b, best.ref.gap),
+        );
+      }
+    }
+
+    // --- Y axis: то же самое, зеркально X↔Y, width↔height ---
+    const topY = nearestNeighborY(d, staticNodes, 'top');
+    const bottomY = nearestNeighborY(d, staticNodes, 'bottom');
+    const gapTopY = topY ? d.y - (topY.y + topY.height) : null;
+    const gapBottomY = bottomY ? bottomY.y - (d.y + d.height) : null;
+
+    let dy: number | null = null;
+    const yGuides: GapGuide[] = [];
+
+    if (
+      topY &&
+      bottomY &&
+      gapTopY !== null &&
+      gapBottomY !== null &&
+      Math.abs(gapTopY - gapBottomY) < threshold
+    ) {
+      const evenGap = (gapTopY + gapBottomY) / 2;
+      dy = topY.y + topY.height + evenGap - d.y;
+      const movedD = { ...d, y: d.y + dy };
+      yGuides.push(gapGuideY(topY, movedD, evenGap), gapGuideY(movedD, bottomY, evenGap));
+    } else {
+      let best: {
+        neighbor: SnapRect;
+        side: 'top' | 'bottom';
+        ref: ReferenceGap;
+        diff: number;
+      } | null = null;
+      for (const ref of refGapsY) {
+        if (topY && gapTopY !== null) {
+          const diff = Math.abs(gapTopY - ref.gap);
+          if (diff < threshold && (!best || diff < best.diff)) {
+            best = { neighbor: topY, side: 'top', ref, diff };
+          }
+        }
+        if (bottomY && gapBottomY !== null) {
+          const diff = Math.abs(gapBottomY - ref.gap);
+          if (diff < threshold && (!best || diff < best.diff)) {
+            best = { neighbor: bottomY, side: 'bottom', ref, diff };
+          }
+        }
+      }
+      if (best) {
+        dy =
+          best.side === 'top'
+            ? best.neighbor.y + best.neighbor.height + best.ref.gap - d.y
+            : best.neighbor.y - best.ref.gap - d.height - d.y;
+        const movedD = { ...d, y: d.y + dy };
+        yGuides.push(
+          best.side === 'top'
+            ? gapGuideY(best.neighbor, movedD, best.ref.gap)
+            : gapGuideY(movedD, best.neighbor, best.ref.gap),
+          gapGuideY(best.ref.a, best.ref.b, best.ref.gap),
+        );
+      }
+    }
+
+    if (dx !== null || dy !== null) {
+      positions.set(d.id, { x: d.x + (dx ?? 0), y: d.y + (dy ?? 0) });
+    }
+    guides.push(...xGuides, ...yGuides);
+  }
+
+  return { guides, positions };
+}
+
+/**
  * Строит АБСОЛЮТНЫЙ прямоугольник по итогам resize-жеста из заведомо
  * абсолютного стартового прямоугольника (`origin` — геометрия элемента ДО
  * жеста, `BoardItem.x/y/width/height`, не меняется до фактического патча на

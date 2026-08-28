@@ -105,6 +105,7 @@ import BoardGiphyNode from './BoardGiphyNode.vue';
 import BoardImageNode from './BoardImageNode.vue';
 import BoardPresencePanel from './BoardPresencePanel.vue';
 import BoardShapeNode from './BoardShapeNode.vue';
+import BoardGapGuides from './BoardGapGuides.vue';
 import BoardSnapGuides from './BoardSnapGuides.vue';
 import BoardStickyNode from './BoardStickyNode.vue';
 import BoardTextNode from './BoardTextNode.vue';
@@ -321,7 +322,7 @@ const dragAndSnap = useBoardDragAndSnap({
 
 // Деструктурируем ref-ы на верхний уровень: Vue 3 автораспаковывает ref,
 // объявленный как top-level const в <script setup>, в шаблоне без .value.
-const { activeSnapGuides, isDragging: dragIsDragging } = dragAndSnap;
+const { activeSnapGuides, activeGapGuides, isDragging: dragIsDragging } = dragAndSnap;
 
 watch(
   flowNodes,
@@ -785,6 +786,13 @@ useBoardHotkeys({
       <BoardSnapGuides
         v-if="activeSnapGuides.length"
         :guides="activeSnapGuides"
+        :viewport-x="viewport.x"
+        :viewport-y="viewport.y"
+        :viewport-zoom="viewport.zoom"
+      />
+      <BoardGapGuides
+        v-if="activeGapGuides.length"
+        :guides="activeGapGuides"
         :viewport-x="viewport.x"
         :viewport-y="viewport.y"
         :viewport-zoom="viewport.zoom"

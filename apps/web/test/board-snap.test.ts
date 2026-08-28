@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  computeEqualGapGuides,
   computeResizeSnapGuides,
   computeSnapGuides,
   resizeAxisFlags,
@@ -444,5 +445,119 @@ describe('resizeRectFromOrigin', () => {
     const result = resizeRectFromOrigin(origin, 70, 80, flags);
     expect(result.x + result.width).toBe(150); // X инвертирован — правый край фиксирован
     expect(result.y).toBe(50); // Y не инвертирован — верх фиксирован
+  });
+});
+
+describe('равные отступы (gap) — 22.6', () => {
+  it('(a) зазор до соседа совпал с эталонным зазором ГДЕ-ТО ЕЩЁ на доске — снапит и подсвечивает оба', () => {
+    // Эталон: A(0..100) и B(300..400) — статичная пара, gap=200.
+    // Перетаскиваемый d изначально x=498..598, справа сосед D(800..900):
+    // gapRight = 800-598=202, diff=2 < 8 — совпало с эталонным 200.
+    // Слева тоже есть сосед (B, gap=98), но diff=102 — мимо порога, не мешает.
+    const A = rect('A', 0, 0, 100, 100);
+    const B = rect('B', 300, 0, 100, 100);
+    const D = rect('D', 800, 0, 100, 100);
+    const dragged = rect('d', 498, 0, 100, 100);
+
+    const result = computeEqualGapGuides([dragged], [A, B, D]);
+
+    // Снап делает зазор РОВНО 200: новый d.x = 800 - 200 - 100 = 500
+    expect(result.positions.get('d')).toEqual({ x: 500, y: 0 });
+    expect(result.guides).toHaveLength(2);
+    expect(result.guides.every((g) => g.axis === 'horizontal' && g.gap === 200)).toBe(true);
+    // Один гид — сам зазор d↔D (после снапа: 600..800), другой — эталонный A↔B (100..300)
+    const spans = result.guides.map((g) => [g.from, g.to]).sort((a, b) => a[0]! - b[0]!);
+    expect(spans).toEqual([
+      [100, 300],
+      [600, 800],
+    ]);
+  });
+
+  it('(b) распределение поровну: d между двумя статичными соседями с почти равными зазорами', () => {
+    // L(0..100), d(150..200) — gapLeft=50; R(254..354) — gapRight=54, diff=4 < 8.
+    // Снап выставляет оба зазора РОВНО по среднему (52): d.x = 100+52 = 152
+    const L = rect('L', 0, 0, 100, 100);
+    const R = rect('R', 254, 0, 100, 100);
+    const dragged = rect('d', 150, 0, 50, 50);
+
+    const result = computeEqualGapGuides([dragged], [L, R]);
+
+    expect(result.positions.get('d')).toEqual({ x: 152, y: 0 });
+    expect(result.guides).toHaveLength(2);
+    expect(result.guides.every((g) => g.gap === 52)).toBe(true);
+    const spans = result.guides.map((g) => [g.from, g.to]).sort((a, b) => a[0]! - b[0]!);
+    // L↔d: 100..152; d↔R: 202..254
+    expect(spans).toEqual([
+      [100, 152],
+      [202, 254],
+    ]);
+  });
+
+  it('(b) приоритетнее (a): если d между соседями и их зазоры уже близки, эталон где-то ещё игнорируется', () => {
+    // Эталон где-то на доске: E(0..100), F(300..400), gap=200 — намеренно
+    // ДАЛЕКО от d, чтобы не совпасть ни с одним из её собственных зазоров.
+    // d между L и R с близкими зазорами (тест (b)) — должен сработать именно
+    // «распределение», а не искать совпадение с эталонным 200.
+    const E = rect('E', 0, 1000, 100, 100);
+    const F = rect('F', 300, 1000, 100, 100);
+    const L = rect('L', 0, 0, 100, 100);
+    const R = rect('R', 254, 0, 100, 100);
+    const dragged = rect('d', 150, 0, 50, 50);
+
+    const result = computeEqualGapGuides([dragged], [E, F, L, R]);
+
+    expect(result.positions.get('d')).toEqual({ x: 152, y: 0 });
+    expect(result.guides.filter((g) => g.gap === 52)).toHaveLength(2);
+    expect(result.guides.some((g) => g.gap === 200)).toBe(false);
+  });
+
+  it('нет совпадения — зазор дальше порога, guides и positions пустые', () => {
+    const A = rect('A', 0, 0, 100, 100);
+    const B = rect('B', 300, 0, 100, 100); // gap A↔B = 200
+    const D = rect('D', 900, 0, 100, 100); // gap d↔D = 900-598=302, diff=102
+    const dragged = rect('d', 498, 0, 100, 100);
+
+    const result = computeEqualGapGuides([dragged], [A, B, D]);
+
+    expect(result.guides).toEqual([]);
+    expect(result.positions.size).toBe(0);
+  });
+
+  it('меньше 3 объектов на доске — нет эталонных зазоров, результат пустой', () => {
+    const A = rect('A', 0, 0, 100, 100);
+    const dragged = rect('d', 300, 0, 100, 100);
+
+    const result = computeEqualGapGuides([dragged], [A]);
+
+    expect(result.guides).toEqual([]);
+    expect(result.positions.size).toBe(0);
+  });
+
+  it('ось Y работает так же, как X (зеркально) — эталонный зазор по вертикали', () => {
+    // Эталон: A(0..100) и B(300..400) по Y, gap=200.
+    // d снизу от статичного D по вертикали, gapTop к D почти равен эталону.
+    const A = rect('A', 0, 0, 100, 100);
+    const B = rect('B', 0, 300, 100, 100);
+    const D = rect('D', 0, 800, 100, 100);
+    const dragged = rect('d', 0, 498, 100, 100);
+
+    const result = computeEqualGapGuides([dragged], [A, B, D]);
+
+    expect(result.positions.get('d')).toEqual({ x: 0, y: 500 });
+    expect(result.guides.every((g) => g.axis === 'vertical' && g.gap === 200)).toBe(true);
+  });
+
+  it('игнорирует соседей, не пересекающихся по перпендикулярной оси (разные «строки»/«столбцы»)', () => {
+    // D формально «справа» от d по X, но их Y-диапазоны не пересекаются —
+    // не сосед в этом смысле, gapRight не должен считаться вовсе.
+    const A = rect('A', 0, 0, 100, 100);
+    const B = rect('B', 300, 0, 100, 100); // gap A↔B = 200 (эталон)
+    const D = rect('D', 800, 5000, 100, 100); // далеко по Y — не «сосед» d
+    const dragged = rect('d', 498, 0, 100, 100);
+
+    const result = computeEqualGapGuides([dragged], [A, B, D]);
+
+    expect(result.guides).toEqual([]);
+    expect(result.positions.size).toBe(0);
   });
 });
