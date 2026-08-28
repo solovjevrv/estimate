@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
-import { TEAM_NAME_MAX_LENGTH } from '@poker/shared';
+import { TEAM_NAME_MAX_LENGTH } from '@estimate/shared';
 import { onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';

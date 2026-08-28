@@ -1,4 +1,4 @@
-import type { TeamRole } from '@poker/shared';
+import type { TeamRole } from '@estimate/shared';
 
 /** Цвет бейджа роли: админа выделяем, у рядовых ролей — нейтральный. */
 export function roleBadgeColor(role: TeamRole): 'primary' | 'neutral' {

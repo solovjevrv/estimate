@@ -12,7 +12,7 @@ import {
   type Room,
   type RoundHistoryEntry,
   tshirtLabel,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -632,7 +632,7 @@ let currentToken = 0;
 /** Гость называет имя один раз за вкладку — переживает перезагрузку, не переживает закрытие */
 function readStoredGuestName(): string {
   try {
-    return sessionStorage.getItem('poker:guest-name') ?? '';
+    return sessionStorage.getItem('estimate:guest-name') ?? '';
   } catch {
     return '';
   }
@@ -640,7 +640,7 @@ function readStoredGuestName(): string {
 
 function storeGuestName(name: string): void {
   try {
-    sessionStorage.setItem('poker:guest-name', name);
+    sessionStorage.setItem('estimate:guest-name', name);
   } catch {
     // Приватный режим браузера может запрещать хранилище — в рамках вкладки не критично
   }

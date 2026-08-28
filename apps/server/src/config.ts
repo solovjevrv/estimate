@@ -2,7 +2,7 @@ import { hkdfSync } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 
-import { AUTH_PROVIDERS, type AuthProvider } from '@poker/shared';
+import { AUTH_PROVIDERS, type AuthProvider } from '@estimate/shared';
 
 export interface OAuthCredentials {
   clientId: string;

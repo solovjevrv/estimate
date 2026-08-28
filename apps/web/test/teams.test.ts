@@ -1,4 +1,4 @@
-import type { TeamMember, TeamWithRole } from '@poker/shared';
+import type { TeamMember, TeamWithRole } from '@estimate/shared';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 

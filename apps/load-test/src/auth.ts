@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import fastifyJwt from '@fastify/jwt';
-import { ACCESS_COOKIE, TokenService } from '@poker/server/auth/testkit';
+import { ACCESS_COOKIE, TokenService } from '@estimate/server/auth/testkit';
 import Fastify from 'fastify';
 
 /**

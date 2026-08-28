@@ -1,7 +1,7 @@
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import type { JoinRoomResult, RoomState, WsAck } from '@poker/shared';
-import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
+import type { JoinRoomResult, RoomState, WsAck } from '@estimate/shared';
+import { WS_EVENTS, WS_SERVER_EVENTS } from '@estimate/shared';
 import { type Socket, io } from 'socket.io-client';
 
 import type { LatencyRecorder } from './metrics';

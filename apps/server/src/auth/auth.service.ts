@@ -3,7 +3,7 @@ import {
   type AuthUser,
   USER_JOB_TITLE_MAX_LENGTH,
   USER_NAME_MAX_LENGTH,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 import { UnauthorizedError, ValidationError } from '../errors';
 

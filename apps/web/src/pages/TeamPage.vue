@@ -9,7 +9,7 @@ import {
   type Room,
   type TeamMember,
   type TeamRole,
-} from '@poker/shared';
+} from '@estimate/shared';
 import { computed, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';

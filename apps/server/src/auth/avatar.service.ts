@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { AuthUser } from '@poker/shared';
+import type { AuthUser } from '@estimate/shared';
 import sharp from 'sharp';
 
 import { ValidationError } from '../errors';

@@ -14,8 +14,8 @@ import type {
   RoomState,
   RoundResult,
   WsAck,
-} from '@poker/shared';
-import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
+} from '@estimate/shared';
+import { WS_EVENTS, WS_SERVER_EVENTS } from '@estimate/shared';
 import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { type Socket, io as createClient } from 'socket.io-client';

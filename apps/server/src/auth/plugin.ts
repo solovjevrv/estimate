@@ -2,7 +2,7 @@ import fastifyCookie from '@fastify/cookie';
 import fastifyJwt from '@fastify/jwt';
 import fastifyOauth2, { type OAuth2Namespace } from '@fastify/oauth2';
 import fastifyRateLimit from '@fastify/rate-limit';
-import { AUTH_PROVIDERS, type AuthProvider } from '@poker/shared';
+import { AUTH_PROVIDERS, type AuthProvider } from '@estimate/shared';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import fp from 'fastify-plugin';
 
@@ -269,4 +269,4 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
   });
 }
 
-export const authPlugin = fp(authPluginImpl, { name: 'poker-auth' });
+export const authPlugin = fp(authPluginImpl, { name: 'estimate-auth' });

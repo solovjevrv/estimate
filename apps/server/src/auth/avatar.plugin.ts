@@ -2,7 +2,7 @@ import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 
 import fastifyMultipart from '@fastify/multipart';
-import { AVATAR_ALLOWED_MIME_TYPES, AVATAR_MAX_BYTES } from '@poker/shared';
+import { AVATAR_ALLOWED_MIME_TYPES, AVATAR_MAX_BYTES } from '@estimate/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
@@ -110,6 +110,6 @@ async function avatarPluginImpl(app: FastifyInstance, opts: AvatarPluginOptions)
 }
 
 export const avatarPlugin = fp(avatarPluginImpl, {
-  name: 'poker-avatar',
-  dependencies: ['poker-auth'],
+  name: 'estimate-avatar',
+  dependencies: ['estimate-auth'],
 });

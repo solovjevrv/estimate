@@ -18,8 +18,8 @@ import type {
   SubmitVotePayload,
   UpdateLinksPayload,
   WsAck,
-} from '@poker/shared';
-import { WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
+} from '@estimate/shared';
+import { WS_EVENTS, WS_SERVER_EVENTS } from '@estimate/shared';
 import { io, type Socket } from 'socket.io-client';
 
 /** Отказ сервера в ответ на событие: код тот же, что в REST (`conflict`, `forbidden`, ...) */

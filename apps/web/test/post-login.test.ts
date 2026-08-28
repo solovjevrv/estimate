@@ -1,4 +1,4 @@
-import type { AuthUser } from '@poker/shared';
+import type { AuthUser } from '@estimate/shared';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter, type Router } from 'vue-router';
@@ -7,7 +7,7 @@ import { createAppRouter, routes } from '../src/router';
 import { applyPostLoginRedirect } from '../src/router/post-login';
 import { useSessionStore } from '../src/stores/session';
 
-const REDIRECT_KEY = 'poker:post-login-redirect';
+const REDIRECT_KEY = 'estimate:post-login-redirect';
 
 /** Роутер без гарда — здесь проверяем только разбор отложенной цели */
 async function readyRouter(): Promise<Router> {

@@ -1,4 +1,4 @@
-import type { TeamRole } from '@poker/shared';
+import type { TeamRole } from '@estimate/shared';
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
 import type { TeamsService } from './teams.service';

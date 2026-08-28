@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 
-import { createDb } from '@poker/server/db';
+import { createDb } from '@estimate/server/db';
 import { migrate } from 'drizzle-orm/node-postgres/migrator';
 
 /** Накатывает миграции один раз перед всем прогоном — тесты сами БД не трогают */

@@ -21,7 +21,7 @@ services:
     build:
       context: .
       dockerfile: apps/server/Dockerfile
-    image: poker-server
+    image: estimate-server
     restart: unless-stopped
     environment:
       NODE_ENV: production
@@ -53,7 +53,7 @@ services:
       dockerfile: apps/web/Dockerfile
       args:
         APP_VERSION: ${APP_VERSION:-dev}
-    image: poker-web
+    image: estimate-web
     restart: unless-stopped
     ports:
       # nginx-unprivileged слушает 8080/8443 внутри контейнера (не может биндиться на <1024)

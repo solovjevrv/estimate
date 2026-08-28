@@ -55,4 +55,4 @@ async function docsPluginImpl(app: FastifyInstance): Promise<void> {
  * Документация API. Модуль подключается динамически: на проде документация
  * выключена, и тяжёлая страница Scalar не должна попадать в память процесса.
  */
-export const docsPlugin = fp(docsPluginImpl, { name: 'poker-docs' });
+export const docsPlugin = fp(docsPluginImpl, { name: 'estimate-docs' });

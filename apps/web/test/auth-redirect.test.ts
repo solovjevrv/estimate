@@ -44,7 +44,7 @@ describe('запоминание цели входа', () => {
   });
 
   it('не отдаёт адрес, если в хранилище оказался небезопасный', () => {
-    sessionStorage.setItem('poker:post-login-redirect', 'https://evil.com');
+    sessionStorage.setItem('estimate:post-login-redirect', 'https://evil.com');
 
     expect(takeRedirect()).toBeNull();
   });

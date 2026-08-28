@@ -11,7 +11,7 @@
 намеренно не подняты: цель прогона — WS-шлюз и БД под нагрузкой, а не TLS-терминация и
 раздача статики фронта — этот слой в замер не входит, см. `docs/load-test-report.md`.
 
-**Важно:** в файле явно задано `name: poker-loadtest` и сервисы названы `loadtest-*` —
+**Важно:** в файле явно задано `name: estimate-loadtest` и сервисы названы `loadtest-*` —
 без этого Compose в одной директории с основным `docker-compose.yml` считает одноимённые
 сервисы (`postgres`) одним и тем же и может пересоздать/снести dev-контейнер вместо
 своего собственного (см. комментарий в самом файле и `PROGRESS_ARCHIVE.md`, 6.3 — так и
@@ -37,7 +37,7 @@ docker compose -f docker-compose.loadtest.yml run --rm loadtest-server node dist
 # 3. Запустить нагрузку (значения по умолчанию — 10 комнат × 15 участников × 5 раундов)
 JWT_SECRET=<тот же LOADTEST_JWT_SECRET> \
 DATABASE_URL=postgres://loadtest:loadtest@localhost:5433/loadtest \
-  pnpm --filter @poker/load-test start
+  pnpm --filter @estimate/load-test start
 
 # 4. Остановить и снести стек вместе с данными
 docker compose -f docker-compose.loadtest.yml down -v
@@ -45,15 +45,15 @@ docker compose -f docker-compose.loadtest.yml down -v
 
 Параметры прогона — переменные окружения (`src/config.ts`):
 
-| Переменная                       | По умолчанию            | Смысл                                        |
-| -------------------------------- | ----------------------- | -------------------------------------------- |
-| `LOADTEST_SERVER_ORIGIN`         | `http://localhost:3001` | Куда бить REST/WS                            |
-| `LOADTEST_ROOMS`                 | `10`                    | Комнат одновременно                          |
-| `LOADTEST_PARTICIPANTS_PER_ROOM` | `15`                    | Участников на комнату (1 владелец + гости)   |
-| `LOADTEST_ROUNDS_PER_ROOM`       | `5`                     | Раундов голосования на комнату               |
-| `LOADTEST_VOTE_JITTER_MS`        | `300`                   | Разброс перед голосом — имитация живых людей |
-| `LOADTEST_SERVER_CONTAINER`      | `poker-server-loadtest` | Контейнер для `docker stats`                 |
-| `LOADTEST_SAMPLE_INTERVAL_MS`    | `500`                   | Как часто снимать ресурсы (мс)               |
+| Переменная                       | По умолчанию               | Смысл                                        |
+| -------------------------------- | -------------------------- | -------------------------------------------- |
+| `LOADTEST_SERVER_ORIGIN`         | `http://localhost:3001`    | Куда бить REST/WS                            |
+| `LOADTEST_ROOMS`                 | `10`                       | Комнат одновременно                          |
+| `LOADTEST_PARTICIPANTS_PER_ROOM` | `15`                       | Участников на комнату (1 владелец + гости)   |
+| `LOADTEST_ROUNDS_PER_ROOM`       | `5`                        | Раундов голосования на комнату               |
+| `LOADTEST_VOTE_JITTER_MS`        | `300`                      | Разброс перед голосом — имитация живых людей |
+| `LOADTEST_SERVER_CONTAINER`      | `estimate-server-loadtest` | Контейнер для `docker stats`                 |
+| `LOADTEST_SAMPLE_INTERVAL_MS`    | `500`                      | Как часто снимать ресурсы (мс)               |
 
 ## Что измеряется
 

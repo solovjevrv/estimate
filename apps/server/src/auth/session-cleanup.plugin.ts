@@ -38,5 +38,5 @@ async function sessionCleanupPluginImpl(
 }
 
 export const sessionCleanupPlugin = fp(sessionCleanupPluginImpl, {
-  name: 'poker-session-cleanup',
+  name: 'estimate-session-cleanup',
 });

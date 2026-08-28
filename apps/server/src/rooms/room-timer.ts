@@ -2,7 +2,7 @@ import {
   TIMER_DEFAULT_DURATION_SEC,
   TIMER_DURATION_PRESETS_SEC,
   type RoomTimerState,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 import { ValidationError } from '../errors';
 

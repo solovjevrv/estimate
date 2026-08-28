@@ -62,7 +62,7 @@ jobs:
             printf 'YANDEX_CLIENT_SECRET=%s\n' "$YANDEX_CLIENT_SECRET"
             printf 'SENTRY_DSN=%s\n' "$SENTRY_DSN"
           } | ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=10 \
-            "$SSH_USER@$SSH_HOST" 'cat > ~/poker-planing/.env && chmod 600 ~/poker-planing/.env'
+            "$SSH_USER@$SSH_HOST" 'cat > ~/estimate/.env && chmod 600 ~/estimate/.env'
 
       - name: Деплой
         env:
