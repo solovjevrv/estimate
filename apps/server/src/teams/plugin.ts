@@ -1,4 +1,4 @@
-import { TEAM_ROLES } from '@poker/shared';
+import { TEAM_ROLES } from '@estimate/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
@@ -417,6 +417,6 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
 }
 
 export const teamsPlugin = fp(teamsPluginImpl, {
-  name: 'poker-teams',
-  dependencies: ['poker-auth'],
+  name: 'estimate-teams',
+  dependencies: ['estimate-auth'],
 });

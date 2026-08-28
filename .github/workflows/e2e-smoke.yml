@@ -19,18 +19,18 @@ jobs:
       postgres:
         image: postgres:18-alpine
         env:
-          POSTGRES_USER: poker
-          POSTGRES_PASSWORD: poker
-          POSTGRES_DB: poker
+          POSTGRES_USER: estimate
+          POSTGRES_PASSWORD: estimate
+          POSTGRES_DB: estimate
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U poker -d poker"
+          --health-cmd "pg_isready -U estimate -d estimate"
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
     env:
-      DATABASE_URL: postgres://poker:poker@localhost:5432/poker
+      DATABASE_URL: postgres://estimate:estimate@localhost:5432/estimate
       # Гейт релиза не связан с реальным OAuth — фейковый, но валидный по длине секрет
       JWT_SECRET: e2e-smoke-secret-подставной-но-длиннее-32-символов
     steps:
@@ -50,13 +50,13 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Сборка сервера
-        run: pnpm --filter @poker/server build
+        run: pnpm --filter @estimate/server build
 
       - name: Установка браузера Playwright
-        run: pnpm --filter @poker/e2e exec playwright install --with-deps chromium
+        run: pnpm --filter @estimate/e2e exec playwright install --with-deps chromium
 
       - name: Smoke-тесты
-        run: pnpm --filter @poker/e2e test:smoke
+        run: pnpm --filter @estimate/e2e test:smoke
 
       - name: Загрузить отчёт при падении
         if: failure()

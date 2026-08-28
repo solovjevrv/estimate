@@ -45,4 +45,4 @@ async function healthPluginImpl(app: FastifyInstance): Promise<void> {
   );
 }
 
-export const healthPlugin = fp(healthPluginImpl, { name: 'poker-health' });
+export const healthPlugin = fp(healthPluginImpl, { name: 'estimate-health' });

@@ -48,7 +48,7 @@ export default defineConfig({
     },
     {
       // Дев-сервер веба — его прокси на /api и /socket.io избавляет от отдельного nginx в E2E
-      command: 'pnpm --filter @poker/web dev -- --port 5173 --strictPort',
+      command: 'pnpm --filter @estimate/web dev -- --port 5173 --strictPort',
       cwd: '../..',
       url: WEB_ORIGIN,
       reuseExistingServer: !process.env.CI,

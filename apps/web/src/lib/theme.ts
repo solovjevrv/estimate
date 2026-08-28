@@ -3,7 +3,7 @@ import { ref, watch } from 'vue';
 
 export type ThemeMode = 'light' | 'dark';
 
-const STORAGE_KEY = 'poker:theme';
+const STORAGE_KEY = 'estimate:theme';
 
 function isThemeMode(value: string | null): value is ThemeMode {
   return value === 'light' || value === 'dark';

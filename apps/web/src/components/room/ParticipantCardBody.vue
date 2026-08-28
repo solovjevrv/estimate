@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { REACTION_EMOJIS, type Participant, type ReactionEmoji } from '@poker/shared';
+import { REACTION_EMOJIS, type Participant, type ReactionEmoji } from '@estimate/shared';
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 

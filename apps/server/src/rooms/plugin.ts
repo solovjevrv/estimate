@@ -1,5 +1,5 @@
 import fastifyRateLimit from '@fastify/rate-limit';
-import { ROOM_NAME_MAX_LENGTH } from '@poker/shared';
+import { ROOM_NAME_MAX_LENGTH } from '@estimate/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
@@ -386,6 +386,6 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
 }
 
 export const roomsPlugin = fp(roomsPluginImpl, {
-  name: 'poker-rooms',
-  dependencies: ['poker-auth'],
+  name: 'estimate-rooms',
+  dependencies: ['estimate-auth'],
 });

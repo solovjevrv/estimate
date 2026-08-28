@@ -1,5 +1,5 @@
 /** Создание и архивация комнат: личных (без команды) и от лица команды. */
-import type { Room, RoomStats } from '@poker/shared';
+import type { Room, RoomStats } from '@estimate/shared';
 import { defineStore } from 'pinia';
 
 import { api } from '../lib/api';

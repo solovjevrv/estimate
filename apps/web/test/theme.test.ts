@@ -49,7 +49,7 @@ describe('тема оформления', () => {
     first.theme.value = 'dark';
     await Promise.resolve();
 
-    expect(localStorage.getItem('poker:theme')).toBe('dark');
+    expect(localStorage.getItem('estimate:theme')).toBe('dark');
 
     vi.resetModules();
     stubMatchMedia(false);

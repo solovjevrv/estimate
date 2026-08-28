@@ -3,7 +3,7 @@
  */
 import { randomUUID } from 'node:crypto';
 
-import type { Room, Round } from '@poker/shared';
+import type { Room, Round } from '@estimate/shared';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { UsersRepository } from '../src/auth';

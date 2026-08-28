@@ -33,7 +33,7 @@ export function loadConfig(): LoadTestConfig {
     serverOrigin: process.env.LOADTEST_SERVER_ORIGIN ?? 'http://localhost:3001',
     databaseUrl: requireEnv('DATABASE_URL'),
     jwtSecret: requireEnv('JWT_SECRET'),
-    containerName: process.env.LOADTEST_SERVER_CONTAINER ?? 'poker-server-loadtest',
+    containerName: process.env.LOADTEST_SERVER_CONTAINER ?? 'estimate-server-loadtest',
     rooms: envInt('LOADTEST_ROOMS', 10),
     participantsPerRoom: envInt('LOADTEST_PARTICIPANTS_PER_ROOM', 15),
     roundsPerRoom: envInt('LOADTEST_ROUNDS_PER_ROOM', 5),

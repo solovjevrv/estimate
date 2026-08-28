@@ -66,7 +66,7 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
             instance.log.warn({ err }, 'Документация API недоступна в этой сборке');
           }
         },
-        { name: 'poker-docs-loader' },
+        { name: 'estimate-docs-loader' },
       ),
     );
   }

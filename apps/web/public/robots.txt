@@ -7,4 +7,4 @@ Disallow: /profile
 Disallow: /invite/
 Disallow: /rooms/
 
-Sitemap: https://pokerplan.solovyovdev.ru:3000/sitemap.xml
+Sitemap: https://estimate.solovyovdev.ru/sitemap.xml

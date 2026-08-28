@@ -2,7 +2,7 @@
 # Деплой на сервере. Запускается CD-джобой по SSH (или вручную) из любой директории.
 set -euo pipefail
 
-APP_DIR="$HOME/poker-planing"
+APP_DIR="$HOME/estimate"
 COMPOSE="docker compose -f docker-compose.prod.yml"
 BRANCH="${DEPLOY_BRANCH:-main}"
 

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui';
-import type { Participant, ReactionEmoji } from '@poker/shared';
+import type { Participant, ReactionEmoji } from '@estimate/shared';
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 

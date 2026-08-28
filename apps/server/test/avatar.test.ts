@@ -10,8 +10,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import type { AuthUser } from '@poker/shared';
-import { AVATAR_MAX_BYTES } from '@poker/shared';
+import type { AuthUser } from '@estimate/shared';
+import { AVATAR_MAX_BYTES } from '@estimate/shared';
 import { inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import sharp from 'sharp';
@@ -82,7 +82,7 @@ describeDb('загрузка аватарки', () => {
 
   beforeAll(async () => {
     ({ db, pool } = createDb(databaseUrl as string));
-    avatarsDir = mkdtempSync(join(tmpdir(), 'poker-avatars-'));
+    avatarsDir = mkdtempSync(join(tmpdir(), 'estimate-avatars-'));
     app = buildApp({ db, auth: authConfig, avatarsDir });
     await app.ready();
   });

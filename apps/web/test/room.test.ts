@@ -1,5 +1,5 @@
-import type { JoinRoomResult, Room, RoomState, RoomTimerState, Round } from '@poker/shared';
-import { TIMER_DEFAULT_DURATION_SEC, WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
+import type { JoinRoomResult, Room, RoomState, RoomTimerState, Round } from '@estimate/shared';
+import { TIMER_DEFAULT_DURATION_SEC, WS_EVENTS, WS_SERVER_EVENTS } from '@estimate/shared';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 

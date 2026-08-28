@@ -1,4 +1,4 @@
-import type { Reaction, ReactionEmoji } from '@poker/shared';
+import type { Reaction, ReactionEmoji } from '@estimate/shared';
 
 /**
  * Реакции-эмодзи на карточках участников (10.10). Живут в памяти процесса на

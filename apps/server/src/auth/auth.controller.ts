@@ -1,5 +1,5 @@
 import type { OAuth2Namespace } from '@fastify/oauth2';
-import type { AuthProvider } from '@poker/shared';
+import type { AuthProvider } from '@estimate/shared';
 import type { FastifyReply, FastifyRequest, RouteHandlerMethod } from 'fastify';
 
 import type { AuthConfig } from '../config';

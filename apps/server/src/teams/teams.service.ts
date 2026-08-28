@@ -7,7 +7,7 @@ import {
   type TeamRole,
   type TeamWithRole,
   hasTeamRole,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 import { type Db, isForeignKeyViolation, isUniqueViolation } from '../db';
 import {

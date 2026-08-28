@@ -1,5 +1,5 @@
 import type { ProviderConfiguration } from '@fastify/oauth2';
-import type { AuthProvider } from '@poker/shared';
+import type { AuthProvider } from '@estimate/shared';
 
 /** Профиль, приведённый к единому виду независимо от провайдера */
 export interface OAuthProfile {

@@ -13,8 +13,8 @@ import type {
   RoomTimerState,
   Round,
   RoundResult,
-} from '@poker/shared';
-import { TIMER_DEFAULT_DURATION_SEC, WS_EVENTS, WS_SERVER_EVENTS } from '@poker/shared';
+} from '@estimate/shared';
+import { TIMER_DEFAULT_DURATION_SEC, WS_EVENTS, WS_SERVER_EVENTS } from '@estimate/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 
@@ -25,7 +25,7 @@ import { createSocket, emitWithAck, type PokerSocket } from '../lib/socket';
  * комнату новым человеком и потеряет свой голос. Держим по комнате отдельно.
  */
 function guestTokenKey(roomId: string): string {
-  return `poker:guest:${roomId}`;
+  return `estimate:guest:${roomId}`;
 }
 
 function readGuestToken(roomId: string): string | undefined {

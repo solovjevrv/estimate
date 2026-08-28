@@ -20,7 +20,7 @@ import {
   TIMER_DEFAULT_DURATION_SEC,
   TSHIRT_DECK,
   hasTeamRole,
-} from '@poker/shared';
+} from '@estimate/shared';
 
 import { UsersRepository } from '../auth';
 import type { Db } from '../db';

@@ -16,7 +16,7 @@ import {
   type SubmitVotePayload,
   type UpdateLinksPayload,
   type WsAck,
-} from '@poker/shared';
+} from '@estimate/shared';
 import type { FastifyBaseLogger } from 'fastify';
 import type { Socket } from 'socket.io';
 

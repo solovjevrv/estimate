@@ -1,5 +1,5 @@
 {
-  "name": "@poker/server",
+  "name": "@estimate/server",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -35,7 +35,7 @@
     "@fastify/oauth2": "^8.2.0",
     "@fastify/rate-limit": "^11.1.0",
     "@fastify/swagger": "^9.8.1",
-    "@poker/shared": "workspace:*",
+    "@estimate/shared": "workspace:*",
     "@scalar/fastify-api-reference": "^1.63.0",
     "@sentry/node": "^10.69.0",
     "drizzle-orm": "^0.45.2",
