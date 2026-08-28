@@ -405,6 +405,7 @@ const getBoardZIndex = (): { max: number; min: number } =>
 // а события Vue Flow (node-click и т.д.) — к методам `selection.*`.
 const selection = useBoardSelection({
   canEdit: () => props.canEdit,
+  isDragging: () => dragIsDragging.value,
   getItems: () => props.items,
   getEdges: () => getEdges.value as BoardSelectionEdge[],
   getNodes: () => getNodes.value as BoardSelectionNode[],

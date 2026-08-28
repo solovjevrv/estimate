@@ -14,6 +14,20 @@
  * same-type: лево к левому, центр к центру, право к правому — это предсказуемо
  * и не создаёт шумных ложных срабатываний (как «лево к правому» вблизи другого
  * элемента).
+ *
+ * Стыковка край-в-край (22.7, задача из беклога, дополнена 28.08.2026): помимо
+ * same-type сравнения выше, отдельно сравниваем ПРОТИВОПОЛОЖНЫЕ края — правый
+ * край перетаскиваемого с левым краем статичного (и наоборот), низ с верхом
+ * (и наоборот) — это и есть «состыковать впритык». Точно та же семантика, что
+ * у same-type: чистое сравнение точки по одной оси, БЕЗ требования физического
+ * соседства по перпендикулярной оси (первая попытка добавить гейт по
+ * `overlapsY`/`overlapsX` не давала стыковаться объектам, чьи центры хоть
+ * немного разъехались по Y/X — не то поведение, которого ожидает пользователь
+ * от «выравнивания», и не то, как ведут себя same-type ключи выше). Конкурирует
+ * с same-type за тот же best-match-per-axis (побеждает наименьший diff — см.
+ * `bestXDiff`/`bestYDiff` ниже), а не показывается параллельно: элемент не
+ * может одновременно выравниваться по left-left И стыковаться right-left по
+ * одной оси.
  */
 
 /** Порог притягивания в пикселях экрана (переводится в canvas координаты вызывающим кодом) */
@@ -24,6 +38,25 @@ export type SnapAlignKeyY = 'top' | 'center' | 'bottom';
 
 const X_KEYS: readonly SnapAlignKeyX[] = ['left', 'center', 'right'];
 const Y_KEYS: readonly SnapAlignKeyY[] = ['top', 'center', 'bottom'];
+
+/** Пары [край d, край s] для сравнения при move (22.7 добавил последние два —
+ * стыковку край-в-край, same-type идут первыми ради приоритета при равных diff,
+ * см. пояснение про порядок ниже). Центр в стыковке не участвует — «центр
+ * коснулся края» не состыковка. */
+const X_MATCH_PAIRS: readonly (readonly [SnapAlignKeyX, SnapAlignKeyX])[] = [
+  ['left', 'left'],
+  ['center', 'center'],
+  ['right', 'right'],
+  ['right', 'left'], // правый край d впритык к левому краю s (d слева от s)
+  ['left', 'right'], // левый край d впритык к правому краю s (d справа от s)
+];
+const Y_MATCH_PAIRS: readonly (readonly [SnapAlignKeyY, SnapAlignKeyY])[] = [
+  ['top', 'top'],
+  ['center', 'center'],
+  ['bottom', 'bottom'],
+  ['bottom', 'top'], // низ d впритык к верху s (d сверху от s)
+  ['top', 'bottom'], // верх d впритык к низу s (d снизу от s)
+];
 
 /** Все точки имеют одинаковый приоритет: при равных расстояниях выбирается
  * первая в массиве (left/top), что позволяет snap по краям работать для
@@ -148,12 +181,12 @@ export function computeSnapGuides(
 
     for (const s of staticNodes) {
       if (s.id === d.id) continue;
-      for (const xKey of X_KEYS) {
-        const diff = Math.abs(xOf(d, xKey) - xOf(s, xKey));
+      for (const [dKey, sKey] of X_MATCH_PAIRS) {
+        const diff = Math.abs(xOf(d, dKey) - xOf(s, sKey));
         if (diff < threshold && diff < bestXDiff) {
           bestXDiff = diff;
-          // Сдвигаем d так, чтобы её xKey совпала с sVal: newX = sVal - (xOf(d, xKey) - d.x)
-          snapX = xOf(s, xKey) - (xOf(d, xKey) - d.x);
+          // Сдвигаем d так, чтобы её dKey совпала с sVal: newX = sVal - (xOf(d, dKey) - d.x)
+          snapX = xOf(s, sKey) - (xOf(d, dKey) - d.x);
         }
       }
     }
@@ -164,11 +197,11 @@ export function computeSnapGuides(
 
     for (const s of staticNodes) {
       if (s.id === d.id) continue;
-      for (const yKey of Y_KEYS) {
-        const diff = Math.abs(yOf(d, yKey) - yOf(s, yKey));
+      for (const [dKey, sKey] of Y_MATCH_PAIRS) {
+        const diff = Math.abs(yOf(d, dKey) - yOf(s, sKey));
         if (diff < threshold && diff < bestYDiff) {
           bestYDiff = diff;
-          snapY = yOf(s, yKey) - (yOf(d, yKey) - d.y);
+          snapY = yOf(s, sKey) - (yOf(d, dKey) - d.y);
         }
       }
     }
@@ -187,9 +220,9 @@ export function computeSnapGuides(
       const correctedD = { ...d, x: snapX };
       for (const s of staticNodes) {
         if (s.id === d.id) continue;
-        for (const xKey of X_KEYS) {
-          const sVal = xOf(s, xKey);
-          if (Math.abs(xOf(correctedD, xKey) - sVal) < threshold) {
+        for (const [dKey, sKey] of X_MATCH_PAIRS) {
+          const sVal = xOf(s, sKey);
+          if (Math.abs(xOf(correctedD, dKey) - sVal) < threshold) {
             accumulateGuide(vGuides, sVal, s.id, [d.y, d.y + d.height], [s.y, s.y + s.height]);
           }
         }
@@ -199,9 +232,9 @@ export function computeSnapGuides(
       const correctedD = { ...d, y: snapY };
       for (const s of staticNodes) {
         if (s.id === d.id) continue;
-        for (const yKey of Y_KEYS) {
-          const sVal = yOf(s, yKey);
-          if (Math.abs(yOf(correctedD, yKey) - sVal) < threshold) {
+        for (const [dKey, sKey] of Y_MATCH_PAIRS) {
+          const sVal = yOf(s, sKey);
+          if (Math.abs(yOf(correctedD, dKey) - sVal) < threshold) {
             accumulateGuide(hGuides, sVal, s.id, [d.x, d.x + d.width], [s.x, s.x + s.width]);
           }
         }
