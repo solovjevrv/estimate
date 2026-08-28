@@ -615,7 +615,7 @@ describeDb('WS-канал досок', () => {
       // Барьер вместо произвольной паузы: следующее событие того же сокета с ack
       // гарантированно обработано сервером после awareness — порядок доставки
       // для одного сокета сохраняется
-       await joinBoard(guestClient, boardId);
+      await joinBoard(guestClient, boardId);
 
       expect(received).toBe(false);
     });
@@ -687,29 +687,77 @@ describeDb('WS-канал досок', () => {
       const fresh = await joinBoard(connect(owner), boardId, undefined, true);
       expect(fresh.snapshot?.items).toHaveLength(1);
       expect(fresh.snapshot?.items[0]!.content.type).toBe('diagram');
+    });
 
-      // Новый клиент без supportsDiagrams тоже видит элемент в снимке (данные
-      // на доске не исчезают — сервер просто не рассылает diagram-операции
-      // в catchup новым клиентам без поддержки, но snapshot содержит всё)
-      const oldClient = await joinBoard(connect(owner), boardId);
-      expect(oldClient.snapshot?.items).toHaveLength(1);
-      expect(oldClient.snapshot?.items[0]!.content.type).toBe('diagram');
+    it('клиент без supportsDiagrams не может войти на доску, где уже есть diagram-элемент (снимок)', async () => {
+      const owner = await newUser('diagram-join-reject-snapshot-owner');
+      const boardId = await newBoard(owner);
+      const creator = connect(owner);
+      await joinBoard(creator, boardId, undefined, true);
+
+      await emit<ApplyBoardOpsResult>(creator, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: 'd4-snap', item: diagramItem() }],
+      });
+
+      // Легаси-клиент не должен получить снимок с элементом, который не умеет
+      // рендерить — join должен быть отклонён целиком, а не молча отдать снимок
+      const oldClient = connect(owner);
+      const ack = await emit<JoinBoardResult>(oldClient, BOARD_WS_EVENTS.JOIN, { boardId });
+
+      expect(ack.ok).toBe(false);
+      if (!ack.ok) expect(ack.error).toBe('bad_request');
+    });
+
+    it('клиент без supportsDiagrams не может войти на доску, где diagram-элемент есть только в буфере догона', async () => {
+      const owner = await newUser('diagram-join-reject-catchup-owner');
+      const boardId = await newBoard(owner);
+      const creator = connect(owner);
+      const firstJoin = await joinBoard(creator, boardId, undefined, true);
+
+      await emit<ApplyBoardOpsResult>(creator, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: 'd4-catchup', item: diagramItem() }],
+      });
+
+      // Легаси-клиент реконнектится с sinceRevision, покрываемой кольцевым
+      // буфером (не 0) — путь catchup, не snapshot; должен быть так же отклонён
+      const oldClient = connect(owner);
+      const ack = await emit<JoinBoardResult>(oldClient, BOARD_WS_EVENTS.JOIN, {
+        boardId,
+        sinceRevision: firstJoin.revision,
+      });
+
+      expect(ack.ok).toBe(false);
+      if (!ack.ok) expect(ack.error).toBe('bad_request');
+    });
+
+    it('капабельный клиент не может создать diagram-элемент, пока на доске есть legacy-участник', async () => {
+      const owner = await newUser('diagram-mixed-presence-owner');
+      const boardId = await newBoard(owner);
+      const capableSender = connect(owner);
+      const legacyViewer = connect(owner);
+      await joinBoard(capableSender, boardId, undefined, true);
+      // Легаси-участник заходит на ЧИСТУЮ доску (diagram-элементов ещё нет) —
+      // его собственный join не отклоняется, но его присутствие теперь должно
+      // блокировать чужие diagram-операции на этой доске
+      await joinBoard(legacyViewer, boardId);
+
+      const ack = await emit<ApplyBoardOpsResult>(capableSender, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: 'd-mixed', item: diagramItem() }],
+      });
+
+      expect(ack.ok).toBe(false);
+      if (!ack.ok) expect(ack.error).toBe('bad_request');
     });
 
     it('patch diagram-контента от клиента без поддержки отклоняется', async () => {
       const owner = await newUser('diagram-patch-reject-owner');
       const boardId = await newBoard(owner);
-      const creator = connect(owner);
-      await joinBoard(creator, boardId, undefined, true);
-
-      // Создаём diagram элемент через поддерживающего клиента
-      const item = diagramItem();
-      await emit<ApplyBoardOpsResult>(creator, BOARD_WS_EVENTS.APPLY, {
-        ops: [{ type: 'item.create', clientOpId: 'd5', item }],
-      });
-
-      // Новый клиент без поддержки пытается закоммитить патч содержимого diagram
       const oldClient = connect(owner);
+      // Легаси-клиент один на чистой доске (diagram-элементов ещё нет) — сам
+      // join проходит; проверяем именно item.patch-ветку opsContainDiagram
+      // (у item.create — уже отдельный тест выше). Id элемента может не
+      // существовать — блокировка срабатывает раньше, чем сервис вообще
+      // посмотрел бы на состояние доски.
       await joinBoard(oldClient, boardId);
 
       const ack = await emit<ApplyBoardOpsResult>(oldClient, BOARD_WS_EVENTS.APPLY, {
@@ -717,7 +765,7 @@ describeDb('WS-канал досок', () => {
           {
             type: 'item.patch',
             clientOpId: 'd5-patch',
-            id: item.id,
+            id: randomUUID(),
             patch: { content: { type: 'diagram', notation: 'uml', kind: 'actor', text: 'Admin' } },
           },
         ],

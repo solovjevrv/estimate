@@ -92,7 +92,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
   pickImageFile: () => Promise<File | null>;
   uploadImage: (file: File) => Promise<UploadedBoardImage | null>;
 
-   createSticky: (center: { x: number; y: number }) => void;
+  createSticky: (center: { x: number; y: number }) => void;
   createShape: (center: { x: number; y: number }) => void;
   createText: (center: { x: number; y: number }) => void;
   createFrame: (center: { x: number; y: number }) => void;
@@ -100,7 +100,11 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
   createEmojiAtCenter: (emoji: EmojiSequence) => void;
   createStickerAtCenter: (pack: string, id: string, format?: PersonalStickerFormat) => void;
   createGiphyAtCenter: (gif: GiphyGifSummary) => void;
-  createDiagram: (center: { x: number; y: number }, notation: BoardDiagramNotation, kind: BoardDiagramKind) => void;
+  createDiagram: (
+    center: { x: number; y: number },
+    notation: BoardDiagramNotation,
+    kind: BoardDiagramKind,
+  ) => void;
 
   cancelPendingEdit: () => void;
 

@@ -46,10 +46,7 @@ import {
 /** Стикер/фигура/текст/диаграмма — типы с текстовым содержимым (runs/text) */
 function isTextBearingContent(
   content: BoardItemContent,
-): content is Extract<
-  BoardItemContent,
-  { type: 'sticky' | 'shape' | 'text' | 'diagram' }
-> {
+): content is Extract<BoardItemContent, { type: 'sticky' | 'shape' | 'text' | 'diagram' }> {
   return (
     content.type === 'sticky' ||
     content.type === 'shape' ||

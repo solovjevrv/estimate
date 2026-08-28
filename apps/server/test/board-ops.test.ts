@@ -2411,7 +2411,7 @@ describe('applyBoardOp — фреймы и группы (14.3)', () => {
     expect(state.items.get(childId)!.parentId).toBeNull();
   });
 
-   it('patch content.type НЕ осирает, если тип остаётся контейнером (frame → group)', () => {
+  it('patch content.type НЕ осирает, если тип остаётся контейнером (frame → group)', () => {
     const state = emptyState();
     const frameId = randomUUID();
     const childId = randomUUID();
@@ -2443,7 +2443,12 @@ describe('applyBoardOp — диаграммные элементы (23.1)', () =
     applyBoardOp(state, diagramCreateOp(id, 'uml', 'actor', 'Customer'), BOARD_ID, ACTOR);
 
     const item = state.items.get(id)!;
-    expect(item.content).toEqual({ type: 'diagram', notation: 'uml', kind: 'actor', text: 'Customer' });
+    expect(item.content).toEqual({
+      type: 'diagram',
+      notation: 'uml',
+      kind: 'actor',
+      text: 'Customer',
+    });
   });
 
   it('создаёт BPMN task', () => {
@@ -2587,7 +2592,9 @@ describe('applyBoardOp — диаграммные элементы (23.1)', () =
           type: 'item.patch',
           clientOpId: randomUUID(),
           id,
-           patch: { content: { type: 'diagram', notation: 'uml', kind: 'task', text: 'X' } as never },
+          patch: {
+            content: { type: 'diagram', notation: 'uml', kind: 'task', text: 'X' } as never,
+          },
         },
         BOARD_ID,
         ACTOR,
@@ -2608,5 +2615,101 @@ describe('applyBoardOp — диаграммные элементы (23.1)', () =
     const item = state.items.get(id)!;
     expect(item.parentId).toBe(frameId);
     expect(item.content.type).toBe('diagram');
+  });
+
+  it('сохраняет attributes/operations у UML class — регрессия на потерю структурных полей при сборке clean-объекта', () => {
+    const state = emptyState();
+    // width/height по умолчанию у diagramCreateOp (120×120) годятся для actor,
+    // но не для class (per-kind minWidth 140 из DIAGRAM_NODE_SPECS) — задаём
+    // геометрию в границах класса явно
+    const op = diagramCreateOp(randomUUID(), 'uml', 'class', 'Order', 0, 0, 220, 160);
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'diagram',
+      notation: 'uml',
+      kind: 'class',
+      text: 'Order',
+      attributes: [{ name: 'id', visibility: 'private', dataType: 'string' }],
+      operations: [],
+    };
+
+    applyBoardOp(state, op, BOARD_ID, ACTOR);
+
+    const item = state.items.get((op as { item: { id: string } }).item.id)!;
+    expect(item.content).toEqual({
+      type: 'diagram',
+      notation: 'uml',
+      kind: 'class',
+      text: 'Order',
+      attributes: [{ name: 'id', visibility: 'private', dataType: 'string' }],
+      operations: [],
+    });
+  });
+
+  it('отклоняет UML class без attributes/operations (обязательны, не просто игнорируются)', () => {
+    const state = emptyState();
+    const op = diagramCreateOp(randomUUID(), 'uml', 'class', 'Order', 0, 0, 220, 160);
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('сохраняет eventDefinition у BPMN-события — регрессия на потерю структурных полей', () => {
+    const state = emptyState();
+    const op = diagramCreateOp(randomUUID(), 'bpmn', 'event-start', 'Начало');
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'diagram',
+      notation: 'bpmn',
+      kind: 'event-start',
+      text: 'Начало',
+      eventDefinition: 'timer',
+    };
+
+    applyBoardOp(state, op, BOARD_ID, ACTOR);
+
+    const item = state.items.get((op as { item: { id: string } }).item.id)!;
+    expect(item.content).toEqual({
+      type: 'diagram',
+      notation: 'bpmn',
+      kind: 'event-start',
+      text: 'Начало',
+      eventDefinition: 'timer',
+    });
+  });
+
+  it('отклоняет BPMN event-end с недопустимым для него eventDefinition (timer)', () => {
+    const state = emptyState();
+    const op = diagramCreateOp(randomUUID(), 'bpmn', 'event-end', 'Конец');
+    (op as { item: { content: unknown } }).item.content = {
+      type: 'diagram',
+      notation: 'bpmn',
+      kind: 'event-end',
+      text: 'Конец',
+      eventDefinition: 'timer',
+    };
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('отклоняет diagram-элемент шире per-kind maxWidth из DiagramNodeSpec, даже в пределах общего BOARD_ITEM_MAX_SIZE', () => {
+    const state = emptyState();
+    // actor: maxWidth 200 (DIAGRAM_NODE_SPECS) — 500 в пределах общего лимита,
+    // но за пределами per-kind спеки
+    const op = diagramCreateOp(randomUUID(), 'uml', 'actor', 'Customer', 0, 0, 500, 300);
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('отклоняет diagram-элемент уже per-kind minWidth из DiagramNodeSpec', () => {
+    const state = emptyState();
+    // actor: minWidth 40 — 10 меньше per-kind минимума, хотя ≥1 (общий минимум)
+    const op = diagramCreateOp(randomUUID(), 'uml', 'actor', 'Customer', 0, 0, 10, 80);
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).toThrow(ValidationError);
+  });
+
+  it('принимает diagram-элемент в границах per-kind DiagramNodeSpec другого kind (pool — крупные размеры)', () => {
+    const state = emptyState();
+    const op = diagramCreateOp(randomUUID(), 'bpmn', 'pool', 'Заказ', 0, 0, 640, 220);
+
+    expect(() => applyBoardOp(state, op, BOARD_ID, ACTOR)).not.toThrow();
   });
 });

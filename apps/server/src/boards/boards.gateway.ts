@@ -64,14 +64,19 @@ export class BoardsGateway {
           if (!ops || ops.length === 0) {
             throw new ValidationError('Пустой список операций');
           }
-          // Rollout-совместимость (23.2): клиенты без поддержки диаграмм не
-          // должны создавать/patchить элементы diagram. Сервер отбрасывает
-          // такие батчи, пока фича не развёрнута для всех — это не
-          // data-loss, а защита от «потерянного обновления» на старых клиентах,
-          // которым сервер просто не рассылает diagram-операции в catchup/snapshot
-          // (они сами по себе проходят валидацию через validateContent).
-          if (!identity.supportsDiagrams && this.opsContainDiagram(ops)) {
-            throw new ValidationError('Элементы диаграмм не поддерживаются этим клиентом');
+          // Rollout-совместимость (23.2): проверяем не только самого
+          // отправителя, а ВСЕХ участников, сейчас подключённых к доске —
+          // иначе клиент с поддержкой диаграмм мог бы создать diagram-элемент,
+          // пока на той же доске сидит legacy-клиент без поддержки, и тот
+          // получил бы его broadcast'ом (io.to(boardId).emit ниже шлёт всем),
+          // не умея его отрендерить.
+          if (
+            this.opsContainDiagram(ops) &&
+            this.presence.list(boardId).some((participant) => !participant.supportsDiagrams)
+          ) {
+            throw new ValidationError(
+              'На доске есть участник со старой версией страницы — элементы диаграмм временно недоступны',
+            );
           }
           const { revision, ops: committed } = await this.service.applyOps(identity, boardId, ops);
           const batch: BoardOpsBatch = { revision, ops: committed };
@@ -144,6 +149,25 @@ export class BoardsGateway {
       supportsDiagrams: payload.supportsDiagrams,
     });
 
+    // Rollout-совместимость (23.2) решается ДО socket.join/presence.join —
+    // отклонённый (legacy) клиент не должен успеть попасть в presence и
+    // рассылки, которые тут же пришлось бы откатывать. Проверяем то же
+    // содержимое, которое вот-вот отдадим этому сокету: снапшот (первый вход
+    // или разрыв больше буфера) либо батчи догона (реконнект в пределах
+    // BOARD_RING_BUFFER_SIZE) — diagram-элемент может прийти любым из путей.
+    const sinceRevision = payload.sinceRevision;
+    const buffered =
+      sinceRevision != null ? this.catchupSince(payload.boardId, sinceRevision) : null;
+    const snapshot = buffered
+      ? null
+      : await this.service.getSnapshot(socket.data.userId, payload.boardId);
+    const hasDiagramContent = buffered
+      ? this.batchesContainDiagram(buffered.ops)
+      : (snapshot?.items.some((item) => item.content.type === 'diagram') ?? false);
+    if (!identity.supportsDiagrams && hasDiagramContent) {
+      throw new ValidationError('На доске есть элементы новой версии — обновите страницу');
+    }
+
     // Из прошлой доски выходим полностью, иначе сокет продолжит получать её рассылки
     const previousBoard = this.presence.scopeOf(socket.id);
     if (previousBoard && previousBoard !== payload.boardId) {
@@ -161,9 +185,6 @@ export class BoardsGateway {
     }
     this.broadcastPresence(io, payload.boardId);
 
-    const sinceRevision = payload.sinceRevision;
-    const buffered =
-      sinceRevision != null ? this.catchupSince(payload.boardId, sinceRevision) : null;
     if (buffered) {
       return {
         revision: buffered.revision,
@@ -175,9 +196,8 @@ export class BoardsGateway {
       };
     }
 
-    const snapshot = await this.service.getSnapshot(socket.data.userId, payload.boardId);
     return {
-      revision: snapshot.board.revision,
+      revision: snapshot!.board.revision,
       snapshot,
       catchup: null,
       access,
@@ -214,6 +234,22 @@ export class BoardsGateway {
       }
       return false;
     });
+  }
+
+  /**
+   * Батчи догона несут уже закоммиченные операции (`BoardCommittedOp`) — у
+   * item.create И item.patch там всегда полный `item` (не патч), поэтому
+   * достаточно одной проверки `op.item.content.type`, в отличие от
+   * `opsContainDiagram` выше, которая разбирает клиентский `BoardOp`.
+   */
+  private batchesContainDiagram(batches: BoardOpsBatch[]): boolean {
+    return batches.some((batch) =>
+      batch.ops.some(
+        (op) =>
+          (op.type === 'item.create' || op.type === 'item.patch') &&
+          op.item.content.type === 'diagram',
+      ),
+    );
   }
 
   private pushToBuffer(boardId: string, batch: BoardOpsBatch): void {

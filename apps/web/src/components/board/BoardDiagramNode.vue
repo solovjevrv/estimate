@@ -1,10 +1,5 @@
 <script setup lang="ts">
-import {
-  type BoardDiagramContent,
-  type BoardDiagramKind,
-  type BoardDiagramNotation,
-  getDiagramNodeSpec,
-} from '@estimate/shared';
+import { type BoardDiagramContent, getDiagramNodeSpec } from '@estimate/shared';
 import type { BoardItem } from '@estimate/shared';
 import { Handle, Position, type NodeProps } from '@vue-flow/core';
 import { NodeResizer } from '@vue-flow/node-resizer';
@@ -53,14 +48,14 @@ const {
   canEdit,
   isSelected: toRef(props, 'selected'),
   content,
-  buildContent: (text, runs) =>
-    ({
-      type: 'diagram',
-      notation: content.value.notation,
-      kind: content.value.kind,
-      text,
-      ...(runs ? { runs } : {}),
-    }) as BoardDiagramContent,
+  // Сохраняем все diagram-специфичные поля (attributes/operations/
+  // eventDefinition у будущих 23.3/23.4 kind) — content патчится целиком
+  // (23.1), пересборка только из type/notation/kind/text теряла бы их.
+  buildContent: (text, runs) => ({
+    ...content.value,
+    text,
+    ...(runs ? { runs } : {}),
+  }),
   // lockAspectRatio читается динамически из DiagramNodeSpec (23.1), а не
   // жёстко зашит — actor требует пропорций, task — нет
   lockAspectRatio: spec.value?.lockAspectRatio ?? false,
