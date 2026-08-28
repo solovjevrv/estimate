@@ -105,6 +105,33 @@ function guideKey(pos: number): number {
  * @param staticNodes Статичные (неперетаскиваемые) элементы
  * @param threshold Порог в canvas-координатах
  */
+/**
+ * Добавляет/расширяет направляющую в карте по её позиции — общая логика,
+ * иначе повторялась бы четыре раза (X/Y × «нашедший сдвиг» проход/«двусторонний»
+ * проход из 22.5 ниже). `crossA`/`crossB` — диапазон вдоль оси, перпендикулярной
+ * направляющей (Y для вертикальной линии, X для горизонтальной), для рамки d и
+ * цели соответственно.
+ */
+function accumulateGuide(
+  map: Map<number, GuideState>,
+  position: number,
+  sourceId: string,
+  crossA: readonly [number, number],
+  crossB: readonly [number, number],
+): void {
+  const from = Math.min(crossA[0], crossA[1], crossB[0], crossB[1]);
+  const to = Math.max(crossA[0], crossA[1], crossB[0], crossB[1]);
+  const key = guideKey(position);
+  const existing = map.get(key);
+  if (existing) {
+    existing.targetIds.add(sourceId);
+    existing.from = Math.min(existing.from, from);
+    existing.to = Math.max(existing.to, to);
+  } else {
+    map.set(key, { targetIds: new Set([sourceId]), from, to });
+  }
+}
+
 export function computeSnapGuides(
   dragged: SnapRect[],
   staticNodes: SnapRect[],
@@ -115,46 +142,33 @@ export function computeSnapGuides(
   const hGuides = new Map<number, GuideState>(); // canvas y -> guide state
 
   for (const d of dragged) {
-    // --- X axis ---
+    // --- X axis: сначала находим ЛУЧШЕЕ совпадение — оно определяет сдвиг ---
     let bestXDiff = Infinity;
     let snapX: number | null = null;
-    let snapXGuidePos = 0;
-    let snapXSource = '';
 
     for (const s of staticNodes) {
       if (s.id === d.id) continue;
       for (const xKey of X_KEYS) {
-        const dVal = xOf(d, xKey);
-        const sVal = xOf(s, xKey);
-        const diff = Math.abs(dVal - sVal);
+        const diff = Math.abs(xOf(d, xKey) - xOf(s, xKey));
         if (diff < threshold && diff < bestXDiff) {
           bestXDiff = diff;
-          snapXGuidePos = sVal;
-          snapXSource = s.id;
-          // Сдвигаем d так, чтобы её xKey совпала с sVal:
-          // newX = sVal - (xOf(d, xKey) - d.x)
-          snapX = sVal - (xOf(d, xKey) - d.x);
+          // Сдвигаем d так, чтобы её xKey совпала с sVal: newX = sVal - (xOf(d, xKey) - d.x)
+          snapX = xOf(s, xKey) - (xOf(d, xKey) - d.x);
         }
       }
     }
 
-    // --- Y axis ---
+    // --- Y axis: аналогично ---
     let bestYDiff = Infinity;
     let snapY: number | null = null;
-    let snapYGuidePos = 0;
-    let snapYSource = '';
 
     for (const s of staticNodes) {
       if (s.id === d.id) continue;
       for (const yKey of Y_KEYS) {
-        const dVal = yOf(d, yKey);
-        const sVal = yOf(s, yKey);
-        const diff = Math.abs(dVal - sVal);
+        const diff = Math.abs(yOf(d, yKey) - yOf(s, yKey));
         if (diff < threshold && diff < bestYDiff) {
           bestYDiff = diff;
-          snapYGuidePos = sVal;
-          snapYSource = s.id;
-          snapY = sVal - (yOf(d, yKey) - d.y);
+          snapY = yOf(s, yKey) - (yOf(d, yKey) - d.y);
         }
       }
     }
@@ -163,33 +177,34 @@ export function computeSnapGuides(
       positions.set(d.id, { x: snapX ?? d.x, y: snapY ?? d.y });
     }
 
+    // Двусторонняя подсветка (22.5, найдено пользователем при использовании 22.3):
+    // после применения сдвига элемент мог оказаться выровненным СРАЗУ по нескольким
+    // точкам оси (например, left/left И right/right одновременно — размеры совпали
+    // с соседом), а не только по той точке, что определила сам сдвиг. Раньше
+    // показывалась только она; второй проход по УЖЕ СКОРРЕКТИРОВАННОЙ позиции
+    // находит ВСЕ такие совпадения и добавляет гид на каждое.
     if (snapX !== null) {
-      // Вертикальная линия: from/to по Y — объединённый диапазон rect'ов d и target
-      const targetRect = staticNodes.find((n) => n.id === snapXSource);
-      const yMin = Math.min(d.y, d.y + d.height, targetRect!.y, targetRect!.y + targetRect!.height);
-      const yMax = Math.max(d.y, d.y + d.height, targetRect!.y, targetRect!.y + targetRect!.height);
-      const key = guideKey(snapXGuidePos);
-      const existing = vGuides.get(key);
-      if (existing) {
-        existing.targetIds.add(snapXSource);
-        existing.from = Math.min(existing.from, yMin);
-        existing.to = Math.max(existing.to, yMax);
-      } else {
-        vGuides.set(key, { targetIds: new Set([snapXSource]), from: yMin, to: yMax });
+      const correctedD = { ...d, x: snapX };
+      for (const s of staticNodes) {
+        if (s.id === d.id) continue;
+        for (const xKey of X_KEYS) {
+          const sVal = xOf(s, xKey);
+          if (Math.abs(xOf(correctedD, xKey) - sVal) < threshold) {
+            accumulateGuide(vGuides, sVal, s.id, [d.y, d.y + d.height], [s.y, s.y + s.height]);
+          }
+        }
       }
     }
     if (snapY !== null) {
-      const targetRect = staticNodes.find((n) => n.id === snapYSource);
-      const xMin = Math.min(d.x, d.x + d.width, targetRect!.x, targetRect!.x + targetRect!.width);
-      const xMax = Math.max(d.x, d.x + d.width, targetRect!.x, targetRect!.x + targetRect!.width);
-      const key = guideKey(snapYGuidePos);
-      const existing = hGuides.get(key);
-      if (existing) {
-        existing.targetIds.add(snapYSource);
-        existing.from = Math.min(existing.from, xMin);
-        existing.to = Math.max(existing.to, xMax);
-      } else {
-        hGuides.set(key, { targetIds: new Set([snapYSource]), from: xMin, to: xMax });
+      const correctedD = { ...d, y: snapY };
+      for (const s of staticNodes) {
+        if (s.id === d.id) continue;
+        for (const yKey of Y_KEYS) {
+          const sVal = yOf(s, yKey);
+          if (Math.abs(yOf(correctedD, yKey) - sVal) < threshold) {
+            accumulateGuide(hGuides, sVal, s.id, [d.x, d.x + d.width], [s.x, s.x + s.width]);
+          }
+        }
       }
     }
   }
@@ -430,12 +445,34 @@ export function computeResizeSnapGuides(
       activeXKey === 'right' ? xMatch.value - rect.x : rect.x + rect.width - xMatch.value;
     rect = resizeAxis(rect, 'x', flags.invertX, newWidth);
     guides.push(makeResizeGuide('vertical', xMatch.value, xMatch.sourceId, rect, staticNodes));
+
+    // Двусторонняя подсветка (22.5): активный край нашёл совпадение — проверяем,
+    // не совпал ли НЕЗАВИСИМО и неподвижный (закреплённый) край с какой-то точкой
+    // соседа. Его координата не меняется этим жестом (см. `resizeRectFromOrigin`),
+    // поэтому ищем по исходному `resizing`, а не по уже изменённому `rect`. Если
+    // оба края что-то нашли — это и есть сигнал «размеры совпали», а не просто
+    // выровнялся один край.
+    const fixedXKey: SnapAlignKeyX = activeXKey === 'right' ? 'left' : 'right';
+    const anchorXMatch = bestMatchX(resizing, fixedXKey, staticNodes, threshold);
+    if (anchorXMatch) {
+      guides.push(
+        makeResizeGuide('vertical', anchorXMatch.value, anchorXMatch.sourceId, rect, staticNodes),
+      );
+    }
   }
   if (useY && yMatch && activeYKey) {
     const newHeight =
       activeYKey === 'bottom' ? yMatch.value - rect.y : rect.y + rect.height - yMatch.value;
     rect = resizeAxis(rect, 'y', flags.invertY, newHeight);
     guides.push(makeResizeGuide('horizontal', yMatch.value, yMatch.sourceId, rect, staticNodes));
+
+    const fixedYKey: SnapAlignKeyY = activeYKey === 'bottom' ? 'top' : 'bottom';
+    const anchorYMatch = bestMatchY(resizing, fixedYKey, staticNodes, threshold);
+    if (anchorYMatch) {
+      guides.push(
+        makeResizeGuide('horizontal', anchorYMatch.value, anchorYMatch.sourceId, rect, staticNodes),
+      );
+    }
   }
 
   if (options.lockAspectRatio && (useX || useY) && resizing.width > 0 && resizing.height > 0) {

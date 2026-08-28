@@ -136,8 +136,13 @@ describe('computeSnapGuides', () => {
   });
 
   it('снапит по обеим осям одновременно', () => {
-    // a: x=103, y=104. b: x=100, y=100. left diff=3, top diff=4, оба < 8
-    const result = computeSnapGuides([rect('a', 103, 104)], [rect('b', 100, 100)]);
+    // a: x=103, y=104, 100x100. b: x=100, y=100, 50x50 (разный размер — не
+    // должно сработать двустороннее совпадение из 22.5, тестируем только
+    // базовый снап по двум осям). left diff=3, top diff=4, оба < 8
+    const result = computeSnapGuides(
+      [rect('a', 103, 104, 100, 100)],
+      [rect('b', 100, 100, 50, 50)],
+    );
     expect(result.positions.get('a')).toEqual({ x: 100, y: 100 });
     expect(result.guides).toHaveLength(2);
     const vGuides = result.guides.filter((g) => g.orientation === 'vertical');
@@ -194,10 +199,12 @@ describe('computeSnapGuides', () => {
   });
 
   it('снапит множество элементов в группе к одной линии', () => {
-    // a и c оба снапятся на левый край b
+    // a и c оба снапятся на левый край b; у b другая ширина (20, не 100), чтобы
+    // не сработало двустороннее совпадение размера из 22.5 — тест проверяет
+    // именно объединение нескольких элементов в одну линию
     const result = computeSnapGuides(
       [rect('a', 102, 100), rect('c', 105, 300)],
-      [rect('b', 100, 200)],
+      [rect('b', 100, 200, 20, 100)],
     );
     expect(result.positions.get('a')).toEqual({ x: 100, y: 100 });
     expect(result.positions.get('c')).toEqual({ x: 100, y: 300 });
@@ -223,6 +230,32 @@ describe('computeSnapGuides', () => {
       from: 100, // min(a.y, a.bottom, b.y, b.bottom) = min(100, 200, 1000, 1100) = 100
       to: 1100, // max(100, 200, 1000, 1100) = 1100
     });
+  });
+});
+
+describe('двусторонняя подсветка при совпадении размера — move (22.5)', () => {
+  it('показывает гид и для left, и для right, если после снапа совпала ширина', () => {
+    // a снапнется по left на b (diff2); у a и b одинаковая ширина 100 —
+    // после сдвига right тоже совпадёт с b.right (и center с center), хотя
+    // раньше показывался только left (тот, что определил сам сдвиг)
+    const result = computeSnapGuides(
+      [rect('a', 102, 100, 100, 100)],
+      [rect('b', 100, 300, 100, 100)],
+    );
+    expect(result.positions.get('a')).toEqual({ x: 100, y: 100 });
+    const vGuides = result.guides.filter((g) => g.orientation === 'vertical');
+    expect(vGuides.map((g) => g.position).sort((x, y) => x - y)).toEqual([100, 150, 200]);
+    expect(vGuides.every((g) => g.targetIds.includes('b'))).toBe(true);
+  });
+
+  it('не показывает лишний гид при разных размерах — обычный случай, одна линия', () => {
+    const result = computeSnapGuides(
+      [rect('a', 102, 100, 100, 100)],
+      [rect('b', 100, 300, 50, 50)],
+    );
+    const vGuides = result.guides.filter((g) => g.orientation === 'vertical');
+    expect(vGuides).toHaveLength(1);
+    expect(vGuides[0]!.position).toBe(100);
   });
 });
 
@@ -280,7 +313,10 @@ describe('computeResizeSnapGuides', () => {
     const result = computeResizeSnapGuides(
       rect('a', 0, 0, 100, 100),
       axisFlags('right', 'bottom'),
-      [rect('bx', 106, 0, 10, 10), rect('by', 0, 103, 10, 10)],
+      // bx.y=50 (не 0) — иначе неподвижный верхний край a (y=0) случайно совпал
+      // бы с bx.top и добавил вторую (валидную, но не относящуюся к этому
+      // тесту) направляющую из 22.5; здесь проверяем только конфликт осей
+      [rect('bx', 106, 50, 10, 10), rect('by', 0, 103, 10, 10)],
       SNAP_THRESHOLD_PX,
       { lockAspectRatio: true },
     );
@@ -299,6 +335,37 @@ describe('computeResizeSnapGuides', () => {
       { lockAspectRatio: true },
     );
     expect(result.rect).toMatchObject({ width: 106, height: 106 });
+  });
+});
+
+describe('двусторонняя подсветка при совпадении размера — resize (22.5)', () => {
+  it('подсвечивает и неподвижный, и активный край, если оба независимо совпали', () => {
+    // resizing a: x=0, width=100 → left=0 (анкер, неподвижен — активна правая
+    // сторона). Анкер совпадает с правым краем anchorNeighbor (0); активный
+    // (правый) край тянется к левому краю activeNeighbor (105) — два разных
+    // соседа, оба совпадения независимы друг от друга
+    const result = computeResizeSnapGuides(
+      rect('a', 0, 0, 100, 100),
+      axisFlags('right', 'inactive'),
+      [rect('anchorNeighbor', -20, 200, 20, 20), rect('activeNeighbor', 105, 0, 50, 50)],
+    );
+    expect(result.rect).toMatchObject({ x: 0, width: 105 });
+    const vGuides = result.guides.filter((g) => g.orientation === 'vertical');
+    expect(vGuides).toHaveLength(2);
+    expect(vGuides.map((g) => g.position).sort((x, y) => x - y)).toEqual([0, 105]);
+    expect(vGuides.map((g) => g.targetIds[0]).sort()).toEqual(['activeNeighbor', 'anchorNeighbor']);
+  });
+
+  it('без совпадения активного края неподвижный не проверяется — гидов нет', () => {
+    // anchorNeighbor.right=0 совпал бы с анкером a.left=0, но активный (правый)
+    // край ни с чем не совпадает — по условию задачи оба края должны найти
+    // совпадение НЕЗАВИСИМО, одного анкера недостаточно
+    const result = computeResizeSnapGuides(
+      rect('a', 0, 0, 100, 100),
+      axisFlags('right', 'inactive'),
+      [rect('anchorNeighbor', -20, 200, 20, 20)],
+    );
+    expect(result.guides).toEqual([]);
   });
 });
 
