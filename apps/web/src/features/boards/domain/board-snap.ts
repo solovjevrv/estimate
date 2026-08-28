@@ -14,6 +14,21 @@
  * same-type: лево к левому, центр к центру, право к правому — это предсказуемо
  * и не создаёт шумных ложных срабатываний (как «лево к правому» вблизи другого
  * элемента).
+ *
+ * Стыковка край-в-край (22.7, найдено пользователем 27.08.2026 при использовании
+ * 22.5): помимо same-type сравнения выше, отдельно сравниваем ПРОТИВОПОЛОЖНЫЕ
+ * края — правый край перетаскиваемого с левым краем статичного (и наоборот),
+ * низ с верхом (и наоборот) — это и есть «состыковать впритык». В отличие от
+ * same-type (columns/rows, не требует физической смежности — элемент может
+ * выравниваться по left с другим, будучи далеко по Y), стыковка ИМЕЕТ смысл
+ * только когда элементы физически соседствуют по перпендикулярной оси: гейтим
+ * cross-сравнение по X проверкой `overlapsY`, по Y — `overlapsX` (иначе два
+ * элемента, случайно оказавшиеся рядом по X, но далёкие по Y, шумно «стыковались»
+ * бы горизонтально без всякой видимой смежности — ровно то, чего избегала
+ * исходная same-type-only логика). Конкурирует с same-type за тот же
+ * best-match-per-axis (побеждает наименьший diff — см. `bestXDiff`/`bestYDiff`
+ * ниже), а не показывается параллельно: элемент не может одновременно
+ * выравниваться по left-left И стыковаться right-left по одной оси.
  */
 
 /** Порог притягивания в пикселях экрана (переводится в canvas координаты вызывающим кодом) */
@@ -24,6 +39,30 @@ export type SnapAlignKeyY = 'top' | 'center' | 'bottom';
 
 const X_KEYS: readonly SnapAlignKeyX[] = ['left', 'center', 'right'];
 const Y_KEYS: readonly SnapAlignKeyY[] = ['top', 'center', 'bottom'];
+
+/** Пары противоположных краёв для стыковки край-в-край (22.7): [край d, край s].
+ * Только edge↔edge — центр в стыковке не участвует, «центр коснулся края» не
+ * состыковка. */
+const CROSS_X_PAIRS: readonly (readonly [SnapAlignKeyX, SnapAlignKeyX])[] = [
+  ['right', 'left'], // правый край d впритык к левому краю s (d слева от s)
+  ['left', 'right'], // левый край d впритык к правому краю s (d справа от s)
+];
+const CROSS_Y_PAIRS: readonly (readonly [SnapAlignKeyY, SnapAlignKeyY])[] = [
+  ['bottom', 'top'], // низ d впритык к верху s (d сверху от s)
+  ['top', 'bottom'], // верх d впритык к низу s (d снизу от s)
+];
+
+/** Пересекаются ли a и b по Y («та же строка») — гейт для cross-сравнения по X (22.7),
+ * также используется соседями по зазору (22.6/22.8, ниже). */
+function overlapsY(a: SnapRect, b: SnapRect): boolean {
+  return a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+/** Пересекаются ли a и b по X («тот же столбец») — гейт для cross-сравнения по Y (22.7),
+ * также используется соседями по зазору (22.6/22.8, ниже). */
+function overlapsX(a: SnapRect, b: SnapRect): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width;
+}
 
 /** Все точки имеют одинаковый приоритет: при равных расстояниях выбирается
  * первая в массиве (left/top), что позволяет snap по краям работать для
@@ -156,6 +195,17 @@ export function computeSnapGuides(
           snapX = xOf(s, xKey) - (xOf(d, xKey) - d.x);
         }
       }
+      // Стыковка край-в-край (22.7) — только для физически соседствующих по Y пар,
+      // см. пояснение в шапке файла.
+      if (overlapsY(d, s)) {
+        for (const [dKey, sKey] of CROSS_X_PAIRS) {
+          const diff = Math.abs(xOf(d, dKey) - xOf(s, sKey));
+          if (diff < threshold && diff < bestXDiff) {
+            bestXDiff = diff;
+            snapX = xOf(s, sKey) - (xOf(d, dKey) - d.x);
+          }
+        }
+      }
     }
 
     // --- Y axis: аналогично ---
@@ -169,6 +219,15 @@ export function computeSnapGuides(
         if (diff < threshold && diff < bestYDiff) {
           bestYDiff = diff;
           snapY = yOf(s, yKey) - (yOf(d, yKey) - d.y);
+        }
+      }
+      if (overlapsX(d, s)) {
+        for (const [dKey, sKey] of CROSS_Y_PAIRS) {
+          const diff = Math.abs(yOf(d, dKey) - yOf(s, sKey));
+          if (diff < threshold && diff < bestYDiff) {
+            bestYDiff = diff;
+            snapY = yOf(s, sKey) - (yOf(d, dKey) - d.y);
+          }
         }
       }
     }
@@ -193,6 +252,14 @@ export function computeSnapGuides(
             accumulateGuide(vGuides, sVal, s.id, [d.y, d.y + d.height], [s.y, s.y + s.height]);
           }
         }
+        if (overlapsY(d, s)) {
+          for (const [dKey, sKey] of CROSS_X_PAIRS) {
+            const sVal = xOf(s, sKey);
+            if (Math.abs(xOf(correctedD, dKey) - sVal) < threshold) {
+              accumulateGuide(vGuides, sVal, s.id, [d.y, d.y + d.height], [s.y, s.y + s.height]);
+            }
+          }
+        }
       }
     }
     if (snapY !== null) {
@@ -203,6 +270,14 @@ export function computeSnapGuides(
           const sVal = yOf(s, yKey);
           if (Math.abs(yOf(correctedD, yKey) - sVal) < threshold) {
             accumulateGuide(hGuides, sVal, s.id, [d.x, d.x + d.width], [s.x, s.x + s.width]);
+          }
+        }
+        if (overlapsX(d, s)) {
+          for (const [dKey, sKey] of CROSS_Y_PAIRS) {
+            const sVal = yOf(s, sKey);
+            if (Math.abs(yOf(correctedD, dKey) - sVal) < threshold) {
+              accumulateGuide(hGuides, sVal, s.id, [d.x, d.x + d.width], [s.x, s.x + s.width]);
+            }
           }
         }
       }
@@ -536,14 +611,6 @@ export interface GapSnapResult {
   guides: GapGuide[];
   /** Новые позиции для перетаскиваемых элементов, зазор которых снапнулся; без снапа элемент не попадает в карту */
   positions: Map<string, { x: number; y: number }>;
-}
-
-function overlapsY(a: SnapRect, b: SnapRect): boolean {
-  return a.y < b.y + b.height && b.y < a.y + a.height;
-}
-
-function overlapsX(a: SnapRect, b: SnapRect): boolean {
-  return a.x < b.x + b.width && b.x < a.x + a.width;
 }
 
 /** Ближайший сосед по оси X среди `candidates`, пересекающихся с `target` по Y («та же строка») */

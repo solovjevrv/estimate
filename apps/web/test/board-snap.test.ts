@@ -235,6 +235,86 @@ describe('computeSnapGuides', () => {
   });
 });
 
+describe('стыковка край-в-край (cross-edge snap) — 22.7', () => {
+  it('стыкует правый край d к левому краю s, когда они пересекаются по Y', () => {
+    // d: x=90,w=100 → right=190, y-range [100,200), Y-ключи 100/150/200.
+    // s: x=195,y=140,w=100,h=50 → left=195, y-range [140,190) — пересекается с d
+    // (overlapsY=true), diff по X (right-left) = 5 < 8. Y-ключи s (140/165/190) все
+    // дальше 8 от Y-ключей d — по Y ничего не совпадает, снап только по X.
+    const result = computeSnapGuides(
+      [rect('d', 90, 100, 100, 100)],
+      [rect('s', 195, 140, 100, 50)],
+    );
+    // newX = 195 - (190 - 90) = 95, d.right = 195 = s.left — впритык
+    expect(result.positions.get('d')).toEqual({ x: 95, y: 100 });
+    expect(result.guides).toHaveLength(1);
+    expect(result.guides[0]!).toMatchObject({
+      orientation: 'vertical',
+      position: 195,
+      targetIds: ['s'],
+    });
+  });
+
+  it('стыкует левый край d к правому краю s (d становится справа от s)', () => {
+    // d: x=205,w=100 → left=205, y-range [100,200). s: x=100,y=140,w=100,h=50 →
+    // right=200, y-range [140,190) — overlapsY=true, diff по X (left-right) = 5 < 8.
+    // X у s (100,300) вне пересечения с d по X, так что cross-по-Y не срабатывает.
+    const result = computeSnapGuides(
+      [rect('d', 205, 100, 100, 100)],
+      [rect('s', 100, 140, 100, 50)],
+    );
+    // newX = 200 - (205 - 205) = 200, d.left = 200 = s.right — впритык
+    expect(result.positions.get('d')).toEqual({ x: 200, y: 100 });
+    expect(result.guides[0]!).toMatchObject({ orientation: 'vertical', position: 200 });
+  });
+
+  it('стыкует нижний край d к верхнему краю s (d становится сверху от s)', () => {
+    // d: y=90,h=100 → bottom=190, x-range [100,200), X-ключи 100/150/200.
+    // s: x=140,y=195,w=50,h=100 → top=195, x-range [140,190) — пересекается с d
+    // (overlapsX=true), diff по Y (bottom-top) = 5 < 8. X-ключи s (140/165/190) все
+    // дальше 8 от X-ключей d — по X ничего не совпадает, снап только по Y.
+    const result = computeSnapGuides(
+      [rect('d', 100, 90, 100, 100)],
+      [rect('s', 140, 195, 50, 100)],
+    );
+    // newY = 195 - (190 - 90) = 95, d.bottom = 195 = s.top — впритык
+    expect(result.positions.get('d')).toEqual({ x: 100, y: 95 });
+    expect(result.guides[0]!).toMatchObject({ orientation: 'horizontal', position: 195 });
+  });
+
+  it('стыкует верхний край d к нижнему краю s (d становится снизу от s)', () => {
+    // d: y=205,h=100 → top=205, x-range [100,200). s: x=140,y=100,w=50,h=100 →
+    // bottom=200, x-range [140,190) — overlapsX=true, diff по Y (top-bottom) = 5 < 8.
+    const result = computeSnapGuides(
+      [rect('d', 100, 205, 100, 100)],
+      [rect('s', 140, 100, 50, 100)],
+    );
+    // newY = 200 - (205 - 205) = 200, d.top = 200 = s.bottom — впритык
+    expect(result.positions.get('d')).toEqual({ x: 100, y: 200 });
+    expect(result.guides[0]!).toMatchObject({ orientation: 'horizontal', position: 200 });
+  });
+
+  it('не стыкует по X, если элементы не пересекаются по Y (иначе шумный ложный срабатыватель)', () => {
+    // Те же diff=5 по правому/левому краю, что и в первом тесте, но s далеко по Y —
+    // overlapsY=false, физической смежности нет, стыковка не должна сработать
+    const result = computeSnapGuides(
+      [rect('d', 90, 100, 100, 100)],
+      [rect('s', 195, 500, 100, 50)],
+    );
+    expect(result.positions.size).toBe(0);
+    expect(result.guides).toEqual([]);
+  });
+
+  it('не стыкует по Y, если элементы не пересекаются по X', () => {
+    const result = computeSnapGuides(
+      [rect('d', 100, 90, 100, 100)],
+      [rect('s', 500, 195, 50, 100)],
+    );
+    expect(result.positions.size).toBe(0);
+    expect(result.guides).toEqual([]);
+  });
+});
+
 describe('двусторонняя подсветка при совпадении размера — move (22.5)', () => {
   it('показывает гид и для left, и для right, если после снапа совпала ширина', () => {
     // a снапнется по left на b (diff2); у a и b одинаковая ширина 100 —
