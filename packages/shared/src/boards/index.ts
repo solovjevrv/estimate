@@ -1,3 +1,4 @@
+export * from './diagrams';
 export * from './entities';
 export * from './giphy';
 export * from './operations';
