@@ -95,6 +95,7 @@ interface MakeOptions {
   selectedNodes?: MockNode[];
   selectedEdges?: MockEdge[];
   canEdit?: () => boolean;
+  isDragging?: () => boolean;
   canCreateItem?: () => boolean;
   activeTool?: () => string;
   getBoardZIndex?: () => { max: number; min: number };
@@ -115,6 +116,7 @@ function makeSelection(opts: MakeOptions = {}) {
 
   const api = useBoardSelection({
     canEdit: opts.canEdit ?? (() => true),
+    isDragging: opts.isDragging ?? (() => false),
     getItems: () => itemsRef.value,
     getEdges: () => edgesRef.value as unknown as BoardSelectionEdge[],
     getNodes: () => nodesRef.value as unknown as BoardSelectionNode[],
@@ -920,6 +922,21 @@ describe('useBoardSelection — toolbar positions', () => {
       makeSelection({ selectedNodes: [a], canEdit: () => false }).api.selectionToolbarPosition
         .value,
     ).toBeNull();
+  });
+
+  it('selectionToolbarPosition is null while a node is being dragged (22.7)', () => {
+    const a = flowNode(item('a'), { x: 10, y: 20 }, { width: 100, height: 100 });
+    const { api } = makeSelection({ selectedNodes: [a], isDragging: () => true });
+    expect(api.selectionToolbarPosition.value).toBeNull();
+  });
+
+  it('selectionToolbarPosition reappears once dragging stops, selection intact (22.7)', () => {
+    const a = flowNode(item('a'), { x: 10, y: 20 }, { width: 100, height: 100 });
+    const dragging = ref(true);
+    const { api } = makeSelection({ selectedNodes: [a], isDragging: () => dragging.value });
+    expect(api.selectionToolbarPosition.value).toBeNull();
+    dragging.value = false;
+    expect(api.selectionToolbarPosition.value).not.toBeNull();
   });
 });
 

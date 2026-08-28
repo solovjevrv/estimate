@@ -52,6 +52,11 @@ function isTextBearingContent(
 
 export interface BoardSelectionOptions {
   canEdit: () => boolean;
+  /** Идёт ли сейчас drag узла (19.30/22.7): пока `true`, тулбар выделения скрыт —
+   * иначе он держится на весу над стикером и мешает целиться курсором при
+   * перетаскивании (в Miro тулбар прячется на время drag и появляется снова
+   * на отпускании, выделение при этом не сбрасывается). */
+  isDragging: () => boolean;
   /** Плоский список всех элементов доски (без связей). */
   getItems: () => BoardItem[];
   /** Все узлы Vue Flow: нужны чтобы перебрать и переключить `.selected` у рендерится иных
@@ -195,10 +200,10 @@ export function useBoardSelection(options: BoardSelectionOptions) {
 
   /* ----------------------- Позиции тулбаров ----------------------- */
 
-  /** Плавающий тулбар над выделением узлов (12.6). */
+  /** Плавающий тулбар над выделением узлов (12.6; скрыт во время drag — 22.7). */
   const selectionToolbarPosition = computed(() => {
     const selected = selectedNodes.value;
-    if (!options.canEdit() || selected.length === 0) return null;
+    if (!options.canEdit() || selected.length === 0 || options.isDragging()) return null;
     const left = Math.min(...selected.map((node) => node.computedPosition.x));
     const right = Math.max(
       ...selected.map((node) => node.computedPosition.x + node.dimensions.width),
