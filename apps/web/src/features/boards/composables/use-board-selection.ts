@@ -31,6 +31,7 @@ import {
 import type { ItemFormKind } from '../board-item-form';
 import type { BoardContextMenuTarget } from '../board-context-menu';
 import type { FormatMarkKey } from './use-rich-text-editing';
+import type { BoardTool } from '../board-tools';
 import {
   type BoardSelectionEdge,
   type BoardSelectionNode,
@@ -83,7 +84,7 @@ export interface BoardSelectionOptions {
   onContainerClick: (event: MouseEvent) => void;
   pickImageFile: () => Promise<File | null>;
   uploadImage: (file: File) => Promise<{ url: string; width: number; height: number } | null>;
-  activeTool: () => string;
+  activeTool: () => BoardTool;
   breakFollowOnEdit: () => void;
   /** max/min zIndex среди всех элементов — Canvas вычисляет через board-item-defaults. */
   getBoardZIndex: () => { max: number; min: number };

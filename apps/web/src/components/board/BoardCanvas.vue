@@ -120,6 +120,7 @@ import BoardStickerNode from './BoardStickerNode.vue';
 import BoardToolbar from './BoardToolbar.vue';
 import BoardFrameNode from './BoardFrameNode.vue';
 import BoardDiagramNode from './BoardDiagramNode.vue';
+import BoardDiagramPropertiesPanel from './BoardDiagramPropertiesPanel.vue';
 
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/minimap/dist/style.css';
@@ -476,6 +477,26 @@ const {
 } = selection;
 
 /**
+ * Боковая панель свойств (23.3) — показывается, только когда выделен РОВНО
+ * один diagram-элемент class/interface/enum (structured-поля есть только у
+ * них, см. `BoardDiagramUmlCompartmentContent`). Несколько выделенных или
+ * элемент другого типа/kind — панели нет, как и у остальных type-specific
+ * тулбаров этого файла (`edgeToolbarPosition` и т.п.).
+ */
+const selectedDiagramCompartmentNode = computed(() => {
+  const nodes = selection.selectedNodes.value;
+  if (nodes.length !== 1) return null;
+  const [node] = nodes;
+  if (!node) return null;
+  const content = node.data.content;
+  if (content.type !== 'diagram' || content.notation !== 'uml') return null;
+  if (content.kind !== 'class' && content.kind !== 'interface' && content.kind !== 'enum') {
+    return null;
+  }
+  return { id: node.id, content };
+});
+
+/**
  * Управление связями (12.8–12.9) — создание edge.create, форматирование стиля,
  * live-preview цвета и открытие редактора подписи. Вынесено из Canvas/selection
  * в отдельный composable (19.32); Canvas пробрасывает только адаптерные callbacks
@@ -490,7 +511,7 @@ const edges = useBoardEdges({
   applyOps: (ops) => void boardSession.applyOps(ops),
   activeTool: () => activeTool.value,
   setActiveTool: (tool) => {
-    activeTool.value = tool as typeof activeTool.value;
+    activeTool.value = tool;
   },
   resolveEdgeColor,
   breakFollowOnEdit,
@@ -867,6 +888,14 @@ useBoardHotkeys({
         @sticker="setSelectedSticker"
         @giphy="setSelectedGiphy"
         @frame-size="setSelectedFrameSize"
+      />
+
+      <BoardDiagramPropertiesPanel
+        v-if="selectedDiagramCompartmentNode"
+        :key="selectedDiagramCompartmentNode.id"
+        :item-id="selectedDiagramCompartmentNode.id"
+        :can-edit="canEdit"
+        :content="selectedDiagramCompartmentNode.content"
       />
 
       <BoardEdgeToolbar

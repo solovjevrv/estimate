@@ -90,6 +90,7 @@ import {
   BOARD_ACTIVE_TEXT_EDITOR_KEY,
   BOARD_PENDING_EDIT_ID_KEY,
 } from '../context/board-canvas-keys';
+import { useBoardEditingLock } from './use-board-editing-lock';
 import {
   applyMarkToRange,
   BOARD_TEXT_TOOLBAR_SELECTOR,
@@ -170,16 +171,10 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
   const toast = useToast();
 
   /**
-   * Мягкая блокировка (14.2): если элемент сейчас редактирует ДРУГОЙ участник —
-   * возвращаем его запись, чтобы UI показывал бейдж и блокировал вход в редактирование.
-   * Своя же блокировка (`participantId` совпадает с текущим участником) в `lockedBy`
-   * не попадает — чтобы можно было снять выделение и заново войти в редактирование
-   * своего же элемента.
+   * Блокировка (14.2), общая с боковой панелью свойств diagram-элемента
+   * (23.3) — см. `use-board-editing-lock.ts`.
    */
-  const lockedBy = computed(() => {
-    const lock = boardSession.editingByItem.get(itemId);
-    return lock && lock.participantId !== boardSession.participantId ? lock : null;
-  });
+  const { lockedBy, setActive: setEditingLockActive } = useBoardEditingLock(itemId, canEdit);
   const pendingEditId = inject(BOARD_PENDING_EDIT_ID_KEY, ref(null));
   const activeTextEditor = inject(BOARD_ACTIVE_TEXT_EDITOR_KEY, shallowRef(null));
 
@@ -449,10 +444,7 @@ export function useRichTextEditing<TContent extends BoardItemContent>(
    * значением, а не за тем, как оно достигнуто. Саму гонку 12.26 не чиним — это
    * отдельный бэклог-пункт.
    */
-  watch(editing, (isEditing) => {
-    if (!canEdit.value) return;
-    void boardSession.sendAwareness('editing', { itemId, active: isEditing });
-  });
+  watch(editing, setEditingLockActive);
 
   function onEditableBlur(event: FocusEvent): void {
     const related = event.relatedTarget;

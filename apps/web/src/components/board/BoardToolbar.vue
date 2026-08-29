@@ -23,7 +23,7 @@
  */
 import { useI18n } from 'vue-i18n';
 
-import type { BoardTool } from '../../features/boards/board-tools';
+import { isDiagramTool, type BoardTool } from '../../features/boards/board-tools';
 import type {
   BoardDiagramKind,
   BoardDiagramNotation,
@@ -58,19 +58,16 @@ function isActive(value: BoardTool): boolean {
 }
 
 /**
- * Диаграммы (23.2) — тот же принцип, что у «Фрейма»: выбор в поповере
- * вооружает инструмент, клик по холсту размещает элемент. Список kind в
- * `BoardDiagramPicker.vue` пока даёт только пары notation/kind с уже
- * заведённым `BoardTool`-значением — маппинг здесь тривиален (2 варианта);
- * когда 23.3/23.4 добавят остальные kind, скорее всего появится один общий
- * `BoardTool` вида `{ tool: 'diagram'; notation; kind }` вместо перечисления.
+ * Диаграммы (23.2/23.3) — тот же принцип, что у «Фрейма»: выбор в поповере
+ * вооружает инструмент, клик по холсту размещает элемент. `BoardTool` несёт
+ * notation+kind целиком (`board-tools.ts`), а не отдельный строковый вариант
+ * на каждый kind — иначе 18 kind каталога дали бы 18 веток здесь.
  */
 function diagramToolFor(notation: BoardDiagramNotation, kind: BoardDiagramKind): BoardTool {
-  return notation === 'uml' && kind === 'actor' ? 'diagram-uml-actor' : 'diagram-bpmn-task';
+  return { tool: 'diagram', notation, kind };
 }
 
-const isDiagramToolActive = (): boolean =>
-  isActive('diagram-uml-actor') || isActive('diagram-bpmn-task');
+const isDiagramToolActive = (): boolean => isDiagramTool(tool.value);
 </script>
 
 <template>

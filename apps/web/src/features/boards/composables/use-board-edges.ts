@@ -13,6 +13,7 @@ import type {
   BoardFlowEdge,
   BoardFlowNode,
 } from '../../../features/boards/adapters/vue-flow-adapter';
+import type { BoardTool } from '../board-tools';
 
 /**
  * Минимальная структурная форма события connect из Vue Flow (12.9) — composable
@@ -45,8 +46,8 @@ export interface UseBoardEdgesOptions {
   getSelectedEdges: () => BoardFlowEdge[];
   getViewport: () => BoardViewport;
   applyOps: (ops: BoardOp[]) => void;
-  activeTool: () => string;
-  setActiveTool: (tool: string) => void;
+  activeTool: () => BoardTool;
+  setActiveTool: (tool: BoardTool) => void;
   resolveEdgeColor: (color: BoardColorHex | undefined) => BoardColorHex;
   breakFollowOnEdit: () => void;
   /** max/min zIndex среди ВСЕХ карточек и связей (12.21) — та же функция, что

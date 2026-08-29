@@ -10,8 +10,9 @@ import { waitForStableBox } from '../src/stable-box';
  * per-kind границах DiagramNodeSpec, соединение обычной generic-стрелкой,
  * undo/redo, персистентность после reload, realtime-видимость другому
  * участнику. Пока проверяются ровно два kind, проведённых через весь стек —
- * UML `actor` и BPMN `task`; остальные 16 kind из каталога появятся в
- * 23.3/23.4 вместе с настоящими SVG-трафаретами (сейчас — плейсхолдер-бокс).
+ * UML `actor` и BPMN `task`; остальные UML kind получили настоящие
+ * SVG-трафареты и боковую панель свойств в 23.3 (см. отдельный describe
+ * ниже) — BPMN-kind по-прежнему плейсхолдер до 23.4.
  */
 test.describe('Доски: диаграммные элементы (UML/BPMN)', () => {
   test('создание через поповер тулбара, resize в границах DiagramNodeSpec, соединение, undo/redo, reload', async ({
@@ -164,5 +165,172 @@ test.describe('Доски: диаграммные элементы (UML/BPMN)', 
     await expect(boardB.nodeByType('diagram')).toHaveCount(1);
     const nodeId = await boardA.nodeByType('diagram').getAttribute('data-node-id');
     await expect(boardB.nodeById(nodeId!)).toHaveAttribute('data-diagram-kind', 'task');
+  });
+});
+
+/**
+ * UML-трафареты и боковая панель свойств (23.3) — SVG для всех 7 UML kind
+ * (проверяем создание каждого через поповер с группами/поиском) и структурный
+ * ввод атрибутов/операций class через `BoardDiagramPropertiesPanel.vue`, не
+ * через contenteditable-текст самого узла.
+ */
+test.describe('Доски: UML-трафареты и панель свойств (23.3)', () => {
+  test('поповер создаёт все 7 UML kind (группы «UML»/«BPMN», поиск)', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+
+    const owner = await createUser('board-diagram-uml-kinds');
+    const context = await newContext(browser);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}DiagramUml ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    const board = boardLocators(page);
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(board.pane).toBeVisible();
+
+    const kinds = ['actor', 'use-case', 'class', 'interface', 'enum', 'component', 'database'];
+    let x = 200;
+    for (const kind of kinds) {
+      await board.toolbarButton('Диаграммы').click();
+      // Поиск фильтрует по переведённому названию — проверяем на одном kind,
+      // остальные создаём без поиска (быстрее, поиск уже подтверждён работающим)
+      if (kind === 'class') {
+        await board.diagramPicker.locator('input').fill('Класс');
+        await expect(board.diagramPickerOption('uml', 'class')).toBeVisible();
+        await expect(board.diagramPickerOption('uml', 'actor')).toBeHidden();
+      }
+      await board.diagramPickerOption('uml', kind).click();
+      await board.pane.click({ position: { x, y: 300 } });
+      x += 220;
+    }
+
+    await expect(board.nodeByType('diagram')).toHaveCount(kinds.length);
+    for (const kind of kinds) {
+      await expect(page.locator(`[data-diagram-kind="${kind}"]`)).toHaveCount(1);
+    }
+  });
+
+  test('панель свойств class: добавление атрибута и операции, persist после reload', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+
+    const owner = await createUser('board-diagram-class-props');
+    const context = await newContext(browser);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}DiagramClass ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    const board = boardLocators(page);
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(board.pane).toBeVisible();
+
+    await board.toolbarButton('Диаграммы').click();
+    await board.diagramPickerOption('uml', 'class').click();
+    await board.pane.click({ position: { x: 400, y: 300 } });
+    await expect(board.nodeByType('diagram')).toHaveCount(1);
+    const classId = await board.nodeByType('diagram').getAttribute('data-node-id');
+    await expect(board.nodeById(classId!)).toHaveAttribute('data-diagram-kind', 'class');
+
+    // Имя класса — редактор автозапускается (pendingEditId), коммитим кликом
+    // мимо (см. пояснение про Escape в первом describe этого файла)
+    const nameEditable = page.locator(`[data-node-id="${classId}"] [contenteditable="true"]`);
+    await nameEditable.fill('Order');
+    await board.pane.click({ position: { x: 900, y: 500 } });
+    await expect(page.locator(`[data-node-id="${classId}"]`)).toContainText('Order');
+
+    // Панель свойств появляется, только когда узел выделен ровно один
+    await board.nodeById(classId!).click();
+    await expect(board.diagramPropertiesPanel).toBeVisible();
+
+    await board.diagramPropertiesAddAttribute.click();
+    const attrRow = board.diagramAttributeRows.first();
+    await board.diagramPropertyName(attrRow).fill('id');
+    await board.diagramPropertyDataType(attrRow).fill('string');
+    await board.diagramPropertyVisibility(attrRow).selectOption('private');
+    // Коммит по blur поля — клик в пустое место поповера паттерна не имеет,
+    // фокус просто должен уйти с последнего изменённого поля
+    await board.pane.click({ position: { x: 900, y: 200 } });
+
+    await expect(page.locator(`[data-node-id="${classId}"]`)).toContainText('id');
+    await expect(page.locator(`[data-node-id="${classId}"]`)).toContainText('string');
+
+    // Панель закрылась вместе со снятием выделения — выделяем узел заново для операции
+    await board.nodeById(classId!).click();
+    await expect(board.diagramPropertiesPanel).toBeVisible();
+    await board.diagramPropertiesAddOperation.click();
+    const opRow = board.diagramOperationRows.first();
+    await board.diagramPropertyName(opRow).fill('save');
+    await board.pane.click({ position: { x: 900, y: 200 } });
+
+    await expect(page.locator(`[data-node-id="${classId}"]`)).toContainText('save()');
+
+    // --- Reload: имя, атрибут и операция переживают перезагрузку (снимок с сервера) ---
+    await page.reload();
+    await expect(board.pane).toBeVisible();
+    await expect(page.locator(`[data-node-id="${classId}"]`)).toContainText('Order');
+    await expect(page.locator(`[data-node-id="${classId}"]`)).toContainText('id');
+    await expect(page.locator(`[data-node-id="${classId}"]`)).toContainText('string');
+    await expect(page.locator(`[data-node-id="${classId}"]`)).toContainText('save()');
+  });
+
+  test('панель свойств enum: литерал без видимости/типа, operations всегда пусто', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+
+    const owner = await createUser('board-diagram-enum-props');
+    const context = await newContext(browser);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}DiagramEnum ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    const board = boardLocators(page);
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(board.pane).toBeVisible();
+
+    await board.toolbarButton('Диаграммы').click();
+    await board.diagramPickerOption('uml', 'enum').click();
+    await board.pane.click({ position: { x: 400, y: 300 } });
+    const enumId = await board.nodeByType('diagram').getAttribute('data-node-id');
+    await board.pane.click({ position: { x: 900, y: 500 } }); // коммит пустого текста, снять выделение
+
+    await board.nodeById(enumId!).click();
+    await expect(board.diagramPropertiesPanel).toBeVisible();
+    // Операции недоступны для enum — секция скрыта целиком
+    await expect(board.diagramPropertiesAddOperation).toBeHidden();
+
+    await board.diagramPropertiesAddAttribute.click();
+    const literalRow = board.diagramAttributeRows.first();
+    await board.diagramPropertyName(literalRow).fill('ACTIVE');
+    // Тип/видимость не рендерятся для enum-литерала
+    await expect(board.diagramPropertyDataType(literalRow)).toBeHidden();
+    await expect(board.diagramPropertyVisibility(literalRow)).toBeHidden();
+    await board.pane.click({ position: { x: 900, y: 200 } });
+
+    await expect(page.locator(`[data-node-id="${enumId}"]`)).toContainText('ACTIVE');
   });
 });

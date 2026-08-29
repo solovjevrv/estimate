@@ -8,6 +8,7 @@ import {
   DIAGRAM_NODE_SPECS,
   UML_DIAGRAM_KINDS,
   UML_EDGE_SEMANTICS,
+  createDefaultDiagramContent,
   getDiagramNodeSpec,
   isBpmnEventDefinitionAllowed,
   isDiagramEdgeSemanticCompatible,
@@ -186,6 +187,30 @@ describe('isValidDiagramContent (23.1)', () => {
         operations: [{ parameters: [] }],
       }),
     ).toBe(false);
+  });
+});
+
+describe('createDefaultDiagramContent (23.3)', () => {
+  it('заполняет attributes/operations для class/interface/enum', () => {
+    for (const kind of ['class', 'interface', 'enum'] as const) {
+      const content = createDefaultDiagramContent('uml', kind);
+      expect(isValidDiagramContent(content)).toBe(true);
+      expect(content).toMatchObject({ attributes: [], operations: [] });
+    }
+  });
+
+  it('заполняет eventDefinition для BPMN-событий', () => {
+    for (const kind of ['event-start', 'event-intermediate', 'event-end'] as const) {
+      const content = createDefaultDiagramContent('bpmn', kind);
+      expect(isValidDiagramContent(content)).toBe(true);
+      expect(content).toMatchObject({ eventDefinition: 'none' });
+    }
+  });
+
+  it('не добавляет лишних полей у простых kind', () => {
+    const content = createDefaultDiagramContent('uml', 'actor');
+    expect(isValidDiagramContent(content)).toBe(true);
+    expect(content).toEqual({ type: 'diagram', notation: 'uml', kind: 'actor', text: '' });
   });
 });
 

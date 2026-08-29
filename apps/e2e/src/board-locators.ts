@@ -53,6 +53,14 @@ export interface BoardLocators {
   stickerPickerSection: (label: string) => Locator;
   diagramPicker: Locator;
   diagramPickerOption: (notation: string, kind: string) => Locator;
+  diagramPropertiesPanel: Locator;
+  diagramAttributeRows: Locator;
+  diagramOperationRows: Locator;
+  diagramPropertyName: (row: Locator) => Locator;
+  diagramPropertyDataType: (row: Locator) => Locator;
+  diagramPropertyVisibility: (row: Locator) => Locator;
+  diagramPropertiesAddAttribute: Locator;
+  diagramPropertiesAddOperation: Locator;
   formMenu: Locator;
   formMenuButton: (ariaLabel: string) => Locator;
   highlightSwatch: Locator;
@@ -125,6 +133,16 @@ export function boardLocators(pageOrLocator: Page | Locator): BoardLocators {
     diagramPicker: base('[data-testid="board-diagram-picker"]'),
     diagramPickerOption: (notation: string, kind: string) =>
       base(`[data-testid="board-diagram-picker-${notation}-${kind}"]`),
+    diagramPropertiesPanel: base('[data-testid="board-diagram-properties-panel"]'),
+    diagramAttributeRows: base('[data-testid="board-diagram-properties-attribute-row"]'),
+    diagramOperationRows: base('[data-testid="board-diagram-properties-operation-row"]'),
+    diagramPropertyName: (row: Locator) => row.locator('[data-testid="board-diagram-properties-name"]'),
+    diagramPropertyDataType: (row: Locator) =>
+      row.locator('[data-testid="board-diagram-properties-datatype"]'),
+    diagramPropertyVisibility: (row: Locator) =>
+      row.locator('[data-testid="board-diagram-properties-visibility"]'),
+    diagramPropertiesAddAttribute: base('[data-testid="board-diagram-properties-add-attribute"]'),
+    diagramPropertiesAddOperation: base('[data-testid="board-diagram-properties-add-operation"]'),
     formMenu: base('[data-testid="board-form-menu"]'),
     formMenuButton: (ariaLabel: string) =>
       base(`[data-testid="board-form-menu"] button[aria-label="${ariaLabel}"]`),

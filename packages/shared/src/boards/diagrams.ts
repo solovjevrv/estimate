@@ -520,6 +520,32 @@ export function getDiagramNodeSpec(
   return DIAGRAM_NODE_SPECS.find((spec) => spec.notation === notation && spec.kind === kind);
 }
 
+/**
+ * Собирает валидный content для только что создаваемого diagram-элемента —
+ * единственный источник правды за пределами kind, требующих structured-поля
+ * (class/interface/enum — `attributes`/`operations`; BPMN-события —
+ * `eventDefinition`). До 23.3 создание (`use-board-creation.ts`) строило
+ * `{ type: 'diagram', notation, kind, text: '' }` через небезопасный
+ * `as BoardDiagramContent` — для class/interface/enum это молча производило
+ * невалидный content (нет `attributes`/`operations`), который сервер отклонил
+ * бы первым же `item.create`. Здесь по kind собирается корректная форма.
+ */
+export function createDefaultDiagramContent(
+  notation: BoardDiagramNotation,
+  kind: BoardDiagramKind,
+): BoardDiagramContent {
+  if (notation === 'uml' && (kind === 'class' || kind === 'interface' || kind === 'enum')) {
+    return { type: 'diagram', notation, kind, text: '', attributes: [], operations: [] };
+  }
+  if (
+    notation === 'bpmn' &&
+    (kind === 'event-start' || kind === 'event-intermediate' || kind === 'event-end')
+  ) {
+    return { type: 'diagram', notation, kind, text: '', eventDefinition: 'none' };
+  }
+  return { type: 'diagram', notation, kind, text: '' } as BoardDiagramContent;
+}
+
 // ---------------------------------------------------------------------------
 // Семантика связей
 // ---------------------------------------------------------------------------

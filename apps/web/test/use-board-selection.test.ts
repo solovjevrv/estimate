@@ -9,6 +9,7 @@ import type {
   BoardSelectionEdge,
   BoardSelectionNode,
 } from '../src/features/boards/adapters/vue-flow-adapter';
+import type { BoardTool } from '../src/features/boards/board-tools';
 
 // Тестовые заглушки — плоские (shallow), а не deep GraphNode, чтобы не взрывать типы vue-flow
 interface MockNode {
@@ -97,7 +98,7 @@ interface MakeOptions {
   canEdit?: () => boolean;
   isDragging?: () => boolean;
   canCreateItem?: () => boolean;
-  activeTool?: () => string;
+  activeTool?: () => BoardTool;
   getBoardZIndex?: () => { max: number; min: number };
   defaultItemColor?: string;
   getViewport?: () => { x: number; y: number; zoom: number };
@@ -978,7 +979,7 @@ describe('useBoardSelection — node click delegation', () => {
     const sticky = flowNode(item('s', { content: { type: 'sticky', text: 'x' } }));
     const { api, onContainerClick } = makeSelection({
       flowNodes: [sticky],
-      activeTool: () => 'sticker',
+      activeTool: () => 'sticky',
     });
     api.onNodeClick({ event: new MouseEvent('click'), node: asNode(sticky) });
     expect(onContainerClick).not.toHaveBeenCalled();

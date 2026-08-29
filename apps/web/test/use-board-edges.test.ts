@@ -7,6 +7,7 @@ import type {
   BoardFlowEdge,
   BoardFlowNode,
 } from '../src/features/boards/adapters/vue-flow-adapter';
+import type { BoardTool } from '../src/features/boards/board-tools';
 
 interface MockNode {
   id: string;
@@ -69,7 +70,7 @@ function makeEdges(
     flowNodes?: MockNode[];
     flowEdges?: MockEdge[];
     canEdit?: () => boolean;
-    activeTool?: () => string;
+    activeTool?: () => BoardTool;
     getViewport?: () => { x: number; y: number; zoom: number };
     resolveEdgeColor?: (color: BoardColorHex | undefined) => BoardColorHex;
     getBoardZIndex?: () => { max: number; min: number };

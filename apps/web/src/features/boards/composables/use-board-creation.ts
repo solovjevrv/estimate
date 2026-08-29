@@ -1,7 +1,6 @@
 import type {
   BoardItem,
   BoardOp,
-  BoardDiagramContent,
   BoardDiagramKind,
   BoardDiagramNotation,
   EmojiSequence,
@@ -11,6 +10,7 @@ import type {
 import {
   BOARD_IMAGE_ALLOWED_MIME_TYPES,
   BOARD_MAX_ITEMS,
+  createDefaultDiagramContent,
   getDiagramNodeSpec,
 } from '@estimate/shared';
 import { useToast } from '@nuxt/ui/composables';
@@ -40,7 +40,7 @@ import {
 } from '../../../features/boards/config/board-constants';
 import { uuid } from '../../../features/boards/infrastructure/uuid';
 import { uploadBoardAsset } from '../api/boards-api';
-import type { BoardTool } from '../board-tools';
+import { isDiagramTool, type BoardTool } from '../board-tools';
 
 export interface UseBoardCreationOptions {
   boardId: () => string;
@@ -272,7 +272,7 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
           height: spec.defaultHeight,
           rotation: 0,
           zIndex: nextZIndexAbove(options.getItems()),
-          content: { type: 'diagram', notation, kind, text: '' } as BoardDiagramContent,
+          content: createDefaultDiagramContent(notation, kind),
           style: { color: SHAPE_DEFAULT_COLOR },
           reactions: [],
         },
@@ -460,37 +460,36 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
     // Клик пустым инструментом (select/arrow) ничего не создаёт и не редактирует —
     // follow-mode рвать незачем, иначе обычный клик для снятия выделения во время
     // слежения обрывал бы его без какого-либо реального вмешательства в доску
+    const tool = activeTool.value;
+    const isDiagram = isDiagramTool(tool);
     if (
-      activeTool.value !== 'sticky' &&
-      activeTool.value !== 'shape' &&
-      activeTool.value !== 'text' &&
-      activeTool.value !== 'image' &&
-      activeTool.value !== 'frame' &&
-      activeTool.value !== 'diagram-uml-actor' &&
-      activeTool.value !== 'diagram-bpmn-task'
+      tool !== 'sticky' &&
+      tool !== 'shape' &&
+      tool !== 'text' &&
+      tool !== 'image' &&
+      tool !== 'frame' &&
+      !isDiagram
     ) {
       return;
     }
     options.breakFollowOnEdit();
     const center = flowPositionFromEvent(event);
-    if (activeTool.value === 'sticky') {
+    if (tool === 'sticky') {
       createSticky(center);
-    } else if (activeTool.value === 'shape') {
+    } else if (tool === 'shape') {
       createShape(center);
-    } else if (activeTool.value === 'text') {
+    } else if (tool === 'text') {
       createText(center);
-    } else if (activeTool.value === 'image') {
+    } else if (tool === 'image') {
       activeTool.value = 'select';
       void pickImageFile().then((file) => {
         if (file) void createImage(center, file);
       });
       return;
-    } else if (activeTool.value === 'frame') {
+    } else if (tool === 'frame') {
       createFrame(center);
-    } else if (activeTool.value === 'diagram-uml-actor') {
-      createDiagram(center, 'uml', 'actor');
-    } else if (activeTool.value === 'diagram-bpmn-task') {
-      createDiagram(center, 'bpmn', 'task');
+    } else if (isDiagram) {
+      createDiagram(center, tool.notation, tool.kind);
     }
     activeTool.value = 'select';
   }

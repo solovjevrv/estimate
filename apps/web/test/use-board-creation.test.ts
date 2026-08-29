@@ -201,6 +201,56 @@ describe('useBoardCreation', () => {
     });
   });
 
+  describe('createDiagram (23.1/23.3)', () => {
+    it('простой kind (actor) — content без лишних полей, геометрия из DiagramNodeSpec', () => {
+      const options = makeOptions();
+      const api = useBoardCreation(options);
+
+      api.createDiagram({ x: 200, y: 100 }, 'uml', 'actor');
+
+      const ops = options.applyOps.mock.calls[0]?.[0] ?? [];
+      expect(ops).toHaveLength(1);
+      const item = ops[0]!.item;
+      expect(item.content).toEqual({ type: 'diagram', notation: 'uml', kind: 'actor', text: '' });
+      expect(item.width).toBe(60);
+      expect(item.height).toBe(110);
+    });
+
+    /**
+     * Регрессия: до 23.3 content собирался через небезопасный `as
+     * BoardDiagramContent` без `attributes`/`operations` — для class этот
+     * item.create молча не проходил бы серверную валидацию (см.
+     * `createDefaultDiagramContent` в packages/shared).
+     */
+    it('class — content включает пустые attributes/operations', () => {
+      const options = makeOptions();
+      const api = useBoardCreation(options);
+
+      api.createDiagram({ x: 200, y: 100 }, 'uml', 'class');
+
+      const ops = options.applyOps.mock.calls[0]?.[0] ?? [];
+      const item = ops[0]!.item;
+      expect(item.content).toEqual({
+        type: 'diagram',
+        notation: 'uml',
+        kind: 'class',
+        text: '',
+        attributes: [],
+        operations: [],
+      });
+    });
+
+    it('неизвестный kind не создаёт item (getDiagramNodeSpec возвращает undefined)', () => {
+      const options = makeOptions();
+      const api = useBoardCreation(options);
+
+      // @ts-expect-error — намеренно некорректный kind для проверки defensive-ветки
+      api.createDiagram({ x: 0, y: 0 }, 'uml', 'nonexistent');
+
+      expect(options.applyOps).not.toHaveBeenCalled();
+    });
+  });
+
   describe('createImage (успешный)', () => {
     it('upload получает File, item использует fit-размеры рамки, content хранит исходные размеры, parent по центру', async () => {
       const frame = makeItem('frame', { content: { type: 'frame', title: 'Frame' } });
