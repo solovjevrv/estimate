@@ -3,7 +3,6 @@
 import type { EmojiSequence } from '../emoji';
 import type { BoardAccessLevel, BoardShareRole } from './permissions';
 import type { PersonalStickerFormat } from './personal-stickers';
-import type { BoardDiagramContent } from './diagrams';
 
 /**
  * Доски (Epic 12+) — простой холст для брейншторма/планирования/ретро, по
@@ -13,16 +12,7 @@ import type { BoardDiagramContent } from './diagrams';
  * требует миграции схемы благодаря дискриминированному union по `type`.
  */
 export type BoardItemType =
-  | 'sticky'
-  | 'shape'
-  | 'text'
-  | 'image'
-  | 'emoji'
-  | 'sticker'
-  | 'giphy'
-  | 'frame'
-  | 'group'
-  | 'diagram';
+  'sticky' | 'shape' | 'text' | 'image' | 'emoji' | 'sticker' | 'giphy' | 'frame' | 'group';
 export const BOARD_ITEM_TYPES: readonly BoardItemType[] = [
   'sticky',
   'shape',
@@ -33,7 +23,6 @@ export const BOARD_ITEM_TYPES: readonly BoardItemType[] = [
   'giphy',
   'frame',
   'group',
-  'diagram',
 ];
 
 export type BoardShapeKind = 'rectangle' | 'rounded' | 'ellipse' | 'diamond';
@@ -261,8 +250,7 @@ export type BoardItemContent =
   | BoardStickerContent
   | BoardGiphyContent
   | BoardFrameContent
-  | BoardGroupContent
-  | BoardDiagramContent;
+  | BoardGroupContent;
 
 /**
  * Фрейм и группа (14.3) — единственные типы, которые могут быть родителями
