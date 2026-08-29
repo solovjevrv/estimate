@@ -75,6 +75,9 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       boardId: id,
       guestName,
       guestToken: guestTokens.read(id),
+      // Клиент поддерживает элементы диаграмм (23.2) — это разрешает серверу
+      // принимать и рассылать diagram-операции и в догоне, и в снимке
+      supportsDiagrams: true,
       // При первом входе на доску (ещё не видели ни одной ревизии) полный
       // снимок дешевле, чем прогонять пустой догон — присылаем только на реконнекте
       sinceRevision: ctx.reconnect ? optimistic.revision.value : undefined,

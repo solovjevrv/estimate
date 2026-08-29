@@ -46,6 +46,7 @@ import {
 
 import { isValidEmojiSequence } from '@estimate/shared/emoji/validate';
 import { ValidationError } from '../errors';
+import { buildDiagramContent, resolveDiagramGeometrySpec } from './board-ops-diagram';
 
 export interface BoardOpState {
   items: Map<string, BoardItem>;
@@ -409,6 +410,11 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
     id?: unknown;
     title?: unknown;
     format?: unknown;
+    notation?: unknown;
+    kind?: unknown;
+    attributes?: unknown;
+    operations?: unknown;
+    eventDefinition?: unknown;
   };
 
   // Для emoji — валидный Unicode-эмодзи из каталога (21.4)
@@ -532,6 +538,16 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
   if (c.type === 'text') {
     return { type: 'text', text: c.text, ...(runs ? { runs } : {}) };
   }
+
+  // Диаграмма (23.1/23.2) — text/runs валидируются тем же общим паттерном,
+  // что и sticky/shape/text выше; notation/kind/структура — в отдельном
+  // файле board-ops-diagram.ts (см. его заголовок).
+  if (c.type === 'diagram') {
+    if (typeof c.text !== 'string' || c.text.length > BOARD_ITEM_TEXT_MAX_LENGTH) {
+      throw new ValidationError('Слишком длинный текст элемента');
+    }
+    return buildDiagramContent(c, c.text, validateRuns(c.runs, c.text));
+  }
   throw new ValidationError('Неизвестный тип элемента');
 }
 
@@ -545,7 +561,7 @@ function validateGeometry(
     rotation: unknown;
     zIndex: unknown;
     parentId: unknown;
-    content?: { type?: unknown };
+    content?: { type?: unknown; notation?: unknown; kind?: unknown };
   },
   itemId: string,
   state: BoardOpState,
@@ -590,11 +606,24 @@ function validateGeometry(
     }
     parentId = parent.id;
   }
+  // Diagram-элементы (23.1/23.2) несут per-kind ограничения размера — см.
+  // resolveDiagramGeometrySpec в board-ops-diagram.ts.
+  const diagramSpec = resolveDiagramGeometrySpec(contentType, item.content);
   return {
     x: requireFinite(item.x, 'x', -BOARD_ITEM_MAX_COORDINATE, BOARD_ITEM_MAX_COORDINATE),
     y: requireFinite(item.y, 'y', -BOARD_ITEM_MAX_COORDINATE, BOARD_ITEM_MAX_COORDINATE),
-    width: requireFinite(item.width, 'width', 1, BOARD_ITEM_MAX_SIZE),
-    height: requireFinite(item.height, 'height', 1, BOARD_ITEM_MAX_SIZE),
+    width: requireFinite(
+      item.width,
+      'width',
+      diagramSpec?.minWidth ?? 1,
+      diagramSpec?.maxWidth ?? BOARD_ITEM_MAX_SIZE,
+    ),
+    height: requireFinite(
+      item.height,
+      'height',
+      diagramSpec?.minHeight ?? 1,
+      diagramSpec?.maxHeight ?? BOARD_ITEM_MAX_SIZE,
+    ),
     rotation: requireFinite(item.rotation, 'rotation', -360, 360),
     zIndex: requireFinite(item.zIndex, 'zIndex', -1_000_000, 1_000_000),
     parentId,

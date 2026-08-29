@@ -119,6 +119,7 @@ import BoardEmojiNode from './BoardEmojiNode.vue';
 import BoardStickerNode from './BoardStickerNode.vue';
 import BoardToolbar from './BoardToolbar.vue';
 import BoardFrameNode from './BoardFrameNode.vue';
+import BoardDiagramNode from './BoardDiagramNode.vue';
 
 import '@vue-flow/core/dist/style.css';
 import '@vue-flow/minimap/dist/style.css';
@@ -171,6 +172,7 @@ const nodeTypes = markRaw({
   // Фрейм и группа (14.3) — один и тот же компонент, различаются content.type
   frame: BoardFrameNode,
   group: BoardFrameNode,
+  diagram: BoardDiagramNode,
 });
 // Единственный тип связи — геометрия floating edge не зависит от типа линии
 // (12.8), тип линии/маркеры читаются самим компонентом из data.style
