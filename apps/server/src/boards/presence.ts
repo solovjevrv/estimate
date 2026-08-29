@@ -15,6 +15,4 @@ export interface BoardParticipantIdentity {
   isGuest: boolean;
   /** Итоговый уровень доступа этого участника к доске */
   access: BoardAccessLevel;
-  /** Клиент поддерживает элементы диаграмм (rollout-совместимость 23.2) */
-  supportsDiagrams: boolean;
 }

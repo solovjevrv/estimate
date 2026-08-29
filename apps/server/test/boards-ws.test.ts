@@ -70,25 +70,6 @@ function stickyItem(
   };
 }
 
-function diagramItem(
-  over: Partial<BoardItem> = {},
-): Omit<BoardItem, 'boardId' | 'createdBy' | 'updatedAt'> {
-  return {
-    id: randomUUID(),
-    parentId: null,
-    x: 10,
-    y: 10,
-    width: 160,
-    height: 160,
-    rotation: 0,
-    zIndex: 0,
-    content: { type: 'diagram', notation: 'uml', kind: 'actor', text: 'Customer' },
-    style: { color: '#A8CAFF' },
-    reactions: [],
-    ...over,
-  };
-}
-
 describeDb('WS-канал досок', () => {
   let db: ReturnType<typeof createDb>['db'];
   let pool: ReturnType<typeof createDb>['pool'];
@@ -175,12 +156,10 @@ describeDb('WS-канал досок', () => {
     client: Socket,
     boardId: string,
     sinceRevision?: number,
-    supportsDiagrams?: boolean,
   ): Promise<JoinBoardResult> {
     const ack = await emit<JoinBoardResult>(client, BOARD_WS_EVENTS.JOIN, {
       boardId,
       sinceRevision,
-      ...(supportsDiagrams !== undefined ? { supportsDiagrams } : {}),
     });
     if (!ack.ok) {
       throw new Error(`не удалось войти на доску: ${ack.message}`);
@@ -618,161 +597,6 @@ describeDb('WS-канал досок', () => {
       await joinBoard(guestClient, boardId);
 
       expect(received).toBe(false);
-    });
-  });
-
-  describe('rollout-совместимость diagram (23.2)', () => {
-    it('клиент с supportsDiagrams: true можеш создать элемент diagram', async () => {
-      const owner = await newUser('diagram-create-owner');
-      const boardId = await newBoard(owner);
-      const sender = connect(owner);
-      const viewer = connect(owner);
-      await joinBoard(sender, boardId, undefined, true);
-      await joinBoard(viewer, boardId, undefined, true);
-
-      const opsPromise = waitFor<BoardOpsBatch>(viewer, BOARD_WS_SERVER_EVENTS.OPS);
-      const ack = await emit<ApplyBoardOpsResult>(sender, BOARD_WS_EVENTS.APPLY, {
-        ops: [{ type: 'item.create', clientOpId: 'd1', item: diagramItem() }],
-      });
-      const broadcast = await opsPromise;
-
-      expect(ack.ok).toBe(true);
-      expect(broadcast.ops[0]!.type).toBe('item.create');
-      if (broadcast.ops[0]!.type === 'item.create') {
-        expect(broadcast.ops[0]!.item.content.type).toBe('diagram');
-      }
-    });
-
-    it('клиент без supportsDiagrams (или false) не может создать элемент diagram — отклоняется', async () => {
-      const owner = await newUser('diagram-reject-owner');
-      const boardId = await newBoard(owner);
-      const client = connect(owner);
-      // supportsDiagrams не передаётся — клиент «старый», без поддержки диаграмм
-      await joinBoard(client, boardId);
-
-      const ack = await emit<ApplyBoardOpsResult>(client, BOARD_WS_EVENTS.APPLY, {
-        ops: [{ type: 'item.create', clientOpId: 'd2', item: diagramItem() }],
-      });
-
-      expect(ack.ok).toBe(false);
-      if (!ack.ok) expect(ack.error).toBe('bad_request');
-    });
-
-    it('клиент с supportsDiagrams: false также отклоняется при попытке создать diagram', async () => {
-      const owner = await newUser('diagram-reject-false-owner');
-      const boardId = await newBoard(owner);
-      const client = connect(owner);
-      await joinBoard(client, boardId, undefined, false);
-
-      const ack = await emit<ApplyBoardOpsResult>(client, BOARD_WS_EVENTS.APPLY, {
-        ops: [{ type: 'item.create', clientOpId: 'd3', item: diagramItem() }],
-      });
-
-      expect(ack.ok).toBe(false);
-      if (!ack.ok) expect(ack.error).toBe('bad_request');
-    });
-
-    it('клиент с поддержкой diagram получает элемент в снимке при пересоздании', async () => {
-      const owner = await newUser('diagram-snapshot-owner');
-      const boardId = await newBoard(owner);
-      const creator = connect(owner);
-      await joinBoard(creator, boardId, undefined, true);
-
-      const item = diagramItem();
-      await emit<ApplyBoardOpsResult>(creator, BOARD_WS_EVENTS.APPLY, {
-        ops: [{ type: 'item.create', clientOpId: 'd4', item }],
-      });
-
-      // Новый клиент с supportsDiagrams:true видит diagram-элемент в снимке
-      const fresh = await joinBoard(connect(owner), boardId, undefined, true);
-      expect(fresh.snapshot?.items).toHaveLength(1);
-      expect(fresh.snapshot?.items[0]!.content.type).toBe('diagram');
-    });
-
-    it('клиент без supportsDiagrams не может войти на доску, где уже есть diagram-элемент (снимок)', async () => {
-      const owner = await newUser('diagram-join-reject-snapshot-owner');
-      const boardId = await newBoard(owner);
-      const creator = connect(owner);
-      await joinBoard(creator, boardId, undefined, true);
-
-      await emit<ApplyBoardOpsResult>(creator, BOARD_WS_EVENTS.APPLY, {
-        ops: [{ type: 'item.create', clientOpId: 'd4-snap', item: diagramItem() }],
-      });
-
-      // Легаси-клиент не должен получить снимок с элементом, который не умеет
-      // рендерить — join должен быть отклонён целиком, а не молча отдать снимок
-      const oldClient = connect(owner);
-      const ack = await emit<JoinBoardResult>(oldClient, BOARD_WS_EVENTS.JOIN, { boardId });
-
-      expect(ack.ok).toBe(false);
-      if (!ack.ok) expect(ack.error).toBe('bad_request');
-    });
-
-    it('клиент без supportsDiagrams не может войти на доску, где diagram-элемент есть только в буфере догона', async () => {
-      const owner = await newUser('diagram-join-reject-catchup-owner');
-      const boardId = await newBoard(owner);
-      const creator = connect(owner);
-      const firstJoin = await joinBoard(creator, boardId, undefined, true);
-
-      await emit<ApplyBoardOpsResult>(creator, BOARD_WS_EVENTS.APPLY, {
-        ops: [{ type: 'item.create', clientOpId: 'd4-catchup', item: diagramItem() }],
-      });
-
-      // Легаси-клиент реконнектится с sinceRevision, покрываемой кольцевым
-      // буфером (не 0) — путь catchup, не snapshot; должен быть так же отклонён
-      const oldClient = connect(owner);
-      const ack = await emit<JoinBoardResult>(oldClient, BOARD_WS_EVENTS.JOIN, {
-        boardId,
-        sinceRevision: firstJoin.revision,
-      });
-
-      expect(ack.ok).toBe(false);
-      if (!ack.ok) expect(ack.error).toBe('bad_request');
-    });
-
-    it('капабельный клиент не может создать diagram-элемент, пока на доске есть legacy-участник', async () => {
-      const owner = await newUser('diagram-mixed-presence-owner');
-      const boardId = await newBoard(owner);
-      const capableSender = connect(owner);
-      const legacyViewer = connect(owner);
-      await joinBoard(capableSender, boardId, undefined, true);
-      // Легаси-участник заходит на ЧИСТУЮ доску (diagram-элементов ещё нет) —
-      // его собственный join не отклоняется, но его присутствие теперь должно
-      // блокировать чужие diagram-операции на этой доске
-      await joinBoard(legacyViewer, boardId);
-
-      const ack = await emit<ApplyBoardOpsResult>(capableSender, BOARD_WS_EVENTS.APPLY, {
-        ops: [{ type: 'item.create', clientOpId: 'd-mixed', item: diagramItem() }],
-      });
-
-      expect(ack.ok).toBe(false);
-      if (!ack.ok) expect(ack.error).toBe('bad_request');
-    });
-
-    it('patch diagram-контента от клиента без поддержки отклоняется', async () => {
-      const owner = await newUser('diagram-patch-reject-owner');
-      const boardId = await newBoard(owner);
-      const oldClient = connect(owner);
-      // Легаси-клиент один на чистой доске (diagram-элементов ещё нет) — сам
-      // join проходит; проверяем именно item.patch-ветку opsContainDiagram
-      // (у item.create — уже отдельный тест выше). Id элемента может не
-      // существовать — блокировка срабатывает раньше, чем сервис вообще
-      // посмотрел бы на состояние доски.
-      await joinBoard(oldClient, boardId);
-
-      const ack = await emit<ApplyBoardOpsResult>(oldClient, BOARD_WS_EVENTS.APPLY, {
-        ops: [
-          {
-            type: 'item.patch',
-            clientOpId: 'd5-patch',
-            id: randomUUID(),
-            patch: { content: { type: 'diagram', notation: 'uml', kind: 'actor', text: 'Admin' } },
-          },
-        ],
-      });
-
-      expect(ack.ok).toBe(false);
-      if (!ack.ok) expect(ack.error).toBe('bad_request');
     });
   });
 });

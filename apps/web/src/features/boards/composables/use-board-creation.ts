@@ -1,18 +1,11 @@
 import type {
   BoardItem,
   BoardOp,
-  BoardDiagramContent,
-  BoardDiagramKind,
-  BoardDiagramNotation,
   EmojiSequence,
   GiphyGifSummary,
   PersonalStickerFormat,
 } from '@estimate/shared';
-import {
-  BOARD_IMAGE_ALLOWED_MIME_TYPES,
-  BOARD_MAX_ITEMS,
-  getDiagramNodeSpec,
-} from '@estimate/shared';
+import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_MAX_ITEMS } from '@estimate/shared';
 import { useToast } from '@nuxt/ui/composables';
 import { nextTick, ref, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -100,11 +93,6 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
   createEmojiAtCenter: (emoji: EmojiSequence) => void;
   createStickerAtCenter: (pack: string, id: string, format?: PersonalStickerFormat) => void;
   createGiphyAtCenter: (gif: GiphyGifSummary) => void;
-  createDiagram: (
-    center: { x: number; y: number },
-    notation: BoardDiagramNotation,
-    kind: BoardDiagramKind,
-  ) => void;
 
   cancelPendingEdit: () => void;
 
@@ -242,38 +230,6 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
           zIndex: minZIndex(options.getItems()) - 1,
           content: { type: 'frame', title: '' },
           style: { color: STICKY_DEFAULT_COLOR },
-          reactions: [],
-        },
-      },
-    ]);
-    selectAfterCreate(id);
-  }
-
-  function createDiagram(
-    center: { x: number; y: number },
-    notation: BoardDiagramNotation,
-    kind: BoardDiagramKind,
-  ): void {
-    if (!canCreateItem()) return;
-    const spec = getDiagramNodeSpec(notation, kind);
-    if (!spec) return;
-    const id = uuid();
-    pendingEditId.value = id;
-    void options.applyOps([
-      {
-        type: 'item.create',
-        clientOpId: uuid(),
-        item: {
-          id,
-          parentId: options.findContainerAt(center)?.id ?? null,
-          x: center.x - spec.defaultWidth / 2,
-          y: center.y - spec.defaultHeight / 2,
-          width: spec.defaultWidth,
-          height: spec.defaultHeight,
-          rotation: 0,
-          zIndex: nextZIndexAbove(options.getItems()),
-          content: { type: 'diagram', notation, kind, text: '' } as BoardDiagramContent,
-          style: { color: SHAPE_DEFAULT_COLOR },
           reactions: [],
         },
       },
@@ -465,32 +421,26 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
       activeTool.value !== 'shape' &&
       activeTool.value !== 'text' &&
       activeTool.value !== 'image' &&
-      activeTool.value !== 'frame' &&
-      activeTool.value !== 'diagram-uml-actor' &&
-      activeTool.value !== 'diagram-bpmn-task'
+      activeTool.value !== 'frame'
     ) {
       return;
     }
     options.breakFollowOnEdit();
-    const center = flowPositionFromEvent(event);
     if (activeTool.value === 'sticky') {
-      createSticky(center);
+      createSticky(flowPositionFromEvent(event));
     } else if (activeTool.value === 'shape') {
-      createShape(center);
+      createShape(flowPositionFromEvent(event));
     } else if (activeTool.value === 'text') {
-      createText(center);
+      createText(flowPositionFromEvent(event));
     } else if (activeTool.value === 'image') {
+      const position = flowPositionFromEvent(event);
       activeTool.value = 'select';
       void pickImageFile().then((file) => {
-        if (file) void createImage(center, file);
+        if (file) void createImage(position, file);
       });
       return;
     } else if (activeTool.value === 'frame') {
-      createFrame(center);
-    } else if (activeTool.value === 'diagram-uml-actor') {
-      createDiagram(center, 'uml', 'actor');
-    } else if (activeTool.value === 'diagram-bpmn-task') {
-      createDiagram(center, 'bpmn', 'task');
+      createFrame(flowPositionFromEvent(event));
     }
     activeTool.value = 'select';
   }
@@ -526,7 +476,6 @@ export function useBoardCreation(options: UseBoardCreationOptions): {
     createEmojiAtCenter,
     createStickerAtCenter,
     createGiphyAtCenter,
-    createDiagram,
     cancelPendingEdit,
     onPaneClick,
     onPaneDoubleClick,

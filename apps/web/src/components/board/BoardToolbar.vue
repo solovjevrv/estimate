@@ -24,14 +24,7 @@
 import { useI18n } from 'vue-i18n';
 
 import type { BoardTool } from '../../features/boards/board-tools';
-import type {
-  BoardDiagramKind,
-  BoardDiagramNotation,
-  EmojiSequence,
-  GiphyGifSummary,
-  PersonalStickerFormat,
-} from '@estimate/shared';
-import BoardDiagramPicker from './BoardDiagramPicker.vue';
+import type { EmojiSequence, GiphyGifSummary, PersonalStickerFormat } from '@estimate/shared';
 import BoardGiphyPicker from './BoardGiphyPicker.vue';
 import BoardStickerPicker from './BoardStickerPicker.vue';
 import EmojiPicker from '../EmojiPicker.vue';
@@ -56,21 +49,6 @@ const { t } = useI18n();
 function isActive(value: BoardTool): boolean {
   return tool.value === value;
 }
-
-/**
- * Диаграммы (23.2) — тот же принцип, что у «Фрейма»: выбор в поповере
- * вооружает инструмент, клик по холсту размещает элемент. Список kind в
- * `BoardDiagramPicker.vue` пока даёт только пары notation/kind с уже
- * заведённым `BoardTool`-значением — маппинг здесь тривиален (2 варианта);
- * когда 23.3/23.4 добавят остальные kind, скорее всего появится один общий
- * `BoardTool` вида `{ tool: 'diagram'; notation; kind }` вместо перечисления.
- */
-function diagramToolFor(notation: BoardDiagramNotation, kind: BoardDiagramKind): BoardTool {
-  return notation === 'uml' && kind === 'actor' ? 'diagram-uml-actor' : 'diagram-bpmn-task';
-}
-
-const isDiagramToolActive = (): boolean =>
-  isActive('diagram-uml-actor') || isActive('diagram-bpmn-task');
 </script>
 
 <template>
@@ -206,32 +184,6 @@ const isDiagramToolActive = (): boolean =>
     >
       <UIcon name="i-lucide-frame" class="size-[19px]" />
     </button>
-    <!-- Диаграммы (23.2) — не отдельная кнопка на kind: одна кнопка открывает
-         поповер со списком (сейчас 2 пункта — UML actor, BPMN task; растёт
-         в 23.3/23.4), выбор вооружает инструмент, клик по холсту размещает
-         элемент — тот же принцип, что у «Фрейма». -->
-    <UPopover :content="{ side: 'right', sideOffset: 20 }">
-      <button
-        type="button"
-        class="board-toolbar-btn"
-        :class="{ 'board-toolbar-btn-active': isDiagramToolActive() }"
-        :aria-label="t('board.toolDiagram')"
-        :aria-pressed="isDiagramToolActive()"
-      >
-        <UIcon name="i-lucide-shapes" class="size-[19px]" />
-      </button>
-
-      <template #content="{ close }">
-        <BoardDiagramPicker
-          @select="
-            (notation, kind) => {
-              tool = diagramToolFor(notation, kind);
-              close();
-            }
-          "
-        />
-      </template>
-    </UPopover>
   </div>
 </template>
 

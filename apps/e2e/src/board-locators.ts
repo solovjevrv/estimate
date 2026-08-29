@@ -51,8 +51,6 @@ export interface BoardLocators {
   cursorName: Locator;
   stickerPicker: Locator;
   stickerPickerSection: (label: string) => Locator;
-  diagramPicker: Locator;
-  diagramPickerOption: (notation: string, kind: string) => Locator;
   formMenu: Locator;
   formMenuButton: (ariaLabel: string) => Locator;
   highlightSwatch: Locator;
@@ -122,9 +120,6 @@ export function boardLocators(pageOrLocator: Page | Locator): BoardLocators {
     stickerPicker: base('[data-testid="board-sticker-picker"]'),
     stickerPickerSection: (label: string) =>
       base(`[data-testid="board-sticker-picker-section"]`, { hasText: label }),
-    diagramPicker: base('[data-testid="board-diagram-picker"]'),
-    diagramPickerOption: (notation: string, kind: string) =>
-      base(`[data-testid="board-diagram-picker-${notation}-${kind}"]`),
     formMenu: base('[data-testid="board-form-menu"]'),
     formMenuButton: (ariaLabel: string) =>
       base(`[data-testid="board-form-menu"] button[aria-label="${ariaLabel}"]`),
