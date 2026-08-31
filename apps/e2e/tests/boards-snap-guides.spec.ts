@@ -47,29 +47,25 @@ test.describe('Доски: snap-направляющие при перетаск
 
     // Создаём карточки разнесённо: fit-view после первого создания меняет
     // экранные координаты, поэтому близкая вторая точка может попасть в первую.
-    // Дальше snap всё равно рассчитывается от реальных DOM rect'ов.
+    // Дальше snap всё равно рассчитывается от реальных DOM rect'ов. Идентифицируем
+    // по data-node-id (не по наличию contenteditable — оба редактора закрываются
+    // ниже, различать узлы по editing-состоянию после этого уже нельзя).
     await board.pane.dblclick({ position: { x: 300, y: 300 } });
     await expect(board.stickyNodes).toHaveCount(1);
+    const leftStickyId = await board.stickyNodes.getAttribute('data-node-id');
     await page.keyboard.press('Escape');
 
     await board.pane.dblclick({ position: { x: 1000, y: 600 } });
     await expect(board.stickyNodes).toHaveCount(2);
+    // Новый элемент завершает предыдущий редактор (activeTextEditor.commit() в
+    // startEditing) — свой же auto-opened редактор закрываем явно, как и у первого.
     await page.keyboard.press('Escape');
-    await page.keyboard.press('Escape');
-
-    // Новый элемент завершает предыдущий редактор: активным остаётся только
-    // второй стикер. Тянем первый, не редактируемый, поэтому его pointerdown
-    // доходит до Vue Flow.
-    const activeEditor = board.stickyNodes.locator('[contenteditable="true"]');
-    await expect(activeEditor).toHaveCount(1);
 
     await page.keyboard.press('ControlOrMeta+0');
     await expect(board.zoom).toHaveText('100%');
 
-    const leftSticky = board.stickyNodes.filter({ has: page.locator('[contenteditable="true"]') });
-    const rightSticky = board.stickyNodes.filter({
-      hasNot: page.locator('[contenteditable="true"]'),
-    });
+    const leftSticky = page.locator(`[data-node-id="${leftStickyId}"]`);
+    const rightSticky = board.stickyNodes.locator(`:scope:not([data-node-id="${leftStickyId}"])`);
 
     // Vue Flow передаёт в drag-событие всё текущее выделение. Оставляем
     // выбранным только переносимый узел, иначе оба стикера считаются dragged
@@ -87,22 +83,29 @@ test.describe('Доски: snap-направляющие при перетаск
     const rightBox = await rightSticky.boundingBox();
     expect(rightBox).not.toBeNull();
 
-    // Координаты мыши и flow-координаты слегка расходятся из-за внутреннего
-    // трансформа Vue Flow. Заканчиваем чуть дальше точки совпадения: на
-    // последнем drag-тике левый/верхний край попадает в 8px snap-порог.
-    // Для одинаковых стикеров left-left, center-center и right-right дают
-    // одинаковую итоговую позицию.
-    const targetRightX = leftBox!.x + 16;
-    const targetRightY = leftBox!.y + 15;
-
     const dragStartX = rightBox!.x + rightBox!.width / 2;
     const dragStartY = rightBox!.y + rightBox!.height / 2;
-    const dragEndX = targetRightX + rightBox!.width / 2;
-    const dragEndY = targetRightY + rightBox!.height / 2;
 
     await page.mouse.move(dragStartX, dragStartY);
     await page.mouse.down();
-    await page.mouse.move(dragEndX, dragEndY, { steps: 20 });
+
+    // Крупный сегмент — подводим правый стикер примерно к левому (грубо, без
+    // точного попадания в 8px порог: экранные и flow-координаты слегка
+    // расходятся из-за внутреннего трансформа Vue Flow).
+    const roughTargetX = leftBox!.x + rightBox!.width / 2;
+    const roughTargetY = leftBox!.y + rightBox!.height / 2;
+    await page.mouse.move(roughTargetX, roughTargetY, { steps: 20 });
+
+    // Корректирующий сегмент — по СВЕЖЕМУ фактическому зазору (а не по
+    // константе, подобранной один раз и не переживающей дрейф координат
+    // между прогонами): дотягиваем левый край переносимого стикера вплотную
+    // к левому краю статичного, гарантированно попадая в SNAP_THRESHOLD_PX
+    // независимо от точного значения расхождения экран/flow.
+    const midBox = await rightSticky.boundingBox();
+    expect(midBox).not.toBeNull();
+    const correctionX = leftBox!.x - midBox!.x;
+    const correctionY = leftBox!.y - midBox!.y;
+    await page.mouse.move(roughTargetX + correctionX, roughTargetY + correctionY, { steps: 5 });
 
     // Во время drag появляются snap-гиды (только визуально, позиция не меняется)
     await expect(board.snapGuides).toBeVisible();

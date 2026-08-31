@@ -739,6 +739,14 @@ onUnmounted(() => {
       r="4"
       :fill="dotColor"
     />
+    <!-- Без сохранённого curveOffset ручка сидит ровно в midpoint пути — той же
+         точке, по которой целится двойной клик для входа в редактирование
+         подписи (см. @dblclick на <g> выше). Первый клик двойного клика
+         выделяет связь → эта ручка появляется (v-if по selected) точно под
+         курсором → второй клик того же жеста попадает уже в неё, а не в путь.
+         @dblclick без .stop — resetCurveOffset() безопасный no-op без
+         сохранённого смещения (commitCurveOffset сравнивает с текущим и не
+         шлёт патч), событие всплывает к <g> и всё равно открывает редактор. -->
     <circle
       v-if="canEdit && data.style.line === 'curved' && selected"
       data-testid="board-edge-curve-handle"
@@ -749,7 +757,7 @@ onUnmounted(() => {
       @pointerdown.stop="onCurveHandlePointerDown"
       @pointermove.stop="onCurveHandlePointerMove"
       @pointerup.stop="onCurveHandlePointerUp"
-      @dblclick.stop="resetCurveOffset"
+      @dblclick="resetCurveOffset"
     />
     <!-- Ручное перецепление конца связи на другую сторону/карточку (12.20) —
          видимы только когда связь выделена (клик по линии), по образцу ручки

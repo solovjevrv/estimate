@@ -753,6 +753,11 @@ useBoardHotkeys({
     @drop="onPaneDrop"
     @dragover="onPaneDragOver"
   >
+    <!--
+      zoom-on-double-click="false": двойной клик по холсту создаёт элемент
+      (onPaneDoubleClick, не стопает propagation) — библиотечный дефолт (true)
+      молча зумил 2x поверх каждого такого создания (17.15).
+    -->
     <VueFlow
       data-testid="board-flow"
       :node-types="nodeTypes"
@@ -766,6 +771,7 @@ useBoardHotkeys({
       :pan-on-scroll="true"
       :zoom-on-scroll="false"
       :zoom-on-pinch="true"
+      :zoom-on-double-click="false"
       :min-zoom="0.02"
       :max-zoom="20"
       :only-render-visible-elements="true"
