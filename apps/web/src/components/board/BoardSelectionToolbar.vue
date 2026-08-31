@@ -451,7 +451,7 @@ function cancelTextColor(hex: BoardColorHex): void {
       </button>
 
       <template #content>
-        <div class="board-form-menu">
+        <div class="board-form-menu" data-testid="board-form-menu">
           <button
             v-for="kind in FORM_OPTIONS"
             :key="kind"
@@ -617,7 +617,7 @@ function cancelTextColor(hex: BoardColorHex): void {
           </button>
 
           <template #content>
-            <div class="board-form-menu" data-testid="board-form-menu">
+            <div class="board-form-menu">
               <button
                 v-for="align in BOARD_TEXT_ALIGNS"
                 :key="align"
