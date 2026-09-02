@@ -210,7 +210,18 @@ export function boardEdgeToFlowEdge(edge: BoardEdge): Edge<BoardEdge> {
     // всегда один кастомный тип (12.8)
     type: 'floating',
     label: edge.label ?? undefined,
-    style: { stroke: color, strokeWidth: 2, ...resolveEdgeDashStyle(edge.style.dash) },
+    // fill: 'none' — иначе только из класса .vue-flow__edge-path в
+    // @vue-flow/core/dist/style.css. Живому рендеру всё равно (стиль подключён),
+    // но html-to-image (15.5) при экспорте PNG клонирует поддерево <svg> через
+    // нативный cloneNode(true) в обход своего decorate() — внешние правила CSS
+    // в клон не попадают, path остаётся без fill и заливается SVG-дефолтом
+    // (чёрный), кривая связь превращается в жирную чёрную кляксу вместо линии.
+    style: {
+      fill: 'none',
+      stroke: color,
+      strokeWidth: 2,
+      ...resolveEdgeDashStyle(edge.style.dash),
+    },
     markerStart: toFlowMarkerType(edge.style.markerStart, color),
     markerEnd: toFlowMarkerType(edge.style.markerEnd, color),
     zIndex: edge.zIndex,

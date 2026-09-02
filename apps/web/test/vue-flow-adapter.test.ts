@@ -171,6 +171,16 @@ describe('boardEdgeToFlowEdge', () => {
     expect(edge.style).toMatchObject({ stroke: expect.stringMatching(/^#[0-9a-f]{6}$/i) });
   });
 
+  it('задаёт fill: none явным inline-style, а не полагается на класс .vue-flow__edge-path (15.5)', () => {
+    // html-to-image при PNG-экспорте клонирует поддерево <svg> нативным
+    // cloneNode(true), внешние CSS-правила (в т.ч. дефолт fill:none из
+    // @vue-flow/core/dist/style.css) в клон не попадают — путь без явного
+    // inline fill заливается SVG-дефолтом (чёрный), кривая связь превращается
+    // в сплошную чёрную кляксу вместо тонкой линии.
+    const edge = boardEdgeToFlowEdge(curvedEdge);
+    expect(edge.style).toMatchObject({ fill: 'none' });
+  });
+
   it('маппит наконечник arrow в MarkerType Vue Flow цветом самой связи (не общим дефолтом), а dot оставляет неопределённым — рисуется вручную в BoardFloatingEdge, т.к. Vue Flow не умеет такой тип из коробки', () => {
     const arrowEdge: BoardEdge = {
       ...straightEdge,
