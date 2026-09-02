@@ -1785,11 +1785,17 @@ describe('реакции-эмодзи на карточке участника (
       (b) => b.getAttribute('data-testid') === 'emoji-picker-show-all',
     );
     (showAllBtn as HTMLElement).click();
-    await vi.waitFor(() => {
-      const buttons = Array.from(document.body.querySelectorAll('button'));
-      const found = buttons.find((b) => b.getAttribute('aria-label') === 'thumbs up');
-      expect(found).not.toBeUndefined();
-    });
+    // Разворачивание показывает полный каталог (все категории), а не только
+    // «Недавние» — на холодном раннере CI рендер такого списка тоже не всегда
+    // укладывается в дефолтный таймаут vi.waitFor (1000мс), см. 3ce8091.
+    await vi.waitFor(
+      () => {
+        const buttons = Array.from(document.body.querySelectorAll('button'));
+        const found = buttons.find((b) => b.getAttribute('aria-label') === 'thumbs up');
+        expect(found).not.toBeUndefined();
+      },
+      { timeout: 5000 },
+    );
 
     const emojiButton = Array.from(document.body.querySelectorAll('button')).find(
       (b) => b.getAttribute('aria-label') === 'thumbs up',
