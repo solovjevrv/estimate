@@ -96,6 +96,7 @@ import { useBoardClipboard } from '../../features/boards/composables/use-board-c
 import { useBoardCreation } from '../../features/boards/composables/use-board-creation';
 import { useBoardDragAndSnap } from '../../features/boards/composables/use-board-drag-and-snap';
 import { useBoardEdges } from '../../features/boards/composables/use-board-edges';
+import { useBoardExport } from '../../features/boards/composables/use-board-export';
 import { useBoardSelection } from '../../features/boards/composables/use-board-selection';
 import { useBoardViewport } from '../../features/boards/composables/use-board-viewport';
 import BoardSelectionToolbar from './BoardSelectionToolbar.vue';
@@ -103,6 +104,7 @@ import BoardContextMenu from './BoardContextMenu.vue';
 import BoardControlsCluster from './BoardControlsCluster.vue';
 import BoardCursor from './BoardCursor.vue';
 import BoardEdgeToolbar from './BoardEdgeToolbar.vue';
+import BoardExportModal from './BoardExportModal.vue';
 import BoardFollowingBanner from './BoardFollowingBanner.vue';
 import BoardFloatingEdge from './BoardFloatingEdge.vue';
 import BoardGiphyNode from './BoardGiphyNode.vue';
@@ -194,6 +196,13 @@ const menuItems = computed<DropdownMenuItem[][]>(() =>
         ],
         [
           {
+            label: t('board.exportButton'),
+            icon: 'i-lucide-download',
+            onSelect: () => (exportModalOpen.value = true),
+          },
+        ],
+        [
+          {
             label: t('board.deleteBoard'),
             icon: 'i-lucide-trash-2',
             color: 'error',
@@ -208,6 +217,13 @@ const menuItems = computed<DropdownMenuItem[][]>(() =>
             label: t('board.share'),
             icon: 'i-lucide-share-2',
             onSelect: () => emit('share'),
+          },
+        ],
+        [
+          {
+            label: t('board.exportButton'),
+            icon: 'i-lucide-download',
+            onSelect: () => (exportModalOpen.value = true),
           },
         ],
         [
@@ -249,6 +265,40 @@ const rootEl = useTemplateRef<HTMLElement>('root');
 
 /** Модалка списка хоткеев (22.9) — открывается иконкой «?» в `BoardControlsCluster.vue` */
 const hotkeysModalOpen = ref(false);
+
+/**
+ * Экспорт доски в PNG (15.5) — оркестрация в `use-board-export.ts`, сама
+ * модалка (`BoardExportModal.vue`) только эмиттит выбор настроек. Живёт
+ * здесь, а не на `BoardPage.vue` (как Share/Rename/Archive) — PNG нужен
+ * доступ к DOM Vue Flow и `useVueFlow()`, которых на уровне страницы нет.
+ */
+const boardExport = useBoardExport({
+  boardTitle: () => props.board.title,
+  itemCount: () => props.items.length,
+  getViewportEl: () =>
+    rootEl.value?.querySelector<HTMLElement>('.vue-flow__transformationpane') ?? null,
+  getCanvasRect: () => rootEl.value?.getBoundingClientRect(),
+  project,
+  getAllNodeIds: () => getNodes.value.map((node) => node.id),
+  getSelectedNodeIds: () => getSelectedNodes.value.map((node) => node.id),
+});
+// Деструктурируются в отдельные top-level const (как selection/edges ниже) —
+// иначе вложенные refs (`boardExport.open` и т.п.) не разворачиваются
+// автоматически в шаблоне.
+const {
+  open: exportModalOpen,
+  pending: exportPending,
+  itemCount: exportItemCount,
+  hasSelection: exportHasSelection,
+} = boardExport;
+
+async function onExportDownload(selectedOnly: boolean, marginPx: number): Promise<void> {
+  try {
+    await boardExport.runExport(selectedOnly, marginPx);
+  } catch {
+    toast.add({ title: t('board.exportError'), color: 'error' });
+  }
+}
 
 /**
  * Управление viewport, fullscreen, follow-mode и cursor/camera awareness
@@ -972,6 +1022,17 @@ useBoardHotkeys({
     доски, поэтому живёт локально здесь, а не поднят на BoardPage.vue как
     Share/Rename/Archive (тем модалкам нужен board-проп и вызовы API) -->
     <BoardHotkeysModal v-model="hotkeysModalOpen" />
+
+    <!-- Экспорт (15.5) — как и хоткеи, живёт локально: PNG-рендер нужен DOM
+    Vue Flow, которого на уровне BoardPage.vue нет -->
+    <BoardExportModal
+      v-model="exportModalOpen"
+      :board-title="board.title"
+      :item-count="exportItemCount"
+      :has-selection="exportHasSelection"
+      :pending="exportPending"
+      @download="onExportDownload"
+    />
 
     <!-- Чужие курсоры участников (14.1) — позиционируются в world-координатах,
          как в Miro: курсор рисуется на том же месте у всех зрителей. `key` по
