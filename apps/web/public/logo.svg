@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 112" role="img" aria-labelledby="title desc">
+  <title id="title">Estimate</title>
+  <desc id="desc">Две наложенные карточки для планирования оценки</desc>
+  <g transform="rotate(-8 101 56)">
+    <rect x="76" y="22" width="54" height="68" rx="13" fill="#F2A93B" />
+  </g>
+  <g transform="rotate(8 72 56)">
+    <rect x="45" y="21" width="55" height="70" rx="13" fill="#1FA455" />
+  </g>
+</svg>
