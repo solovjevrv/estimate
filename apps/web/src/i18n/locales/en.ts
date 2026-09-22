@@ -59,6 +59,7 @@ export default {
   },
   teams: {
     title: 'Teams',
+    emptyTitle: 'Nothing here yet',
     empty: 'You have no teams yet. Create the first one to invite your colleagues.',
     create: 'Create team',
     loadError: 'Could not load teams. Try refreshing the page.',
@@ -95,6 +96,8 @@ export default {
     roleLabel: 'Role',
     roleChanged: 'Role updated',
     roleChangeError: 'Could not change the role',
+    changeRole: 'Change role',
+    memberMenu: 'Member actions',
     remove: 'Remove',
     removeConfirmTitle: 'Remove member?',
     removeConfirmText: '“{name}” will lose access to the team.',

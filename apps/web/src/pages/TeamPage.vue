@@ -425,7 +425,7 @@ async function confirmDelete(): Promise<void> {
   <section class="space-y-5">
     <RouterLink
       :to="{ name: 'teams' }"
-      class="text-muted hover:text-default inline-flex w-fit items-center gap-1.5 text-[14.5px] font-semibold"
+      class="text-muted hover:text-default inline-flex w-fit items-center gap-1.5 text-xs font-bold"
     >
       <UIcon name="i-lucide-chevron-left" class="size-4" />
       {{ t('team.back') }}
@@ -454,7 +454,7 @@ async function confirmDelete(): Promise<void> {
 
     <template v-else-if="overview">
       <div class="flex flex-wrap items-center gap-3.5">
-        <h1 class="font-heading min-w-0 text-3xl font-extrabold break-words">
+        <h1 class="font-heading min-w-0 text-[32px] font-bold break-words">
           {{ overview.team.name }}
         </h1>
         <span
