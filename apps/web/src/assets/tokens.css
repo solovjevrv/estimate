@@ -1,0 +1,267 @@
+/* Токены дизайн-системы Estimate — зеркало Figma Estimate UI Kit (коллекции _01-Primitives и
+   02-Color-Tokens, режимы Light/Dark). Менять значения только вместе с Figma. */
+
+:root {
+  /* Примитивы (_01-Primitives) */
+  --palette-base-3: #f8f8f8;
+  --palette-base-5: #f3f3f4;
+  --palette-base-10: #e8e8e9;
+  --palette-base-20: #d0d2d4;
+  --palette-base-30: #b9bbbe;
+  --palette-base-40: #a2a5a8;
+  --palette-base-50: #8a8e93;
+  --palette-base-60: #6e7379;
+  --palette-base-70: #5c6268;
+  --palette-base-80: #454b52;
+  --palette-base-90: #2e353d;
+  --palette-base-100: #182028;
+  --palette-brand-3: #f6fbf8;
+  --palette-brand-5: #f1f9f3;
+  --palette-brand-10: #e3f2e7;
+  --palette-brand-20: #c6e5d0;
+  --palette-brand-30: #a9d8b8;
+  --palette-brand-40: #8bcba1;
+  --palette-brand-50: #6abe8a;
+  --palette-brand-60: #45b173;
+  --palette-brand-70: #00a45c;
+  --palette-brand-80: #009846;
+  --palette-brand-90: #008d31;
+  --palette-brand-100: #00831b;
+  --palette-brand-110: #006804;
+  --palette-brand-120: #005f00;
+  --palette-brand-dark-10: #1a2f21;
+  --palette-warning-3: #fffbf7;
+  --palette-warning-5: #fff8f1;
+  --palette-warning-10: #fff1e2;
+  --palette-warning-20: #ffe5c6;
+  --palette-warning-30: #ffd7a8;
+  --palette-warning-40: #ffca8a;
+  --palette-warning-50: #ffbc68;
+  --palette-warning-60: #ffaf3f;
+  --palette-warning-70: #ffa200;
+  --palette-warning-80: #ff9500;
+  --palette-warning-90: #ff8900;
+  --palette-warning-100: #fe7d00;
+  --palette-warning-110: #e36e00;
+  --palette-warning-120: #c96000;
+  --palette-warning-130: #ad5e00;
+  --palette-warning-140: #753300;
+  --palette-warning-dark-10: #45341f;
+  --palette-error-3: #fef9f9;
+  --palette-error-5: #fcf4f4;
+  --palette-error-10: #fae9e9;
+  --palette-error-20: #f5d5d5;
+  --palette-error-30: #efc0c0;
+  --palette-error-40: #ebabac;
+  --palette-error-50: #e69698;
+  --palette-error-60: #e28185;
+  --palette-error-70: #dd6d74;
+  --palette-error-80: #d85963;
+  --palette-error-90: #d44656;
+  --palette-error-100: #cf354b;
+  --palette-error-110: #bc243e;
+  --palette-error-120: #9c2034;
+  --palette-error-dark-10: #3f2425;
+  --palette-white: #ffffff;
+  --palette-black-40: #00000066;
+}
+
+:root {
+  /* Семантика (02-Color-Tokens) — Light */
+  --text-primary: var(--palette-base-100);
+  --text-secondary: var(--palette-base-80);
+  --text-tertiary: var(--palette-base-60);
+  --text-disabled: var(--palette-base-40);
+  --text-white: var(--palette-white);
+  --text-brand: var(--palette-brand-110);
+  --text-link: var(--palette-brand-110);
+  --text-success: var(--palette-brand-110);
+  --text-warning: var(--palette-warning-140);
+  --text-error: var(--palette-error-120);
+  --text-on-bright: var(--palette-base-100);
+  --icons-primary: var(--palette-base-100);
+  --icons-secondary: var(--palette-base-80);
+  --icons-tertiary: var(--palette-base-60);
+  --icons-disabled: var(--palette-base-40);
+  --icons-white: var(--palette-white);
+  --icons-brand: var(--palette-brand-100);
+  --icons-link: var(--palette-brand-100);
+  --icons-success: var(--palette-brand-100);
+  --icons-warning: var(--palette-warning-140);
+  --icons-error: var(--palette-error-120);
+  --surface-frame: var(--palette-base-3);
+  --surface-container: var(--palette-white);
+  --surface-block: var(--palette-white);
+  --surface-primary: var(--palette-base-3);
+  --surface-secondary: var(--palette-base-5);
+  --surface-tertiary: var(--palette-base-10);
+  --surface-disabled: var(--palette-base-20);
+  --surface-dark: var(--palette-base-100);
+  --surface-brand: var(--palette-brand-100);
+  --surface-brand-hover: var(--palette-brand-110);
+  --surface-brand-pressed: var(--palette-brand-120);
+  --surface-brand-low: var(--palette-brand-10);
+  --surface-success: var(--palette-brand-100);
+  --surface-success-hover: var(--palette-brand-110);
+  --surface-success-pressed: var(--palette-brand-120);
+  --surface-success-low: var(--palette-brand-5);
+  --surface-warning: var(--palette-warning-100);
+  --surface-warning-hover: var(--palette-warning-110);
+  --surface-warning-pressed: var(--palette-warning-120);
+  --surface-warning-low: var(--palette-warning-10);
+  --surface-error: var(--palette-error-100);
+  --surface-error-hover: var(--palette-error-110);
+  --surface-error-pressed: var(--palette-error-120);
+  --surface-error-low: var(--palette-error-10);
+  --surface-overlay: var(--palette-black-40);
+  --border-light: var(--palette-base-5);
+  --border-medium: var(--palette-base-10);
+  --border-strong: var(--palette-base-50);
+  --border-brand: var(--palette-brand-100);
+  --border-success: var(--palette-brand-100);
+  --border-success-low: var(--palette-brand-40);
+  --border-warning: var(--palette-warning-120);
+  --border-warning-low: var(--palette-warning-40);
+  --border-error: var(--palette-error-120);
+  --border-error-low: var(--palette-error-40);
+  --border-white: var(--palette-white);
+  --border-primary: var(--palette-base-100);
+  --border-secondary: var(--palette-base-80);
+  --border-tertiary: var(--palette-base-60);
+}
+
+:root.dark {
+  /* Dark */
+  --text-primary: var(--palette-base-3);
+  --text-secondary: var(--palette-base-20);
+  --text-tertiary: var(--palette-base-30);
+  --text-disabled: var(--palette-base-60);
+  --text-brand: var(--palette-brand-60);
+  --text-link: var(--palette-brand-50);
+  --text-success: var(--palette-brand-60);
+  --text-warning: var(--palette-warning-60);
+  --text-error: var(--palette-error-40);
+  --icons-primary: var(--palette-base-3);
+  --icons-secondary: var(--palette-base-20);
+  --icons-tertiary: var(--palette-base-30);
+  --icons-disabled: var(--palette-base-60);
+  --icons-brand: var(--palette-brand-60);
+  --icons-link: var(--palette-brand-50);
+  --icons-success: var(--palette-brand-60);
+  --icons-warning: var(--palette-warning-60);
+  --icons-error: var(--palette-error-40);
+  --surface-frame: var(--palette-base-100);
+  --surface-block: var(--palette-base-90);
+  --surface-primary: var(--palette-base-90);
+  --surface-secondary: var(--palette-base-80);
+  --surface-tertiary: var(--palette-base-80);
+  --surface-disabled: var(--palette-base-90);
+  --surface-dark: var(--palette-base-90);
+  --surface-brand-low: var(--palette-brand-dark-10);
+  --surface-success-low: var(--palette-brand-dark-10);
+  --surface-warning-low: var(--palette-warning-dark-10);
+  --surface-error-low: var(--palette-error-dark-10);
+  --border-light: var(--palette-base-90);
+  --border-medium: var(--palette-base-80);
+  --border-strong: var(--palette-base-30);
+  --border-brand: var(--palette-brand-60);
+  --border-success: var(--palette-brand-60);
+  --border-success-low: var(--palette-brand-50);
+  --border-warning: var(--palette-warning-90);
+  --border-warning-low: var(--palette-warning-50);
+  --border-error: var(--palette-error-40);
+  --border-error-low: var(--palette-error-50);
+  --border-primary: var(--palette-base-10);
+  --border-secondary: var(--palette-base-20);
+  --border-tertiary: var(--palette-base-30);
+}
+
+@theme inline {
+  /* Утилиты Tailwind по семантическим токенам: bg-surface-block, border-border-medium,
+     text-text-secondary, fill-icons-brand и т.д. Значения меняются вместе с темой. */
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-text-disabled: var(--text-disabled);
+  --color-text-white: var(--text-white);
+  --color-text-brand: var(--text-brand);
+  --color-text-link: var(--text-link);
+  --color-text-success: var(--text-success);
+  --color-text-warning: var(--text-warning);
+  --color-text-error: var(--text-error);
+  --color-text-on-bright: var(--text-on-bright);
+  --color-icons-primary: var(--icons-primary);
+  --color-icons-secondary: var(--icons-secondary);
+  --color-icons-tertiary: var(--icons-tertiary);
+  --color-icons-disabled: var(--icons-disabled);
+  --color-icons-white: var(--icons-white);
+  --color-icons-brand: var(--icons-brand);
+  --color-icons-link: var(--icons-link);
+  --color-icons-success: var(--icons-success);
+  --color-icons-warning: var(--icons-warning);
+  --color-icons-error: var(--icons-error);
+  --color-surface-frame: var(--surface-frame);
+  --color-surface-container: var(--surface-container);
+  --color-surface-block: var(--surface-block);
+  --color-surface-primary: var(--surface-primary);
+  --color-surface-secondary: var(--surface-secondary);
+  --color-surface-tertiary: var(--surface-tertiary);
+  --color-surface-disabled: var(--surface-disabled);
+  --color-surface-dark: var(--surface-dark);
+  --color-surface-brand: var(--surface-brand);
+  --color-surface-brand-hover: var(--surface-brand-hover);
+  --color-surface-brand-pressed: var(--surface-brand-pressed);
+  --color-surface-brand-low: var(--surface-brand-low);
+  --color-surface-success: var(--surface-success);
+  --color-surface-success-hover: var(--surface-success-hover);
+  --color-surface-success-pressed: var(--surface-success-pressed);
+  --color-surface-success-low: var(--surface-success-low);
+  --color-surface-warning: var(--surface-warning);
+  --color-surface-warning-hover: var(--surface-warning-hover);
+  --color-surface-warning-pressed: var(--surface-warning-pressed);
+  --color-surface-warning-low: var(--surface-warning-low);
+  --color-surface-error: var(--surface-error);
+  --color-surface-error-hover: var(--surface-error-hover);
+  --color-surface-error-pressed: var(--surface-error-pressed);
+  --color-surface-error-low: var(--surface-error-low);
+  --color-surface-overlay: var(--surface-overlay);
+  --color-border-light: var(--border-light);
+  --color-border-medium: var(--border-medium);
+  --color-border-strong: var(--border-strong);
+  --color-border-brand: var(--border-brand);
+  --color-border-success: var(--border-success);
+  --color-border-success-low: var(--border-success-low);
+  --color-border-warning: var(--border-warning);
+  --color-border-warning-low: var(--border-warning-low);
+  --color-border-error: var(--border-error);
+  --color-border-error-low: var(--border-error-low);
+  --color-border-white: var(--border-white);
+  --color-border-primary: var(--border-primary);
+  --color-border-secondary: var(--border-secondary);
+  --color-border-tertiary: var(--border-tertiary);
+}
+
+@theme {
+  /* border-radius/* из 03-Spacing-Tokens: rounded-r8, rounded-r10 … (spacing 4px-шкала
+     Tailwind уже совпадает с space-inner/space-between: p-2.5 = 10px, p-26 = 104px) */
+  --radius-r2: 2px;
+  --radius-r4: 4px;
+  --radius-r6: 6px;
+  --radius-r8: 8px;
+  --radius-r10: 10px;
+  --radius-r12: 12px;
+  --radius-r16: 16px;
+  --radius-r20: 20px;
+  --radius-r24: 24px;
+  --radius-r40: 40px;
+
+  /* Эффекты Figma (Effect styles) */
+  --shadow-badge: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+  --shadow-card: 0 2px 6px 2px rgb(0 0 0 / 0.1);
+  --shadow-tooltip: 0 1px 3px 0 rgb(0 0 0 / 0.3);
+  --shadow-popup: 0 2px 3px 0 rgb(0 0 0 / 0.3);
+  --shadow-sidebar: 0 4px 4px 0 rgb(0 0 0 / 0.2);
+  --shadow-input: 0 1px 2px 0 rgb(10 10 11 / 0.1);
+  --shadow-modal: 0 12px 8px -4px rgb(10 10 11 / 0.08);
+  --shadow-sticky: 0 1px 2px 0 rgb(0 0 0 / 0.08), 0 6px 14px -6px rgb(0 0 0 / 0.18);
+}

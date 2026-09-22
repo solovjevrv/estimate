@@ -1,5 +1,6 @@
 @import 'tailwindcss';
 @import '@nuxt/ui';
+@import './tokens.css';
 
 /* Тема управляется классом `.dark` на <html> (см. src/lib/theme.ts), а не системным
    media-query напрямую — иначе явный выбор светлая/тёмная не имел бы смысла */
@@ -10,125 +11,124 @@
   --font-sans: 'Manrope', sans-serif;
 }
 
-/* Токены — пресет "playful" референса .design/main.html (EstiMate, 9.5): именно он задан
-   default'ом в data-props мокапа (vibe: playful, c1: 0.22, c2: 0.26, radiusLg: 28, radiusMd: 24),
-   а не "balanced", который был взят в первом проходе по ошибке — это и объясняло разъезд
-   зелёного (0.16 вместо 0.22 хромы) и скруглений карточек (16px вместо 24px). */
+/* Цвета, радиусы и тени — токены Figma, см. tokens.css. Здесь — привязка к ним:
+   палитра Nuxt UI (--ui-*) и прежние алиасы --brand-*, которыми пользуется вёрстка.
+   Тема переключается классом .dark на <html> — значения семантики меняет tokens.css. */
 :root {
-  /* Nuxt UI множит ВСЮ шкалу rounded-* Tailwind на эту переменную (rounded-md = *1.5,
-     rounded-lg = *2, rounded-xl = *3, rounded-3xl = *6 и т.д.) — это не только радиус
-     компонентов Nuxt UI, а глобальная переустановка Tailwind. 0.5rem даёт кнопкам/инпутам
-     (rounded-md) ровно 12px — под референс (кнопки там на фиксированных 9-12px, не завязаны
-     на vibe). Для своей разметки, где нужно точное значение, используем rounded-[Npx]. */
+  /* Nuxt UI множит всю шкалу rounded-* Tailwind на эту переменную (rounded-md = *1.5,
+     rounded-lg = *2 …). Пока оставлено как есть — размеры компонентов по Figma
+     (Button Sm/Md/Lg = r8/r10/r12) переводятся на пресеты в задаче 20.3. */
   --ui-radius: 0.5rem;
 
-  /* primary/primaryDark/primaryText/primarySoftBg — формулы референса с c1=0.22 (playful):
-     primary = oklch(48% 0.22 155), primaryDark = oklch(40% 0.22 155),
-     primaryText = isDark ? oklch(78% 0.14 155) : oklch(38% 0.21 155),
-     primarySoftBg = isDark ? oklch(28% 0.09 155) : oklch(93% 0.09 155).
-     Остальные шаги шкалы — интерполяция между ними для нужд Nuxt UI (сам референс не
-     задаёт полную шкалу 50..950, только 500/700 + soft-bg/text). */
-  --ui-color-primary-50: oklch(93% 0.09 155);
-  --ui-color-primary-100: oklch(88% 0.14 155);
-  --ui-color-primary-200: oklch(80% 0.18 155);
-  --ui-color-primary-300: oklch(70% 0.2 155);
-  --ui-color-primary-400: oklch(58% 0.22 155);
-  --ui-color-primary-500: oklch(48% 0.22 155);
-  --ui-color-primary-600: oklch(44% 0.22 155);
-  --ui-color-primary-700: oklch(40% 0.22 155);
-  --ui-color-primary-800: oklch(34% 0.19 155);
-  --ui-color-primary-900: oklch(28% 0.14 155);
-  --ui-color-primary-950: oklch(20% 0.1 155);
+  /* Шкала primary — от бренд-примитивов Figma (500 = surface-brand, 600/700 = hover/pressed) */
+  --ui-color-primary-50: var(--palette-brand-5);
+  --ui-color-primary-100: var(--palette-brand-10);
+  --ui-color-primary-200: var(--palette-brand-20);
+  --ui-color-primary-300: var(--palette-brand-30);
+  --ui-color-primary-400: var(--palette-brand-50);
+  --ui-color-primary-500: var(--palette-brand-100);
+  --ui-color-primary-600: var(--palette-brand-110);
+  --ui-color-primary-700: var(--palette-brand-120);
+  --ui-color-primary-800: color-mix(in oklab, var(--palette-brand-120) 85%, black);
+  --ui-color-primary-900: color-mix(in oklab, var(--palette-brand-120) 70%, black);
+  --ui-color-primary-950: color-mix(in oklab, var(--palette-brand-120) 55%, black);
 
-  --ui-color-neutral-50: oklch(97% 0.008 250);
-  --ui-color-neutral-100: oklch(94% 0.008 250);
-  --ui-color-neutral-200: oklch(89% 0.012 250);
-  --ui-color-neutral-300: oklch(80% 0.014 250);
-  --ui-color-neutral-400: oklch(68% 0.016 250);
-  --ui-color-neutral-500: oklch(46% 0.018 250);
-  --ui-color-neutral-600: oklch(38% 0.02 250);
-  --ui-color-neutral-700: oklch(30% 0.02 250);
-  --ui-color-neutral-800: oklch(26% 0.016 250);
-  --ui-color-neutral-900: oklch(20% 0.02 250);
-  --ui-color-neutral-950: oklch(14% 0.016 250);
+  /* success в Figma — тот же бренд-зелёный */
+  --ui-color-success-50: var(--ui-color-primary-50);
+  --ui-color-success-100: var(--ui-color-primary-100);
+  --ui-color-success-200: var(--ui-color-primary-200);
+  --ui-color-success-300: var(--ui-color-primary-300);
+  --ui-color-success-400: var(--ui-color-primary-400);
+  --ui-color-success-500: var(--ui-color-primary-500);
+  --ui-color-success-600: var(--ui-color-primary-600);
+  --ui-color-success-700: var(--ui-color-primary-700);
+  --ui-color-success-800: var(--ui-color-primary-800);
+  --ui-color-success-900: var(--ui-color-primary-900);
+  --ui-color-success-950: var(--ui-color-primary-950);
 
-  /* amber = oklch(78% 0.26 70) в playful (c2=0.26); coral — фиксированное значение,
-     от vibe не зависит ни в одном пресете референса. */
-  --brand-amber: oklch(78% 0.26 70);
-  --brand-coral: oklch(64% 0.19 18);
-  --brand-primary-text: oklch(38% 0.21 155);
-  --brand-primary-soft-bg: oklch(93% 0.09 155);
+  --ui-color-warning-50: var(--palette-warning-5);
+  --ui-color-warning-100: var(--palette-warning-10);
+  --ui-color-warning-200: var(--palette-warning-20);
+  --ui-color-warning-300: var(--palette-warning-30);
+  --ui-color-warning-400: var(--palette-warning-60);
+  --ui-color-warning-500: var(--palette-warning-100);
+  --ui-color-warning-600: var(--palette-warning-110);
+  --ui-color-warning-700: var(--palette-warning-120);
+  --ui-color-warning-800: var(--palette-warning-130);
+  --ui-color-warning-900: var(--palette-warning-140);
+  --ui-color-warning-950: color-mix(in oklab, var(--palette-warning-140) 60%, black);
 
-  /* tokens.{bg,surface,ink,ink2,border,outlineBorder} референса — держим отдельно от
-     семантических алиасов Nuxt UI (--ui-bg/--ui-text/--ui-border): они по дефолту берут
-     другие шаги нашей neutral-шкалы и потому не всегда совпадают с конкретными числами
-     референса (border/outlineBorder вообще не попадают ни в один шаг шкалы). */
-  --brand-bg: oklch(97% 0.008 250);
-  --brand-surface: oklch(99% 0.003 250);
-  --brand-ink: oklch(20% 0.02 250);
-  --brand-ink2: oklch(46% 0.018 250);
-  --brand-border: oklch(89% 0.012 250);
-  --brand-outline-border: oklch(89% 0.012 250);
-  /* Точки сетки холста досок (22.2) — НЕ переиспользует --brand-border: разница
-     светлоты между ним (89%) и фоном --brand-bg (97%) всего 8 пунктов, точки
-     сливались с фоном (баг, найден пользователем 27.08.2026). Отдельный токен
-     даёт светлой теме заметно бОльший контраст (разница 19 пунктов), той же
-     величины, что уже была у тёмной темы (см. :root.dark ниже — там всё было ок). */
-  --board-grid-dot: oklch(78% 0.012 250);
-  --brand-shadow-card:
-    0 1px 2px oklch(20% 0.02 250 / 0.05), 0 16px 40px -20px oklch(20% 0.02 250 / 0.18);
-  /* Фон «желобка» под сегмент-таб колоды и невыбранных карт оценки на Room — это НЕ
-     neutral-100 (та ступень шкалы одна на обе темы), в тёмной референс красит его
-     заметно темнее фона карточки (0.17 против 0.26 у surface). */
-  --brand-well-bg: oklch(94% 0.008 250);
+  --ui-color-error-50: var(--palette-error-5);
+  --ui-color-error-100: var(--palette-error-10);
+  --ui-color-error-200: var(--palette-error-20);
+  --ui-color-error-300: var(--palette-error-30);
+  --ui-color-error-400: var(--palette-error-60);
+  --ui-color-error-500: var(--palette-error-100);
+  --ui-color-error-600: var(--palette-error-110);
+  --ui-color-error-700: var(--palette-error-120);
+  --ui-color-error-800: color-mix(in oklab, var(--palette-error-120) 85%, black);
+  --ui-color-error-900: color-mix(in oklab, var(--palette-error-120) 70%, black);
+  --ui-color-error-950: color-mix(in oklab, var(--palette-error-120) 55%, black);
 
-  /* Nuxt UI хардкодит --ui-bg:#fff и --ui-text-highlighted:neutral-900 в светлой теме —
-     последнее совпадает с tokenInk само по себе, но выравниваем явно для симметрии с
-     тёмной темой ниже, где Nuxt UI хардкодит #fff вместо tokenInk (95% 0.006 250). */
-  --ui-bg: var(--brand-bg);
-  --ui-text-highlighted: var(--brand-ink);
+  /* Нейтральная шкала — примитивы base Figma */
+  --ui-color-neutral-50: var(--palette-base-3);
+  --ui-color-neutral-100: var(--palette-base-5);
+  --ui-color-neutral-200: var(--palette-base-10);
+  --ui-color-neutral-300: var(--palette-base-20);
+  --ui-color-neutral-400: var(--palette-base-40);
+  --ui-color-neutral-500: var(--palette-base-60);
+  --ui-color-neutral-600: var(--palette-base-70);
+  --ui-color-neutral-700: var(--palette-base-80);
+  --ui-color-neutral-800: var(--palette-base-90);
+  --ui-color-neutral-900: var(--palette-base-100);
+  --ui-color-neutral-950: color-mix(in oklab, var(--palette-base-100) 60%, black);
 
-  /* Nuxt UI по умолчанию берёт --ui-border из neutral-200/neutral-800 (light/dark) —
-     в светлой теме это случайно совпадает с tokenBorder (тоже neutral-200), а в тёмной
-     расходится (neutral-800 = 0.26 0.016 250 вместо tokenBorder 0.35 0.02 250). Одно
-     переопределение здесь работает в обеих темах: --brand-border сам меняется под
-     :root.dark, а этот alias всегда следует за его текущим значением. */
-  --ui-border: var(--brand-border);
+  /* Прежние алиасы --brand-* → семантика Figma (используются в ~150 местах вёрстки;
+     новый код берёт семантические токены напрямую: bg-surface-block и т.д.) */
+  --brand-bg: var(--surface-frame);
+  --brand-surface: var(--surface-block);
+  --brand-ink: var(--text-primary);
+  --brand-ink2: var(--text-secondary);
+  --brand-border: var(--border-medium);
+  --brand-outline-border: var(--border-strong);
+  --brand-primary-text: var(--text-brand);
+  --brand-primary-soft-bg: var(--surface-brand-low);
+  --brand-amber: var(--surface-warning);
+  --brand-coral: var(--surface-error);
+  /* «Желобок» под сегмент-табом колоды и невыбранными картами: в светлой чуть темнее
+     карточки, в тёмной — темнее её (как и раньше) */
+  --brand-well-bg: var(--surface-secondary);
+  /* Точки сетки холста досок: заметно контрастнее фона (баг 27.08.2026) */
+  --board-grid-dot: var(--palette-base-30);
+  /* Shadow-card из Figma (0 2 6 2 / 10%) */
+  --brand-shadow-card: var(--shadow-card);
 
-  /* Та же история с --ui-border-accented (ring-accented/border-accented — рамка
-     инпутов, select'ов и variant="outline" кнопок): дефолт Nuxt UI берёт
-     neutral-300/neutral-700, в тёмной теме это 0.3 0.02 250 вместо tokenOutlineBorder
-     0.48 0.024 250 — рамка кнопок/полей выходит заметно темнее и малоконтрастнее
-     референса. */
-  --ui-border-accented: var(--brand-outline-border);
+  --ui-bg: var(--surface-frame);
+  --ui-bg-muted: var(--surface-secondary);
+  --ui-bg-elevated: var(--surface-block);
+  --ui-bg-accented: var(--surface-tertiary);
+  --ui-bg-inverted: var(--surface-dark);
+  --ui-text: var(--text-primary);
+  --ui-text-toned: var(--text-secondary);
+  --ui-text-muted: var(--text-tertiary);
+  --ui-text-dimmed: var(--text-disabled);
+  --ui-text-highlighted: var(--text-primary);
+  --ui-text-inverted: var(--text-white);
+  --ui-border: var(--border-medium);
+  --ui-border-muted: var(--border-light);
+  --ui-border-accented: var(--border-strong);
 }
 
 :root.dark {
-  --brand-amber: oklch(78% 0.26 70);
-  --brand-primary-text: oklch(78% 0.14 155);
-  --brand-primary-soft-bg: oklch(28% 0.09 155);
+  --brand-well-bg: var(--surface-frame);
+  --board-grid-dot: var(--palette-base-80);
 
-  --brand-bg: oklch(20% 0.016 250);
-  --brand-surface: oklch(26% 0.016 250);
-  --brand-ink: oklch(95% 0.006 250);
-  --brand-ink2: oklch(68% 0.016 250);
-  --brand-border: oklch(35% 0.02 250);
-  --brand-outline-border: oklch(48% 0.024 250);
-  /* Тёмная тема и раньше давала точкам сетки достаточный контраст (35% на фоне
-     20%) — оставляем как было, значение то же, что и у --brand-border. */
-  --board-grid-dot: oklch(35% 0.02 250);
-  --brand-well-bg: oklch(17% 0.014 250);
-  --brand-shadow-card: 0 0 0 1px oklch(34% 0.02 250), 0 16px 40px -20px oklch(0% 0 0 / 0.6);
-
-  --ui-text-highlighted: var(--brand-ink);
-
-  /* Nuxt UI в тёмной теме сама сдвигает --ui-primary на более светлый оттенок
-     (primary-400 вместо 500) и красит --ui-text-inverted почти в чёрный — пастельная
-     кнопка с тёмным текстом. Референс использует ОДИН и тот же зелёный и белый текст
-     в обеих темах (primary не зависит от isDark), поэтому обе Nuxt-UI-шные пары
-     возвращаем к светлотемным значениям. */
+  /* Nuxt UI в тёмной теме сдвигает --ui-primary на primary-400 — в Figma кнопка того же
+     зелёного (surface-brand) в обеих темах */
   --ui-primary: var(--ui-color-primary-500);
-  --ui-text-inverted: #fff;
+  --ui-success: var(--ui-color-success-500);
+  --ui-warning: var(--ui-color-warning-500);
+  --ui-error: var(--ui-color-error-500);
 }
 
 h1,
