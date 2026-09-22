@@ -11,7 +11,11 @@ const { t } = useI18n();
         v-for="(digit, i) in ['4', '0', '4']"
         :key="i"
         class="flex h-[100px] w-[78px] items-center justify-center rounded-r16 text-[34px] font-bold"
-        :class="i === 1 ? 'bg-surface-brand-low text-text-brand' : 'bg-surface-secondary text-text-secondary'"
+        :class="
+          i === 1
+            ? 'bg-surface-brand-low text-text-brand'
+            : 'bg-surface-secondary text-text-secondary'
+        "
       >
         {{ digit }}
       </div>

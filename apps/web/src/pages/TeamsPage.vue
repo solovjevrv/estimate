@@ -81,7 +81,15 @@ async function onSubmit(name: string): Promise<void> {
       color="error"
       variant="subtle"
       :description="t('teams.loadError')"
-      :actions="[{ label: t('common.refresh'), color: 'error', variant: 'outline', size: 'sm', onClick: load }]"
+      :actions="[
+        {
+          label: t('common.refresh'),
+          color: 'error',
+          variant: 'outline',
+          size: 'sm',
+          onClick: load,
+        },
+      ]"
     />
 
     <ul v-else-if="loading" class="flex flex-col gap-4">

@@ -283,7 +283,15 @@ async function confirmDelete(): Promise<void> {
         color="error"
         variant="subtle"
         :description="t('board.loadError')"
-        :actions="[{ label: t('common.refresh'), color: 'error', variant: 'outline', size: 'sm', onClick: load }]"
+        :actions="[
+          {
+            label: t('common.refresh'),
+            color: 'error',
+            variant: 'outline',
+            size: 'sm',
+            onClick: load,
+          },
+        ]"
       />
 
       <div v-else-if="loading" class="space-y-5">

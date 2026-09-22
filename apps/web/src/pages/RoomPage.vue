@@ -269,7 +269,15 @@ function retry(): void {
       color="error"
       variant="subtle"
       :description="t('room.loadError')"
-      :actions="[{ label: t('common.refresh'), color: 'error', variant: 'outline', size: 'sm', onClick: load }]"
+      :actions="[
+        {
+          label: t('common.refresh'),
+          color: 'error',
+          variant: 'outline',
+          size: 'sm',
+          onClick: load,
+        },
+      ]"
     />
 
     <div v-else-if="phase === 'loading'" class="space-y-6">
@@ -339,7 +347,13 @@ function retry(): void {
           variant="subtle"
           :description="t('room.kickedMessage')"
           :actions="[
-            { label: t('room.toRooms'), color: 'warning', variant: 'outline', size: 'sm', to: { name: 'my-rooms' } },
+            {
+              label: t('room.toRooms'),
+              color: 'warning',
+              variant: 'outline',
+              size: 'sm',
+              to: { name: 'my-rooms' },
+            },
           ]"
         />
       </template>
