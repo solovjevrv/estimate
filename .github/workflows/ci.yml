@@ -41,8 +41,10 @@ jobs:
       # уже проверен вживую локально. command: у служебных контейнеров GitHub
       # Actions поддерживается с апреля 2026 — до этого minio/minio было нечем
       # завести (без command он допечатывает usage и выходит).
+      # minio/minio снят с Docker Hub целиком (репозиторий отдаёт 404, не только
+      # этот тег) — переехали на quay.io/minio/minio, найдено 22.09.2026 по CI.
       minio:
-        image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+        image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin123
