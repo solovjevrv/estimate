@@ -151,7 +151,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
           v-model="form.name"
           class="w-full"
           :ui="{
-            base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] px-4 py-[13px] ring-0',
+            base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] px-4 ring-0',
           }"
         />
       </UFormField>
@@ -166,7 +166,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
           class="w-full"
           :placeholder="t('profile.jobTitlePlaceholder')"
           :ui="{
-            base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] px-4 py-[13px] ring-0',
+            base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] px-4 ring-0',
           }"
         />
       </UFormField>
