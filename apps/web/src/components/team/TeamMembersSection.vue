@@ -1,10 +1,11 @@
 <script setup lang="ts">
+import type { DropdownMenuItem } from '@nuxt/ui';
 import type { TeamMember, TeamRole } from '@estimate/shared';
 import { useI18n } from 'vue-i18n';
 
 import { roleBadgeColor, teamAvatarColor } from '../../lib/team-roles';
 
-defineProps<{
+const props = defineProps<{
   teamId: string;
   members: TeamMember[];
   canManageTeam: boolean;
@@ -19,11 +20,40 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+/**
+ * Действия скрыты за меню (05_Members): бейдж роли статичный, смена роли —
+ * подменю-чеклист с текущим значением, а не всегда открытый select в строке.
+ */
+function menuItems(member: TeamMember): DropdownMenuItem[][] {
+  return [
+    [
+      {
+        label: t('team.changeRole'),
+        icon: 'i-lucide-shield',
+        children: props.roleItems.map((item) => ({
+          label: item.label,
+          type: 'checkbox' as const,
+          checked: member.role === item.value,
+          onSelect: () => emit('roleChange', member, item.value),
+        })),
+      },
+    ],
+    [
+      {
+        label: t('team.remove'),
+        icon: 'i-lucide-user-minus',
+        color: 'error' as const,
+        onSelect: () => emit('remove', member),
+      },
+    ],
+  ];
+}
 </script>
 
 <template>
   <div class="surface-card px-4 py-5 sm:px-[30px] sm:py-[26px]">
-    <h2 class="mb-[18px] text-[17px] font-bold">{{ t('team.membersTitle') }}</h2>
+    <h2 class="mb-[18px] text-lg font-bold">{{ t('team.membersTitle') }}</h2>
     <div
       v-for="member in members"
       :key="member.userId"
@@ -36,31 +66,16 @@ const { t } = useI18n();
         <UAvatar
           :src="member.avatarUrl ?? undefined"
           :alt="member.name"
-          size="md"
-          class="size-[38px] shrink-0"
+          size="xl"
+          class="shrink-0"
           :class="teamAvatarColor(member.userId)"
-          :ui="{ fallback: 'font-heading text-[12px] font-bold text-white' }"
+          :ui="{ fallback: 'font-heading text-sm font-bold text-white' }"
         />
-        <span class="min-w-0 truncate text-[15.5px] font-bold">{{ member.name }}</span>
+        <span class="min-w-0 truncate text-sm font-bold">{{ member.name }}</span>
       </RouterLink>
 
       <div class="ml-[52px] flex shrink-0 items-center gap-3 sm:ml-0">
-        <!-- Администратор меняет роли всем, кроме себя; себе показываем бейдж -->
-        <USelect
-          v-if="canManageTeam && member.userId !== currentUserId"
-          :model-value="member.role"
-          :items="roleItems"
-          value-key="value"
-          :aria-label="t('team.roleLabel')"
-          :disabled="isBusy(member.userId)"
-          class="w-40"
-          :ui="{
-            base: 'rounded-[9px] border border-[var(--brand-border)] bg-[var(--brand-surface)] py-2 ps-3.5 pe-[34px] ring-0',
-          }"
-          @update:model-value="emit('roleChange', member, $event as TeamRole)"
-        />
         <span
-          v-else
           class="badge-pill"
           :class="
             roleBadgeColor(member.role) === 'primary' ? 'badge-pill-primary' : 'badge-pill-neutral'
@@ -69,16 +84,19 @@ const { t } = useI18n();
           {{ t(`role.${member.role}`) }}
         </span>
 
-        <UButton
+        <UDropdownMenu
           v-if="canManageTeam && member.userId !== currentUserId"
-          icon="i-lucide-user-minus"
-          color="error"
-          variant="ghost"
-          size="sm"
-          :aria-label="t('team.remove')"
-          :disabled="isBusy(member.userId)"
-          @click="emit('remove', member)"
-        />
+          :items="menuItems(member)"
+        >
+          <UButton
+            icon="i-lucide-ellipsis-vertical"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            :aria-label="t('team.memberMenu')"
+            :disabled="isBusy(member.userId)"
+          />
+        </UDropdownMenu>
       </div>
     </div>
   </div>

@@ -257,11 +257,9 @@ describe('управление составом', () => {
     );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Пётр'));
-    // Кнопка исключения есть у чужого участника и отсутствует у самого администратора
-    expect(wrapper.findAll('[aria-label="Исключить"]')).toHaveLength(1);
+    // Меню действий есть у чужого участника и отсутствует у самого администратора
+    expect(wrapper.findAll('[aria-label="Действия с участником"]')).toHaveLength(1);
     expect(wrapper.text()).toContain('Удалить команду');
-    // Селект роли есть только у чужого участника, себе администратор роль не меняет
-    expect(wrapper.findAll('[aria-label="Роль"]')).toHaveLength(1);
   });
 
   it('обычному участнику управление недоступно', async () => {
@@ -274,7 +272,7 @@ describe('управление составом', () => {
     );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
-    expect(wrapper.find('[aria-label="Исключить"]').exists()).toBe(false);
+    expect(wrapper.find('[aria-label="Действия с участником"]').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('Удалить команду');
     expect(wrapper.text()).not.toContain('Переименовать');
   });
@@ -290,11 +288,52 @@ describe('управление составом', () => {
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Пётр'));
 
-    await wrapper.find('[aria-label="Исключить"]').trigger('click');
+    // Действие спрятано в меню участника — оно телепортируется в document.body
+    const menuTrigger = document.body.querySelector('button[aria-label="Действия с участником"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Исключить'));
+    const removeItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Исключить',
+    );
+    (removeItem as HTMLElement).click();
     await vi.waitFor(() => expect(dialog()?.textContent).toContain('Исключить участника?'));
     dialogButton('Исключить')!.click();
 
     await vi.waitFor(() => expect(wrapper.text()).not.toContain('Пётр'));
+  });
+
+  it('смена роли участника — через подменю «Изменить роль», не инлайн-селект', async () => {
+    const patch = vi.fn(() =>
+      json(200, { member: { userId: 'u2', role: 'admin' }, actorRole: 'admin' }),
+    );
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () =>
+          json(200, { team: teamA, role: 'admin', members: [admin, other] }),
+        'PATCH /api/teams/t1/members/u2': patch,
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Пётр'));
+
+    const menuTrigger = document.body.querySelector('button[aria-label="Действия с участником"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Изменить роль'));
+    const changeRoleItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Изменить роль',
+    );
+    (changeRoleItem as HTMLElement).click();
+
+    await vi.waitFor(() =>
+      expect(document.body.querySelectorAll('[role="menuitemcheckbox"]').length).toBeGreaterThan(0),
+    );
+    const adminOption = Array.from(
+      document.body.querySelectorAll('[role="menuitemcheckbox"]'),
+    ).find((el) => el.textContent?.trim() === 'Администратор');
+    (adminOption as HTMLElement).click();
+
+    await vi.waitFor(() => expect(patch).toHaveBeenCalled());
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Роль обновлена'));
   });
 
   it('выход из команды уводит на список команд', async () => {

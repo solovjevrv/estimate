@@ -60,6 +60,7 @@ export default {
   },
   teams: {
     title: 'Команды',
+    emptyTitle: 'Пока пусто',
     empty: 'У вас пока нет команд. Создайте первую, чтобы позвать коллег.',
     create: 'Создать команду',
     loadError: 'Не удалось загрузить команды. Попробуйте обновить страницу.',
@@ -96,6 +97,8 @@ export default {
     roleLabel: 'Роль',
     roleChanged: 'Роль обновлена',
     roleChangeError: 'Не удалось изменить роль',
+    changeRole: 'Изменить роль',
+    memberMenu: 'Действия с участником',
     remove: 'Исключить',
     removeConfirmTitle: 'Исключить участника?',
     removeConfirmText: '«{name}» потеряет доступ к команде.',

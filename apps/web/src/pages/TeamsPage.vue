@@ -4,6 +4,7 @@ import { onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
+import EmptyTilesIllustration from '../components/EmptyTilesIllustration.vue';
 import EntityTextModal from '../components/EntityTextModal.vue';
 import { roleBadgeColor, teamAvatarColor } from '../lib/team-roles';
 import { useAsyncAction } from '../composables/use-async-action';
@@ -65,13 +66,8 @@ async function onSubmit(name: string): Promise<void> {
 <template>
   <section class="space-y-6">
     <div class="flex flex-wrap items-center justify-between gap-4">
-      <h1 class="font-heading text-3xl font-extrabold">{{ t('teams.title') }}</h1>
-      <UButton
-        size="lg"
-        icon="i-lucide-plus"
-        class="h-[43px] px-[22px] text-[15px] font-bold"
-        @click="createTeamModal.show"
-      >
+      <h1 class="font-heading text-[32px] font-bold">{{ t('teams.title') }}</h1>
+      <UButton size="lg" icon="i-lucide-plus" @click="createTeamModal.show">
         {{ t('teams.create') }}
       </UButton>
     </div>
@@ -99,7 +95,17 @@ async function onSubmit(name: string): Promise<void> {
       </li>
     </ul>
 
-    <p v-else-if="teams.list.length === 0" class="text-muted">{{ t('teams.empty') }}</p>
+    <UEmpty
+      v-else-if="teams.list.length === 0"
+      class="surface-card rounded-r24"
+      :title="t('teams.emptyTitle')"
+      :description="t('teams.empty')"
+      :actions="[{ label: t('teams.create'), onClick: createTeamModal.show }]"
+    >
+      <template #leading>
+        <EmptyTilesIllustration />
+      </template>
+    </UEmpty>
 
     <ul v-else class="flex flex-col gap-4">
       <li v-for="team in teams.list" :key="team.id">
@@ -109,14 +115,14 @@ async function onSubmit(name: string): Promise<void> {
         >
           <div class="flex min-w-0 items-center gap-4">
             <div
-              class="font-heading flex size-[46px] shrink-0 items-center justify-center rounded-[12px] text-base font-bold text-white"
+              class="font-heading flex size-[46px] shrink-0 items-center justify-center rounded-r12 text-base font-bold text-white"
               :class="teamAvatarColor(team.id)"
             >
               {{ team.name.slice(0, 1).toUpperCase() }}
             </div>
             <div class="min-w-0">
               <span class="block truncate text-lg font-bold">{{ team.name }}</span>
-              <span class="text-muted text-[13.5px]">
+              <span class="text-muted text-sm">
                 {{ t('teams.memberCount', { count: team.memberCount }, team.memberCount) }}
               </span>
             </div>
