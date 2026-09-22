@@ -4,8 +4,6 @@ import { useI18n } from 'vue-i18n';
 import { CircleStencil, Cropper } from 'vue-advanced-cropper';
 import 'vue-advanced-cropper/dist/style.css';
 
-import { MODAL_BUTTON_UI, MODAL_UI } from '../lib/modal-ui';
-
 const props = defineProps<{ file: File | null }>();
 const emit = defineEmits<{ confirm: [Blob] }>();
 const open = defineModel<boolean>('open', { required: true });
@@ -13,11 +11,7 @@ const open = defineModel<boolean>('open', { required: true });
 const { t } = useI18n();
 
 // Шире дефолтной модалки (420px) — кропперу нужно место для картинки и рамки
-const cropModalUi = {
-  ...MODAL_UI,
-  content: MODAL_UI.content.replace('max-w-[420px]', 'max-w-[520px]'),
-  footer: `${MODAL_UI.footer} justify-end gap-2.5`,
-};
+const cropModalUi = { content: 'max-w-[520px]' };
 
 const cropperRef = ref<InstanceType<typeof Cropper> | null>(null);
 const imageSrc = ref<string | null>(null);
@@ -75,15 +69,10 @@ async function confirm(close: () => void): Promise<void> {
     </template>
 
     <template #footer="{ close }">
-      <UButton color="neutral" variant="outline" :ui="MODAL_BUTTON_UI" @click="close">
+      <UButton color="neutral" variant="outline" @click="close">
         {{ t('profile.avatar.cropCancel') }}
       </UButton>
-      <UButton
-        :ui="MODAL_BUTTON_UI"
-        :loading="confirming"
-        :disabled="!cropperReady"
-        @click="confirm(close)"
-      >
+      <UButton :loading="confirming" :disabled="!cropperReady" @click="confirm(close)">
         {{ t('profile.avatar.cropConfirm') }}
       </UButton>
     </template>
