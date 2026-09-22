@@ -31,7 +31,9 @@ watch(
   },
 );
 
-onMounted(async () => {
+async function load(): Promise<void> {
+  loading.value = true;
+  loadFailed.value = false;
   try {
     await teams.loadList();
   } catch {
@@ -39,7 +41,9 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
-});
+}
+
+onMounted(load);
 
 const { pending: submitting, execute: createTeam } = useAsyncAction({
   run: (name: string) => teams.create(name),
@@ -72,12 +76,18 @@ async function onSubmit(name: string): Promise<void> {
       </UButton>
     </div>
 
-    <UAlert v-if="loadFailed" color="error" variant="subtle" :description="t('teams.loadError')" />
+    <UAlert
+      v-if="loadFailed"
+      color="error"
+      variant="subtle"
+      :description="t('teams.loadError')"
+      :actions="[{ label: t('common.refresh'), color: 'error', variant: 'outline', size: 'sm', onClick: load }]"
+    />
 
     <ul v-else-if="loading" class="flex flex-col gap-4">
       <li v-for="i in 3" :key="i" class="surface-card flex items-center gap-4 p-6">
-        <USkeleton class="size-[46px] shrink-0 rounded-[12px] bg-[var(--brand-border)]" />
-        <USkeleton class="h-5 w-1/3 bg-[var(--brand-border)]" />
+        <USkeleton class="size-[46px] shrink-0 rounded-r12 bg-border-medium" />
+        <USkeleton class="h-5 w-1/3 bg-border-medium" />
       </li>
     </ul>
 

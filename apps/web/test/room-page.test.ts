@@ -1713,7 +1713,9 @@ describe('исключение участника (5.8)', () => {
     await vi.waitFor(() =>
       expect(wrapper.text()).toContain('Скрам-мастер исключил вас из этой комнаты.'),
     );
-    expect(wrapper.text()).toContain('Войти снова');
+    // Не «Войти снова» — повторный вход в ту же комнату ни к чему не приведёт
+    // (20.3.2), а уводит к списку комнат
+    expect(wrapper.text()).toContain('К комнатам');
     // Кик не должен вызвать тот же автореконнект, что и штатное истечение токена (7.7)
     expect(socket.sent.filter((s) => s.event === 'join_room').length).toBe(joinsBefore);
   });

@@ -440,15 +440,15 @@ async function confirmDelete(): Promise<void> {
     />
 
     <div v-else-if="loading" class="space-y-5">
-      <USkeleton class="h-9 w-1/3 bg-[var(--brand-border)]" />
+      <USkeleton class="h-9 w-1/3 bg-border-medium" />
       <div class="surface-card space-y-4 px-4 py-5 sm:px-[30px] sm:py-[26px]">
-        <USkeleton class="h-5 w-1/4 bg-[var(--brand-border)]" />
-        <USkeleton class="h-14 w-full rounded-[12px] bg-[var(--brand-border)]" />
-        <USkeleton class="h-14 w-full rounded-[12px] bg-[var(--brand-border)]" />
+        <USkeleton class="h-5 w-1/4 bg-border-medium" />
+        <USkeleton class="h-14 w-full rounded-r12 bg-border-medium" />
+        <USkeleton class="h-14 w-full rounded-r12 bg-border-medium" />
       </div>
       <div class="surface-card space-y-4 px-4 py-5 sm:px-[30px] sm:py-[26px]">
-        <USkeleton class="h-5 w-1/4 bg-[var(--brand-border)]" />
-        <USkeleton class="h-10 w-full rounded-[12px] bg-[var(--brand-border)]" />
+        <USkeleton class="h-5 w-1/4 bg-border-medium" />
+        <USkeleton class="h-10 w-full rounded-r12 bg-border-medium" />
       </div>
     </div>
 

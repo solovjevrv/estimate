@@ -135,7 +135,13 @@ async function confirmDelete(): Promise<void> {
       </UButton>
     </div>
 
-    <UAlert v-if="loadFailed" color="error" variant="subtle" :description="t('boards.loadError')" />
+    <UAlert
+      v-if="loadFailed"
+      color="error"
+      variant="subtle"
+      :description="t('boards.loadError')"
+      :actions="[{ label: t('common.refresh'), color: 'error', variant: 'outline', size: 'sm', onClick: load }]"
+    />
 
     <div v-else-if="loading" class="surface-card overflow-hidden">
       <div
@@ -143,8 +149,8 @@ async function confirmDelete(): Promise<void> {
         :key="i"
         class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[22px] first:border-t-0 sm:px-[30px]"
       >
-        <USkeleton class="h-5 w-1/3 bg-[var(--brand-border)]" />
-        <USkeleton class="h-5 w-20 rounded-full bg-[var(--brand-border)]" />
+        <USkeleton class="h-5 w-1/3 bg-border-medium" />
+        <USkeleton class="h-5 w-20 rounded-full bg-border-medium" />
       </div>
     </div>
 
