@@ -41,8 +41,10 @@ jobs:
       # уже проверен вживую локально. command: у служебных контейнеров GitHub
       # Actions поддерживается с апреля 2026 — до этого minio/minio было нечем
       # завести (без command он допечатывает usage и выходит).
+      # minio/minio снят с Docker Hub целиком (репозиторий отдаёт 404, не только
+      # этот тег) — переехали на quay.io/minio/minio, найдено 22.09.2026 по CI.
       minio:
-        image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+        image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
         env:
           MINIO_ROOT_USER: minioadmin
           MINIO_ROOT_PASSWORD: minioadmin123
@@ -77,7 +79,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       # minio/minio, в отличие от bitnami-образов, не создаёт бакет из env
-      # переменной сам — заводим его тем же mc, что и в docker-compose.
+      # переменной сам — заводим его тем же mc, что и в docker-compose. Раздача
+      # бинарника mc с dl.min.io закрыта (410 Gone, тот же архив community-релизов,
+      # что снял minio/minio с Docker Hub, см. коммент у service-контейнера выше) —
+      # берём mc из образа quay.io/minio/mc, а не скачиваем бинарник напрямую.
       - name: Подготовить бакет MinIO для тестов
         run: |
           for i in $(seq 1 30); do
@@ -88,10 +93,12 @@ jobs:
             fi
             sleep 1
           done
-          curl -sSL https://dl.min.io/client/mc/release/linux-amd64/mc -o /usr/local/bin/mc
-          chmod +x /usr/local/bin/mc
-          mc alias set local http://localhost:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY"
-          mc mb --ignore-existing "local/$MINIO_BUCKET"
+          docker run --rm --network host \
+            -e MINIO_ACCESS_KEY -e MINIO_SECRET_KEY -e MINIO_BUCKET \
+            --entrypoint sh quay.io/minio/mc:RELEASE.2025-04-08T15-39-49Z -c '
+              mc alias set local http://localhost:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" &&
+              mc mb --ignore-existing "local/$MINIO_BUCKET"
+            '
 
       - name: Линтер
         run: pnpm lint
