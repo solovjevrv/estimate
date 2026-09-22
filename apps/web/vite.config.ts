@@ -75,6 +75,27 @@ export default defineConfig({
             description: 'mt-1 text-sm font-medium',
           },
         },
+        // По факту компонента DropdownMenu в Kit (35_DropdownMenu) — раньше не
+        // было пресета вовсе, меню жило на чистых дефолтах Nuxt UI (нашёл
+        // пользователь по свежесобранному меню участника, 20.3.3). Контейнер
+        // r12/Shadow-Popup/паддинг 6, пункт 36px/r8/паддинг 12×9/шрифт 12 Medium
+        // (не Bold), иконка 16px, hover — заливка surface-secondary вместо
+        // полупрозрачного оверлея по умолчанию.
+        dropdownMenu: {
+          slots: {
+            content: 'rounded-r12 shadow-popup ring-0 bg-[var(--brand-surface)]',
+            group: 'p-1.5',
+          },
+          variants: {
+            size: {
+              md: {
+                item: 'rounded-r8 px-3 py-2.5 text-xs font-medium gap-2.5 data-highlighted:before:bg-surface-secondary data-[state=open]:before:bg-surface-secondary',
+                itemLeadingIcon: 'size-4',
+                itemTrailingIcon: 'size-4',
+              },
+            },
+          },
+        },
       },
     }),
   ],
