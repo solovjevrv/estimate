@@ -46,7 +46,8 @@ services:
   # Идемпотентный init: создаёт приватный бакет и учётку приложения (не root)
   # с правами только на этот бакет. Гоняется при каждом up, безопасно повторно.
   minio-init:
-    image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+    # minio/mc снят с Docker Hub так же, как minio/minio выше — quay.io/minio/mc
+    image: quay.io/minio/mc:RELEASE.2025-04-08T15-39-49Z
     container_name: estimate-minio-init
     depends_on:
       minio:
