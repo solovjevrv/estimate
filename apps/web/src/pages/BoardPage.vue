@@ -17,7 +17,6 @@ import BoardShareModal from '../components/board/BoardShareModal.vue';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import EntityTextModal from '../components/EntityTextModal.vue';
 import { ApiError } from '../lib/api';
-import { MODAL_BUTTON_UI, MODAL_INPUT_UI } from '../lib/modal-ui';
 import { useAsyncAction } from '../composables/use-async-action';
 import { useEntityModal } from '../composables/use-entity-modal';
 import { useGuestIdentity } from '../composables/use-guest-identity';
@@ -300,7 +299,6 @@ async function confirmDelete(): Promise<void> {
               :maxlength="GUEST_NAME_MAX_LENGTH"
               autofocus
               class="w-full"
-              :ui="MODAL_INPUT_UI"
             />
           </UFormField>
           <UAlert
@@ -309,7 +307,7 @@ async function confirmDelete(): Promise<void> {
             variant="subtle"
             :description="t('board.guestJoinError')"
           />
-          <UButton type="submit" block :ui="MODAL_BUTTON_UI" :loading="guestJoining">
+          <UButton type="submit" block :loading="guestJoining">
             {{ t('board.guestJoin') }}
           </UButton>
         </UForm>
