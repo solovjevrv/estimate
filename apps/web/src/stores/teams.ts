@@ -64,7 +64,9 @@ export const useTeamsStore = defineStore('teams', () => {
   }
 
   /** Предпросмотр открыт без входа: по коду видно, в какую команду зовут. */
-  async function previewInviteCode(code: string): Promise<{ id: string; name: string }> {
+  async function previewInviteCode(
+    code: string,
+  ): Promise<{ id: string; name: string; memberCount: number }> {
     return previewInvite(code);
   }
 

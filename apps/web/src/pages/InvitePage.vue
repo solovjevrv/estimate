@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import { ApiError } from '../lib/api';
+import { teamAvatarColor } from '../lib/team-roles';
 import { useSessionStore } from '../stores/session';
 import { useTeamsStore } from '../stores/teams';
 
@@ -17,7 +18,9 @@ const teams = useTeamsStore();
 const loading = ref(true);
 const notFound = ref(false);
 const loadFailed = ref(false);
+const teamId = ref('');
 const teamName = ref('');
+const memberCount = ref(0);
 
 const joining = ref(false);
 const joinFailed = ref(false);
@@ -25,7 +28,9 @@ const joinFailed = ref(false);
 onMounted(async () => {
   try {
     const team = await teams.previewInvite(props.code);
+    teamId.value = team.id;
     teamName.value = team.name;
+    memberCount.value = team.memberCount;
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
       notFound.value = true;
@@ -66,14 +71,11 @@ async function act(): Promise<void> {
 </script>
 
 <template>
-  <section class="mx-auto max-w-md space-y-6">
-    <div
-      v-if="loading"
-      class="surface-card surface-card-lg space-y-4 px-[30px] py-[26px] text-center"
-    >
-      <USkeleton class="mx-auto size-8 rounded-full bg-[var(--brand-border)]" />
-      <USkeleton class="mx-auto h-5 w-2/3 bg-[var(--brand-border)]" />
-      <USkeleton class="h-11 w-full rounded-[11px] bg-[var(--brand-border)]" />
+  <section class="mx-auto w-full max-w-[440px] space-y-6">
+    <div v-if="loading" class="surface-card space-y-4 rounded-r24 p-8 text-center">
+      <USkeleton class="mx-auto size-8 rounded-full bg-border-medium" />
+      <USkeleton class="mx-auto h-5 w-2/3 rounded-r12 bg-border-medium" />
+      <USkeleton class="h-11 w-full rounded-r8 bg-border-medium" />
     </div>
 
     <UAlert
@@ -89,23 +91,28 @@ async function act(): Promise<void> {
       :description="t('invite.loadError')"
     />
 
-    <div v-else class="surface-card surface-card-lg space-y-4 px-[30px] py-[26px] text-center">
-      <UIcon name="i-lucide-users" class="text-primary mx-auto size-8" />
-      <p class="text-[17px] font-semibold">{{ t('invite.lead', { name: teamName }) }}</p>
+    <div v-else class="surface-card rounded-r24 p-8 text-center">
+      <div
+        class="font-heading mx-auto flex size-[60px] items-center justify-center rounded-r20 text-xl font-bold text-white"
+        :class="teamAvatarColor(teamId)"
+      >
+        {{ teamName.slice(0, 1).toUpperCase() }}
+      </div>
+      <p class="mt-4 text-lg font-bold">{{ t('invite.lead', { name: teamName }) }}</p>
+      <div class="text-muted mt-2 flex items-center justify-center gap-1.5 text-sm">
+        <UIcon name="i-lucide-users" class="size-4 shrink-0" />
+        {{ t('teams.memberCount', { count: memberCount }, memberCount) }}
+      </div>
 
       <UAlert
         v-if="joinFailed"
         color="error"
         variant="subtle"
+        class="mt-4"
         :description="t('invite.joinError')"
       />
 
-      <UButton
-        block
-        :loading="joining"
-        class="rounded-[11px] py-3 text-[15px] font-bold"
-        @click="act"
-      >
+      <UButton block size="lg" class="mt-4" :loading="joining" @click="act">
         <template v-if="joining">{{ t('invite.joining') }}</template>
         <template v-else-if="session.isAuthenticated">{{ t('invite.join') }}</template>
         <template v-else>{{ t('invite.joinAndLogin') }}</template>

@@ -101,12 +101,14 @@ describe('стор команд', () => {
   });
 
   it('предпросмотр приглашения возвращает команду', async () => {
-    fetchMock.mockResolvedValue(json(200, { team: { id: 't1', name: 'Команда А' } }));
+    fetchMock.mockResolvedValue(
+      json(200, { team: { id: 't1', name: 'Команда А', memberCount: 3 } }),
+    );
     const teams = useTeamsStore();
 
     const team = await teams.previewInvite('abcdef');
 
-    expect(team).toEqual({ id: 't1', name: 'Команда А' });
+    expect(team).toEqual({ id: 't1', name: 'Команда А', memberCount: 3 });
   });
 
   it('вступление по коду возвращает команду и роль', async () => {

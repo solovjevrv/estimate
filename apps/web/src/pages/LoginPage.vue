@@ -64,22 +64,20 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="mx-auto flex max-w-sm justify-center py-16">
-    <div class="surface-card surface-card-lg w-full px-[30px] py-[34px]">
-      <div class="mb-6 text-center">
-        <h1 class="font-heading text-2xl font-extrabold">{{ t('login.title') }}</h1>
-        <p class="text-muted mt-2 text-sm">{{ t('login.lead') }}</p>
-      </div>
+  <div class="mx-auto flex max-w-[420px] justify-center py-16">
+    <div class="w-full rounded-r24 bg-[var(--brand-surface)] p-6 shadow-modal">
+      <h1 class="font-heading text-xl font-bold">{{ t('login.title') }}</h1>
+      <p class="text-muted mt-1 text-sm font-medium">{{ t('login.lead') }}</p>
 
       <UAlert
         v-if="failed"
         color="error"
         variant="subtle"
-        class="mb-4"
+        class="mt-4"
         :description="t('login.failed')"
       />
 
-      <div class="space-y-3">
+      <div class="mt-6 space-y-3">
         <UButton
           v-for="provider in session.providers"
           :key="provider"
@@ -88,17 +86,29 @@ onMounted(() => {
           :loading="pending === provider"
           :disabled="pending !== null"
           block
+          size="lg"
           color="neutral"
           variant="outline"
-          class="rounded-[11px] py-3 text-[15px] font-bold"
           @click="start(provider)"
         >
+          <template #leading>
+            <UIcon v-if="provider === 'google'" name="i-logos-google-icon" class="size-6" />
+            <span
+              v-else
+              class="flex size-6 items-center justify-center rounded-full bg-[#fc3f1d] text-xs font-extrabold text-white"
+            >
+              Я
+            </span>
+          </template>
           {{ pending === provider ? t('login.redirecting') : t(labels[provider]) }}
         </UButton>
 
-        <p v-if="session.providers.length === 0" class="text-muted text-sm">
-          {{ t('login.noProviders') }}
-        </p>
+        <UAlert
+          v-if="session.providers.length === 0"
+          color="error"
+          variant="subtle"
+          :description="t('login.noProviders')"
+        />
       </div>
     </div>
   </div>

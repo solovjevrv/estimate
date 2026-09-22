@@ -60,9 +60,13 @@ export function rotateTeamInvite(teamId: string): Promise<string> {
 }
 
 /** Предпросмотр открыт без входа: по коду видно, в какую команду зовут. */
-export function previewInvite(code: string): Promise<{ id: string; name: string }> {
+export function previewInvite(
+  code: string,
+): Promise<{ id: string; name: string; memberCount: number }> {
   return api
-    .get<{ team: { id: string; name: string } }>(`/api/invites/${encodeURIComponent(code)}`)
+    .get<{ team: { id: string; name: string; memberCount: number } }>(
+      `/api/invites/${encodeURIComponent(code)}`,
+    )
     .then((res) => res.team);
 }
 

@@ -112,9 +112,11 @@ describe('API команд', () => {
   });
 
   it('previewInvite возвращает команду по коду (код кодируется)', async () => {
-    fetchMock.mockResolvedValue(json(200, { team: { id: 't1', name: 'Команда А' } }));
+    fetchMock.mockResolvedValue(
+      json(200, { team: { id: 't1', name: 'Команда А', memberCount: 3 } }),
+    );
     const res = await previewInvite('a/b');
-    expect(res).toEqual({ id: 't1', name: 'Команда А' });
+    expect(res).toEqual({ id: 't1', name: 'Команда А', memberCount: 3 });
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/invites/a%2Fb');
   });
 

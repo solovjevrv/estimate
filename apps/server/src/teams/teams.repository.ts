@@ -95,6 +95,16 @@ export class TeamsRepository {
     return row ? this.toTeam(row) : null;
   }
 
+  /** Отдельным запросом (не join) — тот же принцип, что в listTeamsForUser: не для одной
+   *  команды нет смысла тащить состав, нужно только число. */
+  async countMembers(teamId: string): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.teamMembers)
+      .where(eq(schema.teamMembers.teamId, teamId));
+    return row?.count ?? 0;
+  }
+
   async findMembership(teamId: string, userId: string): Promise<Membership | null> {
     const [row] = await this.db
       .select()

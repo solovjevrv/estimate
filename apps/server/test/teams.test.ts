@@ -497,10 +497,23 @@ describeDb('API команд', () => {
       const joinAnon = await app.inject({ method: 'POST', url: `/api/invites/${code}/join` });
 
       expect(preview.statusCode).toBe(200);
-      expect(preview.json()).toMatchObject({ team: { id: teamId } });
+      // Один участник — сам создатель команды
+      expect(preview.json()).toMatchObject({ team: { id: teamId, memberCount: 1 } });
       // В предпросмотре не должно быть состава команды
       expect(preview.body).not.toMatch(/members/);
       expect(joinAnon.statusCode).toBe(401);
+    });
+
+    it('число участников в предпросмотре растёт по мере вступления', async () => {
+      const admin = await newUser('invite-count-admin');
+      const guest = await newUser('invite-count-guest');
+      const teamId = await newTeam(admin);
+      const code = await inviteCodeOf(teamId, admin);
+
+      await app.inject({ method: 'POST', url: `/api/invites/${code}/join`, headers: as(guest) });
+      const preview = await app.inject({ method: 'GET', url: `/api/invites/${code}` });
+
+      expect(preview.json()).toMatchObject({ team: { memberCount: 2 } });
     });
 
     it('вступивший получает роль участника, повторный переход ничего не меняет', async () => {
