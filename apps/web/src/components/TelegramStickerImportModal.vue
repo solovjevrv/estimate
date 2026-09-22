@@ -18,7 +18,6 @@ import { ref, computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import { ApiError } from '../lib/api';
-import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../lib/modal-ui';
 import { parseTelegramSetName } from '../features/boards/api/personal-stickers-api';
 import { usePersonalStickerPacksStore } from '../stores/personal-sticker-packs';
 
@@ -94,7 +93,7 @@ async function onSubmit(): Promise<void> {
 </script>
 
 <template>
-  <UModal v-model:open="isOpen" :title="t('board.stickerImportTitle')" :ui="MODAL_UI">
+  <UModal v-model:open="isOpen" :title="t('board.stickerImportTitle')">
     <template #body>
       <div class="space-y-4">
         <p v-if="packTitle" class="text-[14px] text-[var(--brand-ink)]">
@@ -105,7 +104,6 @@ async function onSubmit(): Promise<void> {
           v-model="setName"
           class="w-full"
           :placeholder="t('board.stickerImportPlaceholder')"
-          :ui="MODAL_INPUT_UI"
         />
         <label class="flex items-start gap-2 text-[14px]">
           <UCheckbox v-model="consent" :ui="{ base: 'rounded-[5px]' }" />
@@ -115,14 +113,12 @@ async function onSubmit(): Promise<void> {
     </template>
 
     <template #footer>
-      <div class="flex justify-end gap-2">
-        <UButton color="neutral" variant="outline" :ui="MODAL_BUTTON_UI" @click="close">
-          {{ t('common.cancel') }}
-        </UButton>
-        <UButton :loading="loading" :disabled="!canSubmit" :ui="MODAL_BUTTON_UI" @click="onSubmit">
-          {{ loading ? t('board.stickerImportImporting') : t('board.stickerImportConfirm') }}
-        </UButton>
-      </div>
+      <UButton color="neutral" variant="outline" @click="close">
+        {{ t('common.cancel') }}
+      </UButton>
+      <UButton :loading="loading" :disabled="!canSubmit" @click="onSubmit">
+        {{ loading ? t('board.stickerImportImporting') : t('board.stickerImportConfirm') }}
+      </UButton>
     </template>
   </UModal>
 </template>

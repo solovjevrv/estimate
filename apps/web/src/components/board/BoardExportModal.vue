@@ -13,8 +13,6 @@
 import { ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../../lib/modal-ui';
-
 const props = defineProps<{
   boardTitle: string;
   itemCount: number;
@@ -54,10 +52,7 @@ watch(modelValue, (open) => {
   }
 });
 
-const EXPORT_MODAL_UI = {
-  ...MODAL_UI,
-  content: MODAL_UI.content.replace('max-w-[420px]', 'max-w-[440px]'),
-};
+const EXPORT_MODAL_UI = { content: 'max-w-[440px]' };
 
 function onDownload(): void {
   // UInputNumber сам клэмпит ввод по min/max — null возможен только если
@@ -85,13 +80,7 @@ function onDownload(): void {
       <div v-else class="space-y-[18px]">
         <div class="flex items-center justify-between gap-4">
           <span class="text-[14px] font-semibold">{{ t('board.exportMarginLabel') }}</span>
-          <UInputNumber
-            v-model="marginPx"
-            :min="MIN_MARGIN_PX"
-            :max="MAX_MARGIN_PX"
-            class="w-28"
-            :ui="{ base: MODAL_INPUT_UI.base }"
-          />
+          <UInputNumber v-model="marginPx" :min="MIN_MARGIN_PX" :max="MAX_MARGIN_PX" class="w-28" />
         </div>
 
         <div class="flex items-center justify-between gap-4">
@@ -102,20 +91,12 @@ function onDownload(): void {
     </template>
 
     <template #footer>
-      <div class="flex justify-end gap-2.5">
-        <UButton
-          color="neutral"
-          variant="outline"
-          :disabled="pending"
-          :ui="MODAL_BUTTON_UI"
-          @click="modelValue = false"
-        >
-          {{ t('common.cancel') }}
-        </UButton>
-        <UButton :loading="pending" :ui="MODAL_BUTTON_UI" @click="onDownload">
-          {{ t('board.exportDownload') }}
-        </UButton>
-      </div>
+      <UButton color="neutral" variant="outline" :disabled="pending" @click="modelValue = false">
+        {{ t('common.cancel') }}
+      </UButton>
+      <UButton :loading="pending" @click="onDownload">
+        {{ t('board.exportDownload') }}
+      </UButton>
     </template>
   </UModal>
 </template>

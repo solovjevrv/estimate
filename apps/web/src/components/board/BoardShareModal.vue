@@ -1,5 +1,5 @@
 <template>
-  <UModal v-model:open="modelValue" :title="t('board.shareTitle')" :ui="MODAL_UI">
+  <UModal v-model:open="modelValue" :title="t('board.shareTitle')">
     <template #body>
       <div class="space-y-4">
         <div class="flex items-center justify-between gap-4">
@@ -17,18 +17,16 @@
             value-key="value"
             :aria-label="t('board.shareRoleLabel')"
             class="w-full"
-            :ui="{ base: SHARE_SELECT_UI_BASE }"
             @update:model-value="onRoleChange($event as BoardShareRole)"
           />
 
           <div class="flex items-center gap-2">
-            <UInput :model-value="link" readonly class="min-w-0 flex-1" :ui="MODAL_INPUT_UI" />
+            <UInput :model-value="link" readonly class="min-w-0 flex-1" />
             <UButton
               icon="i-lucide-copy"
               :aria-label="t('board.shareCopy')"
               color="neutral"
               variant="outline"
-              :ui="MODAL_BUTTON_UI"
               @click="copy"
             />
           </div>
@@ -37,16 +35,9 @@
     </template>
 
     <template #footer>
-      <div class="flex justify-end">
-        <UButton
-          color="neutral"
-          variant="outline"
-          :ui="MODAL_BUTTON_UI"
-          @click="modelValue = false"
-        >
-          {{ t('board.shareClose') }}
-        </UButton>
-      </div>
+      <UButton color="neutral" variant="outline" @click="modelValue = false">
+        {{ t('board.shareClose') }}
+      </UButton>
     </template>
   </UModal>
 </template>
@@ -57,15 +48,7 @@ import type { Board, BoardShareRole } from '@estimate/shared';
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import { MODAL_BUTTON_UI, MODAL_INPUT_UI, MODAL_UI } from '../../lib/modal-ui';
 import { useBoardSessionStore } from '../../stores/board-session';
-
-/**
- * Те же токены, что у MODAL_INPUT_UI (радиус/бордер/паддинг/шрифт) — иначе
- * select визуально отличался от соседнего поля со ссылкой (другая высота,
- * скругление). Правый паддинг чуть больше — там рисуется шеврон.
- */
-const SHARE_SELECT_UI_BASE = MODAL_INPUT_UI.base.replace('px-4', 'ps-4 pe-9');
 
 /**
  * canManage не проверяем здесь: модалка открывается только из пункта меню

@@ -1,5 +1,5 @@
 <template>
-  <UModal v-model:open="modelValue" :title="t('board.hotkeysTitle')" :ui="MODAL_UI">
+  <UModal v-model:open="modelValue" :title="t('board.hotkeysTitle')">
     <template #body>
       <div class="space-y-5">
         <section v-for="section in sections" :key="section.title">
@@ -27,16 +27,9 @@
     </template>
 
     <template #footer>
-      <div class="flex justify-end">
-        <UButton
-          color="neutral"
-          variant="outline"
-          :ui="MODAL_BUTTON_UI"
-          @click="modelValue = false"
-        >
-          {{ t('board.hotkeysClose') }}
-        </UButton>
-      </div>
+      <UButton color="neutral" variant="outline" @click="modelValue = false">
+        {{ t('board.hotkeysClose') }}
+      </UButton>
     </template>
   </UModal>
 </template>
@@ -56,8 +49,6 @@
  */
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
-
-import { MODAL_BUTTON_UI, MODAL_UI } from '../../lib/modal-ui';
 
 type ComboPart = { kbd: string } | { text: string };
 interface HotkeyRow {
