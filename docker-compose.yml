@@ -22,7 +22,9 @@ services:
   # (9001) открыта наружу только здесь, для удобства локальной разработки — в
   # проде (docker-compose.prod.yml) MinIO не публикуется вовсе, только внутренняя сеть.
   minio:
-    image: minio/minio:RELEASE.2025-04-08T15-41-24Z
+    # minio/minio снят с Docker Hub (репозиторий целиком возвращает 404 — не только
+    # этот тег), проект переехал на quay.io. Найдено 22.09.2026 по упавшему CI.
+    image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
     container_name: estimate-minio
     restart: unless-stopped
     environment:
@@ -44,7 +46,8 @@ services:
   # Идемпотентный init: создаёт приватный бакет и учётку приложения (не root)
   # с правами только на этот бакет. Гоняется при каждом up, безопасно повторно.
   minio-init:
-    image: minio/mc:RELEASE.2025-04-08T15-39-49Z
+    # minio/mc снят с Docker Hub так же, как minio/minio выше — quay.io/minio/mc
+    image: quay.io/minio/mc:RELEASE.2025-04-08T15-39-49Z
     container_name: estimate-minio-init
     depends_on:
       minio:
