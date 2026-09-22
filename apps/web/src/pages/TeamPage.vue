@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { useToast } from '@nuxt/ui/composables';
+import type { DropdownMenuItem } from '@nuxt/ui';
 import {
   BOARD_TITLE_MAX_LENGTH,
   hasTeamRole,
@@ -17,10 +18,11 @@ import { useRouter } from 'vue-router';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
 import EntityTextModal from '../components/EntityTextModal.vue';
+import SectionTabs from '../components/SectionTabs.vue';
 import TeamBoardsSection from '../components/team/TeamBoardsSection.vue';
+import InviteTeamModal from '../components/team/InviteTeamModal.vue';
 import TeamMembersSection from '../components/team/TeamMembersSection.vue';
 import TeamRoomsSection from '../components/team/TeamRoomsSection.vue';
-import TeamSettingsSection from '../components/team/TeamSettingsSection.vue';
 import { useArchiveTab } from '../composables/use-archive-tab';
 import { usePagedList } from '../composables/use-paged-list';
 import { useAsyncAction } from '../composables/use-async-action';
@@ -120,6 +122,14 @@ const inviteUrl = computed(() =>
     : null,
 );
 
+// --- Section tabs (05_Members): Комнаты/Доски/Состав вместо трёх отдельных карточек ---
+const sectionTab = ref<'rooms' | 'boards' | 'members'>('rooms');
+const sectionTabItems = computed(() => [
+  { key: 'rooms' as const, label: t('team.roomsTitle') },
+  { key: 'boards' as const, label: t('team.boardsTitle') },
+  { key: 'members' as const, label: t('team.membersTitle') },
+]);
+
 // --- Таб «Архив»: заархивированная часть видна только администратору, грузится
 // по требованию — обычный участник видит в этом табе только завершённые комнаты ---
 const roomsTab = ref<'active' | 'archive'>('active');
@@ -138,6 +148,7 @@ async function load(): Promise<void> {
   loading.value = true;
   notFound.value = false;
   loadFailed.value = false;
+  sectionTab.value = 'rooms';
   roomsFailed.value = false;
   roomsTab.value = 'active';
   roomArchive.reset();
@@ -302,6 +313,7 @@ async function confirmDeleteBoard(): Promise<void> {
 }
 
 const rotateOpen = ref(false);
+const inviteOpen = ref(false);
 
 const { pending: rotating, execute: rotateInvite } = useAsyncAction({
   run: () => teams.rotateInvite(props.id),
@@ -317,6 +329,40 @@ const { pending: rotating, execute: rotateInvite } = useAsyncAction({
 async function rotate(): Promise<void> {
   await rotateInvite();
 }
+
+/**
+ * Действия команды скрыты за меню в шапке (05_Members) — отдельной всегда
+ * видимой карточки настроек по Figma больше нет.
+ */
+const teamMenuItems = computed<DropdownMenuItem[][]>(() => {
+  const manage: DropdownMenuItem[] = [];
+  if (canManageTeam.value) {
+    manage.push(
+      { label: t('team.rename'), icon: 'i-lucide-pencil', onSelect: () => renameModal.show() },
+      {
+        label: t('team.invite'),
+        icon: 'i-lucide-user-plus',
+        onSelect: () => (inviteOpen.value = true),
+      },
+    );
+  }
+  const groups: DropdownMenuItem[][] = [];
+  if (manage.length) groups.push(manage);
+  groups.push([
+    { label: t('team.leave'), icon: 'i-lucide-log-out', onSelect: () => (leaveOpen.value = true) },
+  ]);
+  if (canManageTeam.value) {
+    groups.push([
+      {
+        label: t('team.deleteTeam'),
+        icon: 'i-lucide-trash-2',
+        color: 'error' as const,
+        onSelect: () => (deleteOpen.value = true),
+      },
+    ]);
+  }
+  return groups;
+});
 
 // --- Смена роли ---
 async function onRoleChange(member: TeamMember, role: TeamRole): Promise<void> {
@@ -453,23 +499,37 @@ async function confirmDelete(): Promise<void> {
     </div>
 
     <template v-else-if="overview">
-      <div class="flex flex-wrap items-center gap-3.5">
-        <h1 class="font-heading min-w-0 text-[32px] font-bold break-words">
-          {{ overview.team.name }}
-        </h1>
-        <span
-          class="badge-pill"
-          :class="
-            roleBadgeColor(overview.role) === 'primary'
-              ? 'badge-pill-primary'
-              : 'badge-pill-neutral'
-          "
-        >
-          {{ t(`role.${overview.role}`) }}
-        </span>
+      <div class="flex flex-wrap items-center justify-between gap-3.5">
+        <div class="flex min-w-0 flex-wrap items-center gap-3.5">
+          <h1 class="font-heading min-w-0 text-[32px] font-bold break-words">
+            {{ overview.team.name }}
+          </h1>
+          <span
+            class="badge-pill"
+            :class="
+              roleBadgeColor(overview.role) === 'primary'
+                ? 'badge-pill-primary'
+                : 'badge-pill-neutral'
+            "
+          >
+            {{ t(`role.${overview.role}`) }}
+          </span>
+        </div>
+        <UDropdownMenu :items="teamMenuItems">
+          <UButton
+            icon="i-lucide-ellipsis-vertical"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            :aria-label="t('team.teamMenu')"
+          />
+        </UDropdownMenu>
       </div>
 
+      <SectionTabs v-model="sectionTab" :tabs="sectionTabItems" />
+
       <TeamRoomsSection
+        v-if="sectionTab === 'rooms'"
         :can-manage-team="canManageTeam"
         :rooms-failed="roomsFailed"
         :rooms-tab="roomsTab"
@@ -483,6 +543,7 @@ async function confirmDelete(): Promise<void> {
       />
 
       <TeamBoardsSection
+        v-else-if="sectionTab === 'boards'"
         :can-create-board="canCreateBoard"
         :can-manage-board="canManageBoard"
         :boards-failed="boardsFailed"
@@ -499,6 +560,7 @@ async function confirmDelete(): Promise<void> {
       />
 
       <TeamMembersSection
+        v-else
         :team-id="props.id"
         :members="overview.members"
         :can-manage-team="canManageTeam"
@@ -507,17 +569,16 @@ async function confirmDelete(): Promise<void> {
         :is-busy="isBusy"
         @role-change="onRoleChange"
         @remove="askRemove"
-      />
-
-      <TeamSettingsSection
-        :can-manage-team="canManageTeam"
-        :invite-url="inviteUrl"
-        @rotate-click="rotateOpen = true"
-        @rename-click="renameModal.show"
-        @leave-click="leaveOpen = true"
-        @delete-click="deleteOpen = true"
+        @invite="inviteOpen = true"
       />
     </template>
+
+    <InviteTeamModal
+      v-model:open="inviteOpen"
+      :invite-url="inviteUrl"
+      :rotating="rotating"
+      @rotate="rotateOpen = true"
+    />
 
     <ConfirmModal
       v-model:open="rotateOpen"
