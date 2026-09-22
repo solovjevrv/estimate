@@ -178,13 +178,22 @@ async function confirmDelete(): Promise<void> {
       color="error"
       variant="subtle"
       :description="t('myRooms.loadError')"
+      :actions="[
+        {
+          label: t('common.refresh'),
+          color: 'error',
+          variant: 'outline',
+          size: 'sm',
+          onClick: load,
+        },
+      ]"
     />
 
     <div v-else-if="loading" class="space-y-5">
       <div class="grid gap-4 sm:grid-cols-3">
         <div v-for="i in 3" :key="i" class="surface-card px-6 py-[22px]">
-          <USkeleton class="mb-3 h-3 w-1/2 bg-[var(--brand-border)]" />
-          <USkeleton class="h-7 w-1/3 bg-[var(--brand-border)]" />
+          <USkeleton class="mb-3 h-3 w-1/2 bg-border-medium" />
+          <USkeleton class="h-7 w-1/3 bg-border-medium" />
         </div>
       </div>
       <div class="surface-card overflow-hidden">
@@ -193,8 +202,8 @@ async function confirmDelete(): Promise<void> {
           :key="i"
           class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[22px] first:border-t-0 sm:px-[30px]"
         >
-          <USkeleton class="h-5 w-1/3 bg-[var(--brand-border)]" />
-          <USkeleton class="h-5 w-20 rounded-full bg-[var(--brand-border)]" />
+          <USkeleton class="h-5 w-1/3 bg-border-medium" />
+          <USkeleton class="h-5 w-20 rounded-full bg-border-medium" />
         </div>
       </div>
     </div>

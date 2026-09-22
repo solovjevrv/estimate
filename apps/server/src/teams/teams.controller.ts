@@ -95,7 +95,7 @@ export class TeamsController {
     req: FastifyRequest<{ Params: InviteParams }>,
   ): Promise<unknown> => {
     const team = await this.service.previewInvite(req.params.code);
-    return { team: { id: team.id, name: team.name } };
+    return { team: { id: team.id, name: team.name, memberCount: team.memberCount } };
   };
 
   readonly joinByInvite = async (

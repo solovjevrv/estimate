@@ -263,17 +263,40 @@ async function confirmDelete(): Promise<void> {
 <template>
   <div class="flex h-full min-h-0 flex-1 flex-col">
     <div v-if="!board" class="mx-auto w-full max-w-[73.75rem] px-4 pt-8 pb-5 md:px-14 md:pt-14">
-      <UAlert v-if="notFound" color="error" variant="subtle" :description="t('board.notFound')" />
+      <UAlert
+        v-if="notFound"
+        color="error"
+        variant="subtle"
+        :description="t('board.notFound')"
+        :actions="[
+          {
+            label: t('board.toBoards'),
+            color: 'error',
+            variant: 'outline',
+            size: 'sm',
+            to: { name: 'boards' },
+          },
+        ]"
+      />
       <UAlert
         v-else-if="loadFailed"
         color="error"
         variant="subtle"
         :description="t('board.loadError')"
+        :actions="[
+          {
+            label: t('common.refresh'),
+            color: 'error',
+            variant: 'outline',
+            size: 'sm',
+            onClick: load,
+          },
+        ]"
       />
 
       <div v-else-if="loading" class="space-y-5">
-        <USkeleton class="h-9 w-1/3 bg-[var(--brand-border)]" />
-        <USkeleton class="h-16 w-full rounded-[12px] bg-[var(--brand-border)]" />
+        <USkeleton class="h-9 w-1/3 bg-border-medium" />
+        <USkeleton class="h-16 w-full rounded-r12 bg-border-medium" />
       </div>
     </div>
 

@@ -313,7 +313,11 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
             properties: {
               team: {
                 type: 'object',
-                properties: { id: { type: 'string' }, name: { type: 'string' } },
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  memberCount: { type: 'number' },
+                },
               },
             },
           },

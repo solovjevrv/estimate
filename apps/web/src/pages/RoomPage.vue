@@ -269,13 +269,22 @@ function retry(): void {
       color="error"
       variant="subtle"
       :description="t('room.loadError')"
+      :actions="[
+        {
+          label: t('common.refresh'),
+          color: 'error',
+          variant: 'outline',
+          size: 'sm',
+          onClick: load,
+        },
+      ]"
     />
 
     <div v-else-if="phase === 'loading'" class="space-y-6">
-      <USkeleton class="h-9 w-1/3 bg-[var(--brand-border)]" />
+      <USkeleton class="h-9 w-1/3 bg-border-medium" />
       <div class="surface-card surface-card-lg space-y-4 px-4 py-5 sm:px-[30px] sm:py-[26px]">
-        <USkeleton class="h-5 w-1/4 bg-[var(--brand-border)]" />
-        <USkeleton class="h-11 w-full rounded-[11px] bg-[var(--brand-border)]" />
+        <USkeleton class="h-5 w-1/4 bg-border-medium" />
+        <USkeleton class="h-11 w-full rounded-r10 bg-border-medium" />
       </div>
     </div>
 
@@ -331,15 +340,22 @@ function retry(): void {
       </template>
 
       <template v-else-if="phase === 'kicked'">
-        <UAlert color="warning" variant="subtle" :description="t('room.kickedMessage')" />
-        <UButton
-          color="neutral"
-          variant="outline"
-          class="mt-3 rounded-[10px] px-4 py-[9px] text-[13.5px] font-bold"
-          @click="retry"
-        >
-          {{ t('room.rejoin') }}
-        </UButton>
+        <!-- Не «Войти снова» — того же результата (исключения) можно добиться только
+             уведя человека из этой комнаты, повторный вход сюда же ни к чему не приведёт -->
+        <UAlert
+          color="warning"
+          variant="subtle"
+          :description="t('room.kickedMessage')"
+          :actions="[
+            {
+              label: t('room.toRooms'),
+              color: 'warning',
+              variant: 'outline',
+              size: 'sm',
+              to: { name: 'my-rooms' },
+            },
+          ]"
+        />
       </template>
 
       <template v-else-if="phase === 'joined'">
@@ -352,6 +368,14 @@ function retry(): void {
           :can-rename="room.isScrumMaster"
           @archive="archiveOpen = true"
           @rename="renameModal.show"
+        />
+
+        <UAlert
+          v-if="!room.connected"
+          color="warning"
+          variant="subtle"
+          :title="t('room.disconnectedTitle')"
+          :description="t('room.disconnectedDescription')"
         />
 
         <UAlert
@@ -551,8 +575,8 @@ function retry(): void {
             :description="t('room.historyLoadError')"
           />
           <div v-else-if="historyLoading && historyEntries.length === 0" class="space-y-3">
-            <USkeleton class="h-12 w-full bg-[var(--brand-border)]" />
-            <USkeleton class="h-12 w-full bg-[var(--brand-border)]" />
+            <USkeleton class="h-12 w-full bg-border-medium" />
+            <USkeleton class="h-12 w-full bg-border-medium" />
           </div>
           <p v-else-if="historyEntries.length === 0" class="text-muted text-sm">
             {{ t('room.historyEmpty') }}

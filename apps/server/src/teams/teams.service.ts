@@ -234,12 +234,13 @@ export class TeamsService {
     throw new Error('Не удалось выпустить код приглашения');
   }
 
-  async previewInvite(code: string): Promise<Team> {
+  async previewInvite(code: string): Promise<Team & { memberCount: number }> {
     const team = await this.repository.findTeamByInviteCode(code);
     if (!team) {
       throw new NotFoundError('Приглашение не найдено');
     }
-    return team;
+    const memberCount = await this.repository.countMembers(team.id);
+    return { ...team, memberCount };
   }
 
   async joinByInvite(actorId: string, code: string): Promise<Team & { role: TeamRole }> {
