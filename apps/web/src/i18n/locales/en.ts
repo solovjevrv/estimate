@@ -575,6 +575,11 @@ export default {
     saving: 'Saving…',
     saved: 'Profile updated',
     saveError: 'Could not save the profile. Please try again.',
+    teamsTitle: 'Teams',
+    teamsLoadError: 'Could not load the teams.',
+    teamsEmptyTitle: 'Nothing here yet',
+    teamsEmptyText: 'You’re not a member of any team yet.',
+    teamsEmptyAction: 'Go to teams',
     avatar: {
       change: 'Change photo',
       cropTitle: 'Crop your photo',

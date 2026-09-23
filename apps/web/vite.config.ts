@@ -17,6 +17,19 @@ const inputFocusFix = {
   class: 'focus-visible:outline-none! focus-visible:ring-[var(--border-brand)]!',
 };
 
+// 20.3.5 (10_Profile): то же самое несовпадение токена, что было у focus выше —
+// Error/Error Focus в Figma это просто рамка --border-error (--palette-error-120,
+// тёмный тон), а Nuxt UI цвету color="error" красит ring через --ui-error
+// (--palette-error-100, ярче) и добавляет тот же полупрозрачный ореол на фокусе.
+// Раньше это не встречалось в коде (не было полей с color="error"), первый живой
+// случай — обязательное имя в форме профиля.
+const inputErrorFix = {
+  color: 'error',
+  variant: 'outline',
+  class:
+    'ring-[var(--border-error)]! focus-visible:outline-none! focus-visible:ring-[var(--border-error)]!',
+};
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -60,7 +73,7 @@ export default defineConfig({
               lg: { base: 'h-12 px-3 text-base md:text-base! gap-2 rounded-r12' },
             },
           },
-          compoundVariants: [inputFocusFix],
+          compoundVariants: [inputFocusFix, inputErrorFix],
         },
         // Тот же паттерн, что Input — тач ин-плейс редактор шага (BoardExportModal
         // и др.), в Figma отдельно не описан
@@ -72,7 +85,7 @@ export default defineConfig({
               lg: { base: 'h-12 px-3 text-base md:text-base! gap-2 rounded-r12' },
             },
           },
-          compoundVariants: [inputFocusFix],
+          compoundVariants: [inputFocusFix, inputErrorFix],
         },
         select: {
           variants: {
@@ -82,7 +95,7 @@ export default defineConfig({
               lg: { base: 'px-3 py-2 text-sm gap-2 rounded-r12' },
             },
           },
-          compoundVariants: [inputFocusFix],
+          compoundVariants: [inputFocusFix, inputErrorFix],
         },
         textarea: {
           variants: {
@@ -92,7 +105,7 @@ export default defineConfig({
               lg: { base: 'px-3 py-2 text-sm gap-2 rounded-r12' },
             },
           },
-          compoundVariants: [inputFocusFix],
+          compoundVariants: [inputFocusFix, inputErrorFix],
         },
         modal: {
           slots: {
