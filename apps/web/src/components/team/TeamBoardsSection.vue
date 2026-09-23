@@ -68,15 +68,17 @@ const boardTabs = computed(() => [
       <p v-if="activeBoardsPaging.total.value === 0" class="text-muted pb-5 text-sm">
         {{ t('team.boardsEmpty') }}
       </p>
-      <RouterLink
-        v-for="board in activeBoardsPaging.items.value"
-        :key="board.id"
-        :to="{ name: 'board', params: { id: board.id } }"
-        class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 first:border-t-0 sm:px-8"
-      >
-        <span class="min-w-28 flex-1 truncate text-base font-bold">{{ board.title }}</span>
-        <span class="text-muted text-sm">{{ formatDate(board.createdAt) }}</span>
-      </RouterLink>
+      <div>
+        <RouterLink
+          v-for="board in activeBoardsPaging.items.value"
+          :key="board.id"
+          :to="{ name: 'board', params: { id: board.id } }"
+          class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 first:border-t-0 sm:px-8"
+        >
+          <span class="min-w-28 flex-1 truncate text-base font-bold">{{ board.title }}</span>
+          <span class="text-muted text-sm">{{ formatDate(board.createdAt) }}</span>
+        </RouterLink>
+      </div>
       <div
         v-if="activeBoardsPaging.total.value > activeBoardsPaging.pageSize"
         class="border-default flex justify-center border-t px-4 py-4 sm:px-8"
@@ -107,40 +109,42 @@ const boardTabs = computed(() => [
         <p v-if="archiveBoardsPaging.total.value === 0" class="text-muted pb-5 text-sm">
           {{ t('team.archiveBoardsEmpty') }}
         </p>
-        <div
-          v-for="board in archiveBoardsPaging.items.value"
-          :key="board.id"
-          class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 first:border-t-0 sm:px-8"
-        >
-          <RouterLink
-            :to="{ name: 'board', params: { id: board.id } }"
-            class="min-w-28 flex-1 truncate text-base font-bold"
+        <div>
+          <div
+            v-for="board in archiveBoardsPaging.items.value"
+            :key="board.id"
+            class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 first:border-t-0 sm:px-8"
           >
-            {{ board.title }}
-          </RouterLink>
-          <div class="flex shrink-0 items-center gap-3.5">
-            <span class="text-muted text-sm">{{ formatDate(board.createdAt) }}</span>
-            <template v-if="canManageBoard(board)">
-              <UButton
-                icon="i-lucide-rotate-ccw"
-                color="neutral"
-                variant="ghost"
-                size="sm"
-                :loading="unarchivingBoardId === board.id"
-                @click="emit('unarchive', board)"
-              >
-                {{ t('team.archiveUnarchiveBoard') }}
-              </UButton>
-              <UButton
-                icon="i-lucide-trash-2"
-                color="error"
-                variant="ghost"
-                size="sm"
-                @click="emit('delete', board)"
-              >
-                {{ t('team.archiveDeleteBoard') }}
-              </UButton>
-            </template>
+            <RouterLink
+              :to="{ name: 'board', params: { id: board.id } }"
+              class="min-w-28 flex-1 truncate text-base font-bold"
+            >
+              {{ board.title }}
+            </RouterLink>
+            <div class="flex shrink-0 items-center gap-3.5">
+              <span class="text-muted text-sm">{{ formatDate(board.createdAt) }}</span>
+              <template v-if="canManageBoard(board)">
+                <UButton
+                  icon="i-lucide-rotate-ccw"
+                  color="neutral"
+                  variant="ghost"
+                  size="sm"
+                  :loading="unarchivingBoardId === board.id"
+                  @click="emit('unarchive', board)"
+                >
+                  {{ t('team.archiveUnarchiveBoard') }}
+                </UButton>
+                <UButton
+                  icon="i-lucide-trash-2"
+                  color="error"
+                  variant="ghost"
+                  size="sm"
+                  @click="emit('delete', board)"
+                >
+                  {{ t('team.archiveDeleteBoard') }}
+                </UButton>
+              </template>
+            </div>
           </div>
         </div>
         <div
