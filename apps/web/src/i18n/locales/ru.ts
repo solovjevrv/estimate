@@ -576,6 +576,11 @@ export default {
     saving: 'Сохраняем…',
     saved: 'Профиль обновлён',
     saveError: 'Не удалось сохранить профиль. Попробуйте ещё раз.',
+    teamsTitle: 'Команды',
+    teamsLoadError: 'Не удалось загрузить команды.',
+    teamsEmptyTitle: 'Пока пусто',
+    teamsEmptyText: 'Вы ещё не состоите ни в одной команде.',
+    teamsEmptyAction: 'Перейти к командам',
     avatar: {
       change: 'Сменить фото',
       cropTitle: 'Обрежьте фото',
