@@ -63,7 +63,7 @@ function menuItems(member: TeamMember): DropdownMenuItem[][] {
       <div
         v-for="member in members"
         :key="member.userId"
-        class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-4 sm:px-8"
+        class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-4 first:border-t-0 sm:px-8"
       >
         <RouterLink
           :to="{ name: 'team-member', params: { id: teamId, userId: member.userId } }"

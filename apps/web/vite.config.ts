@@ -3,6 +3,20 @@ import ui from '@nuxt/ui/vite';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vite';
 
+// Figma (06_Input, Focus): рамка становится border-brand (зелёная), без
+// внешнего свечения/кольца — у Nuxt UI дефолт для фокуса (color="primary",
+// свой применяется по умолчанию, наш app.config цвет не переопределяет) —
+// это focus-visible:outline-3 (полупрозрачный ореол шириной 3px) плюс
+// focus-visible:ring-primary (--ui-primary — тот же не по месту применённый
+// токен, что был в 20.12 у навигации: в тёмной теме темнее, чем наш
+// border-brand). Тот же паттерн у Input/InputNumber/Select/Textarea — все
+// используют один ring-based "outline" вариант из общей темы Nuxt UI.
+const inputFocusFix = {
+  color: 'primary',
+  variant: 'outline',
+  class: 'focus-visible:outline-none! focus-visible:ring-[var(--border-brand)]!',
+};
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -46,6 +60,7 @@ export default defineConfig({
               lg: { base: 'h-12 px-3 text-base md:text-base! gap-2 rounded-r12' },
             },
           },
+          compoundVariants: [inputFocusFix],
         },
         // Тот же паттерн, что Input — тач ин-плейс редактор шага (BoardExportModal
         // и др.), в Figma отдельно не описан
@@ -57,6 +72,7 @@ export default defineConfig({
               lg: { base: 'h-12 px-3 text-base md:text-base! gap-2 rounded-r12' },
             },
           },
+          compoundVariants: [inputFocusFix],
         },
         select: {
           variants: {
@@ -66,6 +82,7 @@ export default defineConfig({
               lg: { base: 'px-3 py-2 text-sm gap-2 rounded-r12' },
             },
           },
+          compoundVariants: [inputFocusFix],
         },
         textarea: {
           variants: {
@@ -75,6 +92,7 @@ export default defineConfig({
               lg: { base: 'px-3 py-2 text-sm gap-2 rounded-r12' },
             },
           },
+          compoundVariants: [inputFocusFix],
         },
         modal: {
           slots: {
