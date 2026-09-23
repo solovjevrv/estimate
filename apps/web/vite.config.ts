@@ -16,7 +16,10 @@ export default defineConfig({
     ui({
       ui: {
         button: {
-          slots: { base: 'font-bold' },
+          // Nuxt UI сам не ставит cursor-pointer на активную (не disabled) кнопку —
+          // только disabled:cursor-not-allowed. Без этого все UButton показывают
+          // обычный курсор вместо pointer при наведении
+          slots: { base: 'font-bold cursor-pointer' },
           variants: {
             size: {
               sm: { base: 'px-2.5 py-2 text-xs gap-1.5 rounded-r8' },
@@ -24,14 +27,6 @@ export default defineConfig({
               lg: { base: 'px-4 py-3 text-base gap-2 rounded-r12' },
             },
           },
-          // Ghost/neutral (кебаб-меню строк/шапки везде в приложении) на своих
-          // дефолтах Nuxt UI красится hover:bg-elevated — собственный токен
-          // Nuxt UI, не сверенный с китом. Реальный hover в Figma (Button,
-          // Color=Neutral/Style=Ghost/Size=Sm) — surface-secondary (#f3f3f4,
-          // тот же токен, что уже стоит на hover пункта DropdownMenu, 20.3.3)
-          compoundVariants: [
-            { color: 'neutral', variant: 'ghost', class: 'hover:bg-surface-secondary' },
-          ],
         },
         // Высоты — по факту Container (counterAxisSizingMode: FIXED) компонента
         // Input в Figma: 34/40/48, не по формуле padding+line-height (не сходится
@@ -97,8 +92,13 @@ export default defineConfig({
         // было пресета вовсе, меню жило на чистых дефолтах Nuxt UI (нашёл
         // пользователь по свежесобранному меню участника, 20.3.3). Контейнер
         // r12/Shadow-Popup/паддинг 6, пункт 36px/r8/паддинг 12×9/шрифт 12 Medium
-        // (не Bold), иконка 16px, hover — заливка surface-secondary вместо
-        // полупрозрачного оверлея по умолчанию.
+        // (не Bold), иконка 16px. Цвет hover — не здесь: и Button (ghost/neutral),
+        // и пункт меню красятся Nuxt UI через bg-elevated, поэтому сам цвет
+        // (surface-secondary) фиксирован один раз в токене --ui-bg-elevated
+        // (main.css), не дублируется в пресетах. items-center и before:rounded-r8
+        // — свои дефолты Nuxt UI (items-start, before:rounded-md) не сверены с
+        // китом: из-за items-start пункт с доп. контентом в trailing-слоте
+        // (переключатель темы) не центрируется по вертикали относительно лейбла.
         dropdownMenu: {
           slots: {
             content: 'rounded-r12 shadow-popup ring-0 bg-[var(--brand-surface)]',
@@ -107,7 +107,7 @@ export default defineConfig({
           variants: {
             size: {
               md: {
-                item: 'rounded-r8 px-3 py-2.5 text-xs font-medium gap-2.5 data-highlighted:before:bg-surface-secondary data-[state=open]:before:bg-surface-secondary',
+                item: 'items-center rounded-r8 px-3 py-2.5 text-xs font-medium gap-2.5 before:rounded-r8',
                 itemLeadingIcon: 'size-4',
                 itemTrailingIcon: 'size-4',
               },

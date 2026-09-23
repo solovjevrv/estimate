@@ -67,7 +67,7 @@ function menuItems(member: TeamMember): DropdownMenuItem[][] {
       >
         <RouterLink
           :to="{ name: 'team-member', params: { id: teamId, userId: member.userId } }"
-          class="hover:text-primary flex min-w-36 items-center gap-3.5"
+          class="flex min-w-36 items-center gap-3.5"
         >
           <UAvatar
             :src="member.avatarUrl ?? undefined"

@@ -77,11 +77,11 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
           v-for="tab in roomTabs"
           :key="tab.key"
           type="button"
-          class="rounded-full px-4 py-1.5 text-xs leading-[18px] font-bold transition-colors"
+          class="cursor-pointer rounded-full px-4 py-1.5 text-xs leading-[18px] font-bold transition-colors"
           :class="
             roomsTab === tab.key
               ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)]'
-              : 'text-muted hover:text-default cursor-pointer'
+              : 'text-muted hover:text-default'
           "
           @click="emit('selectTab', tab.key)"
         >
