@@ -86,6 +86,29 @@ function byText(wrapper: ReturnType<typeof mount>, selector: string, text: strin
   return wrapper.findAll(selector).find((el) => el.text().trim() === text);
 }
 
+/** Открытая модалка Nuxt UI телепортируется в body под role="dialog" */
+function dialog(): HTMLElement | null {
+  return document.body.querySelector('[role="dialog"]');
+}
+
+function dialogButton(text: string): HTMLButtonElement | undefined {
+  return Array.from(dialog()?.querySelectorAll('button') ?? []).find(
+    (b) => b.textContent?.trim() === text,
+  );
+}
+
+/** Действия команды (переименовать/пригласить/выйти/удалить) спрятаны за
+ * меню в шапке (05_Members) — открываем его и кликаем по пункту с нужным текстом. */
+async function clickTeamMenuItem(text: string): Promise<void> {
+  const trigger = document.body.querySelector('button[aria-label="Действия с командой"]');
+  (trigger as HTMLElement).click();
+  await vi.waitFor(() => expect(document.body.textContent).toContain(text));
+  const item = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+    (el) => el.textContent?.trim() === text,
+  );
+  (item as HTMLElement).click();
+}
+
 afterEach(() => {
   activeWrapper?.unmount();
   activeWrapper = null;
@@ -175,13 +198,15 @@ describe('карточка команды', () => {
           json(200, { team: teamA, role: 'admin', members: [admin], inviteCode: 'abcdef' }),
       }),
     );
-
     await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
-    expect(wrapper.text()).toContain('Иван');
-    expect(wrapper.text()).toContain('Приглашение');
-    const invite = wrapper.find('input[readonly]');
-    expect(invite.exists()).toBe(true);
-    expect((invite.element as HTMLInputElement).value).toContain('/invite/abcdef');
+
+    await byText(wrapper, 'button', 'Состав')!.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Иван'));
+
+    await byText(wrapper, 'button', 'Пригласить')!.trigger('click');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Приглашение'));
+    const invite = dialog()!.querySelector('input[readonly]') as HTMLInputElement;
+    expect(invite.value).toContain('/invite/abcdef');
   });
 
   it('не показывает блок приглашения обычному участнику', async () => {
@@ -191,9 +216,11 @@ describe('карточка команды', () => {
         'GET /api/teams/t1': () => json(200, { team: teamA, role: 'member', members: [admin] }),
       }),
     );
-
     await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
-    expect(wrapper.text()).not.toContain('Приглашение');
+
+    await byText(wrapper, 'button', 'Состав')!.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Иван'));
+    expect(wrapper.text()).not.toContain('Пригласить');
   });
 
   it('на чужую или несуществующую команду показывает «не найдено»', async () => {
@@ -218,9 +245,13 @@ describe('карточка команды', () => {
           json(200, { team: teamA, role: 'admin', members: [admin], inviteCode: 'abcdef' }),
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Приглашение'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
 
-    await byText(wrapper, 'button', 'Скопировать ссылку')!.trigger('click');
+    await byText(wrapper, 'button', 'Состав')!.trigger('click');
+    await byText(wrapper, 'button', 'Пригласить')!.trigger('click');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Приглашение'));
+
+    dialogButton('Скопировать ссылку')!.click();
 
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/invite/abcdef'));
   });
@@ -235,17 +266,6 @@ const other: TeamMember = {
   joinedAt: '2026-07-24T00:00:00.000Z',
 };
 
-/** Открытая модалка Nuxt UI телепортируется в body под role="dialog" */
-function dialog(): HTMLElement | null {
-  return document.body.querySelector('[role="dialog"]');
-}
-
-function dialogButton(text: string): HTMLButtonElement | undefined {
-  return Array.from(dialog()?.querySelectorAll('button') ?? []).find(
-    (b) => b.textContent?.trim() === text,
-  );
-}
-
 describe('управление составом', () => {
   it('администратору доступно исключение других участников', async () => {
     const { wrapper } = await mountApp(
@@ -255,11 +275,16 @@ describe('управление составом', () => {
           json(200, { team: teamA, role: 'admin', members: [admin, other] }),
       }),
     );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
+    await byText(wrapper, 'button', 'Состав')!.trigger('click');
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Пётр'));
     // Меню действий есть у чужого участника и отсутствует у самого администратора
     expect(wrapper.findAll('[aria-label="Действия с участником"]')).toHaveLength(1);
-    expect(wrapper.text()).toContain('Удалить команду');
+
+    const trigger = document.body.querySelector('button[aria-label="Действия с командой"]');
+    (trigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Удалить команду'));
   });
 
   it('обычному участнику управление недоступно', async () => {
@@ -270,11 +295,18 @@ describe('управление составом', () => {
           json(200, { team: teamA, role: 'member', members: [admin, other] }),
       }),
     );
-
     await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
+    await byText(wrapper, 'button', 'Состав')!.trigger('click');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Пётр'));
     expect(wrapper.find('[aria-label="Действия с участником"]').exists()).toBe(false);
-    expect(wrapper.text()).not.toContain('Удалить команду');
-    expect(wrapper.text()).not.toContain('Переименовать');
+    expect(wrapper.text()).not.toContain('Пригласить');
+
+    const trigger = document.body.querySelector('button[aria-label="Действия с командой"]');
+    (trigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Выйти из команды'));
+    expect(document.body.textContent).not.toContain('Удалить команду');
+    expect(document.body.textContent).not.toContain('Переименовать');
   });
 
   it('исключение участника убирает его из состава', async () => {
@@ -286,6 +318,8 @@ describe('управление составом', () => {
         'DELETE /api/teams/t1/members/u2': () => new Response(null, { status: 204 }),
       }),
     );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
+    await byText(wrapper, 'button', 'Состав')!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('Пётр'));
 
     // Действие спрятано в меню участника — оно телепортируется в document.body
@@ -314,6 +348,8 @@ describe('управление составом', () => {
         'PATCH /api/teams/t1/members/u2': patch,
       }),
     );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
+    await byText(wrapper, 'button', 'Состав')!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('Пётр'));
 
     const menuTrigger = document.body.querySelector('button[aria-label="Действия с участником"]');
@@ -356,7 +392,7 @@ describe('управление составом', () => {
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
 
-    await byText(wrapper, 'button', 'Выйти из команды')!.trigger('click');
+    await clickTeamMenuItem('Выйти из команды');
     await vi.waitFor(() => expect(dialog()?.textContent).toContain('Выйти из команды?'));
     dialogButton('Выйти')!.click();
 
@@ -373,9 +409,9 @@ describe('управление составом', () => {
         'DELETE /api/teams/t1/members/u1': () => new Response(null, { status: 204 }),
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Настройки команды'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
 
-    await byText(wrapper, 'button', 'Выйти из команды')!.trigger('click');
+    await clickTeamMenuItem('Выйти из команды');
     await vi.waitFor(() => expect(dialog()?.textContent).toContain('Выйти из команды?'));
     dialogButton('Выйти')!.click();
 
@@ -394,9 +430,9 @@ describe('управление составом', () => {
           }),
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Настройки команды'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
 
-    await byText(wrapper, 'button', 'Выйти из команды')!.trigger('click');
+    await clickTeamMenuItem('Выйти из команды');
     await vi.waitFor(() => expect(dialog()?.textContent).toContain('Выйти из команды?'));
     dialogButton('Выйти')!.click();
 
@@ -412,9 +448,9 @@ describe('управление составом', () => {
         'DELETE /api/teams/t1': () => new Response(null, { status: 204 }),
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Удалить команду'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
 
-    await byText(wrapper, 'button', 'Удалить команду')!.trigger('click');
+    await clickTeamMenuItem('Удалить команду');
     await vi.waitFor(() => expect(dialog()?.textContent).toContain('Удалить команду?'));
     dialogButton('Удалить')!.click();
 
@@ -429,9 +465,9 @@ describe('управление составом', () => {
         'PATCH /api/teams/t1': () => json(200, { team: { ...teamA, name: 'Новое имя' } }),
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Настройки команды'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
 
-    await byText(wrapper, 'button', 'Переименовать')!.trigger('click');
+    await clickTeamMenuItem('Переименовать');
     await vi.waitFor(() => expect(dialog()?.textContent).toContain('Переименовать команду'));
 
     const input = dialog()!.querySelector('input') as HTMLInputElement;
@@ -723,6 +759,8 @@ describe('карточка участника (10.14)', () => {
           }),
       }),
     );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
+    await byText(wrapper, 'button', 'Состав')!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('Пётр'));
 
     await wrapper.find('a[href*="/teams/t1/members/u2"]').trigger('click');

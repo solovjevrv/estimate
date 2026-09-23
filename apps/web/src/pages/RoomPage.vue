@@ -312,7 +312,7 @@ function retry(): void {
               autofocus
               class="w-full"
               :ui="{
-                base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] px-4 py-3 ring-0',
+                base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] px-4 ring-0',
               }"
             />
           </UFormField>
@@ -460,7 +460,7 @@ function retry(): void {
                 :placeholder="t('room.linksJiraPlaceholder')"
                 class="w-full"
                 :ui="{
-                  base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] py-[13px] pe-4 ring-0',
+                  base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] pe-4 ring-0',
                 }"
                 @update:model-value="linksDirty = true"
               />
@@ -477,7 +477,7 @@ function retry(): void {
                 :placeholder="t('room.linksConfluencePlaceholder')"
                 class="w-full"
                 :ui="{
-                  base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] py-[13px] pe-4 ring-0',
+                  base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] pe-4 ring-0',
                 }"
                 @update:model-value="linksDirty = true"
               />
