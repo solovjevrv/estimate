@@ -24,6 +24,14 @@ export default defineConfig({
               lg: { base: 'px-4 py-3 text-base gap-2 rounded-r12' },
             },
           },
+          // Ghost/neutral (кебаб-меню строк/шапки везде в приложении) на своих
+          // дефолтах Nuxt UI красится hover:bg-elevated — собственный токен
+          // Nuxt UI, не сверенный с китом. Реальный hover в Figma (Button,
+          // Color=Neutral/Style=Ghost/Size=Sm) — surface-secondary (#f3f3f4,
+          // тот же токен, что уже стоит на hover пункта DropdownMenu, 20.3.3)
+          compoundVariants: [
+            { color: 'neutral', variant: 'ghost', class: 'hover:bg-surface-secondary' },
+          ],
         },
         // Высоты — по факту Container (counterAxisSizingMode: FIXED) компонента
         // Input в Figma: 34/40/48, не по формуле padding+line-height (не сходится
