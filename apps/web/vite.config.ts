@@ -25,12 +25,22 @@ export default defineConfig({
             },
           },
         },
+        // Высоты — по факту Container (counterAxisSizingMode: FIXED) компонента
+        // Input в Figma: 34/40/48, не по формуле padding+line-height (не сходится
+        // на пару px, отсюда h-* явно, а не расчёт через py-*). Md/Lg — 40/48,
+        // совпадает с кнопками той же ступени. Шрифт Md/Lg — 16px (text-base),
+        // не text-sm, как ошибочно было при первом промере в 20.2. `md:text-base!`
+        // не опечатка: у Nuxt UI в собственной теме Input зашит `md:text-sm`
+        // (брейкпоинт вьюпорта, а не наш размер компонента); twMerge внутри их
+        // tv()-конфига сохраняет именно их класс при конфликте в одной и той же
+        // группе брейкпоинта, обычный `md:text-base` тут молча проигрывает —
+        // побеждает только через `!important` (суффикс `!`).
         input: {
           variants: {
             size: {
-              sm: { base: 'px-2.5 py-1.5 text-xs gap-1.5 rounded-r8' },
-              md: { base: 'px-2.5 py-1.5 text-sm gap-1.5 rounded-r10' },
-              lg: { base: 'px-3 py-2 text-sm gap-2 rounded-r12' },
+              sm: { base: 'h-[34px] px-2.5 text-xs gap-1.5 rounded-r8' },
+              md: { base: 'h-10 px-2.5 text-base md:text-base! gap-1.5 rounded-r10' },
+              lg: { base: 'h-12 px-3 text-base md:text-base! gap-2 rounded-r12' },
             },
           },
         },
@@ -39,9 +49,9 @@ export default defineConfig({
         inputNumber: {
           variants: {
             size: {
-              sm: { base: 'px-2.5 py-1.5 text-xs gap-1.5 rounded-r8' },
-              md: { base: 'px-2.5 py-1.5 text-sm gap-1.5 rounded-r10' },
-              lg: { base: 'px-3 py-2 text-sm gap-2 rounded-r12' },
+              sm: { base: 'h-[34px] px-2.5 text-xs gap-1.5 rounded-r8' },
+              md: { base: 'h-10 px-2.5 text-base md:text-base! gap-1.5 rounded-r10' },
+              lg: { base: 'h-12 px-3 text-base md:text-base! gap-2 rounded-r12' },
             },
           },
         },

@@ -31,55 +31,45 @@ const roomTabs = computed(() => [
 </script>
 
 <template>
-  <div class="surface-card overflow-hidden">
-    <div class="flex flex-wrap items-center justify-between gap-3 px-4 py-5 sm:px-[30px]">
-      <h2 class="text-[17px] font-bold">{{ t('team.roomsTitle') }}</h2>
-      <UButton
-        v-if="canManageTeam"
-        icon="i-lucide-plus"
-        class="rounded-[11px] px-[18px] py-[11px] text-sm font-bold"
-        @click="emit('create')"
-      >
+  <div>
+    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+      <div class="flex items-center gap-2">
+        <button
+          v-for="tab in roomTabs"
+          :key="tab.key"
+          type="button"
+          class="rounded-full px-4 py-1.5 text-[13px] font-bold transition-colors"
+          :class="
+            roomsTab === tab.key
+              ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)]'
+              : 'text-muted hover:text-default cursor-pointer'
+          "
+          @click="emit('selectTab', tab.key)"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+      <UButton v-if="canManageTeam" icon="i-lucide-plus" @click="emit('create')">
         {{ t('room.create') }}
       </UButton>
-    </div>
-
-    <div class="flex items-center gap-2 px-4 pb-4 sm:px-[30px]">
-      <button
-        v-for="tab in roomTabs"
-        :key="tab.key"
-        type="button"
-        class="rounded-full px-4 py-1.5 text-[13px] font-bold transition-colors"
-        :class="
-          roomsTab === tab.key
-            ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)]'
-            : 'text-muted hover:text-default cursor-pointer'
-        "
-        @click="emit('selectTab', tab.key)"
-      >
-        {{ tab.label }}
-      </button>
     </div>
 
     <UAlert
       v-if="roomsFailed"
       color="error"
       variant="subtle"
-      class="mx-4 mb-5 sm:mx-[30px]"
+      class="mb-5"
       :description="t('team.roomsError')"
     />
     <template v-else-if="roomsTab === 'active'">
-      <p
-        v-if="activeRoomsPaging.total.value === 0"
-        class="text-muted px-4 pb-5 sm:px-[30px] text-sm"
-      >
+      <p v-if="activeRoomsPaging.total.value === 0" class="text-muted pb-5 text-sm">
         {{ t('team.roomsEmpty') }}
       </p>
       <RouterLink
         v-for="room in activeRoomsPaging.items.value"
         :key="room.id"
         :to="{ name: 'room', params: { id: room.id } }"
-        class="border-default hover:bg-elevated/50 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
+        class="border-default hover:bg-elevated/50 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 sm:px-8"
       >
         <span class="min-w-28 flex-1 truncate text-base font-bold">{{ room.name }}</span>
         <div class="flex shrink-0 items-center gap-3.5">
@@ -89,7 +79,7 @@ const roomTabs = computed(() => [
       </RouterLink>
       <div
         v-if="activeRoomsPaging.total.value > activeRoomsPaging.pageSize"
-        class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
+        class="border-default flex justify-center border-t px-4 py-4 sm:px-8"
       >
         <!-- eslint-disable vue/no-mutating-props -- `page` — общая Ref-ячейка
              composable'а usePagedList, а не сам объект prop-а; перетаскивание
@@ -110,23 +100,20 @@ const roomTabs = computed(() => [
         v-if="roomArchive.failed"
         color="error"
         variant="subtle"
-        class="mx-4 mb-5 sm:mx-[30px]"
+        class="mb-5"
         :description="t('team.archiveError')"
       />
       <div v-if="roomArchive.loading" class="text-muted flex justify-center pb-5">
         <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
       </div>
       <template v-else>
-        <p
-          v-if="archiveTabPaging.total.value === 0"
-          class="text-muted px-4 pb-5 sm:px-[30px] text-sm"
-        >
+        <p v-if="archiveTabPaging.total.value === 0" class="text-muted pb-5 text-sm">
           {{ t('team.archiveEmpty') }}
         </p>
         <div
           v-for="room in archiveTabPaging.items.value"
           :key="room.id"
-          class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
+          class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 sm:px-8"
         >
           <RouterLink
             :to="{ name: 'room', params: { id: room.id } }"
@@ -151,7 +138,7 @@ const roomTabs = computed(() => [
         </div>
         <div
           v-if="archiveTabPaging.total.value > archiveTabPaging.pageSize"
-          class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
+          class="border-default flex justify-center border-t px-4 py-4 sm:px-8"
         >
           <!-- eslint-disable vue/no-mutating-props -- см. пояснение выше -->
           <UPagination
