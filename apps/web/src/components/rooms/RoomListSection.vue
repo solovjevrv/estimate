@@ -114,7 +114,7 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
       <div
         v-for="room in activeRoomsPaging.items.value"
         :key="room.id"
-        class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 sm:px-8"
+        class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 sm:px-8"
       >
         <RouterLink
           :to="{ name: 'room', params: { id: room.id } }"
@@ -177,7 +177,7 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
         <div
           v-for="room in archiveTabPaging.items.value"
           :key="room.id"
-          class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 sm:px-8"
+          class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 sm:px-8"
         >
           <RouterLink
             :to="{ name: 'room', params: { id: room.id } }"

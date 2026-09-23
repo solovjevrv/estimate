@@ -72,7 +72,7 @@ const boardTabs = computed(() => [
         v-for="board in activeBoardsPaging.items.value"
         :key="board.id"
         :to="{ name: 'board', params: { id: board.id } }"
-        class="border-default hover:bg-elevated/50 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 sm:px-8"
+        class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 sm:px-8"
       >
         <span class="min-w-28 flex-1 truncate text-base font-bold">{{ board.title }}</span>
         <span class="text-muted text-sm">{{ formatDate(board.createdAt) }}</span>
@@ -110,7 +110,7 @@ const boardTabs = computed(() => [
         <div
           v-for="board in archiveBoardsPaging.items.value"
           :key="board.id"
-          class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 sm:px-8"
+          class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 sm:px-8"
         >
           <RouterLink
             :to="{ name: 'board', params: { id: board.id } }"
