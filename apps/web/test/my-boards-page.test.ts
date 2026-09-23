@@ -99,17 +99,19 @@ describe('страница «Мои доски»', () => {
     expect(wrapper.text()).not.toContain('Командная');
   });
 
-  it('помечает бейджем доски, созданные от лица команды', async () => {
+  it('помечает плашкой с именем команды доски, созданные от лица команды', async () => {
     const teamBoard: Board = { ...activeBoard, id: 'b2', teamId: 't1', title: 'Доска команды' };
     const { wrapper } = await mountApp(
       makeFetch({
         'GET /api/boards?archived=false': () =>
           json(200, { boards: [{ ...teamBoard, itemCount: 0 }] }),
+        'GET /api/teams': () =>
+          json(200, { teams: [{ id: 't1', name: 'Платформа', role: 'member', memberCount: 3 }] }),
       }),
     );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Доска команды'));
-    expect(wrapper.text()).toContain('Командная');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Платформа'));
   });
 
   it('ошибка загрузки показывает сообщение', async () => {
@@ -122,7 +124,7 @@ describe('страница «Мои доски»', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось загрузить доски'));
   });
 
-  it('восстанавливает доску из архива обратно в основной список', async () => {
+  it('восстанавливает доску из архива обратно в основной список через кебаб-меню карточки', async () => {
     const archivedBoard: Board = { ...activeBoard, id: 'b3', status: 'archived' };
     const unarchive = vi.fn(() => json(200, { board: { ...archivedBoard, status: 'active' } }));
     const { wrapper } = await mountApp(
@@ -133,22 +135,31 @@ describe('страница «Мои доски»', () => {
         'POST /api/boards/b3/unarchive': unarchive,
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Показать архив'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Активные'));
 
-    const showButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Показать архив');
-    await showButton!.trigger('click');
+    const archiveTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Архив');
+    await archiveTab!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('Личная доска'));
 
-    const restoreButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Восстановить');
-    await restoreButton!.trigger('click');
+    // Действие спрятано в кебаб-меню карточки — оно телепортируется в document.body
+    const menuTrigger = document.body.querySelector('button[aria-label="Меню доски"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Восстановить'));
+    const restoreItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Восстановить',
+    );
+    (restoreItem as HTMLElement).click();
 
     await vi.waitFor(() => expect(unarchive).toHaveBeenCalled());
-    // Доска должна появиться в основном списке, а не только пропасть из архива
     await vi.waitFor(() => expect(wrapper.text()).toContain('В архиве пока нет досок'));
-    expect(wrapper.find('a[href="/boards/b3"]').exists()).toBe(true);
+
+    // Доска должна появиться в основном списке, а не только пропасть из архива
+    const activeTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Активные');
+    await activeTab!.trigger('click');
+    await vi.waitFor(() => expect(wrapper.find('a[href="/boards/b3"]').exists()).toBe(true));
   });
 
-  it('открывает архив и удаляет доску навсегда', async () => {
+  it('открывает архив и удаляет доску навсегда через кебаб-меню карточки', async () => {
     const archivedBoard: Board = { ...activeBoard, id: 'b3', status: 'archived' };
     const remove = vi.fn(() => new Response(null, { status: 204 }));
     const { wrapper } = await mountApp(
@@ -159,16 +170,19 @@ describe('страница «Мои доски»', () => {
         'DELETE /api/boards/b3': remove,
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Показать архив'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Активные'));
 
-    const showButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Показать архив');
-    await showButton!.trigger('click');
+    const archiveTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Архив');
+    await archiveTab!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('Личная доска'));
 
-    const deleteButton = wrapper
-      .findAll('button')
-      .find((b) => b.text().trim() === 'Удалить навсегда');
-    await deleteButton!.trigger('click');
+    const menuTrigger = document.body.querySelector('button[aria-label="Меню доски"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Удалить навсегда'));
+    const deleteItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Удалить навсегда',
+    );
+    (deleteItem as HTMLElement).click();
     await vi.waitFor(() => expect(dialog()?.textContent).toContain('Удалить доску навсегда?'));
 
     const confirmButton = Array.from(dialog()?.querySelectorAll('button') ?? []).find(

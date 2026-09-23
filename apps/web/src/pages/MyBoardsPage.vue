@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { useToast } from '@nuxt/ui/composables';
-import { BOARD_TITLE_MAX_LENGTH, type BoardSummary } from '@estimate/shared';
+import { BOARD_TITLE_MAX_LENGTH, hasTeamRole, type BoardSummary } from '@estimate/shared';
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
+import BoardGridSection from '../components/boards/BoardGridSection.vue';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import EntityTextModal from '../components/EntityTextModal.vue';
 import { useArchiveTab } from '../composables/use-archive-tab';
@@ -12,42 +13,107 @@ import { usePagedList } from '../composables/use-paged-list';
 import { useAsyncAction } from '../composables/use-async-action';
 import { useEntityModal } from '../composables/use-entity-modal';
 import {
+  archiveBoard as archiveBoardRequest,
   createBoard as createBoardRequest,
   deleteBoard,
   listMyBoards,
-  unarchiveBoard,
+  renameBoard as renameBoardRequest,
+  unarchiveBoard as unarchiveBoardRequest,
 } from '../features/boards/api/boards-api';
+import { useSessionStore } from '../stores/session';
+import { useTeamsStore } from '../stores/teams';
 
 const { t, locale } = useI18n();
 const router = useRouter();
 const toast = useToast();
+const session = useSessionStore();
+const teams = useTeamsStore();
 
 const loading = ref(true);
 const loadFailed = ref(false);
 const list = ref<BoardSummary[]>([]);
 
+const currentUserId = computed(() => session.user?.id ?? null);
+const teamRoleById = computed(() => new Map(teams.list.map((team) => [team.id, team.role])));
+const teamNameById = computed(() => new Map(teams.list.map((team) => [team.id, team.name])));
+
+/** Переименовать/заархивировать/удалить/восстановить доску может её владелец или
+ *  админ команды, которой она принадлежит — тот же принцип, что и у комнат
+ *  (canManageRoom, 20.3.4b) */
+function canManageBoard(board: BoardSummary): boolean {
+  if (board.ownerId === currentUserId.value) return true;
+  if (!board.teamId) return false;
+  const role = teamRoleById.value.get(board.teamId);
+  return !!role && hasTeamRole(role, 'admin');
+}
+
+function teamTagFor(board: BoardSummary): string | null {
+  return board.teamId ? (teamNameById.value.get(board.teamId) ?? null) : null;
+}
+
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString(locale.value);
 }
 
+// --- Вкладки «Активные»/«Архив» (08_Boards: та же пара пилюль, что на странице команды) ---
+const boardsTab = ref<'active' | 'archive'>('active');
 // ISO-даты сравниваются лексикографически, поэтому свежие оказываются сверху
 const activeBoards = computed(() =>
   [...list.value].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 );
-const activePaging = usePagedList(activeBoards);
+const activeBoardsPaging = usePagedList(activeBoards);
+
+const archived = ref<BoardSummary[]>([]);
+const archivedSorted = computed(() =>
+  [...archived.value].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+);
+const archiveBoardsPaging = usePagedList(archivedSorted);
+const boardArchive = useArchiveTab(async () => {
+  archived.value = await listMyBoards(true);
+}, archiveBoardsPaging.reset);
+
+async function selectBoardsTab(tab: 'active' | 'archive'): Promise<void> {
+  boardsTab.value = tab;
+  if (tab === 'archive') await boardArchive.activate();
+}
 
 onMounted(load);
 
 async function load(): Promise<void> {
   loading.value = true;
   loadFailed.value = false;
+  boardsTab.value = 'active';
+  boardArchive.reset();
+  activeBoardsPaging.reset();
+  archiveBoardsPaging.reset();
   try {
     list.value = await listMyBoards(false);
-    activePaging.reset();
   } catch {
     loadFailed.value = true;
   } finally {
     loading.value = false;
+  }
+  try {
+    await teams.loadList();
+  } catch {
+    // Плашка команды и права по ней — необязательная деталь карточки; при сбое
+    // остаётся доступной только собственная доска (ownerId)
+  }
+}
+
+/** Обновляет и активный, и заархивированный список — переименованная/заархивированная
+ * доска может быть на любой из двух вкладок; сбой тихой довозгрузки архива не должен
+ * превращать успешное действие в error-тост. */
+async function reloadBoardsAfterMutation(): Promise<void> {
+  try {
+    list.value = await listMyBoards(false);
+  } catch {
+    loadFailed.value = true;
+  }
+  try {
+    archived.value = await listMyBoards(true);
+  } catch {
+    // Архив обновится при следующем открытии вкладки — не критично
   }
 }
 
@@ -69,32 +135,78 @@ async function onCreateBoard(title: string): Promise<void> {
   await createBoard(title);
 }
 
-// --- Архив: грузится отдельно и по требованию, чтобы не тянуть его при каждом заходе ---
-const archived = ref<BoardSummary[]>([]);
-const archivedComputed = computed(() => archived.value);
-const archivePaging = usePagedList(archivedComputed);
-const archive = useArchiveTab(async () => {
-  archived.value = await listMyBoards(true);
-}, archivePaging.reset);
+// --- Переименование ---
+const renameBoardTarget = ref<BoardSummary | null>(null);
+const renameBoardModal = useEntityModal();
 
-const unarchivingId = ref<string | null>(null);
+function askRenameBoard(board: BoardSummary): void {
+  renameBoardTarget.value = board;
+  renameBoardModal.show();
+}
 
-async function unarchive(board: BoardSummary): Promise<void> {
-  unarchivingId.value = board.id;
+const { pending: renamingBoard, execute: renameBoard } = useAsyncAction({
+  run: (title: string) => {
+    const target = renameBoardTarget.value;
+    if (!target) return Promise.reject(new Error('no rename target'));
+    return renameBoardRequest(target.id, title);
+  },
+  success: async () => {
+    renameBoardModal.close();
+    toast.add({ title: t('board.renamed'), color: 'success', icon: 'i-lucide-check' });
+    await reloadBoardsAfterMutation();
+  },
+  error: () => {
+    toast.add({ title: t('board.renameError'), color: 'error' });
+  },
+});
+
+async function onRenameBoard(title: string): Promise<void> {
+  if (!renameBoardTarget.value) return;
+  await renameBoard(title);
+}
+
+// --- Архивация ---
+const archiveBoardTarget = ref<BoardSummary | null>(null);
+const archiveBoardOpen = ref(false);
+
+function askArchiveBoard(board: BoardSummary): void {
+  archiveBoardTarget.value = board;
+  archiveBoardOpen.value = true;
+}
+
+const { pending: archivingBoard, execute: archiveBoard } = useAsyncAction({
+  run: (target: BoardSummary) => archiveBoardRequest(target.id),
+  success: async () => {
+    archiveBoardOpen.value = false;
+    toast.add({ title: t('board.archivedToast'), color: 'success', icon: 'i-lucide-check' });
+    await reloadBoardsAfterMutation();
+  },
+  error: () => {
+    toast.add({ title: t('board.archiveError'), color: 'error' });
+  },
+});
+
+async function confirmArchiveBoard(): Promise<void> {
+  const target = archiveBoardTarget.value;
+  if (!target) return;
+  await archiveBoard(target);
+}
+
+// --- Восстановление из архива ---
+async function unarchiveBoard(board: BoardSummary): Promise<void> {
   try {
-    const updated = await unarchiveBoard(board.id);
+    const updated = await unarchiveBoardRequest(board.id);
     archived.value = archived.value.filter((b) => b.id !== board.id);
-    // Возвращаем в основной список, не только убираем из архивного — иначе доска
+    // Возвращаем в основной список, а не только убираем из архивного — иначе доска
     // пропадала бы из обоих списков до перезагрузки страницы
     list.value = [...list.value, { ...board, ...updated }];
     toast.add({ title: t('boards.unarchived'), color: 'success', icon: 'i-lucide-check' });
   } catch {
     toast.add({ title: t('boards.unarchiveError'), color: 'error' });
-  } finally {
-    unarchivingId.value = null;
   }
 }
 
+// --- Удаление (доступно только для уже заархивированной доски) ---
 const deleteTarget = ref<BoardSummary | null>(null);
 const deleteOpen = ref(false);
 
@@ -125,12 +237,8 @@ async function confirmDelete(): Promise<void> {
 <template>
   <section class="space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h1 class="font-heading text-3xl font-extrabold">{{ t('boards.title') }}</h1>
-      <UButton
-        icon="i-lucide-plus"
-        class="h-[43px] px-[22px] text-[15px] font-bold"
-        @click="createBoardModal.show"
-      >
+      <h1 class="font-heading text-[32px] font-bold">{{ t('boards.title') }}</h1>
+      <UButton icon="i-lucide-plus" size="lg" @click="createBoardModal.show">
         {{ t('board.create') }}
       </UButton>
     </div>
@@ -151,128 +259,41 @@ async function confirmDelete(): Promise<void> {
       ]"
     />
 
-    <div v-else-if="loading" class="surface-card overflow-hidden">
-      <div
-        v-for="i in 3"
-        :key="i"
-        class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[22px] first:border-t-0 sm:px-[30px]"
-      >
-        <USkeleton class="h-5 w-1/3 bg-border-medium" />
-        <USkeleton class="h-5 w-20 rounded-full bg-border-medium" />
+    <div v-else-if="loading" class="space-y-5">
+      <p class="text-muted text-sm">{{ t('boards.subtitle') }}</p>
+      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div v-for="i in 3" :key="i" class="overflow-hidden rounded-r24">
+          <USkeleton class="h-[140px] w-full rounded-none bg-border-medium" />
+          <div class="surface-card space-y-2 rounded-t-none px-5 py-4">
+            <USkeleton class="h-5 w-2/3 bg-border-medium" />
+            <USkeleton class="h-4 w-1/3 bg-border-medium" />
+          </div>
+        </div>
       </div>
     </div>
 
     <template v-else>
-      <p v-if="list.length === 0" class="surface-card text-muted p-4 text-sm sm:p-[30px]">
-        {{ t('boards.empty') }}
-      </p>
-      <div v-else class="surface-card overflow-hidden">
-        <RouterLink
-          v-for="board in activePaging.items.value"
-          :key="board.id"
-          :to="{ name: 'board', params: { id: board.id } }"
-          class="border-default hover:bg-elevated/50 flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[22px] first:border-t-0 sm:px-[30px]"
-        >
-          <span class="min-w-28 flex-1 truncate text-[17px] font-bold">{{ board.title }}</span>
-          <div class="flex shrink-0 items-center gap-3.5">
-            <span v-if="board.teamId" class="badge-pill badge-pill-neutral">{{
-              t('boards.teamBadge')
-            }}</span>
-            <span class="text-muted text-sm">{{ formatDate(board.createdAt) }}</span>
-          </div>
-        </RouterLink>
-        <div
-          v-if="activePaging.total.value > activePaging.pageSize"
-          class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
-        >
-          <UPagination
-            v-model:page="activePaging.page.value"
-            :total="activePaging.total.value"
-            :items-per-page="activePaging.pageSize"
-          />
-        </div>
-      </div>
+      <p class="text-muted text-sm">{{ t('boards.subtitle') }}</p>
 
-      <div class="surface-card overflow-hidden">
-        <div class="flex items-center justify-between gap-3 px-4 py-5 sm:px-[30px]">
-          <h2 class="text-[17px] font-bold">{{ t('boards.archiveTitle') }}</h2>
-          <button
-            type="button"
-            class="text-primary cursor-pointer text-sm font-bold"
-            @click="archive.toggle"
-          >
-            {{ archive.open ? t('boards.archiveHide') : t('boards.archiveShow') }}
-          </button>
-        </div>
-
-        <template v-if="archive.open">
-          <UAlert
-            v-if="archive.failed"
-            color="error"
-            variant="subtle"
-            class="mx-4 mb-5 sm:mx-[30px]"
-            :description="t('boards.archiveError')"
-          />
-          <div v-else-if="archive.loading" class="text-muted flex justify-center pb-5">
-            <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
-          </div>
-          <p
-            v-else-if="archivePaging.total.value === 0"
-            class="text-muted px-4 pb-5 text-sm sm:px-[30px]"
-          >
-            {{ t('boards.archiveEmpty') }}
-          </p>
-          <template v-else>
-            <div
-              v-for="board in archivePaging.items.value"
-              :key="board.id"
-              class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] sm:px-[30px]"
-            >
-              <RouterLink
-                :to="{ name: 'board', params: { id: board.id } }"
-                class="min-w-28 flex-1 truncate text-[15.5px] font-bold"
-              >
-                {{ board.title }}
-              </RouterLink>
-              <div class="flex shrink-0 items-center gap-3">
-                <span v-if="board.teamId" class="badge-pill badge-pill-neutral">{{
-                  t('boards.teamBadge')
-                }}</span>
-                <span class="text-muted text-[13.5px]">{{ formatDate(board.createdAt) }}</span>
-                <UButton
-                  icon="i-lucide-rotate-ccw"
-                  color="neutral"
-                  variant="ghost"
-                  size="sm"
-                  :loading="unarchivingId === board.id"
-                  @click="unarchive(board)"
-                >
-                  {{ t('boards.unarchive') }}
-                </UButton>
-                <UButton
-                  icon="i-lucide-trash-2"
-                  color="error"
-                  variant="ghost"
-                  size="sm"
-                  @click="askDelete(board)"
-                >
-                  {{ t('boards.deleteBoard') }}
-                </UButton>
-              </div>
-            </div>
-            <div
-              v-if="archivePaging.total.value > archivePaging.pageSize"
-              class="border-default flex justify-center border-t px-4 py-4 sm:px-[30px]"
-            >
-              <UPagination
-                v-model:page="archivePaging.page.value"
-                :total="archivePaging.total.value"
-                :items-per-page="archivePaging.pageSize"
-              />
-            </div>
-          </template>
-        </template>
-      </div>
+      <BoardGridSection
+        :boards-failed="false"
+        :boards-tab="boardsTab"
+        :active-boards-paging="activeBoardsPaging"
+        :archive-boards-paging="archiveBoardsPaging"
+        :board-archive="boardArchive"
+        :format-date="formatDate"
+        :can-manage-board="canManageBoard"
+        :team-tag-for="teamTagFor"
+        :error-message="t('boards.loadError')"
+        :empty-active-message="t('boards.empty')"
+        :empty-archive-message="t('boards.archiveEmpty')"
+        @select-tab="selectBoardsTab"
+        @rename="askRenameBoard"
+        @archive="askArchiveBoard"
+        @unarchive="unarchiveBoard"
+        @delete="askDelete"
+        @retry="load"
+      />
     </template>
 
     <EntityTextModal
@@ -287,6 +308,30 @@ async function confirmDelete(): Promise<void> {
       :submit-label="creating ? t('board.creating') : t('board.create')"
       :pending="creating"
       @submit="onCreateBoard"
+    />
+
+    <EntityTextModal
+      v-model:open="renameBoardModal.open"
+      :title="t('board.renameTitle')"
+      :label="t('common.nameLabel')"
+      :placeholder="t('board.createNamePlaceholder')"
+      :initial-value="renameBoardTarget?.title ?? ''"
+      :max-length="BOARD_TITLE_MAX_LENGTH"
+      :required-message="t('common.nameRequired')"
+      :too-long-message="t('common.nameTooLong', { max: BOARD_TITLE_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="t('board.rename')"
+      :pending="renamingBoard"
+      @submit="onRenameBoard"
+    />
+
+    <ConfirmModal
+      v-model:open="archiveBoardOpen"
+      :title="t('board.archiveConfirmTitle')"
+      :description="t('board.archiveConfirmText')"
+      :confirm-label="t('board.archiveConfirm')"
+      :loading="archivingBoard"
+      @confirm="confirmArchiveBoard"
     />
 
     <ConfirmModal

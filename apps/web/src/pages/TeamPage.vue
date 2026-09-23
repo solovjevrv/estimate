@@ -27,13 +27,10 @@ import { useArchiveTab } from '../composables/use-archive-tab';
 import { usePagedList } from '../composables/use-paged-list';
 import { useAsyncAction } from '../composables/use-async-action';
 import { useEntityModal } from '../composables/use-entity-modal';
+import { useTeamBoardActions } from '../composables/use-team-board-actions';
 import { ApiError } from '../lib/api';
 import { roleBadgeColor } from '../lib/team-roles';
-import {
-  createBoard as createBoardRequest,
-  deleteBoard as deleteBoardRequest,
-  unarchiveBoard as unarchiveBoardRequest,
-} from '../features/boards/api/boards-api';
+import { createBoard as createBoardRequest } from '../features/boards/api/boards-api';
 import {
   archiveRoom as archiveRoomRequest,
   createRoom as createRoomRequest,
@@ -337,50 +334,28 @@ async function onCreateBoard(title: string): Promise<void> {
   await createTeamBoard(title);
 }
 
-const unarchivingBoardId = ref<string | null>(null);
-
-async function unarchiveBoard(board: BoardSummary): Promise<void> {
-  unarchivingBoardId.value = board.id;
-  try {
-    await unarchiveBoardRequest(board.id);
-    await Promise.all([teamBoards.load(props.id), teamBoards.loadArchived(props.id)]);
-    toast.add({
-      title: t('team.archiveBoardUnarchived'),
-      color: 'success',
-      icon: 'i-lucide-check',
-    });
-  } catch {
-    toast.add({ title: t('team.archiveBoardUnarchiveError'), color: 'error' });
-  } finally {
-    unarchivingBoardId.value = null;
-  }
-}
-
-const deleteBoardTarget = ref<BoardSummary | null>(null);
-const deleteBoardOpen = ref(false);
-
-function askDeleteBoard(board: BoardSummary): void {
-  deleteBoardTarget.value = board;
-  deleteBoardOpen.value = true;
-}
-
-const { pending: deletingBoard, execute: deleteTeamBoard } = useAsyncAction({
-  run: (target: BoardSummary) => deleteBoardRequest(target.id),
-  success: async () => {
-    await teamBoards.loadArchived(props.id);
-    toast.add({ title: t('team.archiveBoardDeleted'), color: 'success', icon: 'i-lucide-check' });
-    deleteBoardOpen.value = false;
-  },
-  error: () => {
-    toast.add({ title: t('team.archiveBoardDeleteError'), color: 'error' });
-  },
+// --- Переименование/архивация/восстановление/удаление доски из списка
+// (08_Boards: кебаб-меню карточки) — вынесено в composable, см. его комментарий ---
+const {
+  renameBoardTarget,
+  renameBoardModal,
+  askRenameBoard,
+  renamingBoard,
+  onRenameBoard,
+  archiveBoardOpen,
+  askArchiveBoard,
+  archivingBoard,
+  confirmArchiveBoard,
+  unarchiveBoard,
+  deleteBoardTarget,
+  deleteBoardOpen,
+  askDeleteBoard,
+  deletingBoard,
+  confirmDeleteBoard,
+} = useTeamBoardActions({
+  reloadActive: loadBoards,
+  reloadArchived: () => teamBoards.loadArchived(props.id),
 });
-
-async function confirmDeleteBoard(): Promise<void> {
-  const target = deleteBoardTarget.value;
-  if (!target) return;
-  await deleteTeamBoard(target);
-}
 
 const rotateOpen = ref(false);
 const inviteOpen = ref(false);
@@ -625,12 +600,14 @@ async function confirmDelete(): Promise<void> {
         :active-boards-paging="activeBoardsPaging"
         :archive-boards-paging="archiveBoardsPaging"
         :board-archive="boardArchive"
-        :unarchiving-board-id="unarchivingBoardId"
         :format-date="formatDate"
         @select-tab="selectBoardsTab"
         @create="createBoardModal.show"
+        @rename="askRenameBoard"
+        @archive="askArchiveBoard"
         @unarchive="unarchiveBoard"
         @delete="askDeleteBoard"
+        @retry="loadBoards"
       />
 
       <TeamMembersSection
@@ -723,6 +700,30 @@ async function confirmDelete(): Promise<void> {
       :confirm-label="t('team.archiveDeleteBoardConfirm')"
       :loading="deletingBoard"
       @confirm="confirmDeleteBoard"
+    />
+
+    <EntityTextModal
+      v-model:open="renameBoardModal.open"
+      :title="t('board.renameTitle')"
+      :label="t('common.nameLabel')"
+      :placeholder="t('board.createNamePlaceholder')"
+      :initial-value="renameBoardTarget?.title ?? ''"
+      :max-length="BOARD_TITLE_MAX_LENGTH"
+      :required-message="t('common.nameRequired')"
+      :too-long-message="t('common.nameTooLong', { max: BOARD_TITLE_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="t('board.rename')"
+      :pending="renamingBoard"
+      @submit="onRenameBoard"
+    />
+
+    <ConfirmModal
+      v-model:open="archiveBoardOpen"
+      :title="t('board.archiveConfirmTitle')"
+      :description="t('board.archiveConfirmText')"
+      :confirm-label="t('board.archiveConfirm')"
+      :loading="archivingBoard"
+      @confirm="confirmArchiveBoard"
     />
 
     <EntityTextModal
