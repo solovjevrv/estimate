@@ -148,7 +148,7 @@ async function logout(): Promise<void> {
             v-if="session.isAuthenticated"
             to="/teams"
             class="hidden text-[15px] font-semibold md:inline"
-            :class="teamsLinkActive ? 'text-primary' : 'text-muted'"
+            :class="teamsLinkActive ? 'text-text-brand' : 'text-muted'"
           >
             {{ t('nav.teams') }}
           </RouterLink>
@@ -156,7 +156,7 @@ async function logout(): Promise<void> {
             v-if="session.isAuthenticated"
             to="/my-rooms"
             class="hidden text-[15px] font-semibold md:inline"
-            :class="myRoomsLinkActive ? 'text-primary' : 'text-muted'"
+            :class="myRoomsLinkActive ? 'text-text-brand' : 'text-muted'"
           >
             {{ t('nav.myRooms') }}
           </RouterLink>
@@ -164,7 +164,7 @@ async function logout(): Promise<void> {
             v-if="session.isAuthenticated"
             to="/boards"
             class="hidden text-[15px] font-semibold md:inline"
-            :class="boardsLinkActive ? 'text-primary' : 'text-muted'"
+            :class="boardsLinkActive ? 'text-text-brand' : 'text-muted'"
           >
             {{ t('nav.boards') }}
           </RouterLink>
@@ -201,7 +201,7 @@ async function logout(): Promise<void> {
               >
                 <span class="hidden flex-col items-end leading-tight sm:flex">
                   <span class="text-sm font-bold">{{ session.user?.name }}</span>
-                  <span class="text-primary text-[13px] font-semibold">{{
+                  <span class="text-text-brand text-[13px] font-semibold">{{
                     session.user?.jobTitle ?? session.user?.email
                   }}</span>
                 </span>
