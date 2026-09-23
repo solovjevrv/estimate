@@ -636,12 +636,21 @@ describe('архив комнат команды', () => {
         'DELETE /api/rooms/r7': remove,
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Комнаты'));
+    // Не ждём текст «Комнаты» — с 06_Rooms так называется и пункт навигации, который
+    // всегда на странице; дожидаемся «Состав», уникального для содержимого самой страницы
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
 
     await byText(wrapper, 'button', 'Архив')!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('Планирование спринта'));
 
-    await byText(wrapper, 'button', 'Удалить навсегда')!.trigger('click');
+    // Действие спрятано в кебаб-меню строки — оно телепортируется в document.body
+    const menuTrigger = document.body.querySelector('button[aria-label="Меню комнаты"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Удалить навсегда'));
+    const deleteItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Удалить навсегда',
+    );
+    (deleteItem as HTMLElement).click();
     await vi.waitFor(() => expect(dialog()?.textContent).toContain('Удалить комнату навсегда?'));
     dialogButton('Удалить навсегда')!.click();
 

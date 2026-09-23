@@ -3,6 +3,20 @@ import ui from '@nuxt/ui/vite';
 import vue from '@vitejs/plugin-vue';
 import { defineConfig } from 'vite';
 
+// Figma (06_Input, Focus): рамка становится border-brand (зелёная), без
+// внешнего свечения/кольца — у Nuxt UI дефолт для фокуса (color="primary",
+// свой применяется по умолчанию, наш app.config цвет не переопределяет) —
+// это focus-visible:outline-3 (полупрозрачный ореол шириной 3px) плюс
+// focus-visible:ring-primary (--ui-primary — тот же не по месту применённый
+// токен, что был в 20.12 у навигации: в тёмной теме темнее, чем наш
+// border-brand). Тот же паттерн у Input/InputNumber/Select/Textarea — все
+// используют один ring-based "outline" вариант из общей темы Nuxt UI.
+const inputFocusFix = {
+  color: 'primary',
+  variant: 'outline',
+  class: 'focus-visible:outline-none! focus-visible:ring-[var(--border-brand)]!',
+};
+
 export default defineConfig({
   plugins: [
     vue(),
@@ -16,7 +30,10 @@ export default defineConfig({
     ui({
       ui: {
         button: {
-          slots: { base: 'font-bold' },
+          // Nuxt UI сам не ставит cursor-pointer на активную (не disabled) кнопку —
+          // только disabled:cursor-not-allowed. Без этого все UButton показывают
+          // обычный курсор вместо pointer при наведении
+          slots: { base: 'font-bold cursor-pointer' },
           variants: {
             size: {
               sm: { base: 'px-2.5 py-2 text-xs gap-1.5 rounded-r8' },
@@ -43,6 +60,7 @@ export default defineConfig({
               lg: { base: 'h-12 px-3 text-base md:text-base! gap-2 rounded-r12' },
             },
           },
+          compoundVariants: [inputFocusFix],
         },
         // Тот же паттерн, что Input — тач ин-плейс редактор шага (BoardExportModal
         // и др.), в Figma отдельно не описан
@@ -54,6 +72,7 @@ export default defineConfig({
               lg: { base: 'h-12 px-3 text-base md:text-base! gap-2 rounded-r12' },
             },
           },
+          compoundVariants: [inputFocusFix],
         },
         select: {
           variants: {
@@ -63,6 +82,7 @@ export default defineConfig({
               lg: { base: 'px-3 py-2 text-sm gap-2 rounded-r12' },
             },
           },
+          compoundVariants: [inputFocusFix],
         },
         textarea: {
           variants: {
@@ -72,6 +92,7 @@ export default defineConfig({
               lg: { base: 'px-3 py-2 text-sm gap-2 rounded-r12' },
             },
           },
+          compoundVariants: [inputFocusFix],
         },
         modal: {
           slots: {
@@ -89,8 +110,13 @@ export default defineConfig({
         // было пресета вовсе, меню жило на чистых дефолтах Nuxt UI (нашёл
         // пользователь по свежесобранному меню участника, 20.3.3). Контейнер
         // r12/Shadow-Popup/паддинг 6, пункт 36px/r8/паддинг 12×9/шрифт 12 Medium
-        // (не Bold), иконка 16px, hover — заливка surface-secondary вместо
-        // полупрозрачного оверлея по умолчанию.
+        // (не Bold), иконка 16px. Цвет hover — не здесь: и Button (ghost/neutral),
+        // и пункт меню красятся Nuxt UI через bg-elevated, поэтому сам цвет
+        // (surface-secondary) фиксирован один раз в токене --ui-bg-elevated
+        // (main.css), не дублируется в пресетах. items-center и before:rounded-r8
+        // — свои дефолты Nuxt UI (items-start, before:rounded-md) не сверены с
+        // китом: из-за items-start пункт с доп. контентом в trailing-слоте
+        // (переключатель темы) не центрируется по вертикали относительно лейбла.
         dropdownMenu: {
           slots: {
             content: 'rounded-r12 shadow-popup ring-0 bg-[var(--brand-surface)]',
@@ -99,7 +125,7 @@ export default defineConfig({
           variants: {
             size: {
               md: {
-                item: 'rounded-r8 px-3 py-2.5 text-xs font-medium gap-2.5 data-highlighted:before:bg-surface-secondary data-[state=open]:before:bg-surface-secondary',
+                item: 'items-center rounded-r8 px-3 py-2.5 text-xs font-medium gap-2.5 before:rounded-r8',
                 itemLeadingIcon: 'size-4',
                 itemTrailingIcon: 'size-4',
               },

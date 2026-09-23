@@ -105,7 +105,11 @@
 
   --ui-bg: var(--surface-frame);
   --ui-bg-muted: var(--surface-secondary);
-  --ui-bg-elevated: var(--surface-block);
+  /* surface-block был бы просто белым — hover ghost-кнопок и пунктов DropdownMenu
+     (Nuxt UI красит их через bg-elevated) выходил незаметным/неверным цветом.
+     Сверено с Figma (Button Ghost/Neutral Hover, MenuItem Tone=Default Hover) —
+     оба используют surface-secondary */
+  --ui-bg-elevated: var(--surface-secondary);
   --ui-bg-accented: var(--surface-tertiary);
   --ui-bg-inverted: var(--surface-dark);
   --ui-text: var(--text-primary);

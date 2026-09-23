@@ -35,8 +35,10 @@ import {
   unarchiveBoard as unarchiveBoardRequest,
 } from '../features/boards/api/boards-api';
 import {
+  archiveRoom as archiveRoomRequest,
   createRoom as createRoomRequest,
   deleteRoom as deleteRoomRequest,
+  renameRoom as renameRoomRequest,
 } from '../features/rooms/api/rooms-api';
 import { useSessionStore } from '../stores/session';
 import { useTeamBoardsStore } from '../stores/team-boards';
@@ -229,6 +231,74 @@ async function confirmDeleteRoom(): Promise<void> {
   const target = deleteRoomTarget.value;
   if (!target) return;
   await deleteRoom(target);
+}
+
+// --- Переименование/архивация комнаты из списка (06_Rooms: кебаб-меню строки) ---
+const renameRoomTarget = ref<Room | null>(null);
+const renameRoomModal = useEntityModal();
+
+function askRenameRoom(room: Room): void {
+  renameRoomTarget.value = room;
+  renameRoomModal.show();
+}
+
+/** Обновляет и активный, и заархивированный список — переименованная/заархивированная
+ * комната может быть на любой из двух вкладок; сбой тихой довозгрузки архива не должен
+ * превращать успешное действие в error-тост. */
+async function reloadRoomsAfterMutation(): Promise<void> {
+  await loadRooms();
+  try {
+    await teamRooms.loadArchived(props.id);
+  } catch {
+    // Архив обновится при следующем открытии вкладки — не критично
+  }
+}
+
+const { pending: renamingRoom, execute: renameRoom } = useAsyncAction({
+  run: (name: string) => {
+    const target = renameRoomTarget.value;
+    if (!target) return Promise.reject(new Error('no rename target'));
+    return renameRoomRequest(target.id, name);
+  },
+  success: async () => {
+    renameRoomModal.close();
+    toast.add({ title: t('room.renamed'), color: 'success', icon: 'i-lucide-check' });
+    await reloadRoomsAfterMutation();
+  },
+  error: () => {
+    toast.add({ title: t('room.renameError'), color: 'error' });
+  },
+});
+
+async function onRenameRoom(name: string): Promise<void> {
+  if (!renameRoomTarget.value) return;
+  await renameRoom(name);
+}
+
+const archiveRoomTarget = ref<Room | null>(null);
+const archiveRoomOpen = ref(false);
+
+function askArchiveRoom(room: Room): void {
+  archiveRoomTarget.value = room;
+  archiveRoomOpen.value = true;
+}
+
+const { pending: archivingRoom, execute: archiveRoom } = useAsyncAction({
+  run: (target: Room) => archiveRoomRequest(target.id),
+  success: async () => {
+    archiveRoomOpen.value = false;
+    toast.add({ title: t('room.archivedToast'), color: 'success', icon: 'i-lucide-check' });
+    await reloadRoomsAfterMutation();
+  },
+  error: () => {
+    toast.add({ title: t('room.archiveError'), color: 'error' });
+  },
+});
+
+async function confirmArchiveRoom(): Promise<void> {
+  const target = archiveRoomTarget.value;
+  if (!target) return;
+  await archiveRoom(target);
 }
 
 // --- Создание комнаты от лица команды ---
@@ -531,6 +601,7 @@ async function confirmDelete(): Promise<void> {
       <TeamRoomsSection
         v-if="sectionTab === 'rooms'"
         :can-manage-team="canManageTeam"
+        :current-user-id="currentUserId"
         :rooms-failed="roomsFailed"
         :rooms-tab="roomsTab"
         :active-rooms-paging="activeRoomsPaging"
@@ -539,7 +610,10 @@ async function confirmDelete(): Promise<void> {
         :format-date="formatDate"
         @select-tab="selectRoomsTab"
         @create="createRoomModal.show"
+        @rename="askRenameRoom"
+        @archive="askArchiveRoom"
         @delete="askDeleteRoom"
+        @retry="loadRooms"
       />
 
       <TeamBoardsSection
@@ -614,6 +688,30 @@ async function confirmDelete(): Promise<void> {
       :confirm-label="t('team.archiveDeleteConfirm')"
       :loading="deletingRoom"
       @confirm="confirmDeleteRoom"
+    />
+
+    <EntityTextModal
+      v-model:open="renameRoomModal.open"
+      :title="t('room.renameTitle')"
+      :label="t('room.roomNameLabel')"
+      :placeholder="t('room.createNamePlaceholder')"
+      :initial-value="renameRoomTarget?.name ?? ''"
+      :max-length="ROOM_NAME_MAX_LENGTH"
+      :required-message="t('room.renameNameRequired')"
+      :too-long-message="t('room.renameNameTooLong', { max: ROOM_NAME_MAX_LENGTH })"
+      :cancel-label="t('common.cancel')"
+      :submit-label="t('room.rename')"
+      :pending="renamingRoom"
+      @submit="onRenameRoom"
+    />
+
+    <ConfirmModal
+      v-model:open="archiveRoomOpen"
+      :title="t('room.archiveConfirmTitle')"
+      :description="t('room.archiveConfirmText')"
+      :confirm-label="t('room.archiveConfirm')"
+      :loading="archivingRoom"
+      @confirm="confirmArchiveRoom"
     />
 
     <ConfirmModal

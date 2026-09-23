@@ -63,11 +63,11 @@ function menuItems(member: TeamMember): DropdownMenuItem[][] {
       <div
         v-for="member in members"
         :key="member.userId"
-        class="border-default flex flex-wrap items-center justify-between gap-3 border-t py-3.5 first:border-t-0 first:pt-0 last:pb-0"
+        class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-4 first:border-t-0 sm:px-8"
       >
         <RouterLink
           :to="{ name: 'team-member', params: { id: teamId, userId: member.userId } }"
-          class="hover:text-primary flex min-w-36 items-center gap-3.5"
+          class="flex min-w-36 items-center gap-3.5"
         >
           <UAvatar
             :src="member.avatarUrl ?? undefined"
