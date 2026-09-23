@@ -100,16 +100,18 @@ describe('страница «Мои комнаты»', () => {
     expect(wrapper.text()).not.toContain('Командная');
   });
 
-  it('помечает бейджем комнаты, созданные от лица команды', async () => {
+  it('помечает плашкой с именем команды комнаты, созданные от лица команды', async () => {
     const teamRoom: Room = { ...activeRoom, id: 'r3', teamId: 't1', name: 'Планёрка команды' };
     const { wrapper } = await mountApp(
       makeFetch({
         'GET /api/rooms?archived=false': () => json(200, { rooms: [teamRoom] }),
+        'GET /api/teams': () =>
+          json(200, { teams: [{ id: 't1', name: 'Платформа', role: 'member', memberCount: 3 }] }),
       }),
     );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Планёрка команды'));
-    expect(wrapper.text()).toContain('Командная');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Платформа'));
   });
 
   it('ошибка загрузки показывает сообщение', async () => {
@@ -161,7 +163,7 @@ describe('страница «Мои комнаты»', () => {
     expect(wrapper.text()).not.toContain('Комната 7');
   });
 
-  it('открывает архив и удаляет комнату навсегда', async () => {
+  it('открывает архив и удаляет комнату навсегда через кебаб-меню строки', async () => {
     const archivedRoom: Room = { ...activeRoom, id: 'r2', archivedAt: '2026-07-25T00:00:00.000Z' };
     const remove = vi.fn(() => new Response(null, { status: 204 }));
     const { wrapper } = await mountApp(
@@ -171,16 +173,20 @@ describe('страница «Мои комнаты»', () => {
         'DELETE /api/rooms/r2': remove,
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Показать архив'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Активные'));
 
-    const showButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Показать архив');
-    await showButton!.trigger('click');
+    const archiveTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Архив');
+    await archiveTab!.trigger('click');
     await vi.waitFor(() => expect(wrapper.text()).toContain('Личная комната'));
 
-    const deleteButton = wrapper
-      .findAll('button')
-      .find((b) => b.text().trim() === 'Удалить навсегда');
-    await deleteButton!.trigger('click');
+    // Действие спрятано в кебаб-меню строки — оно телепортируется в document.body
+    const menuTrigger = document.body.querySelector('button[aria-label="Меню комнаты"]');
+    (menuTrigger as HTMLElement).click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Удалить навсегда'));
+    const deleteItem = Array.from(document.body.querySelectorAll('[role="menuitem"]')).find(
+      (el) => el.textContent?.trim() === 'Удалить навсегда',
+    );
+    (deleteItem as HTMLElement).click();
     await vi.waitFor(() => expect(dialog()?.textContent).toContain('Удалить комнату навсегда?'));
 
     const confirmButton = Array.from(dialog()?.querySelectorAll('button') ?? []).find(
