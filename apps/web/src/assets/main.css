@@ -154,54 +154,59 @@ h6,
   font-family: var(--font-heading);
 }
 
-.surface-card {
-  background-color: var(--brand-surface);
-  /* Фиксированное значение (radiusMd референса в пресете playful — 24px), не завязано
-     на --ui-radius: та переменная отвечает за компоненты Nuxt UI (кнопки/инпуты). */
-  border-radius: 1.5rem;
-  box-shadow: var(--brand-shadow-card);
-}
+/* Слой components: утилиты Tailwind (shadow-elevation-*, rounded-*, p-*) перебивают
+   эти классы. Вне слоя они побеждали любые утилиты, и shadow-elevation-3 на
+   .surface-card молча не применялся. */
+@layer components {
+  .surface-card {
+    background-color: var(--brand-surface);
+    /* Фиксированное значение (radiusMd референса в пресете playful — 24px), не завязано
+       на --ui-radius: та переменная отвечает за компоненты Nuxt UI (кнопки/инпуты). */
+    border-radius: 1.5rem;
+    box-shadow: var(--brand-shadow-card);
+  }
 
-/* radiusLg референса (28px) — экран Room в макете использует его для всех своих
-   карточек-секций, а не radiusMd, которым пользуются Teams/MyRooms/TeamPage. Идёт
-   вторым классом поверх .surface-card, поэтому должен быть объявлен после него —
-   при равной специфичности побеждает то правило, что позже в файле. */
-.surface-card-lg {
-  border-radius: 1.75rem;
-}
+  /* radiusLg референса (28px) — экран Room в макете использует его для всех своих
+     карточек-секций, а не radiusMd, которым пользуются Teams/MyRooms/TeamPage. Идёт
+     вторым классом поверх .surface-card, поэтому должен быть объявлен после него —
+     при равной специфичности побеждает то правило, что позже в файле. */
+  .surface-card-lg {
+    border-radius: 1.75rem;
+  }
 
-.surface-card-hover {
-  transition: background-color 0.15s ease;
-}
+  .surface-card-hover {
+    transition: background-color 0.15s ease;
+  }
 
-/* TeamCard State=Hover (50_EntityCard): заливка карточки surface-block → surface-hover,
-   тень та же (elevation/1) */
-.surface-card-hover:hover {
-  background-color: var(--surface-hover);
-}
+  /* TeamCard State=Hover (50_EntityCard): заливка карточки surface-block → surface-hover,
+     тень та же (elevation/1) */
+  .surface-card-hover:hover {
+    background-color: var(--surface-hover);
+  }
 
-/* Пилюли-бейджи (роль участника, статус комнаты) — везде либо primarySoftBg/primaryText,
-   либо border/ink2 референса, а не семантические color="primary"/"neutral" Nuxt UI (те
-   берут другие шаги шкалы и не совпадают по цвету). */
-/* Badge кита (17_Badge): пилюля 34px, паддинг 8×12 (с учётом обводки 1px внутрь),
-   Body/Small/Bold, обводка border-strong; Primary — surface-brand-low/text-brand,
-   Neutral — surface-tertiary/text-secondary */
-.badge-pill {
-  border-radius: 999px;
-  border: 1px solid var(--border-strong);
-  padding: 7px 11px;
-  font-size: 12px;
-  line-height: 18px;
-  font-weight: 700;
-  white-space: nowrap;
-}
+  /* Пилюли-бейджи (роль участника, статус комнаты) — везде либо primarySoftBg/primaryText,
+     либо border/ink2 референса, а не семантические color="primary"/"neutral" Nuxt UI (те
+     берут другие шаги шкалы и не совпадают по цвету). */
+  /* Badge кита (17_Badge): пилюля 34px, паддинг 8×12 (с учётом обводки 1px внутрь),
+     Body/Small/Bold, обводка border-strong; Primary — surface-brand-low/text-brand,
+     Neutral — surface-tertiary/text-secondary */
+  .badge-pill {
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    padding: 7px 11px;
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
 
-.badge-pill-primary {
-  background-color: var(--surface-brand-low);
-  color: var(--text-brand);
-}
+  .badge-pill-primary {
+    background-color: var(--surface-brand-low);
+    color: var(--text-brand);
+  }
 
-.badge-pill-neutral {
-  background-color: var(--surface-tertiary);
-  color: var(--text-secondary);
+  .badge-pill-neutral {
+    background-color: var(--surface-tertiary);
+    color: var(--text-secondary);
+  }
 }

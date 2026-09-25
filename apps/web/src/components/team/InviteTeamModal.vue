@@ -27,9 +27,11 @@ async function copyInvite(): Promise<void> {
 <template>
   <UModal v-model:open="open" :title="t('team.inviteTitle')" :description="t('team.inviteHint')">
     <template #body>
-      <div class="flex flex-col gap-3.5">
-        <div class="flex flex-wrap items-center gap-3">
-          <UInput :model-value="inviteUrl ?? ''" readonly class="grow font-mono" />
+      <!-- Modal Content — Invite (27_Modal): строка ссылки (Input + Copy) через 12px,
+           «перевыпустить» — Button Neutral/Ghost/Sm, между ними 16px -->
+      <div class="flex flex-col items-start gap-4">
+        <div class="flex w-full flex-wrap items-center gap-3">
+          <UInput :model-value="inviteUrl ?? ''" readonly class="grow" />
           <UButton icon="i-lucide-copy" @click="copyInvite">
             {{ t('team.copy') }}
           </UButton>
@@ -37,8 +39,8 @@ async function copyInvite(): Promise<void> {
         <UButton
           icon="i-lucide-refresh-cw"
           color="neutral"
-          variant="link"
-          class="w-fit p-0 text-sm font-semibold"
+          variant="ghost"
+          size="sm"
           :loading="rotating"
           @click="emit('rotate')"
         >

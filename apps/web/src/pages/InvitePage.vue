@@ -71,8 +71,13 @@ async function act(): Promise<void> {
 </script>
 
 <template>
-  <section class="mx-auto w-full max-w-[440px] space-y-6">
-    <div v-if="loading" class="surface-card space-y-4 rounded-r24 p-8 text-center">
+  <!-- 03_Auth «Invite»: карточка на 96px ниже шапки (56 — отступ main + 40), Card
+       (elevation/3), паддинг 32, элементы через 16px -->
+  <section class="mx-auto w-full max-w-[440px] space-y-6 md:mt-10">
+    <div
+      v-if="loading"
+      class="surface-card shadow-elevation-3 space-y-4 rounded-r24 p-8 text-center"
+    >
       <USkeleton class="mx-auto size-8 rounded-full" />
       <USkeleton class="mx-auto h-5 w-2/3 rounded-r12" />
       <USkeleton class="h-11 w-full rounded-r8" />
@@ -91,15 +96,20 @@ async function act(): Promise<void> {
       :description="t('invite.loadError')"
     />
 
-    <div v-else class="surface-card rounded-r24 p-8 text-center">
+    <div
+      v-else
+      class="surface-card shadow-elevation-3 flex flex-col gap-4 rounded-r24 p-8 text-center"
+    >
       <div
         class="font-heading mx-auto flex size-[60px] items-center justify-center rounded-r20 text-xl font-bold"
         :class="teamAvatarColor(teamId)"
       >
         {{ teamName.slice(0, 1).toUpperCase() }}
       </div>
-      <p class="mt-4 text-lg font-bold">{{ t('invite.lead', { name: teamName }) }}</p>
-      <div class="text-muted mt-2 flex items-center justify-center gap-1.5 text-sm">
+      <p class="text-text-primary text-lg leading-[26px] font-bold tracking-[-0.015em]">
+        {{ t('invite.lead', { name: teamName }) }}
+      </p>
+      <div class="text-text-secondary flex items-center justify-center gap-2 text-sm font-medium">
         <UIcon name="i-lucide-users" class="size-4 shrink-0" />
         {{ t('teams.memberCount', { count: memberCount }, memberCount) }}
       </div>
@@ -108,11 +118,10 @@ async function act(): Promise<void> {
         v-if="joinFailed"
         color="error"
         variant="subtle"
-        class="mt-4"
         :description="t('invite.joinError')"
       />
 
-      <UButton block size="lg" class="mt-4" :loading="joining" @click="act">
+      <UButton block size="lg" :loading="joining" @click="act">
         <template v-if="joining">{{ t('invite.joining') }}</template>
         <template v-else-if="session.isAuthenticated">{{ t('invite.join') }}</template>
         <template v-else>{{ t('invite.joinAndLogin') }}</template>
