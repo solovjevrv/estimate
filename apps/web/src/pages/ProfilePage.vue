@@ -127,7 +127,9 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
 
 <template>
   <div v-if="session.user" class="mx-auto flex max-w-[480px] flex-col gap-6">
-    <div class="bg-surface-block shadow-card flex flex-col items-center gap-6 rounded-r24 p-8">
+    <div
+      class="bg-surface-block shadow-elevation-3 flex flex-col items-center gap-6 rounded-r24 p-8"
+    >
       <UAvatar
         :src="session.user.avatarUrl ?? undefined"
         :alt="session.user.name"
@@ -190,7 +192,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
       </UForm>
     </div>
 
-    <div class="bg-surface-block shadow-card flex flex-col gap-5 rounded-r24 p-8">
+    <div class="bg-surface-block shadow-elevation-3 flex flex-col gap-5 rounded-r24 p-8">
       <h2 class="font-heading text-xl font-bold">{{ t('profile.teamsTitle') }}</h2>
 
       <div v-if="teamsLoading" class="text-muted flex justify-center py-2">

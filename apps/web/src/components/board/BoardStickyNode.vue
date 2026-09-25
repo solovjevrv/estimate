@@ -323,12 +323,10 @@ watch(
 @import './shared/board-node-resizer.css';
 @import './shared/board-connect-handle.css';
 
-/* Стикер держится на тени, а не на обводке (референс `.design/main.html`) — заметно
-   сильнее общей `--brand-shadow-card` (та калибрована под UI-панели, не бумагу) */
+/* Стикер держится на тени, а не на обводке — elevation/2 кита (BoardNode / Sticky),
+   на ступень выше UI-плашек (elevation/1) */
 .board-sticky-content {
-  box-shadow:
-    0 1px 2px rgb(0 0 0 / 8%),
-    0 6px 14px -6px rgb(0 0 0 / 18%);
+  box-shadow: var(--shadow-elevation-2);
 }
 
 /* Кнопка «поставить реакцию» — как коннект-хендлы, невидима по умолчанию,

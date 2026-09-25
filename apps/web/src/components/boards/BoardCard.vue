@@ -16,7 +16,7 @@ defineProps<{
 </script>
 
 <template>
-  <div class="bg-surface-block shadow-card flex flex-col overflow-hidden rounded-r24">
+  <div class="bg-surface-block shadow-elevation-3 flex flex-col overflow-hidden rounded-r24">
     <div class="bg-surface-tertiary flex h-[140px] shrink-0 items-center justify-center">
       <UIcon name="i-lucide-image" class="text-muted size-8" />
     </div>

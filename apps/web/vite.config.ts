@@ -111,7 +111,7 @@ export default defineConfig({
           slots: {
             overlay: 'bg-black/40',
             content:
-              'w-[calc(100%-2rem)] max-w-[420px] rounded-r24 shadow-modal ring-0 divide-y-0 bg-[var(--brand-surface)]',
+              'w-[calc(100%-2rem)] max-w-[420px] rounded-r24 shadow-elevation-4 ring-0 divide-y-0 bg-[var(--brand-surface)]',
             header: 'p-6 pb-0',
             body: 'p-6 pt-4',
             footer: 'p-6 pt-4 justify-end gap-2',
@@ -132,7 +132,7 @@ export default defineConfig({
         // (переключатель темы) не центрируется по вертикали относительно лейбла.
         dropdownMenu: {
           slots: {
-            content: 'rounded-r12 shadow-popup ring-0 bg-[var(--brand-surface)]',
+            content: 'rounded-r12 shadow-elevation-5 ring-0 bg-[var(--brand-surface)]',
             group: 'p-1.5',
           },
           variants: {

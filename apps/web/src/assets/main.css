@@ -54,8 +54,8 @@
   --ui-color-warning-500: var(--palette-warning-100);
   --ui-color-warning-600: var(--palette-warning-110);
   --ui-color-warning-700: var(--palette-warning-120);
-  --ui-color-warning-800: var(--palette-warning-130);
-  --ui-color-warning-900: var(--palette-warning-140);
+  --ui-color-warning-800: var(--palette-warning-140);
+  --ui-color-warning-900: color-mix(in oklab, var(--palette-warning-140) 75%, black);
   --ui-color-warning-950: color-mix(in oklab, var(--palette-warning-140) 60%, black);
 
   --ui-color-error-50: var(--palette-error-5);
@@ -100,16 +100,15 @@
   --brand-well-bg: var(--surface-secondary);
   /* Точки сетки холста досок: заметно контрастнее фона (баг 27.08.2026) */
   --board-grid-dot: var(--palette-base-30);
-  /* Shadow-card из Figma (0 2 6 2 / 10%) */
-  --brand-shadow-card: var(--shadow-card);
+  /* Тень карточек-плашек: elevation/1 кита (TeamCard, ParticipantCard, Timer…).
+     Card/BoardCard/поповеры — elevation/3, Modal — 4, DropdownMenu — 5 (tokens.css) */
+  --brand-shadow-card: var(--shadow-elevation-1);
 
   --ui-bg: var(--surface-frame);
   --ui-bg-muted: var(--surface-secondary);
-  /* surface-block был бы просто белым — hover ghost-кнопок и пунктов DropdownMenu
-     (Nuxt UI красит их через bg-elevated) выходил незаметным/неверным цветом.
-     Сверено с Figma (Button Ghost/Neutral Hover, MenuItem Tone=Default Hover) —
-     оба используют surface-secondary */
-  --ui-bg-elevated: var(--surface-secondary);
+  /* Nuxt UI красит через bg-elevated hover ghost-кнопок и пунктов DropdownMenu —
+     в ките для этого отдельный токен surface-hover */
+  --ui-bg-elevated: var(--surface-hover);
   --ui-bg-accented: var(--surface-tertiary);
   --ui-bg-inverted: var(--surface-dark);
   --ui-text: var(--text-primary);
@@ -117,19 +116,20 @@
   --ui-text-muted: var(--text-tertiary);
   --ui-text-dimmed: var(--text-disabled);
   --ui-text-highlighted: var(--text-primary);
-  --ui-text-inverted: var(--text-white);
+  --ui-text-inverted: var(--text-on-brand);
   --ui-border: var(--border-medium);
   --ui-border-muted: var(--border-light);
   --ui-border-accented: var(--border-strong);
+  --ui-primary: var(--surface-brand);
 }
 
 :root.dark {
   --brand-well-bg: var(--surface-frame);
   --board-grid-dot: var(--palette-base-80);
 
-  /* Nuxt UI в тёмной теме сдвигает --ui-primary на primary-400 — в Figma кнопка того же
-     зелёного (surface-brand) в обеих темах */
-  --ui-primary: var(--ui-color-primary-500);
+  /* Nuxt UI в тёмной теме сдвигает --ui-primary на primary-400 — в Figma это
+     surface-brand (в Dark свой светлый зелёный brand/on-dark) */
+  --ui-primary: var(--surface-brand);
   --ui-success: var(--ui-color-success-500);
   --ui-warning: var(--ui-color-warning-500);
   --ui-error: var(--ui-color-error-500);
