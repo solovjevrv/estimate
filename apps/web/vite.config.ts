@@ -331,15 +331,22 @@ export default defineConfig({
         },
         modal: {
           slots: {
-            overlay: 'bg-black/40',
             content:
               'w-[calc(100%-2rem)] max-w-[420px] rounded-r24 shadow-elevation-4 ring-0 divide-y-0 bg-[var(--brand-surface)]',
-            header: 'p-6 pb-0',
+            // Строка заголовка 32px (по кнопке закрытия), у Nuxt UI — min-h 64px;
+            // крестик — в этой строке у правого края (отступ 24), а не в углу на 16
+            header: 'p-6 pb-0 min-h-0',
+            close: 'top-6 end-6',
             body: 'p-6 pt-4',
             footer: 'p-6 pt-4 justify-end gap-2.5',
             // Title row 32px (по кнопке закрытия), до описания 12px — 27_Modal
             title: 'font-heading text-xl leading-8 font-bold text-text-primary',
             description: 'mt-3 text-sm font-medium text-text-secondary',
+          },
+          // surface-overlay: black/40 в Light, black/60 в Dark. Цвет у Nuxt UI задан в
+          // варианте overlay=true (bg-elevated/75), а не в слоте — там его и перебиваем
+          variants: {
+            overlay: { true: { overlay: 'bg-surface-overlay' } },
           },
         },
         // По факту компонента DropdownMenu в Kit (35_DropdownMenu) — раньше не
