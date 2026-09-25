@@ -66,8 +66,8 @@ onMounted(() => {
 <template>
   <div class="mx-auto flex max-w-[420px] justify-center py-16">
     <div class="w-full rounded-r24 bg-[var(--brand-surface)] p-6 shadow-elevation-4">
-      <h1 class="font-heading text-xl font-bold">{{ t('login.title') }}</h1>
-      <p class="text-muted mt-1 text-sm font-medium">{{ t('login.lead') }}</p>
+      <h1 class="font-heading text-xl leading-8 font-bold">{{ t('login.title') }}</h1>
+      <p class="text-text-secondary mt-3 text-sm font-medium">{{ t('login.lead') }}</p>
 
       <UAlert
         v-if="failed"

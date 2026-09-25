@@ -295,8 +295,8 @@ async function confirmDelete(): Promise<void> {
       />
 
       <div v-else-if="loading" class="space-y-5">
-        <USkeleton class="h-9 w-1/3 bg-border-medium" />
-        <USkeleton class="h-16 w-full rounded-r12 bg-border-medium" />
+        <USkeleton class="h-9 w-1/3" />
+        <USkeleton class="h-16 w-full rounded-r12" />
       </div>
     </div>
 

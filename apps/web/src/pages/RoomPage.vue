@@ -281,10 +281,10 @@ function retry(): void {
     />
 
     <div v-else-if="phase === 'loading'" class="space-y-6">
-      <USkeleton class="h-9 w-1/3 bg-border-medium" />
+      <USkeleton class="h-9 w-1/3" />
       <div class="surface-card surface-card-lg space-y-4 px-4 py-5 sm:px-[30px] sm:py-[26px]">
-        <USkeleton class="h-5 w-1/4 bg-border-medium" />
-        <USkeleton class="h-11 w-full rounded-r10 bg-border-medium" />
+        <USkeleton class="h-5 w-1/4" />
+        <USkeleton class="h-11 w-full rounded-r10" />
       </div>
     </div>
 
@@ -575,8 +575,8 @@ function retry(): void {
             :description="t('room.historyLoadError')"
           />
           <div v-else-if="historyLoading && historyEntries.length === 0" class="space-y-3">
-            <USkeleton class="h-12 w-full bg-border-medium" />
-            <USkeleton class="h-12 w-full bg-border-medium" />
+            <USkeleton class="h-12 w-full" />
+            <USkeleton class="h-12 w-full" />
           </div>
           <p v-else-if="historyEntries.length === 0" class="text-muted text-sm">
             {{ t('room.historyEmpty') }}

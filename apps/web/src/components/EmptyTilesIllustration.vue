@@ -17,7 +17,7 @@ withDefaults(defineProps<{ tileWidth?: number; tileHeight?: number; radius?: str
       v-for="i in 3"
       :key="i"
       :style="{ width: `${tileWidth}px`, height: `${tileHeight}px` }"
-      :class="[radius, i === 2 ? 'bg-surface-brand-low' : 'bg-surface-secondary']"
+      :class="[radius, i === 2 ? 'bg-surface-brand-accent' : 'bg-surface-secondary']"
     />
   </div>
 </template>

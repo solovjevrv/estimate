@@ -72,9 +72,9 @@ async function load(): Promise<void> {
       v-else-if="loading"
       class="surface-card surface-card-lg mx-auto flex max-w-[480px] flex-col items-center px-[30px] py-[26px]"
     >
-      <USkeleton class="mb-4 size-[100px] rounded-full bg-border-medium" />
-      <USkeleton class="mb-3 h-5 w-1/2 bg-border-medium" />
-      <USkeleton class="h-4 w-1/3 bg-border-medium" />
+      <USkeleton class="mb-4 size-[100px] rounded-full" />
+      <USkeleton class="mb-3 h-5 w-1/2" />
+      <USkeleton class="h-4 w-1/3" />
     </div>
 
     <div
@@ -87,7 +87,7 @@ async function load(): Promise<void> {
         size="3xl"
         class="mb-4 size-[100px]"
         :class="teamAvatarColor(member.userId)"
-        :ui="{ fallback: 'font-heading text-xl font-bold text-white' }"
+        :ui="{ fallback: 'font-heading text-xl font-bold' }"
       />
       <h1 class="font-heading mb-1 text-xl font-extrabold">{{ member.name }}</h1>
       <p v-if="member.jobTitle" class="text-muted mb-3 text-[15px]">{{ member.jobTitle }}</p>

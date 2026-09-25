@@ -55,7 +55,7 @@ function menuItems(member: TeamMember): DropdownMenuItem[][] {
 <template>
   <div>
     <div v-if="canManageTeam" class="mb-5 flex justify-end">
-      <UButton icon="i-lucide-user-plus" @click="emit('invite')">
+      <UButton icon="i-lucide-plus" @click="emit('invite')">
         {{ t('team.invite') }}
       </UButton>
     </div>
@@ -63,7 +63,7 @@ function menuItems(member: TeamMember): DropdownMenuItem[][] {
       <div
         v-for="member in members"
         :key="member.userId"
-        class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-4 first:border-t-0 sm:px-8"
+        class="border-default hover:bg-surface-hover flex flex-wrap items-center justify-between gap-3 border-t px-4 py-3.5 first:border-t-0 sm:px-[30px]"
       >
         <RouterLink
           :to="{ name: 'team-member', params: { id: teamId, userId: member.userId } }"
@@ -75,9 +75,11 @@ function menuItems(member: TeamMember): DropdownMenuItem[][] {
             size="xl"
             class="shrink-0"
             :class="teamAvatarColor(member.userId)"
-            :ui="{ fallback: 'font-heading text-sm font-bold text-white' }"
+            :ui="{ fallback: 'text-[15px]' }"
           />
-          <span class="min-w-0 truncate text-sm font-bold">{{ member.name }}</span>
+          <span class="text-text-primary min-w-0 truncate text-sm font-bold tracking-[-0.01em]">{{
+            member.name
+          }}</span>
         </RouterLink>
 
         <div class="ml-[52px] flex shrink-0 items-center gap-3 sm:ml-0">

@@ -6,6 +6,7 @@ import { useRoute, useRouter } from 'vue-router';
 
 import ThemeSwitchTrack from './components/ThemeSwitchTrack.vue';
 import { LOCALES, rememberLocale, type Locale } from './i18n';
+import { teamAvatarColor } from './lib/team-roles';
 import { initTheme, theme, toggleTheme } from './lib/theme';
 import { useSessionStore } from './stores/session';
 
@@ -111,7 +112,7 @@ async function logout(): Promise<void> {
 <template>
   <UApp>
     <div
-      class="flex flex-col bg-default text-highlighted"
+      class="flex flex-col bg-[var(--page-bg)] text-highlighted"
       :class="route.meta.fullBleedCanvas ? 'h-screen overflow-hidden' : 'min-h-screen'"
     >
       <header class="border-default border-b" style="background-color: var(--brand-surface)">
@@ -119,17 +120,26 @@ async function logout(): Promise<void> {
           class="mx-auto flex h-[64px] w-full max-w-[73.75rem] items-center gap-3 px-4 sm:gap-6 sm:px-6 md:h-[76px] md:gap-8 md:px-14"
         >
           <RouterLink to="/" class="flex shrink-0 items-center gap-2">
-            <span class="relative inline-block size-[30px]" aria-hidden="true">
-              <span
-                class="absolute top-[2px] left-[6px] h-[22px] w-4 rounded"
-                style="background: var(--brand-amber); transform: rotate(-8deg)"
+            <!-- Логомарк — вектор из Header кита (62_Header, Real Logo): зелёный — примитив
+                 brand/100 (одинаковый в обеих темах), оранжевый в ките без токена -->
+            <svg
+              width="31"
+              height="27"
+              viewBox="0 0 31 27"
+              fill="none"
+              aria-hidden="true"
+              class="shrink-0"
+            >
+              <path
+                d="M9.49225 6.76497C9.12927 4.18197 10.9289 1.79376 13.5119 1.43077L22.8656 0.1162C25.4486 -0.246853 27.8368 1.55283 28.1998 4.13576L30.4534 20.1709C30.8164 22.7538 29.0168 25.142 26.4338 25.5051L17.0801 26.8196C14.4971 27.1826 12.1089 25.383 11.7459 22.8L9.49225 6.76497Z"
+                fill="#FF8C00"
               />
-              <span
-                class="bg-primary absolute top-[2px] left-0 h-[22px] w-4 rounded"
-                style="transform: rotate(8deg)"
+              <path
+                d="M2.30016 4.06617C2.66314 1.48317 5.05136 -0.316441 7.63436 0.0465443L16.9881 1.36112C19.5711 1.72417 21.3707 4.11238 21.0077 6.69532L18.7541 22.7304C18.3911 25.3134 16.0029 27.113 13.4199 26.75L4.06617 25.4354C1.48317 25.0724 -0.316441 22.6842 0.0465443 20.1012L2.30016 4.06617Z"
+                fill="var(--palette-brand-100)"
               />
-            </span>
-            <span class="font-heading text-[19px] font-extrabold tracking-tight">{{
+            </svg>
+            <span class="font-heading text-text-primary text-xl font-bold tracking-[-0.02em]">{{
               t('app.name')
             }}</span>
           </RouterLink>
@@ -147,24 +157,24 @@ async function logout(): Promise<void> {
           <RouterLink
             v-if="session.isAuthenticated"
             to="/teams"
-            class="hidden text-[15px] font-semibold md:inline"
-            :class="teamsLinkActive ? 'text-text-brand' : 'text-muted'"
+            class="hidden text-sm font-bold tracking-[-0.01em] md:inline"
+            :class="teamsLinkActive ? 'text-text-brand' : 'text-text-secondary'"
           >
             {{ t('nav.teams') }}
           </RouterLink>
           <RouterLink
             v-if="session.isAuthenticated"
             to="/my-rooms"
-            class="hidden text-[15px] font-semibold md:inline"
-            :class="myRoomsLinkActive ? 'text-text-brand' : 'text-muted'"
+            class="hidden text-sm font-bold tracking-[-0.01em] md:inline"
+            :class="myRoomsLinkActive ? 'text-text-brand' : 'text-text-secondary'"
           >
             {{ t('nav.myRooms') }}
           </RouterLink>
           <RouterLink
             v-if="session.isAuthenticated"
             to="/boards"
-            class="hidden text-[15px] font-semibold md:inline"
-            :class="boardsLinkActive ? 'text-text-brand' : 'text-muted'"
+            class="hidden text-sm font-bold tracking-[-0.01em] md:inline"
+            :class="boardsLinkActive ? 'text-text-brand' : 'text-text-secondary'"
           >
             {{ t('nav.boards') }}
           </RouterLink>
@@ -179,11 +189,12 @@ async function logout(): Promise<void> {
               />
 
               <UTooltip :text="t(isDark ? 'nav.theme.light' : 'nav.theme.dark')">
+                <!-- Header Guest: Theme toggle — Button Primary/Outline/Md, icon-only 44×40 -->
                 <UButton
                   :icon="isDark ? 'i-lucide-moon' : 'i-lucide-sun'"
-                  size="sm"
-                  color="neutral"
-                  variant="subtle"
+                  size="md"
+                  color="primary"
+                  variant="outline"
                   :aria-label="t(isDark ? 'nav.theme.light' : 'nav.theme.dark')"
                   @click="toggleTheme"
                 />
@@ -196,12 +207,12 @@ async function logout(): Promise<void> {
               </template>
               <button
                 type="button"
-                class="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1"
+                class="flex cursor-pointer items-center gap-2 rounded-r10 px-2 py-1"
                 :aria-label="t('nav.userMenu')"
               >
                 <span class="hidden flex-col items-end leading-tight sm:flex">
-                  <span class="text-sm font-bold">{{ session.user?.name }}</span>
-                  <span class="text-text-brand text-[13px] font-semibold">{{
+                  <span class="text-text-primary text-sm font-bold">{{ session.user?.name }}</span>
+                  <span class="text-text-secondary text-xs font-medium">{{
                     session.user?.jobTitle ?? session.user?.email
                   }}</span>
                 </span>
@@ -209,12 +220,14 @@ async function logout(): Promise<void> {
                   :src="session.user?.avatarUrl ?? undefined"
                   :alt="session.user?.name"
                   size="md"
-                  class="size-[38px]"
+                  class="size-10"
+                  :class="teamAvatarColor(session.user?.id ?? '')"
+                  :ui="{ fallback: 'text-[15px]' }"
                 />
-                <UIcon name="i-lucide-chevron-down" class="text-muted size-4" />
+                <UIcon name="i-lucide-chevron-down" class="text-icons-secondary size-4" />
               </button>
             </UDropdownMenu>
-            <UButton v-else size="sm" to="/login">{{ t('nav.login') }}</UButton>
+            <UButton v-else size="md" to="/login">{{ t('nav.login') }}</UButton>
           </div>
         </nav>
       </header>

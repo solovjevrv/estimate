@@ -86,6 +86,10 @@
   /* Прежние алиасы --brand-* → семантика Figma (используются в ~150 местах вёрстки;
      новый код берёт семантические токены напрямую: bg-surface-block и т.д.) */
   --brand-bg: var(--surface-frame);
+  /* Фон страниц приложения: в Figma корневые фреймы экранов — surface-secondary в Light
+     (surface-frame там теперь чисто белый, карточки на нём не читаются) и surface-frame в
+     Dark. Отдельно от --ui-bg/--brand-bg: те остаются фоном холста и экспорта досок. */
+  --page-bg: var(--surface-secondary);
   --brand-surface: var(--surface-block);
   --brand-ink: var(--text-primary);
   --brand-ink2: var(--text-secondary);
@@ -124,6 +128,7 @@
 }
 
 :root.dark {
+  --page-bg: var(--surface-frame);
   --brand-well-bg: var(--surface-frame);
   --board-grid-dot: var(--palette-base-80);
 
@@ -133,6 +138,10 @@
   --ui-success: var(--ui-color-success-500);
   --ui-warning: var(--ui-color-warning-500);
   --ui-error: var(--ui-color-error-500);
+}
+
+body {
+  background-color: var(--page-bg);
 }
 
 h1,
@@ -162,32 +171,37 @@ h6,
 }
 
 .surface-card-hover {
-  transition: box-shadow 0.15s ease;
+  transition: background-color 0.15s ease;
 }
 
+/* TeamCard State=Hover (50_EntityCard): заливка карточки surface-block → surface-hover,
+   тень та же (elevation/1) */
 .surface-card-hover:hover {
-  box-shadow:
-    var(--brand-shadow-card),
-    0 0 0 1px var(--ui-color-primary-200);
+  background-color: var(--surface-hover);
 }
 
 /* Пилюли-бейджи (роль участника, статус комнаты) — везде либо primarySoftBg/primaryText,
    либо border/ink2 референса, а не семантические color="primary"/"neutral" Nuxt UI (те
    берут другие шаги шкалы и не совпадают по цвету). */
+/* Badge кита (17_Badge): пилюля 34px, паддинг 8×12 (с учётом обводки 1px внутрь),
+   Body/Small/Bold, обводка border-strong; Primary — surface-brand-low/text-brand,
+   Neutral — surface-tertiary/text-secondary */
 .badge-pill {
   border-radius: 999px;
-  padding: 7px 14px;
-  font-size: 13px;
+  border: 1px solid var(--border-strong);
+  padding: 7px 11px;
+  font-size: 12px;
+  line-height: 18px;
   font-weight: 700;
   white-space: nowrap;
 }
 
 .badge-pill-primary {
-  background-color: var(--brand-primary-soft-bg);
-  color: var(--brand-primary-text);
+  background-color: var(--surface-brand-low);
+  color: var(--text-brand);
 }
 
 .badge-pill-neutral {
-  background-color: var(--brand-border);
-  color: var(--brand-ink2);
+  background-color: var(--surface-tertiary);
+  color: var(--text-secondary);
 }

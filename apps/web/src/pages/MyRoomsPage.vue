@@ -259,9 +259,15 @@ async function confirmDelete(): Promise<void> {
 </script>
 
 <template>
-  <section class="space-y-5">
+  <!-- 06_Rooms «Комнаты — Список»: блоки страницы через 32px, статистика — Card
+       (elevation/3) с Card Content — Stat -->
+  <section class="space-y-8">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h1 class="font-heading text-[32px] font-bold">{{ t('myRooms.title') }}</h1>
+      <h1
+        class="font-heading text-text-primary text-[32px] leading-10 font-bold tracking-[-0.03em]"
+      >
+        {{ t('myRooms.title') }}
+      </h1>
       <UButton icon="i-lucide-plus" size="lg" @click="createRoomModal.show">
         {{ t('room.create') }}
       </UButton>
@@ -283,11 +289,11 @@ async function confirmDelete(): Promise<void> {
       ]"
     />
 
-    <div v-else-if="loading" class="space-y-5">
+    <div v-else-if="loading" class="space-y-8">
       <div class="grid gap-4 sm:grid-cols-3">
-        <div v-for="i in 3" :key="i" class="surface-card px-6 py-[22px]">
-          <USkeleton class="mb-2 h-3 w-1/2 bg-border-medium" />
-          <USkeleton class="h-8 w-1/3 bg-border-medium" />
+        <div v-for="i in 3" :key="i" class="surface-card shadow-elevation-3 px-6 py-[22px]">
+          <USkeleton class="mb-2 h-3 w-1/2" />
+          <USkeleton class="h-8 w-1/3" />
         </div>
       </div>
       <div class="space-y-3">
@@ -296,25 +302,33 @@ async function confirmDelete(): Promise<void> {
           :key="i"
           class="border-default flex items-center justify-between border-t px-4 py-5 first:border-t-0 sm:px-8"
         >
-          <USkeleton class="h-5 w-1/3 bg-border-medium" />
-          <USkeleton class="h-5 w-20 rounded-full bg-border-medium" />
+          <USkeleton class="h-5 w-1/3" />
+          <USkeleton class="h-5 w-20 rounded-full" />
         </div>
       </div>
     </div>
 
     <template v-else>
       <div class="grid gap-4 sm:grid-cols-3">
-        <div v-for="stat in stats" :key="stat.label" class="surface-card px-6 py-[22px]">
-          <div class="text-muted mb-2 text-[10px] leading-3 font-bold tracking-[0.03em] uppercase">
+        <div
+          v-for="stat in stats"
+          :key="stat.label"
+          class="surface-card shadow-elevation-3 px-6 py-[22px]"
+        >
+          <div
+            class="text-text-secondary mb-2 text-[10px] leading-3 font-bold tracking-[0.03em] uppercase"
+          >
             {{ stat.label }}
           </div>
-          <div class="font-heading text-2xl font-bold">
+          <div
+            class="font-heading text-text-primary text-2xl leading-8 font-bold tracking-[-0.02em]"
+          >
             {{ stat.value }}
           </div>
         </div>
       </div>
 
-      <p class="text-muted text-sm">{{ t('myRooms.subtitle') }}</p>
+      <p class="text-text-secondary text-sm font-medium">{{ t('myRooms.subtitle') }}</p>
 
       <RoomListSection
         :rooms-failed="false"

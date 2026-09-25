@@ -136,7 +136,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
         size="3xl"
         class="size-[100px] shrink-0"
         :class="teamAvatarColor(session.user.id)"
-        :ui="{ fallback: 'font-heading text-[40px] font-bold text-white' }"
+        :ui="{ fallback: 'font-heading text-[40px] font-bold' }"
       />
       <input
         ref="fileInput"
@@ -208,7 +208,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
         >
           <div class="flex min-w-0 items-center gap-4">
             <div
-              class="font-heading flex size-[46px] shrink-0 items-center justify-center rounded-r12 text-base font-bold text-white"
+              class="font-heading flex size-[46px] shrink-0 items-center justify-center rounded-r12 text-base font-bold"
               :class="teamAvatarColor(team.id)"
             >
               {{ team.name.slice(0, 1).toUpperCase() }}

@@ -202,7 +202,7 @@ function onBadgeClick(emoji: EmojiSequence): void {
         :alt="props.participant.name"
         class="absolute -top-5 left-1/2 size-12 -translate-x-1/2"
         :class="teamAvatarColor(props.participant.participantId)"
-        :ui="{ fallback: 'font-heading text-[15px] font-bold text-white uppercase' }"
+        :ui="{ fallback: 'font-heading text-[15px] font-bold uppercase' }"
         style="box-shadow: 0 0 0 3px var(--brand-surface)"
       />
     </div>

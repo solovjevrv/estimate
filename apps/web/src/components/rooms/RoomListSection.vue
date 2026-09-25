@@ -81,7 +81,7 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
           :class="
             roomsTab === tab.key
               ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)]'
-              : 'text-muted hover:text-default'
+              : 'text-text-secondary hover:text-text-primary'
           "
           @click="emit('selectTab', tab.key)"
         >
@@ -115,22 +115,21 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
         <div
           v-for="room in activeRoomsPaging.items.value"
           :key="room.id"
-          class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 first:border-t-0 sm:px-8"
+          class="border-default hover:bg-surface-hover flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 first:border-t-0 sm:px-8"
         >
           <RouterLink
             :to="{ name: 'room', params: { id: room.id } }"
-            class="min-w-28 flex-1 truncate text-base font-bold"
+            class="text-text-primary min-w-28 flex-1 truncate text-base leading-6 font-bold tracking-[-0.01em]"
           >
             {{ room.name }}
           </RouterLink>
-          <div class="flex shrink-0 items-center gap-4">
-            <span
-              v-if="teamTagFor?.(room)"
-              class="bg-border-medium text-muted rounded-full px-3 py-2 text-xs font-bold"
-            >
+          <div class="flex shrink-0 items-center gap-3.5">
+            <span v-if="teamTagFor?.(room)" class="badge-pill badge-pill-neutral">
               {{ teamTagFor(room) }}
             </span>
-            <span class="text-muted text-sm">{{ formatDate(room.createdAt) }}</span>
+            <span class="text-text-secondary text-xs font-medium">{{
+              formatDate(room.createdAt)
+            }}</span>
             <UDropdownMenu v-if="canManageRoom(room)" :items="activeMenuItems(room)">
               <UButton
                 icon="i-lucide-ellipsis-vertical"
@@ -180,22 +179,21 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
           <div
             v-for="room in archiveTabPaging.items.value"
             :key="room.id"
-            class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 first:border-t-0 sm:px-8"
+            class="border-default hover:bg-surface-hover flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 first:border-t-0 sm:px-8"
           >
             <RouterLink
               :to="{ name: 'room', params: { id: room.id } }"
-              class="min-w-28 flex-1 truncate text-base font-bold"
+              class="text-text-primary min-w-28 flex-1 truncate text-base leading-6 font-bold tracking-[-0.01em]"
             >
               {{ room.name }}
             </RouterLink>
-            <div class="flex shrink-0 items-center gap-4">
-              <span
-                v-if="teamTagFor?.(room)"
-                class="bg-border-medium text-muted rounded-full px-3 py-2 text-xs font-bold"
-              >
+            <div class="flex shrink-0 items-center gap-3.5">
+              <span v-if="teamTagFor?.(room)" class="badge-pill badge-pill-neutral">
                 {{ teamTagFor(room) }}
               </span>
-              <span class="text-muted text-sm">{{ formatDate(room.createdAt) }}</span>
+              <span class="text-text-secondary text-xs font-medium">{{
+                formatDate(room.createdAt)
+              }}</span>
               <span class="badge-pill badge-pill-neutral">{{ closedBadgeLabel }}</span>
               <UDropdownMenu v-if="canManageRoom(room)" :items="archivedMenuItems(room)">
                 <UButton

@@ -73,9 +73,9 @@ async function act(): Promise<void> {
 <template>
   <section class="mx-auto w-full max-w-[440px] space-y-6">
     <div v-if="loading" class="surface-card space-y-4 rounded-r24 p-8 text-center">
-      <USkeleton class="mx-auto size-8 rounded-full bg-border-medium" />
-      <USkeleton class="mx-auto h-5 w-2/3 rounded-r12 bg-border-medium" />
-      <USkeleton class="h-11 w-full rounded-r8 bg-border-medium" />
+      <USkeleton class="mx-auto size-8 rounded-full" />
+      <USkeleton class="mx-auto h-5 w-2/3 rounded-r12" />
+      <USkeleton class="h-11 w-full rounded-r8" />
     </div>
 
     <UAlert
@@ -93,7 +93,7 @@ async function act(): Promise<void> {
 
     <div v-else class="surface-card rounded-r24 p-8 text-center">
       <div
-        class="font-heading mx-auto flex size-[60px] items-center justify-center rounded-r20 text-xl font-bold text-white"
+        class="font-heading mx-auto flex size-[60px] items-center justify-center rounded-r20 text-xl font-bold"
         :class="teamAvatarColor(teamId)"
       >
         {{ teamName.slice(0, 1).toUpperCase() }}

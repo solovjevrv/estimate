@@ -237,7 +237,11 @@ async function confirmDelete(): Promise<void> {
 <template>
   <section class="space-y-5">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h1 class="font-heading text-[32px] font-bold">{{ t('boards.title') }}</h1>
+      <h1
+        class="font-heading text-text-primary text-[32px] leading-10 font-bold tracking-[-0.03em]"
+      >
+        {{ t('boards.title') }}
+      </h1>
       <UButton icon="i-lucide-plus" size="lg" @click="createBoardModal.show">
         {{ t('board.create') }}
       </UButton>
@@ -263,10 +267,10 @@ async function confirmDelete(): Promise<void> {
       <p class="text-muted text-sm">{{ t('boards.subtitle') }}</p>
       <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
         <div v-for="i in 3" :key="i" class="overflow-hidden rounded-r24">
-          <USkeleton class="h-[140px] w-full rounded-none bg-border-medium" />
+          <USkeleton class="h-[140px] w-full rounded-none" />
           <div class="surface-card space-y-2 rounded-t-none px-5 py-4">
-            <USkeleton class="h-5 w-2/3 bg-border-medium" />
-            <USkeleton class="h-4 w-1/3 bg-border-medium" />
+            <USkeleton class="h-5 w-2/3" />
+            <USkeleton class="h-4 w-1/3" />
           </div>
         </div>
       </div>

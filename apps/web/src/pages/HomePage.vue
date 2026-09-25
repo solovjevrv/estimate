@@ -15,10 +15,12 @@ const { t } = useI18n();
 const router = useRouter();
 const session = useSessionStore();
 
+// Цвета точек — по макету 02_Main: первая на surface-brand, две другие в Figma без
+// токенов (декоративные акценты, одинаковые в обеих темах)
 const bullets = computed(() => [
-  { label: t('home.bullet1'), dotClass: 'bg-primary' },
-  { label: t('home.bullet2'), dotClass: 'bg-[var(--brand-amber)]' },
-  { label: t('home.bullet3'), dotClass: 'bg-[var(--brand-coral)]' },
+  { label: t('home.bullet1'), dotClass: 'bg-surface-brand' },
+  { label: t('home.bullet2'), dotClass: 'bg-[#ff8c00]' },
+  { label: t('home.bullet3'), dotClass: 'bg-[#e84e5f]' },
 ]);
 
 const cards = computed(() => [
@@ -26,19 +28,16 @@ const cards = computed(() => [
     title: t('home.card1Title'),
     desc: t('home.card1Desc'),
     icon: 'i-lucide-layers',
-    bg: 'bg-primary',
   },
   {
     title: t('home.card2Title'),
     desc: t('home.card2Desc'),
     icon: 'i-lucide-refresh-cw',
-    bg: 'bg-[var(--brand-amber)]',
   },
   {
     title: t('home.card3Title'),
     desc: t('home.card3Desc'),
     icon: 'i-lucide-link-2',
-    bg: 'bg-[var(--brand-coral)]',
   },
 ]);
 
@@ -63,57 +62,54 @@ async function onSubmit(name: string): Promise<void> {
 </script>
 
 <template>
-  <section class="space-y-16 pt-8 pb-11">
-    <div class="flex flex-col items-start gap-10 lg:flex-row lg:items-center">
+  <!-- Геометрия — по фреймам 02_Main (Light Guest / Dark Authenticated): бейдж на 56px ниже
+       шапки (отступ main), H1 Headings/48, лид Body/Xlarge, иллюстрация 513×269 справа,
+       фичи — Card (elevation/3) с Card Content — Feature из кита -->
+  <section class="pb-11">
+    <div class="flex flex-col items-start gap-10 lg:flex-row lg:gap-0">
       <div class="min-w-0 flex-1">
-        <span
-          class="badge-pill badge-pill-primary mb-5 inline-block tracking-wide uppercase"
-          style="padding: 6px 14px"
-        >
+        <span class="badge-pill badge-pill-primary mb-5 inline-block uppercase">
           {{ t('home.eyebrow') }}
         </span>
         <h1
-          class="font-heading max-w-xl font-extrabold text-balance"
-          style="font-size: clamp(32px, 4.2vw, 52px); line-height: 1.15; letter-spacing: -0.02em"
+          class="font-heading text-text-primary max-w-[667px] text-[32px] leading-[40px] font-bold tracking-[-0.03em] text-balance sm:text-[48px] sm:leading-[52px]"
         >
           {{ t('home.headline') }}
         </h1>
-        <p class="text-muted mt-5 max-w-lg text-lg">{{ t('home.lead') }}</p>
+        <p
+          class="text-text-secondary mt-5 max-w-[520px] sm:mt-11 text-lg leading-[26px] font-medium tracking-[-0.015em]"
+        >
+          {{ t('home.lead') }}
+        </p>
 
-        <div class="mt-9 flex flex-wrap gap-3.5">
+        <div class="mt-10 flex flex-wrap gap-3">
           <template v-if="session.isAuthenticated">
-            <UButton
-              size="lg"
-              icon="i-lucide-plus"
-              class="px-[26px] py-[15px] text-base font-bold"
-              @click="createRoomModal.show"
-            >
+            <UButton size="lg" icon="i-lucide-plus" @click="createRoomModal.show">
               {{ t('room.create') }}
             </UButton>
-            <UButton
-              size="lg"
-              color="neutral"
-              variant="outline"
-              class="px-[26px] py-[15px] text-base font-bold"
-              to="/teams"
-            >
+            <UButton size="lg" color="neutral" variant="outline" to="/teams">
               {{ t('home.startWithTeam') }}
             </UButton>
           </template>
-          <UButton v-else size="lg" class="px-[26px] py-[15px] text-base font-bold" to="/login">
+          <UButton v-else size="lg" to="/login">
             {{ t('home.startAsGuest') }}
           </UButton>
         </div>
 
-        <div class="mt-10 flex flex-wrap gap-7">
+        <div class="mt-10 flex flex-wrap gap-8">
           <div v-for="bullet in bullets" :key="bullet.label" class="flex items-center gap-2">
             <span class="size-2 shrink-0 rounded-full" :class="bullet.dotClass" />
-            <span class="text-muted text-sm font-semibold">{{ bullet.label }}</span>
+            <span
+              class="text-text-secondary max-w-[10rem] text-sm leading-5 font-medium tracking-[-0.01em]"
+              >{{ bullet.label }}</span
+            >
           </div>
         </div>
       </div>
 
-      <div class="aspect-[1108/581] w-full flex-1 overflow-hidden rounded-[24px] lg:w-auto">
+      <div
+        class="aspect-[513/269] w-full shrink-0 overflow-hidden rounded-r24 lg:mt-[74px] lg:w-[513px]"
+      >
         <img
           src="/hero-illustration-light.webp"
           :alt="t('home.illustrationAlt')"
@@ -127,13 +123,21 @@ async function onSubmit(name: string): Promise<void> {
       </div>
     </div>
 
-    <div class="grid gap-6 sm:grid-cols-3">
-      <div v-for="card in cards" :key="card.title" class="surface-card p-7">
-        <div class="mb-4 flex size-11 items-center justify-center rounded-[12px]" :class="card.bg">
-          <UIcon :name="card.icon" class="size-5.5 text-white" />
+    <div class="mt-[54px] grid gap-6 sm:grid-cols-3">
+      <div
+        v-for="card in cards"
+        :key="card.title"
+        class="bg-surface-block shadow-elevation-3 flex min-h-[214px] flex-col gap-3 rounded-r24 p-7"
+      >
+        <div class="bg-surface-brand flex size-11 items-center justify-center rounded-r12">
+          <UIcon :name="card.icon" class="text-icons-on-brand size-5.5" />
         </div>
-        <h3 class="font-heading mb-2 text-[17px] font-bold">{{ card.title }}</h3>
-        <p class="text-muted text-[14.5px] leading-relaxed">{{ card.desc }}</p>
+        <h3 class="font-heading text-text-primary text-xl leading-7 font-bold tracking-[-0.02em]">
+          {{ card.title }}
+        </h3>
+        <p class="text-text-secondary max-w-[250px] text-xs leading-[18px] font-medium">
+          {{ card.desc }}
+        </p>
       </div>
     </div>
 
