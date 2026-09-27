@@ -16,6 +16,21 @@ if (!window.matchMedia) {
  * тесты, монтирующие анимированные стикеры, не должны были знать об этом нюансе. Тесты самого
  * LottieSticker.vue подменяют этот стаб своим управляемым через vi.stubGlobal.
  */
+/**
+ * jsdom не реализует Pointer Capture — Reka UI (USelect и другие поповеры на pointerdown,
+ * 20.3.6) вызывает их на триггере при открытии/закрытии, без стаба падает с TypeError и роняет
+ * весь тестовый файл (необработанное исключение вне текущего it, не только сам тест-кейс).
+ */
+if (!Element.prototype.hasPointerCapture) {
+  Element.prototype.hasPointerCapture = () => false;
+}
+if (!Element.prototype.setPointerCapture) {
+  Element.prototype.setPointerCapture = () => {};
+}
+if (!Element.prototype.releasePointerCapture) {
+  Element.prototype.releasePointerCapture = () => {};
+}
+
 if (!window.IntersectionObserver) {
   class FakeIntersectionObserver {
     readonly root = null;

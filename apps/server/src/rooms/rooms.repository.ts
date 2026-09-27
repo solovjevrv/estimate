@@ -164,6 +164,19 @@ export class RoomsRepository {
     return row ? this.toRound(row) : null;
   }
 
+  /**
+   * Пересчёт среднего уже вскрытого раунда — доголосование/переголосование после
+   * вскрытия (20.3.6) продолжает менять состав голосов, а `average` в БД иначе
+   * остался бы «замороженным» на момент первого вскрытия (`markRevealed` его
+   * специально больше не трогает — обновляет только строки в статусе `voting`).
+   */
+  async updateRoundAverage(roundId: string, average: number | null): Promise<void> {
+    await this.db
+      .update(schema.rounds)
+      .set({ average: average === null ? null : average.toFixed(2) })
+      .where(eq(schema.rounds.id, roundId));
+  }
+
   /** Голоса раунда вместе с именами: для пользователей — из профиля, для гостей — из голоса */
   async listVotes(roundId: string): Promise<VoteRecord[]> {
     const rows = await this.db

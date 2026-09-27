@@ -170,8 +170,10 @@ h6,
      карточек-секций, а не radiusMd, которым пользуются Teams/MyRooms/TeamPage. Идёт
      вторым классом поверх .surface-card, поэтому должен быть объявлен после него —
      при равной специфичности побеждает то правило, что позже в файле. */
+  /* Карточки-секции комнаты (07_Room): r28 и elevation/3, а не elevation/1 плашек */
   .surface-card-lg {
     border-radius: 1.75rem;
+    box-shadow: var(--shadow-elevation-3);
   }
 
   .surface-card-hover {

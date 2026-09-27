@@ -73,7 +73,7 @@ function onBadgeClick(emoji: EmojiSequence): void {
 
 <template>
   <div
-    class="flex w-[130px] flex-col items-center gap-2.5"
+    class="flex w-[150px] flex-col items-center gap-2.5"
     :data-winner="props.roundStatus === 'revealed' && props.isWinner ? 'true' : undefined"
   >
     <div
@@ -87,19 +87,18 @@ function onBadgeClick(emoji: EmojiSequence): void {
       >
         <!-- Лицо карты: состояние голосования (не вскрыто). -->
         <div
-          class="absolute inset-0 flex items-center justify-center rounded-[14px] transition-[background-color,box-shadow] duration-300 [backface-visibility:hidden]"
+          class="absolute inset-0 flex items-center justify-center rounded-[16px] transition-[background-color,box-shadow] duration-300 [backface-visibility:hidden]"
           :class="
             props.roundStatus === 'voting' && props.participant.hasVoted
-              ? 'bg-[var(--brand-primary-soft-bg)] shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]'
-              : 'bg-[var(--brand-border)]'
+              ? 'bg-surface-brand-low shadow-[inset_0_0_0_2px_var(--border-brand),var(--shadow-elevation-1)]'
+              : 'bg-surface-tertiary'
           "
         >
           <template v-if="props.roundStatus === 'voting'">
             <UIcon
               v-if="!props.participant.hasVoted"
               name="i-lucide-clock"
-              class="size-6 animate-pulse"
-              style="color: var(--brand-ink2)"
+              class="text-icons-secondary size-6 animate-pulse"
             />
             <span class="sr-only">
               {{ props.participant.hasVoted ? t('room.voted') : t('room.notVoted') }}
@@ -108,38 +107,41 @@ function onBadgeClick(emoji: EmojiSequence): void {
         </div>
         <!-- Обратная сторона: вскрытое значение -->
         <div
-          class="absolute inset-0 flex items-center justify-center rounded-[14px] [backface-visibility:hidden] [transform:rotateY(180deg)]"
+          class="absolute inset-0 flex items-center justify-center rounded-[16px] [backface-visibility:hidden] [transform:rotateY(180deg)]"
           :class="
             props.isWinner
-              ? 'bg-[var(--brand-primary-soft-bg)] shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]'
-              : 'bg-[var(--brand-surface)] shadow-[var(--brand-shadow-card),inset_0_0_0_1px_var(--brand-border)]'
+              ? 'bg-surface-brand-low shadow-[inset_0_0_0_2px_var(--border-brand),var(--shadow-elevation-1)]'
+              : 'bg-surface-secondary shadow-elevation-1'
           "
         >
-          <span class="font-heading text-[28px] font-extrabold text-[var(--brand-primary-text)]">
+          <span
+            class="font-heading text-text-brand text-[32px] leading-[40px] font-bold tracking-[-0.96px]"
+          >
             {{ props.valueLabel }}
           </span>
         </div>
       </div>
       <div
         v-if="props.roundStatus === 'voting' && props.participant.hasVoted"
-        class="absolute right-[-8px] bottom-[-8px] flex size-[26px] items-center justify-center rounded-full bg-[var(--ui-color-primary-500)]"
+        class="bg-surface-brand absolute right-[-8px] bottom-[-8px] flex size-[26px] items-center justify-center rounded-full"
         style="box-shadow: 0 0 0 3px var(--brand-surface)"
       >
-        <UIcon name="i-lucide-check" class="size-3.5 text-white" />
+        <UIcon name="i-lucide-check" class="text-icons-on-brand size-3.5" />
       </div>
       <!-- Реакции, полученные этой карточкой (10.10) — противоположный угол от бейджа голосования.
            Каждая уникальная реакция — свой отдельный бейдж (не общий контейнер на всех), как
            реакции на сообщение в Telegram; одинаковые от нескольких участников схлопнуты в один
            бейдж со счётчиком. Бейдж кликабелен на любой карточке, включая свою (10.12): у кого
            реакции ещё нет — ставит её тем же эмодзи, у кого уже есть своя — снимает (выделена рамкой).
-           h-[34px]/min-w-[34px] вместо асимметричного px/py — иначе rounded-full на прямоугольнике
-           уже/выше самого себя даёт не круг, а таблетку (нашли по скриншоту пользователя); со
-           счётчиком бейдж всё равно раздаётся вширь за счёт min-w. -->
+           Пилюля по content (px/py), не форсированный круг — сверено с макетом (07_Room, 20.3.6).
+           В макете глиф и счётчик — один текстовый узел 12px, но на реальном экране эмодзи в 12px
+           почти не читается (найдено пользователем по живому скриншоту) — глиф увеличен отдельно
+           от счётчика, размер бейджа в остальном по макету. -->
 
       <TransitionGroup
         tag="div"
         name="badge-pop"
-        class="absolute bottom-[-10px] left-[-8px] flex max-w-[130px] flex-wrap gap-1"
+        class="absolute bottom-[-10px] left-[-8px] flex max-w-[150px] flex-wrap gap-1"
       >
         <button
           v-for="reaction in props.receivedReactions"
@@ -149,16 +151,18 @@ function onBadgeClick(emoji: EmojiSequence): void {
           :aria-label="
             t('room.reactionBadgeLabel', { emoji: reaction.emoji, count: reaction.count })
           "
-          class="border-[var(--brand-ink2)]/45 hover:bg-[var(--brand-border)] flex h-[34px] min-w-[34px] cursor-pointer items-center justify-center gap-0.5 rounded-full border-[1.5px] bg-[var(--brand-surface)] px-1 text-[23px] shadow-[var(--brand-shadow-card)] dark:border-transparent"
+          class="text-text-secondary hover:bg-surface-hover bg-surface-block border-border-strong shadow-elevation-1 flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1"
           :class="
-            reaction.reactedByMe ? 'shadow-[inset_0_0_0_2px_var(--ui-color-primary-500)]' : ''
+            reaction.reactedByMe
+              ? 'border-border-brand shadow-[inset_0_0_0_1px_var(--border-brand)]'
+              : ''
           "
           @click.stop="onBadgeClick(reaction.emoji)"
         >
-          {{ reaction.emoji }}
-          <span v-if="reaction.count > 1" class="text-muted text-xs leading-none font-bold">
-            {{ reaction.count }}
-          </span>
+          <span class="text-lg leading-none">{{ reaction.emoji }}</span>
+          <span v-if="reaction.count > 1" class="text-xs leading-none font-bold">{{
+            reaction.count
+          }}</span>
         </button>
       </TransitionGroup>
       <!-- «Вылетающий» эмодзи над карточкой в момент простановки реакции (10.12, Meet-style) —
@@ -179,11 +183,11 @@ function onBadgeClick(emoji: EmojiSequence): void {
       <UPopover :content="{ side: 'top' }">
         <button
           type="button"
-          class="border-[var(--brand-ink2)]/45 absolute -top-1 -right-1 flex size-[22px] cursor-pointer items-center justify-center rounded-full border-[1.5px] bg-[var(--brand-surface)] shadow-[var(--brand-shadow-card)] dark:border-transparent"
+          class="bg-surface-block shadow-elevation-1 hover:bg-surface-hover absolute -top-2 -right-2 flex size-7 cursor-pointer items-center justify-center rounded-full"
           :aria-label="t('room.reactionTriggerLabel', { name: participant.name })"
           @click.stop
         >
-          <UIcon name="i-lucide-smile-plus" class="size-3.5" style="color: var(--brand-ink2)" />
+          <UIcon name="i-lucide-smile-plus" class="text-icons-secondary size-4" />
         </button>
 
         <template #content="{ close }">
@@ -202,16 +206,16 @@ function onBadgeClick(emoji: EmojiSequence): void {
         :alt="props.participant.name"
         class="absolute -top-5 left-1/2 size-12 -translate-x-1/2"
         :class="teamAvatarColor(props.participant.participantId)"
-        :ui="{ fallback: 'font-heading text-[15px] font-bold uppercase' }"
+        :ui="{ fallback: 'text-[18px] uppercase' }"
         style="box-shadow: 0 0 0 3px var(--brand-surface)"
       />
     </div>
     <div class="text-center">
-      <p class="truncate text-sm font-bold">
+      <p class="text-text-primary truncate text-sm font-bold tracking-[-0.01em]">
         {{ props.participant.name }}
-        <span v-if="props.isSelf" class="text-muted font-normal">{{ t('room.you') }}</span>
+        <span v-if="props.isSelf">{{ t('room.you') }}</span>
       </p>
-      <p class="text-muted text-xs">
+      <p class="text-text-secondary text-xs font-medium">
         {{ participant.role === 'scrum_master' ? t('room.roleScrumMaster') : t('room.roleVoter') }}
       </p>
       <span

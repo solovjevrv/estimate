@@ -180,29 +180,6 @@ export const useRoomStore = defineStore('room', () => {
   }
 
   /**
-   * Версию по умолчанию берём из живой комнаты, но вызывающий код может прислать
-   * снимок версии, на котором основан его черновик: пока черновик редактировался,
-   * рассылка могла уже подвинуть версию в сторе вперёд, и живая версия перестаёт
-   * отличать «никто не менял» от «кто-то уже сохранил, пока мы печатали» — тогда
-   * проверка версии на сервере молча перестаёт защищать от гонки.
-   */
-  async function updateLinks(links: {
-    jiraUrl?: string | null;
-    confluenceUrl?: string | null;
-    version?: number | null;
-  }): Promise<void> {
-    const { version, ...fields } = links;
-    await emitWithAck<typeof WS_EVENTS.UPDATE_LINKS, null>(
-      requireSocket(),
-      WS_EVENTS.UPDATE_LINKS,
-      {
-        ...fields,
-        version: version !== undefined ? version : (room.value?.linksVersion ?? null),
-      },
-    );
-  }
-
-  /**
    * Таймер обсуждения: управлять может любой участник (решение 27.07.2026),
    * поэтому прав не проверяем — сервер тоже их не проверяет. Актуальное
    * состояние приходит рассылкой `room_state`, как и у остальных действий стола.
@@ -272,7 +249,6 @@ export const useRoomStore = defineStore('room', () => {
     submitVote,
     revealCards,
     startNewRound,
-    updateLinks,
     startTimer,
     pauseTimer,
     resetTimer,

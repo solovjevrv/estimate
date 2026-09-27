@@ -75,9 +75,14 @@ const dashOffset = computed(() => RING_CIRCUMFERENCE * (1 - progressFraction.val
 // Время истекло, но пока никто не поставил на паузу/не сбросил — держим на нуле
 // и меняем цвет кольца, а не выключаем сами: сброс/пауза — решение участника
 const isExpired = computed(() => props.timer.running && remainingSec.value === 0);
+/**
+ * 53_Timer: дуга — surface-brand (тот же зелёный, что у кнопки «Старт», в Dark —
+ * brand/on-dark), у истёкшего — border-error; время — text-brand / text-error
+ */
 const ringColor = computed(() =>
-  isExpired.value ? 'var(--brand-coral)' : 'var(--ui-color-primary-500)',
+  isExpired.value ? 'var(--border-error)' : 'var(--surface-brand)',
 );
+const timeColor = computed(() => (isExpired.value ? 'var(--text-error)' : 'var(--text-brand)'));
 
 function presetLabel(durationSec: number): string {
   return t('room.timerMinutes', { minutes: Math.round(durationSec / 60) });
@@ -94,7 +99,7 @@ function onToggleClick(): void {
 
 <template>
   <div
-    class="surface-card surface-card-lg flex flex-col items-center gap-4 px-4 py-5 text-center sm:flex-row sm:flex-wrap sm:text-left sm:px-[30px] sm:py-[26px]"
+    class="surface-card surface-card-lg flex flex-col items-center gap-4 px-4 py-5 text-center sm:flex-row sm:flex-wrap sm:text-left sm:px-8 sm:py-8"
   >
     <div class="relative flex size-[76px] shrink-0 items-center justify-center">
       <svg viewBox="0 0 76 76" class="absolute inset-0 -rotate-90">
@@ -103,7 +108,7 @@ function onToggleClick(): void {
           cy="38"
           :r="RING_RADIUS"
           fill="none"
-          stroke="var(--brand-border)"
+          stroke="var(--border-medium)"
           stroke-width="8"
         />
         <circle
@@ -122,16 +127,14 @@ function onToggleClick(): void {
       <div
         class="relative flex size-[60px] items-center justify-center rounded-full bg-[var(--brand-surface)]"
       >
-        <span class="font-heading text-[14.5px] font-extrabold" :style="{ color: ringColor }">
+        <span class="font-heading text-[14.5px] font-extrabold" :style="{ color: timeColor }">
           {{ timeLabel }}
         </span>
       </div>
     </div>
 
     <div class="flex min-w-0 flex-col items-center gap-2 sm:items-start">
-      <div
-        class="text-muted flex items-center gap-1.5 text-[12.5px] font-bold tracking-[0.03em] uppercase"
-      >
+      <div class="text-text-secondary flex items-center gap-1.5 text-xs font-bold">
         <UIcon name="i-lucide-timer" class="size-3.5" />
         {{ t('room.timerTitle') }}
       </div>
@@ -140,7 +143,6 @@ function onToggleClick(): void {
           size="sm"
           :icon="props.timer.running ? 'i-lucide-pause' : 'i-lucide-play'"
           :disabled="props.pending"
-          class="rounded-[9px] px-3 py-2 text-[13px] font-bold"
           @click="onToggleClick"
         >
           {{ props.timer.running ? t('room.timerPause') : t('room.timerStart') }}
@@ -151,11 +153,11 @@ function onToggleClick(): void {
             :key="preset"
             type="button"
             :disabled="props.pending"
-            class="rounded-[9px] px-2.5 py-2 text-[12.5px] font-bold whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-60"
+            class="rounded-r8 px-2.5 py-2 text-xs leading-[18px] font-bold whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-60"
             :class="
               props.timer.durationSec === preset
-                ? 'bg-[var(--brand-well-bg)] text-[var(--brand-primary-text)]'
-                : 'text-muted cursor-pointer'
+                ? 'bg-surface-tertiary text-text-secondary'
+                : 'text-text-primary hover:bg-surface-hover cursor-pointer'
             "
             @click="emit('reset', preset)"
           >

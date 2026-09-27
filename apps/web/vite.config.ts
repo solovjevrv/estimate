@@ -221,23 +221,27 @@ export default defineConfig({
           },
           compoundVariants: [inputFocusFix, inputErrorFix],
         },
-        // Select Item (07_Select): 40px, паддинг 12×10, r10, Body/Large/Medium;
-        // Highlighted — surface-tertiary, Selected — text-brand + галочка,
-        // Disabled — text-disabled без прозрачности
+        // Select (07_Select): триггер — токены Input.Container (размеры как у input
+        // выше); панель — r16, паддинг 6, gap 4, surface-block, elevation/1; Select Item —
+        // 40px, паддинг 12×10, r10, Body/Large/Medium, Highlighted — surface-tertiary,
+        // Selected — text-brand + галочка, Disabled — text-disabled без прозрачности
         select: {
           slots: {
+            content: 'rounded-r16 bg-surface-block p-1.5 shadow-elevation-1 ring-0',
+            group: 'p-0 flex flex-col gap-1',
             item: 'items-center font-medium data-highlighted:not-data-disabled:before:bg-surface-tertiary data-[state=checked]:text-text-brand data-disabled:opacity-100 data-disabled:text-text-disabled',
+            itemLabel: 'truncate',
             itemTrailingIcon: 'text-icons-brand',
           },
           variants: {
             size: {
               sm: { base: 'h-[34px] px-2.5 text-xs gap-1.5 rounded-r8' },
               md: {
-                base: 'h-10 px-2.5 text-base gap-1.5 rounded-r10',
+                base: 'h-10 px-2.5 text-base md:text-base! gap-1.5 rounded-r10',
                 item: 'px-3 py-2.5 text-base gap-1.5 before:rounded-r10',
                 itemTrailingIcon: 'size-4',
               },
-              lg: { base: 'h-12 px-3 text-base gap-2 rounded-r12' },
+              lg: { base: 'h-12 px-3 text-base md:text-base! gap-2 rounded-r12' },
             },
             variant: { outline: fieldOutline },
           },
@@ -259,8 +263,17 @@ export default defineConfig({
         // teamAvatarColor (lib/team-roles.ts)
         avatar: {
           slots: {
-            root: 'bg-surface-brand text-icons-on-brand',
-            fallback: 'font-bold text-current',
+            fallback: 'font-bold',
+          },
+          // Цвет у Nuxt UI задан вариантом color (neutral: bg-elevated/text-muted), он
+          // применяется после слотов — перебиваем в самом варианте
+          variants: {
+            color: {
+              neutral: {
+                root: 'bg-surface-brand text-icons-on-brand',
+                fallback: 'text-current',
+              },
+            },
           },
         },
         // 31_Skeleton: цвет всегда surface-skeleton, радиус задаётся по месту (r8/r12/r24/full)
@@ -299,7 +312,7 @@ export default defineConfig({
         // обводки, текст Body/Medium/Medium своего цвета, паддинг 20×16, r12
         alert: {
           slots: {
-            root: 'rounded-r12 px-5 py-4 gap-3',
+            root: 'items-center rounded-r12 px-5 py-4 gap-3',
             title: 'font-bold',
             description: 'font-medium opacity-100',
           },

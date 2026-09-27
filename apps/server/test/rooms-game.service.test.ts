@@ -155,15 +155,24 @@ describe('RoomsGameService: голосование', () => {
     expect(upsertUserVote).toHaveBeenCalledWith(ROUND.id, VOTER.participantId, 5);
   });
 
-  it('после вскрытия карт голосовать нельзя', async () => {
+  it('после вскрытия карт можно доголосовать/переголосовать — средний балл пересчитывается сразу', async () => {
+    const upsertUserVote = vi.fn(async () => {});
+    const updateRoundAverage = vi.fn(async () => {});
     const service = serviceWith({
       ...votingRepo,
-      findCurrentRound: async () => ({ ...ROUND, status: 'revealed' as const }),
+      findCurrentRound: async () => ({ ...ROUND, status: 'revealed' as const, average: 5 }),
+      upsertUserVote,
+      listVotes: async () => [
+        { participantId: VOTER.participantId, name: null, value: 3 },
+        { participantId: MASTER.participantId, name: null, value: 8 },
+      ],
+      updateRoundAverage,
     });
 
-    await expect(service.submitVote(ROOM.id, VOTER, { value: 3 })).rejects.toBeInstanceOf(
-      ConflictError,
-    );
+    await service.submitVote(ROOM.id, VOTER, { value: 3 });
+
+    expect(upsertUserVote).toHaveBeenCalledWith(ROUND.id, VOTER.participantId, 3);
+    expect(updateRoundAverage).toHaveBeenCalledWith(ROUND.id, 5.5);
   });
 
   it('исчезнувший раунд объясняется участнику, а не падает пятисоткой', async () => {
