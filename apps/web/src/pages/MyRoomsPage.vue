@@ -269,7 +269,7 @@ async function confirmDelete(): Promise<void> {
         {{ t('myRooms.title') }}
       </h1>
       <UButton icon="i-lucide-plus" size="lg" @click="createRoomModal.show">
-        {{ t('room.create') }}
+        {{ t('room.newRoom') }}
       </UButton>
     </div>
 

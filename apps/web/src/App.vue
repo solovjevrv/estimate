@@ -181,13 +181,6 @@ async function logout(): Promise<void> {
 
           <div class="ml-auto flex items-center gap-2">
             <template v-if="!session.isAuthenticated">
-              <USelect
-                v-model="language"
-                :items="[...LOCALES]"
-                size="sm"
-                :aria-label="t('nav.language')"
-              />
-
               <UTooltip :text="t(isDark ? 'nav.theme.light' : 'nav.theme.dark')">
                 <!-- Header Guest: Theme toggle — Button Primary/Outline/Md, icon-only 44×40 -->
                 <UButton
