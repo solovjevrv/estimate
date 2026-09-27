@@ -30,6 +30,8 @@ test('архивация комнаты закрывает стол для де�
   await page.getByRole('button', { name: 'Архивировать', exact: true }).click();
 
   await expect(page.getByText('Архивная')).toBeVisible();
-  await expect(page.getByText('Комната в архиве: доступна только для чтения.')).toBeVisible();
+  await expect(
+    page.getByText('Голосование недоступно — комната перемещена в архив.'),
+  ).toBeVisible();
   await expect(page.getByRole('button', { name: 'Начать раунд' })).toHaveCount(0);
 });

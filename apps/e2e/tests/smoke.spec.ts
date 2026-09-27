@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
+import { expectVoted, joinAsGuest, stat } from '../src/room-helpers';
 
 /**
  * Golden path всего продукта одним прогоном: вход → создание комнаты →
@@ -35,8 +36,7 @@ test('вход → комната → гость → голосование → 
   const guestContext = await newContext(browser);
   const guestPage = await guestContext.newPage();
   await guestPage.goto(roomUrl);
-  await guestPage.getByPlaceholder('Например, Мария').fill('Гость Смоук');
-  await guestPage.getByRole('button', { name: 'Войти в комнату' }).click();
+  await joinAsGuest(guestPage, 'Гость Смоук');
 
   await expect(guestPage.getByText('Участники')).toBeVisible();
   await expect(ownerPage.getByText('Участники')).toBeVisible();
@@ -51,13 +51,13 @@ test('вход → комната → гость → голосование → 
   // этого ожидания клик по «Вскрыть карты» мог случиться раньше, чем локальный
   // allVoted на странице владельца увидит второй голос, и вместо вскрытия
   // открылась бы модалка подтверждения (с тем же текстом на кнопке)
-  await expect(ownerPage.getByText('Проголосовало: 2 из 2')).toBeVisible();
+  await expectVoted(ownerPage, 2, 2);
 
   // Проголосовали оба — скрам-мастер вскрывает без запроса подтверждения
   await ownerPage.getByRole('button', { name: 'Вскрыть карты' }).click();
 
   await expect(ownerPage.getByText('Результаты раунда')).toBeVisible();
   await expect(guestPage.getByText('Результаты раунда')).toBeVisible();
-  await expect(ownerPage.getByText('Мин: 5')).toBeVisible();
-  await expect(ownerPage.getByText('Макс: 8')).toBeVisible();
+  await expect(stat(ownerPage, 'Мин', '5')).toBeVisible();
+  await expect(stat(ownerPage, 'Макс', '8')).toBeVisible();
 });

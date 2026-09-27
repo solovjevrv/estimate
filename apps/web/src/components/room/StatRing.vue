@@ -39,7 +39,11 @@ onMounted(() => {
 <template>
   <!-- 54_RoundResult / StatRing: кольцо 72px, обводка 4, трек border-medium, значение
        border-brand; IsWinner — заливка surface-brand-low -->
-  <div class="flex flex-col items-center gap-2">
+  <div
+    class="flex flex-col items-center gap-2"
+    role="group"
+    :aria-label="`${props.label}: ${props.valueLabel}`"
+  >
     <div class="relative flex h-[72px] w-[72px] items-center justify-center">
       <svg viewBox="0 0 72 72" class="absolute inset-0 -rotate-90">
         <circle
