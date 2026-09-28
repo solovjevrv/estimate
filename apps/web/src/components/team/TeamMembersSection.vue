@@ -111,11 +111,13 @@ function menuItems(member: TeamMember): DropdownMenuItem[][] {
             v-if="canManageTeam && member.userId !== currentUserId"
             :items="menuItems(member)"
           >
+            <!-- Строка на hover уже surface-hover — у ⋮ внутри неё фон темнее (кит: ListRow/MemberRow) -->
             <UButton
               icon="i-lucide-ellipsis-vertical"
               color="neutral"
               variant="ghost"
               size="sm"
+              class="hover:bg-surface-tertiary"
               :aria-label="t('team.memberMenu')"
               :disabled="isBusy(member.userId)"
             />
