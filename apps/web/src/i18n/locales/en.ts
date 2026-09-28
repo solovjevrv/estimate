@@ -312,6 +312,8 @@ export default {
     loadError: 'Could not load the board. Try refreshing the page.',
     teamBoardSubtitle: 'Team board',
     personalBoardSubtitle: 'Personal board',
+    /** Плашка личной доски в общем списке «Доски» — в пару к имени команды у командных */
+    personalTag: 'Personal',
     fullscreen: 'Enter fullscreen',
     exitFullscreen: 'Exit fullscreen',
     undo: 'Undo',

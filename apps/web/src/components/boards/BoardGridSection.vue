@@ -22,7 +22,7 @@ defineProps<{
   errorMessage: string;
   emptyActiveMessage: string;
   emptyArchiveMessage: string;
-  /** Плашка с именем команды у личных досок (08_Boards, «Доски — Список») — в
+  /** Плашка с именем команды или «Личная» (08_Boards, «Доски — Список») — в
    *  контексте самой команды не нужна */
   teamTagFor?: (board: BoardSummary) => string | null;
 }>();

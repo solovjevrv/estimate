@@ -49,8 +49,10 @@ function canManageBoard(board: BoardSummary): boolean {
   return !!role && hasTeamRole(role, 'admin');
 }
 
+/** В общем списке у каждой карточки плашка: имя команды или «Личная» */
 function teamTagFor(board: BoardSummary): string | null {
-  return board.teamId ? (teamNameById.value.get(board.teamId) ?? null) : null;
+  if (!board.teamId) return t('board.personalTag');
+  return teamNameById.value.get(board.teamId) ?? null;
 }
 
 function formatDate(iso: string): string {

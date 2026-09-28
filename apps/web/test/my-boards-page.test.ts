@@ -101,6 +101,19 @@ describe('страница «Мои доски»', () => {
     expect(wrapper.text()).not.toContain('Командная');
   });
 
+  it('помечает личную доску плашкой «Личная»', async () => {
+    const { wrapper } = await mountApp(
+      makeFetch({
+        'GET /api/boards?archived=false': () =>
+          json(200, { boards: [{ ...activeBoard, title: 'Ретро', itemCount: 0 }] }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ретро'));
+    const tags = wrapper.findAll('span.rounded-full').map((tag) => tag.text());
+    expect(tags).toContain('Личная');
+  });
+
   it('помечает плашкой с именем команды доски, созданные от лица команды', async () => {
     const teamBoard: Board = { ...activeBoard, id: 'b2', teamId: 't1', title: 'Доска команды' };
     const { wrapper } = await mountApp(
