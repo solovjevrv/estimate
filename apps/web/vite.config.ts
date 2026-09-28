@@ -226,13 +226,13 @@ export default defineConfig({
         },
         // Select (07_Select): триггер — токены Input.Container (размеры как у input
         // выше); панель — r16, паддинг 6, gap 4, surface-block, elevation/1; Select Item —
-        // 40px, паддинг 12×10, r10, Body/Large/Medium, Highlighted — surface-tertiary,
+        // 40px, паддинг 12×10, r10, Body/Large/Medium, Highlighted — surface-hover (в ките surface-tertiary; унифицировано с Hover у MenuItem),
         // Selected — text-brand + галочка, Disabled — text-disabled без прозрачности
         select: {
           slots: {
             content: 'rounded-r16 bg-surface-block p-1.5 shadow-elevation-1 ring-0',
             group: 'p-0 flex flex-col gap-1',
-            item: 'items-center font-medium data-highlighted:not-data-disabled:before:bg-surface-tertiary data-[state=checked]:text-text-brand data-disabled:opacity-100 data-disabled:text-text-disabled',
+            item: 'items-center font-medium data-highlighted:not-data-disabled:before:bg-surface-hover data-[state=checked]:text-text-brand data-disabled:opacity-100 data-disabled:text-text-disabled',
             itemLabel: 'truncate',
             itemTrailingIcon: 'text-icons-brand',
           },

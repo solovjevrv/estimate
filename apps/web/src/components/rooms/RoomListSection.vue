@@ -81,7 +81,7 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
           class="cursor-pointer rounded-full px-4 py-1.5 text-xs leading-[18px] font-bold transition-colors"
           :class="
             roomsTab === tab.key
-              ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)]'
+              ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)] ring-1 ring-[var(--border-strong)] ring-inset'
               : 'text-text-secondary hover:text-text-primary'
           "
           @click="emit('selectTab', tab.key)"
@@ -119,11 +119,12 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
       </p>
       <div>
         <!-- Строка списка — 70px, одна на комнаты и состав (в макете 70/68, унифицировано);
-             граница сверху и у первой строки — линия под шапкой списка, как в макетах 06 -->
+             линия сверху (и у первой строки — под шапкой списка, как в макетах 06) — inset-тенью,
+             а не border: граница съедала бы 1px из 70 и контент вставал на полупиксель -->
         <div
           v-for="room in activeRoomsPaging.items.value"
           :key="room.id"
-          class="border-default hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:px-[30px]"
+          class="hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 px-4 py-3 shadow-[inset_0_1px_0_var(--ui-border)] sm:px-[30px]"
         >
           <RouterLink
             :to="{ name: 'room', params: { id: room.id } }"
@@ -176,11 +177,12 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
         </p>
         <div>
           <!-- Строка списка — 70px, одна на комнаты и состав (в макете 70/68, унифицировано);
-             граница сверху и у первой строки — линия под шапкой списка, как в макетах 06 -->
+             линия сверху (и у первой строки — под шапкой списка, как в макетах 06) — inset-тенью,
+             а не border: граница съедала бы 1px из 70 и контент вставал на полупиксель -->
           <div
             v-for="room in archiveTabPaging.items.value"
             :key="room.id"
-            class="border-default hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:px-[30px]"
+            class="hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 px-4 py-3 shadow-[inset_0_1px_0_var(--ui-border)] sm:px-[30px]"
           >
             <RouterLink
               :to="{ name: 'room', params: { id: room.id } }"

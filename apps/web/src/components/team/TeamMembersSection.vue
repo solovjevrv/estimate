@@ -71,11 +71,12 @@ function menuItems(member: TeamMember): DropdownMenuItem[][] {
     </div>
     <div>
       <!-- Строка списка — 70px, одна на комнаты и состав (в макете 70/68, унифицировано);
-           граница сверху и у первой строки — линия под шапкой списка, как в макетах 06 -->
+           линия сверху (и у первой строки — под шапкой списка, как в макетах 06) — inset-тенью,
+             а не border: граница съедала бы 1px из 70 и контент вставал на полупиксель -->
       <div
         v-for="member in membersPaging.items.value"
         :key="member.userId"
-        class="border-default hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:px-[30px]"
+        class="hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 px-4 py-3 shadow-[inset_0_1px_0_var(--ui-border)] sm:px-[30px]"
       >
         <RouterLink
           :to="{ name: 'team-member', params: { id: teamId, userId: member.userId } }"

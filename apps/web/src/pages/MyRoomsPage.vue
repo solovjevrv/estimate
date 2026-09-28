@@ -293,7 +293,7 @@ async function confirmDelete(): Promise<void> {
 
     <div v-else-if="loading" class="space-y-8">
       <div class="grid gap-4 sm:grid-cols-3">
-        <div v-for="i in 3" :key="i" class="surface-card shadow-elevation-3 px-6 py-[22px]">
+        <div v-for="i in 3" :key="i" class="surface-card shadow-elevation-2 px-6 py-[22px]">
           <USkeleton class="mb-2 h-3 w-1/2" />
           <USkeleton class="h-8 w-1/3" />
         </div>
@@ -315,7 +315,7 @@ async function confirmDelete(): Promise<void> {
         <div
           v-for="stat in stats"
           :key="stat.label"
-          class="surface-card shadow-elevation-3 px-6 py-[22px]"
+          class="surface-card shadow-elevation-2 px-6 py-[22px]"
         >
           <div
             class="text-text-secondary mb-2 text-[10px] leading-3 font-bold tracking-[0.03em] uppercase"

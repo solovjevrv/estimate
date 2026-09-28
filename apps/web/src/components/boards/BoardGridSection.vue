@@ -89,7 +89,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
           class="cursor-pointer rounded-full px-4 py-1.5 text-xs leading-[18px] font-bold transition-colors"
           :class="
             boardsTab === tab.key
-              ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)]'
+              ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)] ring-1 ring-[var(--border-strong)] ring-inset'
               : 'text-text-secondary hover:text-text-primary'
           "
           @click="emit('selectTab', tab.key)"

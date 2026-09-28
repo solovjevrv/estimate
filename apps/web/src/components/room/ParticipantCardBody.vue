@@ -111,7 +111,7 @@ function onBadgeClick(emoji: EmojiSequence): void {
           :class="
             props.isWinner
               ? 'bg-surface-brand-low shadow-[inset_0_0_0_2px_var(--border-brand),var(--shadow-elevation-1)]'
-              : 'bg-surface-secondary shadow-elevation-1'
+              : 'bg-surface-secondary shadow-elevation-2'
           "
         >
           <span
@@ -151,7 +151,7 @@ function onBadgeClick(emoji: EmojiSequence): void {
           :aria-label="
             t('room.reactionBadgeLabel', { emoji: reaction.emoji, count: reaction.count })
           "
-          class="text-text-secondary hover:bg-surface-hover bg-surface-block border-border-strong shadow-elevation-1 flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1"
+          class="text-text-secondary hover:bg-surface-hover bg-surface-block border-border-strong shadow-elevation-2 flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-1"
           :class="
             reaction.reactedByMe
               ? 'border-border-brand shadow-[inset_0_0_0_1px_var(--border-brand)]'
@@ -183,7 +183,7 @@ function onBadgeClick(emoji: EmojiSequence): void {
       <UPopover :content="{ side: 'top' }">
         <button
           type="button"
-          class="bg-surface-block shadow-elevation-1 hover:bg-surface-hover absolute -top-2 -right-2 flex size-7 cursor-pointer items-center justify-center rounded-full"
+          class="bg-surface-block shadow-elevation-2 hover:bg-surface-hover absolute -top-2 -right-2 flex size-7 cursor-pointer items-center justify-center rounded-full"
           :aria-label="t('room.reactionTriggerLabel', { name: participant.name })"
           @click.stop
         >

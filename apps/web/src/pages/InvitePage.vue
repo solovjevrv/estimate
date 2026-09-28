@@ -77,7 +77,7 @@ async function act(): Promise<void> {
   <section class="mx-auto w-full max-w-[440px] space-y-6 md:mt-10">
     <div
       v-if="loading"
-      class="surface-card shadow-elevation-3 space-y-4 rounded-r24 p-8 text-center"
+      class="surface-card shadow-elevation-2 space-y-4 rounded-r24 p-8 text-center"
     >
       <USkeleton class="mx-auto size-8 rounded-full" />
       <USkeleton class="mx-auto h-5 w-2/3 rounded-r12" />
@@ -101,7 +101,7 @@ async function act(): Promise<void> {
 
     <div
       v-else
-      class="surface-card shadow-elevation-3 flex flex-col gap-4 rounded-r24 p-8 text-center"
+      class="surface-card shadow-elevation-2 flex flex-col gap-4 rounded-r24 p-8 text-center"
     >
       <div
         class="font-heading mx-auto flex size-[60px] items-center justify-center rounded-r20 text-xl font-bold"

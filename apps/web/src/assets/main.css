@@ -173,7 +173,7 @@ h6,
   /* Карточки-секции комнаты (07_Room): r28 и elevation/3, а не elevation/1 плашек */
   .surface-card-lg {
     border-radius: 1.75rem;
-    box-shadow: var(--shadow-elevation-3);
+    box-shadow: var(--shadow-elevation-2);
   }
 
   .surface-card-hover {
