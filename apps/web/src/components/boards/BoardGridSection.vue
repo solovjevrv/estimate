@@ -110,7 +110,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
       :description="errorMessage"
       :actions="[
         {
-          label: t('common.refresh'),
+          label: t('common.retry'),
           color: 'error',
           variant: 'outline',
           size: 'sm',

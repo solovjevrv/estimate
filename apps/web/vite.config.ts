@@ -371,7 +371,9 @@ export default defineConfig({
             body: 'p-6 pt-4 sm:p-6 sm:pt-4',
             footer: 'p-6 pt-4 sm:p-6 sm:pt-4 justify-end gap-2.5',
             // Title row 32px (по кнопке закрытия), до описания 12px — 27_Modal
-            title: 'font-heading text-xl leading-8 font-bold text-text-primary',
+            // Title row в ките: заголовок 20/28 по центру строки 32 (высота крестика), gap 12,
+            // крестик 36 (у Nuxt UI абсолютный — отсюда pe-12); длинный переносится с шагом 28
+            title: 'font-heading text-xl leading-7 py-0.5 font-bold text-text-primary pe-12',
             description: 'mt-3 text-sm font-medium text-text-secondary',
           },
           // surface-overlay: black/40 в Light, black/60 в Dark. Цвет у Nuxt UI задан в
@@ -403,8 +405,11 @@ export default defineConfig({
             group: 'p-1.5 flex flex-col gap-0.5',
             // Разделитель — на всю ширину меню, border-medium (Divider в ките)
             separator: 'mx-0 my-px bg-border-medium',
-            item: 'text-text-primary data-disabled:opacity-100 data-disabled:text-text-disabled',
+            // Отмеченный пункт (checkbox, напр. роль) — как Selected в Select (07_Select):
+            // text-brand и галочка icons-brand; у MenuItem кита своего состояния нет
+            item: 'text-text-primary data-disabled:opacity-100 data-disabled:text-text-disabled data-[state=checked]:text-text-brand',
             itemLeadingIcon: 'text-icons-primary group-data-disabled:text-icons-disabled',
+            itemTrailingIcon: 'group-data-[state=checked]:text-icons-brand',
           },
           // MenuItem Tone=Danger: text-error, Hover — surface-danger-hover (не error/10)
           compoundVariants: [

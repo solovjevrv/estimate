@@ -475,7 +475,7 @@ describe('управление составом', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
 
     await clickTeamMenuItem('Удалить команду');
-    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Удалить команду?'));
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Удалить команду «Команда А»?'));
     dialogButton('Удалить')!.click();
 
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('teams'));
@@ -694,7 +694,7 @@ describe('создание комнаты команды', () => {
       }),
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('В команде пока нет комнат'));
-    expect(wrapper.text()).not.toContain('Новая комната');
+    expect(wrapper.text()).not.toContain('Создать комнату');
   });
 
   it('администратор создаёт комнату от лица команды и переходит в неё', async () => {
@@ -710,7 +710,7 @@ describe('создание комнаты команды', () => {
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('В команде пока нет комнат'));
 
-    await byText(wrapper, 'button', 'Новая комната')!.trigger('click');
+    await byText(wrapper, 'button', 'Создать комнату')!.trigger('click');
     await vi.waitFor(() => expect(dialog()?.textContent).toContain('Новая комната'));
 
     const input = dialog()!.querySelector('input') as HTMLInputElement;

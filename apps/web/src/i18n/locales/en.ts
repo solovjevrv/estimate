@@ -8,6 +8,7 @@ export default {
     nameRequired: 'Enter a name',
     nameTooLong: 'Name is too long (maximum {max})',
     refresh: 'Refresh',
+    retry: 'Retry',
   },
   nav: {
     home: 'Home',
@@ -118,8 +119,9 @@ export default {
     renamed: 'Name updated',
     renameError: 'Could not rename the team',
     deleteTeam: 'Delete team',
-    deleteConfirmTitle: 'Delete team?',
-    deleteConfirmText: 'The team and its members will be permanently deleted.',
+    deleteConfirmTitle: 'Delete team “{name}”?',
+    deleteConfirmText:
+      'Members will be removed. Rooms and boards will stay but will no longer belong to the team.',
     deleteConfirm: 'Delete',
     deleted: 'Team deleted',
     deleteError: 'Could not delete the team',

@@ -8,6 +8,7 @@ export default {
     nameRequired: 'Введите название',
     nameTooLong: 'Слишком длинное название (максимум {max})',
     refresh: 'Обновить',
+    retry: 'Повторить',
   },
   nav: {
     home: 'Главная',
@@ -119,8 +120,9 @@ export default {
     renamed: 'Название обновлено',
     renameError: 'Не удалось переименовать команду',
     deleteTeam: 'Удалить команду',
-    deleteConfirmTitle: 'Удалить команду?',
-    deleteConfirmText: 'Команда и её состав будут удалены безвозвратно.',
+    deleteConfirmTitle: 'Удалить команду «{name}»?',
+    deleteConfirmText:
+      'Участники будут исключены. Комнаты и доски останутся, но перестанут принадлежать команде.',
     deleteConfirm: 'Удалить',
     deleted: 'Команда удалена',
     deleteError: 'Не удалось удалить команду',

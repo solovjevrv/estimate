@@ -538,15 +538,14 @@ async function confirmDelete(): Promise<void> {
     />
 
     <div v-else-if="loading" class="space-y-5">
-      <USkeleton class="h-9 w-1/3" />
-      <div class="surface-card space-y-4 px-4 py-5 sm:px-[30px] sm:py-[26px]">
-        <USkeleton class="h-5 w-1/4" />
+      <!-- 06_Rooms «Загрузка»: заголовок 280×36, одна карточка (паддинг 32, gap 16):
+           полоса 295×20 и три строки по 56 -->
+      <USkeleton class="h-9 w-full max-w-[280px] rounded-r12" />
+      <div class="surface-card space-y-4 p-6 sm:p-8">
+        <USkeleton class="h-5 w-full max-w-[295px] rounded-r12" />
         <USkeleton class="h-14 w-full rounded-r12" />
         <USkeleton class="h-14 w-full rounded-r12" />
-      </div>
-      <div class="surface-card space-y-4 px-4 py-5 sm:px-[30px] sm:py-[26px]">
-        <USkeleton class="h-5 w-1/4" />
-        <USkeleton class="h-10 w-full rounded-r12" />
+        <USkeleton class="h-14 w-full rounded-r12" />
       </div>
     </div>
 
@@ -780,7 +779,7 @@ async function confirmDelete(): Promise<void> {
 
     <ConfirmModal
       v-model:open="deleteOpen"
-      :title="t('team.deleteConfirmTitle')"
+      :title="t('team.deleteConfirmTitle', { name: overview?.team.name ?? '' })"
       :description="t('team.deleteConfirmText')"
       :confirm-label="t('team.deleteConfirm')"
       :loading="deleting"

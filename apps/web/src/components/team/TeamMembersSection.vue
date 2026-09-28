@@ -70,11 +70,12 @@ function menuItems(member: TeamMember): DropdownMenuItem[][] {
       </UButton>
     </div>
     <div>
-      <!-- Строка списка — 70px, одна на комнаты и состав (в макете 70/68, унифицировано) -->
+      <!-- Строка списка — 70px, одна на комнаты и состав (в макете 70/68, унифицировано);
+           граница сверху и у первой строки — линия под шапкой списка, как в макетах 06 -->
       <div
         v-for="member in membersPaging.items.value"
         :key="member.userId"
-        class="border-default hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-t px-4 py-3 first:border-t-0 sm:px-[30px]"
+        class="border-default hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:px-[30px]"
       >
         <RouterLink
           :to="{ name: 'team-member', params: { id: teamId, userId: member.userId } }"

@@ -102,7 +102,7 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
       :description="errorMessage"
       :actions="[
         {
-          label: t('common.refresh'),
+          label: t('common.retry'),
           color: 'error',
           variant: 'outline',
           size: 'sm',
@@ -111,15 +111,19 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
       ]"
     />
     <template v-else-if="roomsTab === 'active'">
-      <p v-if="activeRoomsPaging.total.value === 0" class="text-muted pb-5 text-sm">
+      <p
+        v-if="activeRoomsPaging.total.value === 0"
+        class="text-text-secondary px-8 pb-8 text-xs font-medium"
+      >
         {{ emptyActiveMessage }}
       </p>
       <div>
-        <!-- Строка списка — 70px, одна на комнаты и состав (в макете 70/68, унифицировано) -->
+        <!-- Строка списка — 70px, одна на комнаты и состав (в макете 70/68, унифицировано);
+             граница сверху и у первой строки — линия под шапкой списка, как в макетах 06 -->
         <div
           v-for="room in activeRoomsPaging.items.value"
           :key="room.id"
-          class="border-default hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-t px-4 py-3 first:border-t-0 sm:px-[30px]"
+          class="border-default hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:px-[30px]"
         >
           <RouterLink
             :to="{ name: 'room', params: { id: room.id } }"
@@ -164,15 +168,19 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
         <UIcon name="i-lucide-loader-circle" class="size-5 animate-spin" />
       </div>
       <template v-else>
-        <p v-if="archiveTabPaging.total.value === 0" class="text-muted pb-5 text-sm">
+        <p
+          v-if="archiveTabPaging.total.value === 0"
+          class="text-text-secondary px-8 pb-8 text-xs font-medium"
+        >
           {{ emptyArchiveMessage }}
         </p>
         <div>
-          <!-- Строка списка — 70px, одна на комнаты и состав (в макете 70/68, унифицировано) -->
+          <!-- Строка списка — 70px, одна на комнаты и состав (в макете 70/68, унифицировано);
+             граница сверху и у первой строки — линия под шапкой списка, как в макетах 06 -->
           <div
             v-for="room in archiveTabPaging.items.value"
             :key="room.id"
-            class="border-default hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-t px-4 py-3 first:border-t-0 sm:px-[30px]"
+            class="border-default hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-t px-4 py-3 sm:px-[30px]"
           >
             <RouterLink
               :to="{ name: 'room', params: { id: room.id } }"
@@ -184,10 +192,10 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
               <span v-if="teamTagFor?.(room)" class="badge-pill badge-pill-neutral">
                 {{ teamTagFor(room) }}
               </span>
+              <span class="badge-pill badge-pill-neutral">{{ closedBadgeLabel }}</span>
               <span class="text-text-secondary text-xs font-medium">{{
                 formatDate(room.createdAt)
               }}</span>
-              <span class="badge-pill badge-pill-neutral">{{ closedBadgeLabel }}</span>
               <UDropdownMenu v-if="canManageRoom(room)" :items="archivedMenuItems(room)">
                 <UButton
                   icon="i-lucide-ellipsis-vertical"

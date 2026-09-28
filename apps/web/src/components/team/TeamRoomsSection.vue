@@ -57,7 +57,7 @@ function canManageRoom(room: Room): boolean {
   >
     <template #actions>
       <UButton v-if="canManageTeam" icon="i-lucide-plus" @click="emit('create')">
-        {{ t('room.newRoom') }}
+        {{ t('room.create') }}
       </UButton>
     </template>
   </RoomListSection>
