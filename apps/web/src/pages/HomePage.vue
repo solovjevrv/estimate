@@ -72,7 +72,7 @@ async function onSubmit(name: string): Promise<void> {
           {{ t('home.eyebrow') }}
         </span>
         <h1
-          class="font-heading text-text-primary max-w-[667px] text-[32px] leading-[40px] font-bold tracking-[-0.03em] text-balance sm:text-[48px] sm:leading-[52px]"
+          class="font-heading text-text-primary max-w-[667px] text-[32px] leading-[40px] font-bold tracking-[-0.03em] text-balance sm:text-[48px] sm:whitespace-pre-line sm:leading-[52px]"
         >
           {{ t('home.headline') }}
         </h1>
@@ -100,7 +100,7 @@ async function onSubmit(name: string): Promise<void> {
           <div v-for="bullet in bullets" :key="bullet.label" class="flex items-center gap-2">
             <span class="size-2 shrink-0 rounded-full" :class="bullet.dotClass" />
             <span
-              class="text-text-secondary max-w-[10rem] text-sm leading-5 font-medium tracking-[-0.01em]"
+              class="text-text-secondary text-sm leading-5 font-medium tracking-[-0.01em] whitespace-pre-line"
               >{{ bullet.label }}</span
             >
           </div>
@@ -127,7 +127,7 @@ async function onSubmit(name: string): Promise<void> {
       <div
         v-for="card in cards"
         :key="card.title"
-        class="bg-surface-block shadow-elevation-3 flex min-h-[214px] flex-col gap-3 rounded-r24 p-7"
+        class="bg-surface-block shadow-elevation-3 flex min-h-[214px] flex-col gap-3 rounded-r24 p-8"
       >
         <div class="bg-surface-brand flex size-11 items-center justify-center rounded-r12">
           <UIcon :name="card.icon" class="text-icons-on-brand size-5.5" />

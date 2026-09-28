@@ -181,11 +181,14 @@ export default defineConfig({
               lg: { base: 'px-4 py-3 text-base gap-2 rounded-r12' },
             },
           },
-          compoundVariants: buttonColors.map(([color, variant, cls]) => ({
-            color,
-            variant,
-            class: cls,
-          })),
+          // Иконочная кнопка (square) в ките — те же паддинги, что у текстовой того же
+          // размера (Md — 44×40, Sm — 36×32), а не квадрат Nuxt UI с p-1/p-1.5/p-2
+          compoundVariants: [
+            ...buttonColors.map(([color, variant, cls]) => ({ color, variant, class: cls })),
+            { size: 'sm' as const, square: true, class: 'px-2.5 py-2' },
+            { size: 'md' as const, square: true, class: 'px-3 py-2.5' },
+            { size: 'lg' as const, square: true, class: 'px-4 py-3' },
+          ],
         },
         // Высоты — по факту Container (counterAxisSizingMode: FIXED) компонента
         // Input в Figma: 34/40/48, не по формуле padding+line-height (не сходится

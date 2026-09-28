@@ -215,7 +215,7 @@ async function logout(): Promise<void> {
                   size="md"
                   class="size-10"
                   :class="teamAvatarColor(session.user?.id ?? '')"
-                  :ui="{ fallback: 'text-[15px]' }"
+                  :ui="{ fallback: 'text-[15px] uppercase' }"
                 />
                 <UIcon name="i-lucide-chevron-down" class="text-icons-secondary size-4" />
               </button>
@@ -230,7 +230,7 @@ async function logout(): Promise<void> {
         :class="
           route.meta.fullBleedCanvas
             ? 'flex min-h-0 flex-col overflow-hidden'
-            : 'mx-auto max-w-[73.75rem] px-4 py-8 md:py-14'
+            : 'mx-auto max-w-[calc(73.75rem+2rem)] px-4 py-8 md:py-14'
         "
       >
         <RouterView />
@@ -242,7 +242,7 @@ async function logout(): Promise<void> {
         style="background-color: var(--brand-surface)"
       >
         <div
-          class="text-muted mx-auto flex w-full max-w-[73.75rem] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-6 text-[13px]"
+          class="text-muted mx-auto flex w-full max-w-[calc(73.75rem+2rem)] flex-wrap items-center justify-between gap-x-6 gap-y-2 px-4 py-6 text-[13px]"
         >
           <span>{{ t('footer.copyright', { year: currentYear }) }}</span>
           <div class="flex flex-wrap items-center gap-x-6 gap-y-2">

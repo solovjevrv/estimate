@@ -57,7 +57,7 @@ describe('каркас приложения', () => {
     const wrapper = await mountApp('/');
 
     await vi.waitFor(() =>
-      expect(wrapper.text()).toContain('Оценка спринта, которая проходит быстро и без спора'),
+      expect(wrapper.text()).toContain('Оценка спринта,\nкоторая проходит\nбыстро и без спора'),
     );
     expect(wrapper.text()).toContain('Голосуйте картами');
   });
