@@ -23,9 +23,9 @@ test('вступление в команду по инвайт-ссылке и �
 
   // На пустом списке команд одновременно видны кнопка в шапке и кнопка пустого
   // состояния с тем же текстом — берём первую (шапка)
-  await ownerPage.getByRole('button', { name: 'Создать команду' }).first().click();
+  await ownerPage.getByRole('button', { name: 'Новая команда' }).first().click();
   const teamName = `${E2E_ROOM_PREFIX}Team ${randomUUID().slice(0, 8)}`;
-  await ownerPage.getByPlaceholder('Например, Команда фронтенда').fill(teamName);
+  await ownerPage.getByPlaceholder('Например, Гарантии').fill(teamName);
   await ownerPage.locator('form').getByRole('button', { name: 'Создать', exact: true }).click();
   await ownerPage.waitForURL(/\/teams\/[0-9a-f-]{36}/);
   await expect(ownerPage.getByRole('heading', { name: teamName })).toBeVisible();
@@ -60,7 +60,8 @@ test('вступление в команду по инвайт-ссылке и �
   // Состав команды — обычный REST, не WS-рассылка, поэтому владельцу нужна перезагрузка
   await ownerPage.reload();
   await ownerPage.getByRole('button', { name: 'Состав' }).click();
-  const memberRow = ownerPage.locator('.border-default').filter({ hasText: member.name });
+  // Строка состава — родитель ссылки с именем участника (привязка к разметке, не к стилям)
+  const memberRow = ownerPage.getByRole('link', { name: member.name }).locator('xpath=..');
   await memberRow.getByRole('button', { name: 'Действия с участником' }).click();
   await ownerPage.getByRole('menuitem', { name: 'Изменить роль' }).click();
   await ownerPage.getByRole('menuitemcheckbox', { name: 'Администратор' }).click();

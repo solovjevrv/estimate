@@ -52,6 +52,8 @@ export const boardResponse = {
     createdAt: { type: 'string' },
     updatedAt: { type: 'string' },
     shareRole: { type: ['string', 'null'], enum: [...BOARD_SHARE_ROLES, null] },
+    thumbnailUrl: { type: ['string', 'null'] },
+    thumbnailRevision: { type: ['integer', 'null'] },
   },
 } as const;
 

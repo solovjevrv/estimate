@@ -31,7 +31,7 @@ test.describe('Доски: форматирование текста', () => {
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}Format ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
@@ -129,7 +129,7 @@ test.describe('Доски: форматирование текста', () => {
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}FormatFocus ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
@@ -232,7 +232,7 @@ test.describe('Доски: форматирование текста', () => {
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}FormatDup ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
@@ -271,7 +271,7 @@ test.describe('Доски: форматирование текста', () => {
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}Clickaway ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();

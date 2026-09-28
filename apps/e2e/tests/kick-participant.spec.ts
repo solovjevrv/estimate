@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
+import { expectVoted, joinAsGuest, stat } from '../src/room-helpers';
 
 /**
  * Регрессионный набор: исключение участника скрам-мастером (5.8), в том числе
@@ -31,8 +32,7 @@ test('скрам-мастер исключает проголосовавшег�
   const guestPage = await guestContext.newPage();
   await guestPage.goto(roomUrl);
   const guestName = 'Гость Кик';
-  await guestPage.getByPlaceholder('Например, Мария').fill(guestName);
-  await guestPage.getByRole('button', { name: 'Войти в комнату' }).click();
+  await joinAsGuest(guestPage, guestName);
   await expect(ownerPage.getByText('Участники')).toBeVisible();
 
   await ownerPage.getByRole('button', { name: 'Начать раунд' }).click();
@@ -40,7 +40,7 @@ test('скрам-мастер исключает проголосовавшег�
 
   await guestPage.getByRole('button', { name: '8', exact: true }).click();
   await ownerPage.getByRole('button', { name: '5', exact: true }).click();
-  await expect(ownerPage.getByText('Проголосовало: 2 из 2')).toBeVisible();
+  await expectVoted(ownerPage, 2, 2);
 
   // Скрам-мастер открывает меню действий на карточке гостя и исключает его
   await ownerPage.getByRole('button', { name: `Действия с участником ${guestName}` }).click();
@@ -55,13 +55,13 @@ test('скрам-мастер исключает проголосовавшег�
       .getByText(`${guestName} исключён из комнаты`),
   ).toBeVisible();
   await expect(guestPage.getByText('Скрам-мастер исключил вас из этой комнаты.')).toBeVisible();
-  await expect(guestPage.getByRole('button', { name: 'Войти снова' })).toBeVisible();
+  await expect(guestPage.getByRole('link', { name: 'К комнатам' })).toBeVisible();
 
   // Остался один участник (владелец), он уже проголосовал — вскрытие идёт без запроса подтверждения
   await ownerPage.getByRole('button', { name: 'Вскрыть карты' }).click();
   await expect(ownerPage.getByText('Результаты раунда')).toBeVisible();
-  await expect(ownerPage.getByText('Мин: 5')).toBeVisible();
-  await expect(ownerPage.getByText('Макс: 8')).toBeVisible();
+  await expect(stat(ownerPage, 'Мин', '5')).toBeVisible();
+  await expect(stat(ownerPage, 'Макс', '8')).toBeVisible();
   await expect(ownerPage.getByText('Проголосовали и вышли')).toBeVisible();
   await expect(ownerPage.getByText(`${guestName}: 8`)).toBeVisible();
 });

@@ -33,7 +33,7 @@ test.describe('Доски: snap-направляющие при перетаск
     const board = boardLocators(page);
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     await page
       .getByPlaceholder('Например, Ретро спринта 24')
       .fill(`${E2E_ROOM_PREFIX}Snap ${randomUUID().slice(0, 8)}`);

@@ -216,9 +216,6 @@ export class RoomsGameService {
       if (payload.roundId != null && payload.roundId !== round.id) {
         throw new ConflictError('Раунд уже сменился, посмотрите новую задачу');
       }
-      if (round.status !== 'voting') {
-        throw new ConflictError('Карты уже вскрыты, дождитесь нового раунда');
-      }
       assertVoteValue(round, value);
 
       try {
@@ -229,6 +226,17 @@ export class RoomsGameService {
         }
       } catch (err) {
         rethrowVoteFailure(err);
+      }
+
+      // Доголосовать/переголосовать можно и после вскрытия, пока не начат новый
+      // раунд (20.3.6, по макету «07_Room») — средний балл уже показанного
+      // результата пересчитываем сразу же, а не ждём следующего снимка,
+      // `min`/`max`/`agreement` и так считаются живьём из голосов при каждом
+      // снимке (см. getSnapshot ниже).
+      if (round.status === 'revealed') {
+        const votes = await repo.listVotes(round.id);
+        const result = summarizeRound(votes, round.deckType);
+        await repo.updateRoundAverage(round.id, result.average);
       }
       await repo.bumpRevision(roomId);
     });

@@ -32,7 +32,7 @@ test.describe('Доски: фреймы и группы', () => {
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}Frame ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
@@ -67,7 +67,7 @@ test.describe('Доски: фреймы и группы', () => {
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}Group ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
@@ -115,7 +115,7 @@ test.describe('Доски: фреймы и группы', () => {
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}FrameMini ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
@@ -187,7 +187,7 @@ test.describe('Доски: фреймы и группы', () => {
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}GroupGuard ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
@@ -219,7 +219,7 @@ test.describe('Доски: фреймы и группы', () => {
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}FrameOrphan ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
@@ -266,7 +266,7 @@ test.describe('Доски: фреймы и группы', () => {
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}GroupRigid ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
@@ -329,7 +329,7 @@ test.describe('Доски: фреймы и группы', () => {
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}UngroupCleanup ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
@@ -376,7 +376,7 @@ test.describe('Доски: фреймы и группы', () => {
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}GroupInFrame ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
@@ -483,7 +483,7 @@ test.describe('Доски: фреймы и группы', () => {
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}MultiCtxMenu ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
@@ -532,7 +532,7 @@ test.describe('Доски: фреймы и группы', () => {
     }
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}CopyFrame ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
@@ -591,7 +591,7 @@ test.describe('Доски: фреймы и группы', () => {
     }
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}CopyGroup ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();

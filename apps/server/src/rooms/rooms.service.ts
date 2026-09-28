@@ -1,6 +1,7 @@
 import {
   ROOM_NAME_MAX_LENGTH,
   type Room,
+  type RoomDetails,
   type RoomStats,
   type RoundHistoryEntry,
 } from '@estimate/shared';
@@ -64,6 +65,18 @@ export class RoomsService {
       throw new NotFoundError('Комната не найдена');
     }
     return room;
+  }
+
+  /**
+   * Комната по ссылке с названием команды для шапки. Как и сама комната, открыта
+   * любому со ссылкой — название команды видит и гость (решение 28.09.2026).
+   */
+  async getRoomDetails(roomId: string): Promise<RoomDetails> {
+    const details = await this.repository.findRoomDetails(roomId);
+    if (!details) {
+      throw new NotFoundError('Комната не найдена');
+    }
+    return details;
   }
 
   async listTeamRooms(actorId: string, teamId: string, archived = false): Promise<Room[]> {

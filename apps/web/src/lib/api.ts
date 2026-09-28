@@ -54,13 +54,13 @@ async function toError(res: Response): Promise<ApiError> {
 
 async function send(path: string, init: RequestInit): Promise<Response> {
   // FormData сама выставляет content-type с boundary — навязанный application/json сломает разбор
-  const isFormData = init.body instanceof FormData;
+  const isBodyWithOwnContentType = init.body instanceof FormData || init.body instanceof Blob;
   return fetch(path, {
     ...init,
     // Сессия живёт в httpOnly-куках, поэтому их нужно слать всегда
     credentials: 'include',
     headers:
-      init.body === undefined || isFormData
+      init.body === undefined || isBodyWithOwnContentType
         ? init.headers
         : { 'content-type': 'application/json', ...init.headers },
   });
@@ -104,4 +104,6 @@ export const api = {
     }),
   delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
   upload: <T>(path: string, body: FormData) => request<T>(path, { method: 'POST', body }),
+  uploadBlob: <T>(path: string, body: Blob, contentType: string) =>
+    request<T>(path, { method: 'POST', body, headers: { 'content-type': contentType } }),
 };

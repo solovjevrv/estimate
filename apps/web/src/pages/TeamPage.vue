@@ -41,6 +41,7 @@ import { useSessionStore } from '../stores/session';
 import { useTeamBoardsStore } from '../stores/team-boards';
 import { useTeamRoomsStore } from '../stores/team-rooms';
 import { useTeamsStore } from '../stores/teams';
+import { useCreationTeams, type CreationTeam } from '../composables/use-creation-teams';
 
 const props = defineProps<{ id: string }>();
 
@@ -111,8 +112,10 @@ const archiveTabRooms = computed(() =>
 const activeRoomsPaging = usePagedList(computed(() => teamRooms.active));
 const archiveTabPaging = usePagedList(archiveTabRooms);
 
-const activeBoardsPaging = usePagedList(computed(() => teamBoards.active));
-const archiveBoardsPaging = usePagedList(computed(() => teamBoards.archived));
+// Сетка досок трёхколоночная: две полные строки (6 карточек) на страницу
+const pagedBoards = <T,>(pick: () => T[]) => usePagedList(computed(pick), 6);
+const activeBoardsPaging = pagedBoards(() => teamBoards.active);
+const archiveBoardsPaging = pagedBoards(() => teamBoards.archived);
 
 /** Код приходит только администратору — по нему и показываем блок приглашения */
 const inviteUrl = computed(() =>
@@ -298,11 +301,37 @@ async function confirmArchiveRoom(): Promise<void> {
   await archiveRoom(target);
 }
 
-// --- Создание комнаты от лица команды ---
+// --- Создание комнаты: по умолчанию от лица этой команды, в окне можно выбрать
+// другую команду или личную (DS-063) ---
 const createRoomModal = useEntityModal();
+const roomTeams = useCreationTeams('admin');
+const boardTeams = useCreationTeams('member');
+
+/**
+ * Эта команда в выборе есть всегда, если в ней можно создавать, — даже когда общий
+ * список команд не загрузился: иначе окно открылось бы без выбора и молча создало
+ * личную комнату/доску вместо командной.
+ */
+function withCurrentTeam(options: CreationTeam[], allowed: boolean): CreationTeam[] {
+  const team = overview.value?.team;
+  if (!allowed || !team || options.some((option) => option.id === team.id)) return options;
+  return [{ id: team.id, name: team.name }, ...options];
+}
+const roomTeamOptions = computed(() =>
+  withCurrentTeam(roomTeams.options.value, canManageTeam.value),
+);
+const boardTeamOptions = computed(() =>
+  withCurrentTeam(boardTeams.options.value, canCreateBoard.value),
+);
+
+/** Список команд страница сама не грузит — нужен окну создания для выбора команды */
+async function openCreateRoom(): Promise<void> {
+  await roomTeams.ensureLoaded();
+  createRoomModal.show();
+}
 
 const { pending: creatingRoom, execute: createTeamRoom } = useAsyncAction({
-  run: (name: string) => createRoomRequest(name, props.id),
+  run: (name: string, teamId: string | null) => createRoomRequest(name, teamId ?? undefined),
   success: async (room) => {
     createRoomModal.close();
     await router.push({ name: 'room', params: { id: room.id } });
@@ -312,15 +341,15 @@ const { pending: creatingRoom, execute: createTeamRoom } = useAsyncAction({
   },
 });
 
-async function onCreateRoom(name: string): Promise<void> {
-  await createTeamRoom(name);
+async function onCreateRoom(name: string, teamId: string | null): Promise<void> {
+  await createTeamRoom(name, teamId);
 }
 
 // --- Создание доски от лица команды ---
 const createBoardModal = useEntityModal();
 
 const { pending: creatingBoard, execute: createTeamBoard } = useAsyncAction({
-  run: (title: string) => createBoardRequest(title, props.id),
+  run: (title: string, teamId: string | null) => createBoardRequest(title, teamId ?? undefined),
   success: async (board) => {
     createBoardModal.close();
     await router.push({ name: 'board', params: { id: board.id } });
@@ -330,8 +359,13 @@ const { pending: creatingBoard, execute: createTeamBoard } = useAsyncAction({
   },
 });
 
-async function onCreateBoard(title: string): Promise<void> {
-  await createTeamBoard(title);
+async function openCreateBoard(): Promise<void> {
+  await boardTeams.ensureLoaded();
+  createBoardModal.show();
+}
+
+async function onCreateBoard(title: string, teamId: string | null): Promise<void> {
+  await createTeamBoard(title, teamId);
 }
 
 // --- Переименование/архивация/восстановление/удаление доски из списка
@@ -516,37 +550,45 @@ async function confirmDelete(): Promise<void> {
   <section class="space-y-5">
     <RouterLink
       :to="{ name: 'teams' }"
-      class="text-muted hover:text-default inline-flex w-fit items-center gap-1.5 text-xs font-bold"
+      class="text-text-secondary hover:text-text-primary inline-flex w-fit items-center gap-1.5 text-xs font-bold"
     >
       <UIcon name="i-lucide-chevron-left" class="size-4" />
       {{ t('team.back') }}
     </RouterLink>
 
-    <UAlert v-if="notFound" color="error" variant="subtle" :description="t('team.notFound')" />
+    <UAlert
+      v-if="notFound"
+      icon="i-lucide-circle-alert"
+      color="error"
+      variant="subtle"
+      :description="t('team.notFound')"
+    />
     <UAlert
       v-else-if="loadFailed"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       :description="t('team.loadError')"
     />
 
     <div v-else-if="loading" class="space-y-5">
-      <USkeleton class="h-9 w-1/3 bg-border-medium" />
-      <div class="surface-card space-y-4 px-4 py-5 sm:px-[30px] sm:py-[26px]">
-        <USkeleton class="h-5 w-1/4 bg-border-medium" />
-        <USkeleton class="h-14 w-full rounded-r12 bg-border-medium" />
-        <USkeleton class="h-14 w-full rounded-r12 bg-border-medium" />
-      </div>
-      <div class="surface-card space-y-4 px-4 py-5 sm:px-[30px] sm:py-[26px]">
-        <USkeleton class="h-5 w-1/4 bg-border-medium" />
-        <USkeleton class="h-10 w-full rounded-r12 bg-border-medium" />
+      <!-- 06_Rooms «Загрузка»: заголовок 280×36, одна карточка (паддинг 32, gap 16):
+           полоса 295×20 и три строки по 56 -->
+      <USkeleton class="h-9 w-full max-w-[280px] rounded-r12" />
+      <div class="surface-card space-y-4 p-6 sm:p-8">
+        <USkeleton class="h-5 w-full max-w-[295px] rounded-r12" />
+        <USkeleton class="h-14 w-full rounded-r12" />
+        <USkeleton class="h-14 w-full rounded-r12" />
+        <USkeleton class="h-14 w-full rounded-r12" />
       </div>
     </div>
 
     <template v-else-if="overview">
-      <div class="flex flex-wrap items-center justify-between gap-3.5">
-        <div class="flex min-w-0 flex-wrap items-center gap-3.5">
-          <h1 class="font-heading min-w-0 text-[32px] font-bold break-words">
+      <div class="flex flex-wrap items-center justify-between gap-4">
+        <div class="flex min-w-0 flex-wrap items-center gap-4">
+          <h1
+            class="font-heading text-text-primary min-w-0 text-[32px] leading-10 font-bold tracking-[-0.03em] break-words"
+          >
             {{ overview.team.name }}
           </h1>
           <span
@@ -584,7 +626,7 @@ async function confirmDelete(): Promise<void> {
         :room-archive="roomArchive"
         :format-date="formatDate"
         @select-tab="selectRoomsTab"
-        @create="createRoomModal.show"
+        @create="openCreateRoom"
         @rename="askRenameRoom"
         @archive="askArchiveRoom"
         @delete="askDeleteRoom"
@@ -602,7 +644,7 @@ async function confirmDelete(): Promise<void> {
         :board-archive="boardArchive"
         :format-date="formatDate"
         @select-tab="selectBoardsTab"
-        @create="createBoardModal.show"
+        @create="openCreateBoard"
         @rename="askRenameBoard"
         @archive="askArchiveBoard"
         @unarchive="unarchiveBoard"
@@ -737,6 +779,10 @@ async function confirmDelete(): Promise<void> {
       :cancel-label="t('common.cancel')"
       :submit-label="creatingRoom ? t('room.creating') : t('room.create')"
       :pending="creatingRoom"
+      :teams="roomTeamOptions"
+      :default-team-id="props.id"
+      :team-switch-label="t('room.teamSwitch')"
+      :personal-description="t('room.personalHint')"
       @submit="onCreateRoom"
     />
 
@@ -751,6 +797,10 @@ async function confirmDelete(): Promise<void> {
       :cancel-label="t('common.cancel')"
       :submit-label="creatingBoard ? t('board.creating') : t('board.create')"
       :pending="creatingBoard"
+      :teams="boardTeamOptions"
+      :default-team-id="props.id"
+      :team-switch-label="t('board.teamSwitch')"
+      :personal-description="t('board.personalHint')"
       @submit="onCreateBoard"
     />
 
@@ -771,7 +821,7 @@ async function confirmDelete(): Promise<void> {
 
     <ConfirmModal
       v-model:open="deleteOpen"
-      :title="t('team.deleteConfirmTitle')"
+      :title="t('team.deleteConfirmTitle', { name: overview?.team.name ?? '' })"
       :description="t('team.deleteConfirmText')"
       :confirm-label="t('team.deleteConfirm')"
       :loading="deleting"

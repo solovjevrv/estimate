@@ -1,5 +1,5 @@
 import ui from '@nuxt/ui/vue-plugin';
-import { mount } from '@vue/test-utils';
+import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
@@ -10,6 +10,16 @@ import { createAppRouter } from '../src/router';
 
 const REDIRECT_KEY = 'estimate:post-login-redirect';
 
+// Окно входа телепортируется в document.body — без размонтирования оно копилось бы
+// между тестами
+enableAutoUnmount(afterEach);
+
+function link(href: string): HTMLElement {
+  const el = document.body.querySelector<HTMLElement>(`a[href="${href}"]`);
+  if (!el) throw new Error(`нет ссылки ${href}`);
+  return el;
+}
+
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -17,22 +27,24 @@ function jsonResponse(status: number, body: unknown): Response {
   });
 }
 
-async function mountLogin(path: string) {
+async function mountLogin(path: string, expectOpen = true) {
   const pinia = createPinia();
   const router = createAppRouter(createMemoryHistory());
 
-  const wrapper = mount(App, {
+  mount(App, {
     global: { plugins: [pinia, router, createAppI18n('ru'), ui] },
     attachTo: document.body,
   });
 
   await router.push(path);
   await router.isReady();
-  await vi.waitFor(() => expect(wrapper.text()).toContain('Войти через Google'));
-  return { wrapper, router };
+  if (expectOpen) {
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Войти через Google'));
+  }
+  return { router };
 }
 
-describe('страница входа', () => {
+describe('окно входа', () => {
   beforeEach(() => {
     sessionStorage.clear();
     vi.stubGlobal(
@@ -53,28 +65,28 @@ describe('страница входа', () => {
   });
 
   it('перед уходом к провайдеру запоминает, куда пользователь шёл', async () => {
-    const { wrapper } = await mountLogin('/login?redirect=/teams');
+    await mountLogin('/login?redirect=/teams');
 
-    await wrapper.find('a[href="/api/auth/google"]').trigger('click');
+    link('/api/auth/google').click();
 
     expect(sessionStorage.getItem(REDIRECT_KEY)).toBe('/teams');
   });
 
   it('показывает прогресс на нажатой кнопке', async () => {
-    const { wrapper } = await mountLogin('/login');
+    await mountLogin('/login');
 
-    await wrapper.find('a[href="/api/auth/google"]').trigger('click');
+    link('/api/auth/google').click();
 
-    expect(wrapper.text()).toContain('Перенаправляем');
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Перенаправляем'));
   });
 
   it('вход через провайдера — внешняя ссылка, а не переход внутри приложения', async () => {
     // Кнопка ведёт на /api/auth/… — это адрес бэкенда, а не роут приложения.
     // Без пометки «внешняя» Nuxt UI перехватил бы клик как переход роутера и
     // увёл бы на страницу «не найдено» вместо полной загрузки и старта OAuth.
-    const { wrapper, router } = await mountLogin('/login');
+    const { router } = await mountLogin('/login');
 
-    await wrapper.find('a[href="/api/auth/yandex"]').trigger('click');
+    link('/api/auth/yandex').click();
 
     // Роутер остался на входе: клик не был перехвачен как внутренний переход,
     // значит браузер выполнит настоящую загрузку /api/auth/yandex и стартует OAuth
@@ -82,18 +94,41 @@ describe('страница входа', () => {
   });
 
   it('не запоминает внешний адрес возврата', async () => {
-    const { wrapper } = await mountLogin('/login?redirect=//evil.com');
+    await mountLogin('/login?redirect=//evil.com');
 
-    await wrapper.find('a[href="/api/auth/google"]').trigger('click');
+    link('/api/auth/google').click();
 
     expect(sessionStorage.getItem(REDIRECT_KEY)).toBeNull();
   });
 
   it('после неудачного входа показывает сообщение и чистит адрес', async () => {
-    const { wrapper, router } = await mountLogin('/login?error=oauth');
+    const { router } = await mountLogin('/login?error=oauth');
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Войти не удалось'));
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Войти не удалось'));
     // Сообщение осталось, но ?error из адреса убрали — перезагрузка его не повторит
     expect(router.currentRoute.value.query.error).toBeUndefined();
+  });
+
+  it('кнопка «Войти» в шапке открывает окно на месте и запоминает текущую страницу', async () => {
+    const { router } = await mountLogin('/invite/abc', false);
+
+    const loginButton = Array.from(document.body.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === 'Войти',
+    );
+    loginButton!.click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Войти через Google'));
+    // Страница под окном осталась прежней — без перехода на /login
+    expect(router.currentRoute.value.path).toBe('/invite/abc');
+
+    link('/api/auth/google').click();
+    expect(sessionStorage.getItem(REDIRECT_KEY)).toBe('/invite/abc');
+  });
+
+  it('закрытие окна на /login уводит на главную', async () => {
+    const { router } = await mountLogin('/login?redirect=/teams');
+
+    document.body.querySelector<HTMLElement>('[role="dialog"] [data-slot="close"]')!.click();
+
+    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('home'));
   });
 });

@@ -1,9 +1,12 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui';
 import type { TeamMember, TeamRole } from '@estimate/shared';
+import { computed, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
+import { usePagedList } from '../../composables/use-paged-list';
 import { roleBadgeColor, teamAvatarColor } from '../../lib/team-roles';
+import ListPagination from '../ListPagination.vue';
 
 const props = defineProps<{
   teamId: string;
@@ -21,6 +24,13 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+
+/** Состав по страницам, как списки комнат и досок — по 5 (05_Members, Pagination row) */
+const membersPaging = usePagedList(computed(() => props.members));
+watch(
+  () => props.teamId,
+  () => membersPaging.reset(),
+);
 
 /**
  * Действия скрыты за меню (05_Members): бейдж роли статичный, смена роли —
@@ -55,15 +65,18 @@ function menuItems(member: TeamMember): DropdownMenuItem[][] {
 <template>
   <div>
     <div v-if="canManageTeam" class="mb-5 flex justify-end">
-      <UButton icon="i-lucide-user-plus" @click="emit('invite')">
+      <UButton icon="i-lucide-plus" @click="emit('invite')">
         {{ t('team.invite') }}
       </UButton>
     </div>
     <div>
+      <!-- Строка списка — 70px, одна на комнаты и состав (в макете 70/68, унифицировано);
+           линия сверху (и у первой строки — под шапкой списка, как в макетах 06) — inset-тенью,
+             а не border: граница съедала бы 1px из 70 и контент вставал на полупиксель -->
       <div
-        v-for="member in members"
+        v-for="member in membersPaging.items.value"
         :key="member.userId"
-        class="border-default hover:bg-border-medium flex flex-wrap items-center justify-between gap-3 border-t px-4 py-4 first:border-t-0 sm:px-8"
+        class="hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 px-4 py-3 shadow-[inset_0_1px_0_var(--ui-border)] sm:px-[30px]"
       >
         <RouterLink
           :to="{ name: 'team-member', params: { id: teamId, userId: member.userId } }"
@@ -75,9 +88,11 @@ function menuItems(member: TeamMember): DropdownMenuItem[][] {
             size="xl"
             class="shrink-0"
             :class="teamAvatarColor(member.userId)"
-            :ui="{ fallback: 'font-heading text-sm font-bold text-white' }"
+            :ui="{ fallback: 'text-[15px]' }"
           />
-          <span class="min-w-0 truncate text-sm font-bold">{{ member.name }}</span>
+          <span class="text-text-primary min-w-0 truncate text-sm font-bold tracking-[-0.01em]">{{
+            member.name
+          }}</span>
         </RouterLink>
 
         <div class="ml-[52px] flex shrink-0 items-center gap-3 sm:ml-0">
@@ -108,5 +123,6 @@ function menuItems(member: TeamMember): DropdownMenuItem[][] {
         </div>
       </div>
     </div>
+    <ListPagination :paging="membersPaging" />
   </div>
 </template>

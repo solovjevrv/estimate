@@ -22,7 +22,7 @@ const emit = defineEmits<{ 'update:modelValue': [key: string] }>();
       {{ tab.label }}
       <span
         v-if="modelValue === tab.key"
-        class="bg-text-brand absolute inset-x-0 -bottom-px h-[3px]"
+        class="bg-border-brand absolute inset-x-0 -bottom-px h-[3px]"
       />
     </button>
   </div>

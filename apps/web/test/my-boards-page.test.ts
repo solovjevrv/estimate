@@ -35,6 +35,8 @@ const activeBoard: Board = {
   createdAt: '2026-08-06T00:00:00.000Z',
   updatedAt: '2026-08-06T00:00:00.000Z',
   shareRole: null,
+  thumbnailUrl: null,
+  thumbnailRevision: null,
 };
 
 type Handlers = Record<string, () => Response>;
@@ -83,7 +85,7 @@ describe('страница «Мои доски»', () => {
       makeFetch({ 'GET /api/boards?archived=false': () => json(200, { boards: [] }) }),
     );
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('У вас пока нет личных досок'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('У вас пока нет досок'));
   });
 
   it('показывает список личных досок со ссылкой', async () => {
@@ -99,6 +101,19 @@ describe('страница «Мои доски»', () => {
     expect(wrapper.text()).not.toContain('Командная');
   });
 
+  it('помечает личную доску плашкой «Личная»', async () => {
+    const { wrapper } = await mountApp(
+      makeFetch({
+        'GET /api/boards?archived=false': () =>
+          json(200, { boards: [{ ...activeBoard, title: 'Ретро', itemCount: 0 }] }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ретро'));
+    const tags = wrapper.findAll('span.rounded-full').map((tag) => tag.text());
+    expect(tags).toContain('Личная');
+  });
+
   it('помечает плашкой с именем команды доски, созданные от лица команды', async () => {
     const teamBoard: Board = { ...activeBoard, id: 'b2', teamId: 't1', title: 'Доска команды' };
     const { wrapper } = await mountApp(
@@ -112,6 +127,49 @@ describe('страница «Мои доски»', () => {
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Доска команды'));
     await vi.waitFor(() => expect(wrapper.text()).toContain('Платформа'));
+  });
+
+  it('создание доски: «Командная доска» по умолчанию, в выборе — только команды с правом (DS-063)', async () => {
+    const created: Board = { ...activeBoard, id: 'b9', teamId: 't1', title: 'Ретро' };
+    const fetchImpl = makeFetch({
+      'GET /api/boards?archived=false': () => json(200, { boards: [] }),
+      'GET /api/teams': () =>
+        json(200, {
+          teams: [
+            // Наблюдателю заводить доски команды нельзя — в выборе её нет
+            { id: 't2', name: 'Чужая', role: 'guest', memberCount: 5 },
+            { id: 't1', name: 'Платформа', role: 'member', memberCount: 3 },
+          ],
+        }),
+      'POST /api/boards': () => json(201, { board: created }),
+    });
+    const { wrapper } = await mountApp(fetchImpl);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Новая доска'));
+
+    const openButton = wrapper.findAll('button').find((b) => b.text().includes('Новая доска'));
+    await openButton!.trigger('click');
+    const dialog = () => document.body.querySelector('[role="dialog"]');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Командная доска'));
+    // Команда с правом одна — выбора нет, подпись показывает, куда попадёт доска
+    expect(dialog()!.textContent).toContain('Команда «Платформа»');
+
+    const input = dialog()!.querySelector('input') as HTMLInputElement;
+    input.value = 'Ретро';
+    input.dispatchEvent(new Event('input'));
+    Array.from(dialog()!.querySelectorAll('button'))
+      .find((b) => b.textContent?.trim() === 'Создать доску')!
+      .click();
+
+    await vi.waitFor(() => {
+      const call = fetchImpl.mock.calls.find(
+        ([url, init]) =>
+          url === '/api/boards' && (init as RequestInit | undefined)?.method === 'POST',
+      );
+      expect(call && JSON.parse((call[1] as RequestInit).body as string)).toEqual({
+        title: 'Ретро',
+        teamId: 't1',
+      });
+    });
   });
 
   it('ошибка загрузки показывает сообщение', async () => {

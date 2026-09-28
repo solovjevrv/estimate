@@ -20,8 +20,10 @@ import {
   renameBoard as renameBoardRequest,
   unarchiveBoard as unarchiveBoardRequest,
 } from '../features/boards/api/boards-api';
+import { useBoardThumbnailQueue } from '../features/boards/composables/use-board-thumbnail-queue';
 import { useSessionStore } from '../stores/session';
 import { useTeamsStore } from '../stores/teams';
+import { useCreationTeams } from '../composables/use-creation-teams';
 
 const { t, locale } = useI18n();
 const router = useRouter();
@@ -47,8 +49,10 @@ function canManageBoard(board: BoardSummary): boolean {
   return !!role && hasTeamRole(role, 'admin');
 }
 
+/** В общем списке у каждой карточки плашка: имя команды или «Личная» */
 function teamTagFor(board: BoardSummary): string | null {
-  return board.teamId ? (teamNameById.value.get(board.teamId) ?? null) : null;
+  if (!board.teamId) return t('board.personalTag');
+  return teamNameById.value.get(board.teamId) ?? null;
 }
 
 function formatDate(iso: string): string {
@@ -61,13 +65,30 @@ const boardsTab = ref<'active' | 'archive'>('active');
 const activeBoards = computed(() =>
   [...list.value].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 );
-const activeBoardsPaging = usePagedList(activeBoards);
+// Сетка досок трёхколоночная: две полные строки на страницу.
+const activeBoardsPaging = usePagedList(activeBoards, 6);
 
 const archived = ref<BoardSummary[]>([]);
 const archivedSorted = computed(() =>
   [...archived.value].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 );
-const archiveBoardsPaging = usePagedList(archivedSorted);
+const archiveBoardsPaging = usePagedList(archivedSorted, 6);
+const visibleBoards = computed(() =>
+  boardsTab.value === 'active' ? activeBoardsPaging.items.value : archiveBoardsPaging.items.value,
+);
+
+function applyThumbnail(boardId: string, revision: number, thumbnailUrl: string): void {
+  const apply = (boards: BoardSummary[]) =>
+    boards.map((board) =>
+      board.id === boardId && board.revision === revision
+        ? { ...board, thumbnailUrl, thumbnailRevision: revision }
+        : board,
+    );
+  list.value = apply(list.value);
+  archived.value = apply(archived.value);
+}
+
+useBoardThumbnailQueue(visibleBoards, applyThumbnail);
 const boardArchive = useArchiveTab(async () => {
   archived.value = await listMyBoards(true);
 }, archiveBoardsPaging.reset);
@@ -121,7 +142,7 @@ async function reloadBoardsAfterMutation(): Promise<void> {
 const createBoardModal = useEntityModal();
 
 const { pending: creating, execute: createBoard } = useAsyncAction({
-  run: (title: string) => createBoardRequest(title),
+  run: (title: string, teamId: string | null) => createBoardRequest(title, teamId ?? undefined),
   success: async (board) => {
     createBoardModal.close();
     await router.push({ name: 'board', params: { id: board.id } });
@@ -131,8 +152,11 @@ const { pending: creating, execute: createBoard } = useAsyncAction({
   },
 });
 
-async function onCreateBoard(title: string): Promise<void> {
-  await createBoard(title);
+/** Командную доску заводит участник или администратор (DS-063); список команд уже грузит load() */
+const boardTeams = useCreationTeams('member');
+
+async function onCreateBoard(title: string, teamId: string | null): Promise<void> {
+  await createBoard(title, teamId);
 }
 
 // --- Переименование ---
@@ -235,18 +259,25 @@ async function confirmDelete(): Promise<void> {
 </script>
 
 <template>
-  <section class="space-y-5">
+  <!-- 08_Boards «Доски — Список»: блоки страницы через 32, как в «Комнатах» -->
+  <section class="space-y-8">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h1 class="font-heading text-[32px] font-bold">{{ t('boards.title') }}</h1>
+      <h1
+        class="font-heading text-text-primary text-[32px] leading-10 font-bold tracking-[-0.03em]"
+      >
+        {{ t('boards.title') }}
+      </h1>
       <UButton icon="i-lucide-plus" size="lg" @click="createBoardModal.show">
-        {{ t('board.create') }}
+        {{ t('board.newBoard') }}
       </UButton>
     </div>
 
     <UAlert
       v-if="loadFailed"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
+      orientation="horizontal"
       :description="t('boards.loadError')"
       :actions="[
         {
@@ -261,12 +292,12 @@ async function confirmDelete(): Promise<void> {
 
     <div v-else-if="loading" class="space-y-5">
       <p class="text-muted text-sm">{{ t('boards.subtitle') }}</p>
-      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <div v-for="i in 3" :key="i" class="overflow-hidden rounded-r24">
-          <USkeleton class="h-[140px] w-full rounded-none bg-border-medium" />
+      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-12">
+        <div v-for="i in 3" :key="i" class="overflow-hidden rounded-r24 lg:col-span-4">
+          <USkeleton class="h-[140px] w-full rounded-none" />
           <div class="surface-card space-y-2 rounded-t-none px-5 py-4">
-            <USkeleton class="h-5 w-2/3 bg-border-medium" />
-            <USkeleton class="h-4 w-1/3 bg-border-medium" />
+            <USkeleton class="h-5 w-2/3" />
+            <USkeleton class="h-4 w-1/3" />
           </div>
         </div>
       </div>
@@ -276,6 +307,7 @@ async function confirmDelete(): Promise<void> {
       <p class="text-muted text-sm">{{ t('boards.subtitle') }}</p>
 
       <BoardGridSection
+        page-level
         :boards-failed="false"
         :boards-tab="boardsTab"
         :active-boards-paging="activeBoardsPaging"
@@ -307,6 +339,9 @@ async function confirmDelete(): Promise<void> {
       :cancel-label="t('common.cancel')"
       :submit-label="creating ? t('board.creating') : t('board.create')"
       :pending="creating"
+      :teams="boardTeams.options.value"
+      :team-switch-label="t('board.teamSwitch')"
+      :personal-description="t('board.personalHint')"
       @submit="onCreateBoard"
     />
 

@@ -159,7 +159,7 @@ function act(fn: () => void): void {
   padding: 6px;
   background: var(--brand-surface);
   border-radius: 12px;
-  box-shadow: var(--brand-shadow-card);
+  box-shadow: var(--shadow-elevation-2);
 }
 
 .board-context-menu-item {

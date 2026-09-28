@@ -22,6 +22,7 @@ import {
 } from '../features/rooms/api/rooms-api';
 import { useSessionStore } from '../stores/session';
 import { useTeamsStore } from '../stores/teams';
+import { useCreationTeams } from '../composables/use-creation-teams';
 
 const { t, locale } = useI18n();
 const router = useRouter();
@@ -48,8 +49,10 @@ function canManageRoom(room: Room): boolean {
   return !!role && hasTeamRole(role, 'admin');
 }
 
+/** В общем списке у каждой строки плашка: имя команды или «Личная» */
 function teamTagFor(room: Room): string | null {
-  return room.teamId ? (teamNameById.value.get(room.teamId) ?? null) : null;
+  if (!room.teamId) return t('room.personalTag');
+  return teamNameById.value.get(room.teamId) ?? null;
 }
 
 function formatDate(iso: string): string {
@@ -159,7 +162,7 @@ async function reloadRoomsAfterMutation(): Promise<void> {
 const createRoomModal = useEntityModal();
 
 const { pending: creating, execute: createRoom } = useAsyncAction({
-  run: (name: string) => createRoomRequest(name),
+  run: (name: string, teamId: string | null) => createRoomRequest(name, teamId ?? undefined),
   success: async (room) => {
     createRoomModal.close();
     await router.push({ name: 'room', params: { id: room.id } });
@@ -169,8 +172,11 @@ const { pending: creating, execute: createRoom } = useAsyncAction({
   },
 });
 
-async function onCreateRoom(name: string): Promise<void> {
-  await createRoom(name);
+/** Командную комнату заводит администратор команды (DS-063); список команд уже грузит load() */
+const roomTeams = useCreationTeams('admin');
+
+async function onCreateRoom(name: string, teamId: string | null): Promise<void> {
+  await createRoom(name, teamId);
 }
 
 // --- Переименование ---
@@ -259,18 +265,26 @@ async function confirmDelete(): Promise<void> {
 </script>
 
 <template>
-  <section class="space-y-5">
+  <!-- 06_Rooms «Комнаты — Список»: блоки страницы через 32px, статистика — Card
+       (elevation/3) с Card Content — Stat -->
+  <section class="space-y-8">
     <div class="flex flex-wrap items-center justify-between gap-3">
-      <h1 class="font-heading text-[32px] font-bold">{{ t('myRooms.title') }}</h1>
+      <h1
+        class="font-heading text-text-primary text-[32px] leading-10 font-bold tracking-[-0.03em]"
+      >
+        {{ t('myRooms.title') }}
+      </h1>
       <UButton icon="i-lucide-plus" size="lg" @click="createRoomModal.show">
-        {{ t('room.create') }}
+        {{ t('room.newRoom') }}
       </UButton>
     </div>
 
     <UAlert
       v-if="loadFailed"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
+      orientation="horizontal"
       :description="t('myRooms.loadError')"
       :actions="[
         {
@@ -283,11 +297,11 @@ async function confirmDelete(): Promise<void> {
       ]"
     />
 
-    <div v-else-if="loading" class="space-y-5">
+    <div v-else-if="loading" class="space-y-8">
       <div class="grid gap-4 sm:grid-cols-3">
-        <div v-for="i in 3" :key="i" class="surface-card px-6 py-[22px]">
-          <USkeleton class="mb-2 h-3 w-1/2 bg-border-medium" />
-          <USkeleton class="h-8 w-1/3 bg-border-medium" />
+        <div v-for="i in 3" :key="i" class="surface-card shadow-elevation-2 px-6 py-[22px]">
+          <USkeleton class="mb-2 h-3 w-1/2" />
+          <USkeleton class="h-8 w-1/3" />
         </div>
       </div>
       <div class="space-y-3">
@@ -296,27 +310,36 @@ async function confirmDelete(): Promise<void> {
           :key="i"
           class="border-default flex items-center justify-between border-t px-4 py-5 first:border-t-0 sm:px-8"
         >
-          <USkeleton class="h-5 w-1/3 bg-border-medium" />
-          <USkeleton class="h-5 w-20 rounded-full bg-border-medium" />
+          <USkeleton class="h-5 w-1/3" />
+          <USkeleton class="h-5 w-20 rounded-full" />
         </div>
       </div>
     </div>
 
     <template v-else>
       <div class="grid gap-4 sm:grid-cols-3">
-        <div v-for="stat in stats" :key="stat.label" class="surface-card px-6 py-[22px]">
-          <div class="text-muted mb-2 text-[10px] leading-3 font-bold tracking-[0.03em] uppercase">
+        <div
+          v-for="stat in stats"
+          :key="stat.label"
+          class="surface-card shadow-elevation-2 px-6 py-[22px]"
+        >
+          <div
+            class="text-text-secondary mb-2 text-[10px] leading-3 font-bold tracking-[0.03em] uppercase"
+          >
             {{ stat.label }}
           </div>
-          <div class="font-heading text-2xl font-bold">
+          <div
+            class="font-heading text-text-primary text-2xl leading-8 font-bold tracking-[-0.02em]"
+          >
             {{ stat.value }}
           </div>
         </div>
       </div>
 
-      <p class="text-muted text-sm">{{ t('myRooms.subtitle') }}</p>
+      <p class="text-text-secondary text-sm font-medium">{{ t('myRooms.subtitle') }}</p>
 
       <RoomListSection
+        page-level
         :rooms-failed="false"
         :rooms-tab="roomsTab"
         :active-rooms-paging="activeRoomsPaging"
@@ -349,6 +372,9 @@ async function confirmDelete(): Promise<void> {
       :cancel-label="t('common.cancel')"
       :submit-label="creating ? t('room.creating') : t('room.create')"
       :pending="creating"
+      :teams="roomTeams.options.value"
+      :team-switch-label="t('room.teamSwitch')"
+      :personal-description="t('room.personalHint')"
       @submit="onCreateRoom"
     />
 

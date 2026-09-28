@@ -24,7 +24,7 @@ test('доска с одним маленьким стикером: автофи
   const page = await context.newPage();
 
   await page.goto('/boards');
-  await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+  await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
   await page
     .getByPlaceholder('Например, Ретро спринта 24')
     .fill(`${E2E_ROOM_PREFIX}InitZoom ${randomUUID().slice(0, 8)}`);

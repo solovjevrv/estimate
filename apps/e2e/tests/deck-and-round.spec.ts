@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
+import { expectVoted, stat } from '../src/room-helpers';
 
 /**
  * Регрессионный набор: смена типа колоды и перезапуск раунда во время
@@ -32,38 +33,39 @@ test('отмена раунда, смена шкалы во время голо�
   // Голосуем — теперь на кнопке «Отменить раунд», клик по ней спрашивает подтверждение,
   // потому что есть, что терять
   await page.getByRole('button', { name: '5', exact: true }).click();
-  await expect(page.getByText('Проголосовало: 1 из 1')).toBeVisible();
+  await expectVoted(page, 1, 1);
   await page.getByRole('button', { name: 'Отменить раунд' }).click();
   await expect(page.getByText('Отменить голосование?')).toBeVisible();
   await page.getByRole('button', { name: 'Отменить и начать заново' }).click();
 
   // Раунд перезапустился той же колодой — свой голос сброшен, счётчик обнулился
-  await expect(page.getByText('Проголосовало: 0 из 1')).toBeVisible();
+  await expectVoted(page, 0, 1);
 
   // Голосуем снова и переключаем шкалу на «Футболки» — тоже требует подтверждения,
   // раунд перезапускается уже новой колодой. Ждём, пока голос долетит до сервера и
   // счётчик обновится — иначе смена колоды видит votedCount ещё нулевым и перезапускает
   // раунд молча, без вопроса (то же поведение, что и при пустом столе).
   await page.getByRole('button', { name: '5', exact: true }).click();
-  await expect(page.getByText('Проголосовало: 1 из 1')).toBeVisible();
-  await page.getByRole('button', { name: 'Футболки', exact: true }).click();
+  await expectVoted(page, 1, 1);
+  await page.getByRole('combobox').click();
+  await page.getByRole('option', { name: 'Футболки' }).click();
   await expect(page.getByText('Отменить голосование?')).toBeVisible();
   await page.getByRole('button', { name: 'Отменить и начать заново' }).click();
 
   await expect(page.getByRole('button', { name: 'XS', exact: true })).toBeVisible();
-  await expect(page.getByText('Проголосовало: 0 из 1')).toBeVisible();
+  await expectVoted(page, 0, 1);
 
   // Вскрываем карты и запускаем новый раунд той же (последней выбранной) колодой —
   // после вскрытия перезапуск больше не спрашивает подтверждения. Дожидаемся, пока
   // голос долетит до сервера, — иначе «Вскрыть карты» увидит allVoted ещё ложным и
   // откроет модалку подтверждения вместо прямого вскрытия.
   await page.getByRole('button', { name: 'XS', exact: true }).click();
-  await expect(page.getByText('Проголосовало: 1 из 1')).toBeVisible();
+  await expectVoted(page, 1, 1);
   await page.getByRole('button', { name: 'Вскрыть карты' }).click();
   await expect(page.getByText('Результаты раунда')).toBeVisible();
-  await expect(page.getByText('Мин: XS')).toBeVisible();
+  await expect(stat(page, 'Мин', 'XS')).toBeVisible();
 
   await page.getByRole('button', { name: 'Новый раунд' }).click();
   await expect(page.getByRole('button', { name: 'XS', exact: true })).toBeVisible();
-  await expect(page.getByText('Проголосовало: 0 из 1')).toBeVisible();
+  await expectVoted(page, 0, 1);
 });

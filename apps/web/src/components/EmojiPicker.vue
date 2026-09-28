@@ -259,24 +259,27 @@ function scrollToSection(key: string): void {
 .emoji-picker {
   display: flex;
   flex-direction: column;
+  gap: 8px;
   width: 260px;
   max-height: min(560px, var(--reka-popper-available-height, 560px));
-  padding: 6px;
+  padding: 8px;
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
 }
 
 .emoji-picker-search {
   flex-shrink: 0;
-  padding: 8px 8px 6px;
 }
 
 .emoji-picker-search-input {
   width: 100%;
+  height: 34px;
   padding: 6px 10px;
   border-radius: 8px;
-  border: 1px solid var(--ui-border);
-  background: var(--ui-bg-elevated);
+  border: 1px solid var(--border-strong);
+  background: var(--surface-frame);
   color: var(--brand-ink);
-  font-size: 13px;
+  font-size: 12px;
 }
 
 /* Попап автофокусит это поле при открытии (Reka переносит фокус внутрь
@@ -361,7 +364,7 @@ function scrollToSection(key: string): void {
   display: flex;
   flex-shrink: 0;
   gap: 6px;
-  padding: 8px 8px 6px;
+  padding-bottom: 6px;
   overflow-x: auto;
   border-bottom: 1px solid var(--ui-border);
   scrollbar-width: thin;
@@ -409,10 +412,10 @@ function scrollToSection(key: string): void {
   display: flex;
   flex: 0 1 auto;
   flex-direction: column;
-  gap: 14px;
+  gap: 16px;
   min-height: 0;
   max-height: 190px;
-  padding: 10px;
+  padding: 8px;
   overflow-x: hidden;
   overflow-y: auto;
   scrollbar-width: thin;
@@ -461,8 +464,7 @@ function scrollToSection(key: string): void {
 
 .emoji-picker-show-all {
   flex-shrink: 0;
-  margin: 4px 4px 2px;
-  padding: 8px;
+  height: 32px;
   font-size: 12px;
   font-weight: 600;
   color: var(--brand-ink2);

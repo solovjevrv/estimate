@@ -198,6 +198,8 @@ describe('API команд', () => {
       createdAt: '2026-08-06T00:00:00.000Z',
       updatedAt: '2026-08-06T00:00:00.000Z',
       shareRole: null,
+      thumbnailUrl: null,
+      thumbnailRevision: null,
       itemCount: 0,
     };
     fetchMock.mockResolvedValue(json(200, { boards: [b] }));

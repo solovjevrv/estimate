@@ -202,6 +202,10 @@ export const boards = pgTable(
     revision: integer('revision').notNull().default(0),
     /** Ссылка на просмотр/правку (14.4) — null, шаринг выключен по умолчанию */
     shareRole: boardShareRoleEnum('share_role'),
+    /** Производный WebP-превью в ObjectStorage; ключ меняется при каждой замене */
+    thumbnailKey: text('thumbnail_key'),
+    /** Ревизия содержимого, из которого сделан thumbnail */
+    thumbnailRevision: integer('thumbnail_revision'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },

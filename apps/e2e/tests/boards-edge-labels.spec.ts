@@ -37,7 +37,7 @@ test.describe('Доски: многострочные подписи связе�
     const pageA = await contextA.newPage();
     await pageA.goto('/boards');
 
-    await pageA.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await pageA.getByRole('button', { name: 'Новая доска', exact: true }).click();
     const boardName = `${E2E_ROOM_PREFIX}EdgeLabel ${randomUUID().slice(0, 8)}`;
     await pageA.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await pageA.locator('form').getByRole('button', { name: 'Создать доску' }).click();

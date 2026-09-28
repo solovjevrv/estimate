@@ -25,6 +25,7 @@ export function useRoomVoting(options: UseRoomVotingOptions): {
   deckCards: ComputedRef<readonly number[]>;
   cardLabel: (value: number) => string;
   myVote: Ref<number | null>;
+  effectiveMyVote: ComputedRef<number | null>;
   roundPhase: ComputedRef<RoundPhase>;
   votedCount: ComputedRef<number>;
   totalCount: ComputedRef<number>;
@@ -103,6 +104,19 @@ export function useRoomVoting(options: UseRoomVotingOptions): {
   const votesByParticipant = computed<Map<string, number>>(
     () => new Map((room.result?.votes ?? []).map((v) => [v.participantId, v.value])),
   );
+
+  /**
+   * Значение для подсветки карточки в «Оценках» (20.3.6, доголосовать после
+   * вскрытия): пока свой клик ещё не улетел на сервер — берём его напрямую
+   * (`myVote`); если открыли уже вскрытый раунд без своего локального клика в
+   * этой сессии (перезагрузка страницы, чужой первый вход) — берём значение
+   * из результата раунда, оно уже пришло со снимком.
+   */
+  const effectiveMyVote = computed<number | null>(() => {
+    if (myVote.value !== null) return myVote.value;
+    if (roundPhase.value !== 'revealed' || !room.participantId) return null;
+    return votesByParticipant.value.get(room.participantId) ?? null;
+  });
 
   /**
    * Значение-мода среди оценок раунда — победитель для панели результатов и
@@ -286,6 +300,7 @@ export function useRoomVoting(options: UseRoomVotingOptions): {
     deckCards,
     cardLabel,
     myVote,
+    effectiveMyVote,
     roundPhase,
     votedCount,
     totalCount,

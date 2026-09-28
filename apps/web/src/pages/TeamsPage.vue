@@ -64,9 +64,13 @@ async function onSubmit(name: string): Promise<void> {
 </script>
 
 <template>
-  <section class="space-y-6">
+  <section class="space-y-8">
     <div class="flex flex-wrap items-center justify-between gap-4">
-      <h1 class="font-heading text-[32px] font-bold">{{ t('teams.title') }}</h1>
+      <h1
+        class="font-heading text-text-primary text-[32px] leading-10 font-bold tracking-[-0.03em]"
+      >
+        {{ t('teams.title') }}
+      </h1>
       <UButton size="lg" icon="i-lucide-plus" @click="createTeamModal.show">
         {{ t('teams.create') }}
       </UButton>
@@ -74,8 +78,10 @@ async function onSubmit(name: string): Promise<void> {
 
     <UAlert
       v-if="loadFailed"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
+      orientation="horizontal"
       :description="t('teams.loadError')"
       :actions="[
         {
@@ -89,9 +95,9 @@ async function onSubmit(name: string): Promise<void> {
     />
 
     <ul v-else-if="loading" class="flex flex-col gap-4">
-      <li v-for="i in 3" :key="i" class="surface-card flex items-center gap-4 p-6">
-        <USkeleton class="size-[46px] shrink-0 rounded-r12 bg-border-medium" />
-        <USkeleton class="h-5 w-1/3 bg-border-medium" />
+      <li v-for="i in 3" :key="i" class="surface-card flex items-center gap-4 px-8 py-6">
+        <USkeleton class="size-[46px] shrink-0 rounded-r12" />
+        <USkeleton class="h-5 w-full max-w-[280px] rounded-r12" />
       </li>
     </ul>
 
@@ -111,18 +117,21 @@ async function onSubmit(name: string): Promise<void> {
       <li v-for="team in teams.list" :key="team.id">
         <RouterLink
           :to="{ name: 'team', params: { id: team.id } }"
-          class="surface-card surface-card-hover flex items-center justify-between gap-3 p-6"
+          class="surface-card surface-card-hover flex items-center justify-between gap-4 px-8 py-6"
         >
           <div class="flex min-w-0 items-center gap-4">
             <div
-              class="font-heading flex size-[46px] shrink-0 items-center justify-center rounded-r12 text-base font-bold text-white"
+              class="flex size-[46px] shrink-0 items-center justify-center rounded-r12 text-base leading-6 font-bold"
               :class="teamAvatarColor(team.id)"
             >
               {{ team.name.slice(0, 1).toUpperCase() }}
             </div>
-            <div class="min-w-0">
-              <span class="block truncate text-lg font-bold">{{ team.name }}</span>
-              <span class="text-muted text-sm">
+            <div class="flex min-w-0 flex-col gap-0.5">
+              <span
+                class="text-text-primary block truncate text-lg leading-[26px] font-bold tracking-[-0.015em]"
+                >{{ team.name }}</span
+              >
+              <span class="text-text-secondary text-sm font-medium">
                 {{ t('teams.memberCount', { count: team.memberCount }, team.memberCount) }}
               </span>
             </div>

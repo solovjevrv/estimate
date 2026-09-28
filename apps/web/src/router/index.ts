@@ -49,9 +49,11 @@ export const routes: RouteRecordRaw[] = [
     meta: { titleKey: 'nav.home' },
   },
   {
+    // Вход — окно поверх главной (27_Modal, LoginModal в App.vue); сам адрес нужен
+    // гарду приватных страниц и серверу для возврата после ошибки OAuth
     path: '/login',
     name: 'login',
-    component: () => import('../pages/LoginPage.vue'),
+    component: () => import('../pages/HomePage.vue'),
     meta: { guestOnly: true, titleKey: 'login.title' },
   },
   {

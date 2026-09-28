@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n';
 import type { ArchiveTab } from '../../composables/use-archive-tab';
 import type { PagedList } from '../../composables/use-paged-list';
 import BoardCard from './BoardCard.vue';
+import ListPagination from '../ListPagination.vue';
 
 defineProps<{
   boardsFailed: boolean;
@@ -21,9 +22,12 @@ defineProps<{
   errorMessage: string;
   emptyActiveMessage: string;
   emptyArchiveMessage: string;
-  /** Плашка с именем команды у личных досок (08_Boards, «Доски — Список») — в
+  /** Плашка с именем команды или «Личная» (08_Boards, «Доски — Список») — в
    *  контексте самой команды не нужна */
   teamTagFor?: (board: BoardSummary) => string | null;
+  /** Отдельная страница «Доски»: блоки через 32, как в 06/08 «Список»; на вкладке
+   *  команды — 20, как у вкладки «Комнаты» */
+  pageLevel?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -79,7 +83,10 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
 
 <template>
   <div>
-    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div
+      class="flex flex-wrap items-center justify-between gap-3"
+      :class="pageLevel ? 'mb-8' : 'mb-5'"
+    >
       <div class="flex items-center gap-2">
         <button
           v-for="tab in boardTabs"
@@ -88,8 +95,8 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
           class="cursor-pointer rounded-full px-4 py-1.5 text-xs leading-[18px] font-bold transition-colors"
           :class="
             boardsTab === tab.key
-              ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)]'
-              : 'text-muted hover:text-default'
+              ? 'bg-[var(--brand-primary-soft-bg)] text-[var(--brand-primary-text)] ring-1 ring-[var(--border-strong)] ring-inset'
+              : 'text-text-secondary hover:text-text-primary'
           "
           @click="emit('selectTab', tab.key)"
         >
@@ -101,13 +108,15 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
 
     <UAlert
       v-if="boardsFailed"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
+      orientation="horizontal"
       class="mb-5"
       :description="errorMessage"
       :actions="[
         {
-          label: t('common.refresh'),
+          label: t('common.retry'),
           color: 'error',
           variant: 'outline',
           size: 'sm',
@@ -119,7 +128,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
       <p v-if="activeBoardsPaging.total.value === 0" class="text-muted pb-5 text-sm">
         {{ emptyActiveMessage }}
       </p>
-      <div v-else class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div v-else class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-12">
         <BoardCard
           v-for="board in activeBoardsPaging.items.value"
           :key="board.id"
@@ -128,26 +137,15 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
           :team-tag="teamTagFor?.(board) ?? null"
           :menu-items="canManageBoard(board) ? activeMenuItems(board) : undefined"
           :menu-aria-label="t('board.boardMenu')"
+          class="lg:col-span-4"
         />
       </div>
-      <div
-        v-if="activeBoardsPaging.total.value > activeBoardsPaging.pageSize"
-        class="border-default flex justify-center border-t px-4 py-4 sm:px-8"
-      >
-        <!-- eslint-disable vue/no-mutating-props -- `page` — общая Ref-ячейка
-             composable'а usePagedList, а не сам объект prop-а; перетаскивание
-             страницы в родителе работает так же -->
-        <UPagination
-          v-model:page="activeBoardsPaging.page.value"
-          :total="activeBoardsPaging.total.value"
-          :items-per-page="activeBoardsPaging.pageSize"
-        />
-        <!-- eslint-enable vue/no-mutating-props -->
-      </div>
+      <ListPagination class="mt-6" :paging="activeBoardsPaging" />
     </template>
     <template v-else>
       <UAlert
         v-if="boardArchive.failed"
+        icon="i-lucide-circle-alert"
         color="error"
         variant="subtle"
         class="mb-5"
@@ -160,7 +158,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
         <p v-if="archiveBoardsPaging.total.value === 0" class="text-muted pb-5 text-sm">
           {{ emptyArchiveMessage }}
         </p>
-        <div v-else class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div v-else class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-12">
           <BoardCard
             v-for="board in archiveBoardsPaging.items.value"
             :key="board.id"
@@ -169,20 +167,10 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
             :team-tag="teamTagFor?.(board) ?? null"
             :menu-items="canManageBoard(board) ? archivedMenuItems(board) : undefined"
             :menu-aria-label="t('board.boardMenu')"
+            class="lg:col-span-4"
           />
         </div>
-        <div
-          v-if="archiveBoardsPaging.total.value > archiveBoardsPaging.pageSize"
-          class="border-default flex justify-center border-t px-4 py-4 sm:px-8"
-        >
-          <!-- eslint-disable vue/no-mutating-props -- см. пояснение выше -->
-          <UPagination
-            v-model:page="archiveBoardsPaging.page.value"
-            :total="archiveBoardsPaging.total.value"
-            :items-per-page="archiveBoardsPaging.pageSize"
-          />
-          <!-- eslint-enable vue/no-mutating-props -->
-        </div>
+        <ListPagination class="mt-6" :paging="archiveBoardsPaging" />
       </template>
     </template>
   </div>

@@ -127,14 +127,16 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
 
 <template>
   <div v-if="session.user" class="mx-auto flex max-w-[480px] flex-col gap-6">
-    <div class="bg-surface-block shadow-card flex flex-col items-center gap-6 rounded-r24 p-8">
+    <div
+      class="bg-surface-block shadow-elevation-2 flex flex-col items-center gap-6 rounded-r24 p-8"
+    >
       <UAvatar
         :src="session.user.avatarUrl ?? undefined"
         :alt="session.user.name"
         size="3xl"
         class="size-[100px] shrink-0"
         :class="teamAvatarColor(session.user.id)"
-        :ui="{ fallback: 'font-heading text-[40px] font-bold text-white' }"
+        :ui="{ fallback: 'font-heading text-[40px] font-bold' }"
       />
       <input
         ref="fileInput"
@@ -145,7 +147,9 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
       />
 
       <div class="flex flex-col items-center gap-2">
-        <p class="text-text-brand text-sm font-medium">{{ session.user.email }}</p>
+        <p class="text-text-brand text-center text-sm font-medium break-all">
+          {{ session.user.email }}
+        </p>
         <span class="badge-pill badge-pill-neutral">
           {{ providerLabel(session.user.provider) }}
         </span>
@@ -169,6 +173,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
           <UInput
             v-model="form.name"
             class="w-full"
+            :placeholder="t('profile.namePlaceholder')"
             :ui="{ base: 'bg-surface-frame border-border-strong' }"
           />
         </UFormField>
@@ -190,7 +195,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
       </UForm>
     </div>
 
-    <div class="bg-surface-block shadow-card flex flex-col gap-5 rounded-r24 p-8">
+    <div class="bg-surface-block shadow-elevation-2 flex flex-col gap-5 rounded-r24 p-8">
       <h2 class="font-heading text-xl font-bold">{{ t('profile.teamsTitle') }}</h2>
 
       <div v-if="teamsLoading" class="text-muted flex justify-center py-2">
@@ -206,7 +211,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
         >
           <div class="flex min-w-0 items-center gap-4">
             <div
-              class="font-heading flex size-[46px] shrink-0 items-center justify-center rounded-r12 text-base font-bold text-white"
+              class="font-heading flex size-[46px] shrink-0 items-center justify-center rounded-r12 text-base font-bold"
               :class="teamAvatarColor(team.id)"
             >
               {{ team.name.slice(0, 1).toUpperCase() }}

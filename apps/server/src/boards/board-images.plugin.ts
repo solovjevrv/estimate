@@ -1,5 +1,9 @@
 import fastifyMultipart from '@fastify/multipart';
-import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_IMAGE_MAX_BYTES } from '@estimate/shared';
+import {
+  BOARD_IMAGE_ALLOWED_MIME_TYPES,
+  BOARD_IMAGE_MAX_BYTES,
+  boardThumbnailUrl,
+} from '@estimate/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
@@ -10,6 +14,8 @@ import { idParamsSchema, uuidSchema } from '../http/schemas';
 import type { ObjectStorage } from '../platform/storage';
 
 import { BoardImagesService } from './board-images.service';
+import { BoardThumbnailsService, BOARD_THUMBNAIL_MAX_BYTES } from './board-thumbnails.service';
+import { BoardsRepository } from './boards.repository';
 import { BoardsService } from './boards.service';
 
 export interface BoardImagesPluginOptions {
@@ -31,6 +37,7 @@ async function boardImagesPluginImpl(
   }
 
   const service = BoardImagesService.create(opts.storage, opts.legacyAssetsDir);
+  const thumbnails = new BoardThumbnailsService(opts.storage);
 
   // Свой encapsulation-контекст (обычный register, не fp) только для
   // multipart+роутов: @fastify/multipart уже зарегистрирован аватарками
@@ -41,6 +48,106 @@ async function boardImagesPluginImpl(
     await instance.register(fastifyMultipart, {
       limits: { fileSize: BOARD_IMAGE_MAX_BYTES, files: 1 },
     });
+    // Safari не кодирует canvas в WebP и отдаёт PNG — принимаем оба, sharp всё
+    // равно перекодирует снимок в WebP
+    instance.addContentTypeParser(
+      ['image/webp', 'image/png'],
+      { parseAs: 'buffer', bodyLimit: BOARD_THUMBNAIL_MAX_BYTES },
+      (_req, body, done) => done(null, body),
+    );
+
+    // POST /api/boards/:id/thumbnail?revision=N — браузер публикует готовый
+    // снимок только для видимых карточек. Source of truth — revision в БД;
+    // поздний результат не заменит thumbnail более новой доски.
+    instance.post<{ Params: { id: string }; Querystring: { revision?: string }; Body: Buffer }>(
+      '/api/boards/:id/thumbnail',
+      {
+        preHandler: app.identify,
+        bodyLimit: BOARD_THUMBNAIL_MAX_BYTES,
+        schema: {
+          tags: [DOCS_TAGS.boards],
+          summary: 'Опубликовать превью доски',
+          description:
+            'Производный WebP-снимок текущей ревизии доски. Требует доступа на просмотр.',
+          security: [{ session: [] }],
+          params: idParamsSchema,
+          querystring: {
+            type: 'object',
+            required: ['revision'],
+            properties: { revision: { type: 'string', pattern: '^[0-9]+$' } },
+          },
+          response: {
+            200: {
+              type: 'object',
+              properties: {
+                updated: { type: 'boolean' },
+                thumbnailUrl: { type: ['string', 'null'] },
+              },
+            },
+            400: { description: 'Некорректное изображение или ревизия', ...errorResponse },
+            404: { description: 'Доска не найдена', ...errorResponse },
+            413: { description: 'Превью больше 2 МБ', ...errorResponse },
+          },
+        },
+      },
+      async (req) => {
+        const revision = Number(req.query.revision);
+        if (!Number.isSafeInteger(revision) || revision < 0) {
+          throw new ValidationError('Некорректная ревизия доски');
+        }
+        if (!Buffer.isBuffer(req.body)) {
+          throw new ValidationError('Превью доски должно быть изображением');
+        }
+        const boardId = req.params.id;
+        const boardsService = BoardsService.forDatabase(app.db, opts.auth.guestSecret);
+        const board = await boardsService.assertViewAccess(req.actorId ?? null, boardId);
+        if (board.revision !== revision) return { updated: false, thumbnailUrl: null };
+        // Превью этой ревизии уже есть (его опубликовал другой клиент) — отдаём
+        // готовое, не перекодируя и не записывая лишний объект
+        if (board.thumbnailRevision === revision) {
+          return { updated: false, thumbnailUrl: board.thumbnailUrl };
+        }
+
+        const key = await thumbnails.create(boardId, revision, req.body);
+        const result = await app.db.transaction((tx) =>
+          new BoardsRepository(tx).replaceThumbnailIfCurrent(boardId, revision, key),
+        );
+        // Уборка объектов не должна ронять ответ: запись в БД уже решена
+        const staleKey = result.updated ? result.previousKey : key;
+        await thumbnails.remove(boardId, staleKey).catch((err: unknown) => {
+          req.log.warn({ err, boardId }, 'не удалось удалить старое превью доски');
+        });
+        return {
+          updated: result.updated,
+          thumbnailUrl: result.currentKey ? boardThumbnailUrl(boardId, result.currentKey) : null,
+        };
+      },
+    );
+
+    instance.get<{ Params: { id: string; key: string } }>(
+      '/api/boards/:id/thumbnail/:key',
+      {
+        preHandler: app.identify,
+        schema: {
+          tags: [DOCS_TAGS.boards],
+          summary: 'Превью доски',
+          params: {
+            type: 'object',
+            required: ['id', 'key'],
+            properties: { id: uuidSchema, key: { type: 'string' } },
+          },
+        },
+      },
+      async (req, reply) => {
+        const boardsService = BoardsService.forDatabase(app.db, opts.auth.guestSecret);
+        await boardsService.assertViewAccess(req.actorId ?? null, req.params.id);
+        const stream = await thumbnails.read(req.params.id, req.params.key);
+        if (!stream) throw new NotFoundError('Превью доски не найдено');
+        reply.header('cache-control', 'public, max-age=31536000, immutable');
+        reply.type('image/webp');
+        return reply.send(stream);
+      },
+    );
 
     // POST /api/boards/:id/assets — загрузка картинки (требует edit-доступ)
     instance.post<{ Params: { id: string } }>(

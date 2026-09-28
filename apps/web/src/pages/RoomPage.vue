@@ -1,7 +1,14 @@
 <script setup lang="ts">
 import type { FormError, FormSubmitEvent } from '@nuxt/ui';
 import { useToast } from '@nuxt/ui/composables';
-import { GUEST_NAME_MAX_LENGTH, ROOM_NAME_MAX_LENGTH, trimText, type Room } from '@estimate/shared';
+import {
+  GUEST_NAME_MAX_LENGTH,
+  ROOM_NAME_MAX_LENGTH,
+  trimText,
+  type DeckType,
+  type Room,
+  type RoomDetails,
+} from '@estimate/shared';
 import { onBeforeUnmount, reactive, ref, watch, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 
@@ -16,7 +23,6 @@ import { ApiError } from '../lib/api';
 import { useGuestIdentity } from '../composables/use-guest-identity';
 import { getRoom } from '../features/rooms/api/rooms-api';
 import { useRoomAdminActions } from '../features/rooms/composables/use-room-admin-actions';
-import { useRoomLinks } from '../features/rooms/composables/use-room-links';
 import { useRoomReactions } from '../features/rooms/composables/use-room-reactions';
 import { useRoomTimer } from '../features/rooms/composables/use-room-timer';
 import { useRoomVoting } from '../features/rooms/composables/use-room-voting';
@@ -71,10 +77,8 @@ const {
   selectedDeck,
   deckCards,
   cardLabel,
-  myVote,
+  effectiveMyVote,
   roundPhase,
-  votedCount,
-  totalCount,
   waitingForText,
   winnerLabel,
   departedVotes,
@@ -94,6 +98,16 @@ const {
   isWinnerParticipant,
 } = useRoomVoting({ room });
 
+function onDeckSelectChange(value: unknown): void {
+  onDeckOptionClick(value as DeckType);
+}
+
+const participantsSubtitle = computed(() => {
+  if (roundPhase.value === 'voting') return t('room.participantsVoting');
+  if (roundPhase.value === 'revealed') return t('room.participantsRevealed');
+  return t('room.participantsNoRound');
+});
+
 const {
   historyEntries,
   historyLoading,
@@ -102,8 +116,6 @@ const {
   historyResultLabel,
   reset: resetHistory,
 } = useRoundHistory({ roomId: () => props.id, room });
-
-const { linksForm, linksDirty, savingLinks, validateLinks, onSaveLinks } = useRoomLinks({ room });
 
 /** Скрам-мастер исключил именно этого участника — экран стола сменяем на отдельный, как при joinError */
 watch(
@@ -121,6 +133,8 @@ type Phase =
 
 const phase = ref<Phase>('loading');
 const roomInfo = ref<Room | null>(null);
+/** Название команды для шапки — приходит вместе с комнатой, переименование его не меняет */
+const roomTeamName = ref<string | null>(null);
 const guestIdentity = useGuestIdentity('room');
 const guestState = reactive({ name: guestIdentity.name.value });
 
@@ -144,16 +158,17 @@ async function load(): Promise<void> {
   const token = ++currentToken;
   phase.value = 'loading';
   room.leave();
-  let loadedRoom: Room;
+  let loaded: RoomDetails;
   try {
-    loadedRoom = await getRoom(props.id);
+    loaded = await getRoom(props.id);
   } catch (err) {
     if (token !== currentToken) return; // уже перешли дальше — этот ответ не наш
     phase.value = err instanceof ApiError && err.status === 404 ? 'notFound' : 'loadError';
     return;
   }
   if (token !== currentToken) return;
-  roomInfo.value = loadedRoom;
+  roomInfo.value = loaded.room;
+  roomTeamName.value = loaded.teamName;
   resetHistory();
 
   if (session.isAuthenticated) {
@@ -260,14 +275,17 @@ function retry(): void {
   <section class="space-y-6">
     <UAlert
       v-if="phase === 'notFound'"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       :description="t('room.notFound')"
     />
     <UAlert
       v-else-if="phase === 'loadError'"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
+      orientation="horizontal"
       :description="t('room.loadError')"
       :actions="[
         {
@@ -281,10 +299,10 @@ function retry(): void {
     />
 
     <div v-else-if="phase === 'loading'" class="space-y-6">
-      <USkeleton class="h-9 w-1/3 bg-border-medium" />
-      <div class="surface-card surface-card-lg space-y-4 px-4 py-5 sm:px-[30px] sm:py-[26px]">
-        <USkeleton class="h-5 w-1/4 bg-border-medium" />
-        <USkeleton class="h-11 w-full rounded-r10 bg-border-medium" />
+      <USkeleton class="h-9 w-1/3" />
+      <div class="surface-card surface-card-lg space-y-4 px-4 py-5 sm:px-8 sm:py-8">
+        <USkeleton class="h-5 w-1/4" />
+        <USkeleton class="h-11 w-full rounded-r10" />
       </div>
     </div>
 
@@ -295,30 +313,29 @@ function retry(): void {
 
       <div
         v-if="phase === 'naming'"
-        class="surface-card surface-card-lg max-w-sm px-4 py-5 sm:px-[30px] sm:py-[26px]"
+        class="surface-card surface-card-lg mx-auto flex max-w-[420px] flex-col items-center gap-6 p-10"
       >
-        <h2 class="mb-[18px] text-[17px] font-bold">{{ t('room.nameTitle') }}</h2>
+        <h2 class="font-heading text-[32px] leading-[40px] font-bold tracking-[-0.96px]">
+          {{ t('room.nameTitle') }}
+        </h2>
         <UForm
           :state="guestState"
           :validate="validateName"
-          class="space-y-4"
+          class="flex w-full flex-col gap-6"
           @submit="onJoinAsGuest"
         >
-          <UFormField :label="t('room.nameLabel')" name="name">
+          <UFormField :label="t('room.nameLabel')" name="name" :ui="{ label: 'text-sm font-bold' }">
             <UInput
               v-model="guestState.name"
+              icon="i-lucide-user"
               :placeholder="t('room.namePlaceholder')"
               :maxlength="GUEST_NAME_MAX_LENGTH"
               autofocus
               class="w-full"
-              :ui="{
-                base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] px-4 ring-0',
-              }"
+              :ui="{ base: 'bg-surface-frame border-border-strong' }"
             />
           </UFormField>
-          <UButton type="submit" block class="rounded-[11px] py-3 text-[15px] font-bold">
-            {{ t('room.join') }}
-          </UButton>
+          <UButton type="submit" block class="justify-center">{{ t('room.join') }}</UButton>
         </UForm>
       </div>
 
@@ -328,7 +345,12 @@ function retry(): void {
       </div>
 
       <template v-else-if="phase === 'joinError'">
-        <UAlert color="error" variant="subtle" :description="t('room.joinError')" />
+        <UAlert
+          icon="i-lucide-circle-alert"
+          color="error"
+          variant="subtle"
+          :description="t('room.joinError')"
+        />
         <UButton
           color="neutral"
           variant="outline"
@@ -343,8 +365,10 @@ function retry(): void {
         <!-- Не «Войти снова» — того же результата (исключения) можно добиться только
              уведя человека из этой комнаты, повторный вход сюда же ни к чему не приведёт -->
         <UAlert
+          icon="i-lucide-circle-alert"
           color="warning"
           variant="subtle"
+          orientation="horizontal"
           :description="t('room.kickedMessage')"
           :actions="[
             {
@@ -362,6 +386,7 @@ function retry(): void {
         <RoomTopBar
           :name="roomInfo.name"
           :team-id="roomInfo.teamId"
+          :team-name="roomTeamName"
           :archived="isArchived"
           :connected="room.connected"
           :can-archive="room.isScrumMaster && !isArchived"
@@ -372,6 +397,7 @@ function retry(): void {
 
         <UAlert
           v-if="!room.connected"
+          icon="i-lucide-circle-alert"
           color="warning"
           variant="subtle"
           :title="t('room.disconnectedTitle')"
@@ -380,43 +406,33 @@ function retry(): void {
 
         <UAlert
           v-if="isArchived"
+          icon="i-lucide-circle-alert"
           color="warning"
           variant="subtle"
+          :title="t('room.archivedAlertTitle')"
           :description="t('room.archivedAlert')"
         />
 
-        <div v-if="!isArchived" class="flex flex-col gap-5 lg:flex-row lg:items-stretch">
+        <div v-if="!isArchived" class="grid grid-cols-1 gap-5 lg:grid-cols-12">
           <div
             v-if="room.isScrumMaster"
-            class="surface-card surface-card-lg min-w-0 flex-[1.4] px-4 py-5 sm:px-[30px] sm:py-[26px]"
+            class="surface-card surface-card-lg min-w-0 px-4 py-5 sm:px-8 sm:py-8 lg:col-span-7"
           >
-            <div class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
+            <h2 class="font-heading text-text-secondary mb-5 text-xl font-bold tracking-[-0.4px]">
               {{ t('room.deckTitle') }}
-            </div>
-            <div
-              class="mb-[22px] grid grid-cols-1 gap-1 rounded-[12px] p-1 sm:inline-flex sm:flex-wrap"
-              style="background-color: var(--brand-well-bg)"
-            >
-              <button
-                v-for="option in deckOptions"
-                :key="option.value"
-                type="button"
-                class="rounded-[9px] px-4 py-[9px] text-sm font-bold whitespace-nowrap transition-colors"
-                :class="
-                  selectedDeck === option.value
-                    ? 'bg-[var(--brand-surface)] text-[var(--brand-primary-text)] shadow-[0_1px_3px_rgba(0,0,0,0.15)]'
-                    : 'text-muted cursor-pointer'
-                "
-                @click="onDeckOptionClick(option.value)"
-              >
-                {{ option.label }}
-              </button>
-            </div>
-            <div>
+            </h2>
+            <div class="flex flex-col gap-3 sm:flex-row">
+              <USelect
+                :model-value="selectedDeck"
+                :items="deckOptions"
+                value-key="value"
+                class="w-full sm:min-w-0 sm:flex-1"
+                @update:model-value="onDeckSelectChange"
+              />
               <UButton
-                color="neutral"
-                variant="outline"
-                class="w-full justify-center rounded-[11px] px-[22px] py-3 text-[14.5px] font-bold sm:w-auto"
+                :color="roundPhase === 'voting' ? 'neutral' : 'primary'"
+                :variant="roundPhase === 'voting' ? 'outline' : 'solid'"
+                class="w-full justify-center sm:w-auto"
                 :loading="starting"
                 @click="onDeckActionClick"
               >
@@ -426,75 +442,34 @@ function retry(): void {
           </div>
 
           <RoomTimerCard
-            class="min-w-0 flex-1"
+            class="min-w-0 lg:col-span-5"
             :timer="room.timer"
             :pending="timerPending"
             @start="onTimerStart"
             @pause="onTimerPause"
             @reset="onTimerReset"
           />
-        </div>
 
-        <div
-          v-if="!isArchived"
-          class="surface-card surface-card-lg px-4 py-5 sm:px-[30px] sm:py-[26px]"
-        >
-          <h2 class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
-            {{ t('room.linksTitle') }}
-          </h2>
-          <UForm
-            :state="linksForm"
-            :validate="validateLinks"
-            class="flex flex-col gap-4 sm:flex-row sm:items-end"
-            @submit="onSaveLinks"
+          <!-- У участника нет панели управления колодой: таймер и статистика делят
+               одну 12-колоночную строку 5/7, без пустых семи колонок слева. -->
+          <div
+            v-if="room.result && !room.isScrumMaster"
+            class="surface-card surface-card-lg min-w-0 px-4 py-5 sm:px-8 sm:py-8 lg:col-span-7"
           >
-            <UFormField
-              :label="t('room.linksJira')"
-              name="jiraUrl"
-              class="flex-1"
-              :ui="{ label: 'text-sm font-bold mb-2' }"
-            >
-              <UInput
-                v-model="linksForm.jiraUrl"
-                icon="i-lucide-link"
-                :placeholder="t('room.linksJiraPlaceholder')"
-                class="w-full"
-                :ui="{
-                  base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] pe-4 ring-0',
-                }"
-                @update:model-value="linksDirty = true"
-              />
-            </UFormField>
-            <UFormField
-              :label="t('room.linksConfluence')"
-              name="confluenceUrl"
-              class="flex-1"
-              :ui="{ label: 'text-sm font-bold mb-2' }"
-            >
-              <UInput
-                v-model="linksForm.confluenceUrl"
-                icon="i-lucide-link"
-                :placeholder="t('room.linksConfluencePlaceholder')"
-                class="w-full"
-                :ui="{
-                  base: 'rounded-[11px] border-[1.5px] border-[var(--brand-border)] bg-[var(--brand-surface)] pe-4 ring-0',
-                }"
-                @update:model-value="linksDirty = true"
-              />
-            </UFormField>
-            <UButton
-              type="submit"
-              class="justify-center rounded-[11px] px-6 py-[13px] text-[14.5px] font-bold"
-              :loading="savingLinks"
-            >
-              {{ savingLinks ? t('room.linksSaving') : t('room.linksSave') }}
-            </UButton>
-          </UForm>
+            <RoundResultPanel
+              :average="room.result.average"
+              :min-label="cardLabel(room.result.min)"
+              :max-label="cardLabel(room.result.max)"
+              :agreement="room.result.agreement"
+              :winner-label="winnerLabel"
+              :departed-votes="departedVotes"
+            />
+          </div>
         </div>
 
         <div
-          v-if="room.result"
-          class="surface-card surface-card-lg px-4 py-5 sm:px-[30px] sm:py-[26px]"
+          v-if="room.result && (room.isScrumMaster || isArchived)"
+          class="surface-card surface-card-lg px-4 py-5 sm:px-8 sm:py-8"
         >
           <RoundResultPanel
             :average="room.result.average"
@@ -506,30 +481,32 @@ function retry(): void {
           />
         </div>
 
-        <div class="surface-card surface-card-lg px-4 py-5 sm:px-[30px] sm:py-[26px]">
-          <div class="mb-6 flex items-center justify-between gap-3">
-            <h2
-              class="text-muted flex items-center gap-2 text-sm font-bold tracking-[0.03em] uppercase"
-            >
-              <UIcon name="i-lucide-users" class="size-4" />
-              {{ t('room.participantsTitle') }}
-            </h2>
+        <div
+          class="surface-card surface-card-lg flex flex-col gap-4 px-4 py-5 sm:px-8 sm:py-8 lg:min-h-[375px]"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h2 class="font-heading text-text-secondary text-xl font-bold tracking-[-0.4px]">
+                {{ t('room.participantsTitle') }}
+              </h2>
+              <p class="text-text-secondary mt-1 text-sm font-medium">{{ participantsSubtitle }}</p>
+            </div>
+            <!-- Архивная комната только для чтения — звать в неё некого (07_Room) -->
             <UButton
+              v-if="!isArchived"
               icon="i-lucide-user-plus"
               color="neutral"
               variant="outline"
-              class="rounded-[10px] px-4 py-[9px] text-[13.5px] font-bold"
+              class="shrink-0"
               @click="copyInviteLink"
             >
               {{ t('room.invite') }}
             </UButton>
           </div>
 
-          <p v-if="!room.round" class="text-muted mb-3 text-sm">{{ t('room.noRoundYet') }}</p>
-
           <!-- pt-5 резервирует место под аватар-бейдж участника, который своим -top-5
                выходит за пределы карточки — без отступа он наезжает на текст/контент выше -->
-          <div class="flex flex-wrap justify-center gap-[22px] pt-5 sm:justify-start">
+          <div class="flex flex-wrap justify-center gap-6 pt-5 sm:justify-start">
             <ParticipantCard
               v-for="(p, participantIndex) in room.participants"
               :key="p.participantId"
@@ -549,49 +526,70 @@ function retry(): void {
         </div>
 
         <DeckBar
-          v-if="room.round && room.round.status === 'voting' && !isArchived"
-          :title="t('room.votingTitle')"
-          :voted-count-text="t('room.votedCount', { voted: votedCount, total: totalCount })"
+          v-if="
+            room.round &&
+            (room.round.status === 'voting' || room.round.status === 'revealed') &&
+            !isArchived
+          "
+          :title="t('room.estimatesTitle')"
+          :subtitle="
+            room.round.status === 'voting'
+              ? t('room.estimatesSubtitleVoting')
+              : t('room.estimatesSubtitleRevealed')
+          "
           :cards="deckCards"
           :card-label="cardLabel"
-          :selected-value="myVote"
+          :selected-value="effectiveMyVote"
           :is-scrum-master="room.isScrumMaster"
+          :revealed="room.round.status === 'revealed'"
           :revealing="revealing"
-          :reveal-label="revealing ? t('room.revealing') : t('room.reveal')"
+          :reveal-label="
+            revealing
+              ? t('room.revealing')
+              : waitingForText
+                ? t('room.revealEarly')
+                : t('room.reveal')
+          "
           :waiting-for-text="waitingForText"
           @vote="onVote"
           @reveal="onRevealClick"
         />
 
-        <div class="surface-card surface-card-lg px-4 py-5 sm:px-[30px] sm:py-[26px]">
-          <h2 class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
+        <div class="surface-card surface-card-lg px-4 py-5 sm:px-8 sm:py-8">
+          <h2 class="font-heading text-text-secondary mb-4 text-xl font-bold tracking-[-0.4px]">
             {{ t('room.historyTitle') }}
           </h2>
 
           <UAlert
             v-if="historyFailed"
+            icon="i-lucide-circle-alert"
             color="error"
             variant="subtle"
             :description="t('room.historyLoadError')"
           />
           <div v-else-if="historyLoading && historyEntries.length === 0" class="space-y-3">
-            <USkeleton class="h-12 w-full bg-border-medium" />
-            <USkeleton class="h-12 w-full bg-border-medium" />
+            <USkeleton class="h-12 w-full" />
+            <USkeleton class="h-12 w-full" />
           </div>
-          <p v-else-if="historyEntries.length === 0" class="text-muted text-sm">
+          <p
+            v-else-if="historyEntries.length === 0"
+            class="text-text-secondary text-sm font-medium"
+          >
             {{ t('room.historyEmpty') }}
           </p>
-          <div v-else class="-mx-4 sm:-mx-[30px]">
+          <!-- RoundHistoryRow (54_RoundResult): разделитель над каждой строкой, 18px по
+               вертикали, «Раунд N» — Body/Large/Bold, голоса — Body/Small/Medium tertiary -->
+          <div v-else>
             <div
               v-for="entry in historyEntries"
               :key="entry.round.id"
-              class="border-default flex flex-wrap items-center justify-between gap-3 border-t px-4 py-[18px] first:border-t-0 sm:px-[30px]"
+              class="border-default flex flex-wrap items-center justify-between gap-3 border-t py-[18px]"
             >
-              <div class="min-w-0">
-                <div class="text-[15px] font-bold">
+              <div class="flex min-w-0 flex-col gap-0.5">
+                <div class="text-text-primary text-base leading-6 font-bold tracking-[-0.01em]">
                   {{ t('room.historyRound', { seq: entry.round.seq }) }}
                 </div>
-                <div class="text-muted text-sm">
+                <div class="text-text-tertiary text-xs font-medium">
                   {{ t('room.historyVotes', { votes: historyVotesText(entry) }) }}
                 </div>
               </div>
@@ -642,7 +640,7 @@ function retry(): void {
     <ConfirmModal
       v-model:open="revealConfirmOpen"
       :title="t('room.revealConfirmTitle')"
-      :description="t('room.revealConfirmText', { voted: votedCount, total: totalCount })"
+      :description="t('room.revealConfirmText')"
       :confirm-label="t('room.revealConfirmButton')"
       confirm-color="primary"
       :loading="revealing"

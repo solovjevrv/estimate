@@ -12,6 +12,8 @@ import type { BoardPresenceEntry } from '@estimate/shared';
 import { Panel } from '@vue-flow/core';
 import { useI18n } from 'vue-i18n';
 
+import { teamAvatarColor } from '../../lib/team-roles';
+
 const props = defineProps<{
   presence: BoardPresenceEntry[];
   participantId: string | null;
@@ -38,7 +40,7 @@ function isFollowing(entry: BoardPresenceEntry): boolean {
   <Panel position="top-right">
     <div
       data-testid="board-presence"
-      class="board-presence surface-card flex items-center"
+      class="board-presence surface-card shadow-elevation-2 flex items-center"
       :aria-label="t('board.presence')"
     >
       <div
@@ -61,6 +63,7 @@ function isFollowing(entry: BoardPresenceEntry): boolean {
           :aria-pressed="isFollowing(entry)"
           :class="[
             'board-presence-avatar',
+            teamAvatarColor(entry.participantId),
             {
               'board-presence-avatar--self': isSelf(entry),
               'board-presence-avatar--following': isFollowing(entry),
@@ -114,7 +117,7 @@ function isFollowing(entry: BoardPresenceEntry): boolean {
   height: 32px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: var(--ui-bg);
+  /* Заливка и цвет инициалов — классы teamAvatarColor, как у аватаров в комнате */
   border: 2px solid var(--brand-surface);
   overflow: visible;
   z-index: 0;
@@ -151,7 +154,7 @@ function isFollowing(entry: BoardPresenceEntry): boolean {
 .board-presence-initials {
   font-size: 11px;
   font-weight: 700;
-  color: var(--brand-ink);
+  text-transform: uppercase;
 }
 
 /* Иконка + счётчик участников — одна серая пилюля (как на референсе), не
@@ -164,7 +167,9 @@ function isFollowing(entry: BoardPresenceEntry): boolean {
   height: 32px;
   padding: 0 12px;
   color: var(--brand-ink2);
-  background: var(--ui-bg);
+  /* 09_BoardCanvas: серая пилюля на белой карточке (в светлой теме --ui-bg
+     совпадал с карточкой и пилюля пропадала) */
+  background: var(--surface-tertiary);
   border-radius: 16px;
 }
 

@@ -54,8 +54,8 @@
   --ui-color-warning-500: var(--palette-warning-100);
   --ui-color-warning-600: var(--palette-warning-110);
   --ui-color-warning-700: var(--palette-warning-120);
-  --ui-color-warning-800: var(--palette-warning-130);
-  --ui-color-warning-900: var(--palette-warning-140);
+  --ui-color-warning-800: var(--palette-warning-140);
+  --ui-color-warning-900: color-mix(in oklab, var(--palette-warning-140) 75%, black);
   --ui-color-warning-950: color-mix(in oklab, var(--palette-warning-140) 60%, black);
 
   --ui-color-error-50: var(--palette-error-5);
@@ -86,6 +86,10 @@
   /* Прежние алиасы --brand-* → семантика Figma (используются в ~150 местах вёрстки;
      новый код берёт семантические токены напрямую: bg-surface-block и т.д.) */
   --brand-bg: var(--surface-frame);
+  /* Фон страниц приложения: в Figma корневые фреймы экранов — surface-secondary в Light
+     (surface-frame там теперь чисто белый, карточки на нём не читаются) и surface-frame в
+     Dark. Отдельно от --ui-bg/--brand-bg: те остаются фоном холста и экспорта досок. */
+  --page-bg: var(--surface-secondary);
   --brand-surface: var(--surface-block);
   --brand-ink: var(--text-primary);
   --brand-ink2: var(--text-secondary);
@@ -100,16 +104,15 @@
   --brand-well-bg: var(--surface-secondary);
   /* Точки сетки холста досок: заметно контрастнее фона (баг 27.08.2026) */
   --board-grid-dot: var(--palette-base-30);
-  /* Shadow-card из Figma (0 2 6 2 / 10%) */
-  --brand-shadow-card: var(--shadow-card);
+  /* Тень карточек-плашек: elevation/1 кита (TeamCard, ParticipantCard, Timer…).
+     Card/BoardCard/поповеры — elevation/3, Modal — 4, DropdownMenu — 5 (tokens.css) */
+  --brand-shadow-card: var(--shadow-elevation-1);
 
   --ui-bg: var(--surface-frame);
   --ui-bg-muted: var(--surface-secondary);
-  /* surface-block был бы просто белым — hover ghost-кнопок и пунктов DropdownMenu
-     (Nuxt UI красит их через bg-elevated) выходил незаметным/неверным цветом.
-     Сверено с Figma (Button Ghost/Neutral Hover, MenuItem Tone=Default Hover) —
-     оба используют surface-secondary */
-  --ui-bg-elevated: var(--surface-secondary);
+  /* Nuxt UI красит через bg-elevated hover ghost-кнопок и пунктов DropdownMenu —
+     в ките для этого отдельный токен surface-hover */
+  --ui-bg-elevated: var(--surface-hover);
   --ui-bg-accented: var(--surface-tertiary);
   --ui-bg-inverted: var(--surface-dark);
   --ui-text: var(--text-primary);
@@ -117,22 +120,28 @@
   --ui-text-muted: var(--text-tertiary);
   --ui-text-dimmed: var(--text-disabled);
   --ui-text-highlighted: var(--text-primary);
-  --ui-text-inverted: var(--text-white);
+  --ui-text-inverted: var(--text-on-brand);
   --ui-border: var(--border-medium);
   --ui-border-muted: var(--border-light);
   --ui-border-accented: var(--border-strong);
+  --ui-primary: var(--surface-brand);
 }
 
 :root.dark {
+  --page-bg: var(--surface-frame);
   --brand-well-bg: var(--surface-frame);
   --board-grid-dot: var(--palette-base-80);
 
-  /* Nuxt UI в тёмной теме сдвигает --ui-primary на primary-400 — в Figma кнопка того же
-     зелёного (surface-brand) в обеих темах */
-  --ui-primary: var(--ui-color-primary-500);
+  /* Nuxt UI в тёмной теме сдвигает --ui-primary на primary-400 — в Figma это
+     surface-brand (в Dark свой светлый зелёный brand/on-dark) */
+  --ui-primary: var(--surface-brand);
   --ui-success: var(--ui-color-success-500);
   --ui-warning: var(--ui-color-warning-500);
   --ui-error: var(--ui-color-error-500);
+}
+
+body {
+  background-color: var(--page-bg);
 }
 
 h1,
@@ -145,49 +154,61 @@ h6,
   font-family: var(--font-heading);
 }
 
-.surface-card {
-  background-color: var(--brand-surface);
-  /* Фиксированное значение (radiusMd референса в пресете playful — 24px), не завязано
-     на --ui-radius: та переменная отвечает за компоненты Nuxt UI (кнопки/инпуты). */
-  border-radius: 1.5rem;
-  box-shadow: var(--brand-shadow-card);
-}
+/* Слой components: утилиты Tailwind (shadow-elevation-*, rounded-*, p-*) перебивают
+   эти классы. Вне слоя они побеждали любые утилиты, и shadow-elevation-3 на
+   .surface-card молча не применялся. */
+@layer components {
+  .surface-card {
+    background-color: var(--brand-surface);
+    /* Фиксированное значение (radiusMd референса в пресете playful — 24px), не завязано
+       на --ui-radius: та переменная отвечает за компоненты Nuxt UI (кнопки/инпуты). */
+    border-radius: 1.5rem;
+    box-shadow: var(--brand-shadow-card);
+  }
 
-/* radiusLg референса (28px) — экран Room в макете использует его для всех своих
-   карточек-секций, а не radiusMd, которым пользуются Teams/MyRooms/TeamPage. Идёт
-   вторым классом поверх .surface-card, поэтому должен быть объявлен после него —
-   при равной специфичности побеждает то правило, что позже в файле. */
-.surface-card-lg {
-  border-radius: 1.75rem;
-}
+  /* radiusLg референса (28px) — экран Room в макете использует его для всех своих
+     карточек-секций, а не radiusMd, которым пользуются Teams/MyRooms/TeamPage. Идёт
+     вторым классом поверх .surface-card, поэтому должен быть объявлен после него —
+     при равной специфичности побеждает то правило, что позже в файле. */
+  /* Карточки-секции комнаты (07_Room): r28 и elevation/2, а не elevation/1 плашек */
+  .surface-card-lg {
+    border-radius: 1.75rem;
+    box-shadow: var(--shadow-elevation-2);
+  }
 
-.surface-card-hover {
-  transition: box-shadow 0.15s ease;
-}
+  .surface-card-hover {
+    transition: background-color 0.15s ease;
+  }
 
-.surface-card-hover:hover {
-  box-shadow:
-    var(--brand-shadow-card),
-    0 0 0 1px var(--ui-color-primary-200);
-}
+  /* TeamCard State=Hover (50_EntityCard): заливка карточки surface-block → surface-hover,
+     тень та же (elevation/1) */
+  .surface-card-hover:hover {
+    background-color: var(--surface-hover);
+  }
 
-/* Пилюли-бейджи (роль участника, статус комнаты) — везде либо primarySoftBg/primaryText,
-   либо border/ink2 референса, а не семантические color="primary"/"neutral" Nuxt UI (те
-   берут другие шаги шкалы и не совпадают по цвету). */
-.badge-pill {
-  border-radius: 999px;
-  padding: 7px 14px;
-  font-size: 13px;
-  font-weight: 700;
-  white-space: nowrap;
-}
+  /* Пилюли-бейджи (роль участника, статус комнаты) — везде либо primarySoftBg/primaryText,
+     либо border/ink2 референса, а не семантические color="primary"/"neutral" Nuxt UI (те
+     берут другие шаги шкалы и не совпадают по цвету). */
+  /* Badge кита (17_Badge): пилюля 34px, паддинг 8×12 (с учётом обводки 1px внутрь),
+     Body/Small/Bold, обводка border-strong; Primary — surface-brand-low/text-brand,
+     Neutral — surface-tertiary/text-secondary */
+  .badge-pill {
+    border-radius: 999px;
+    border: 1px solid var(--border-strong);
+    padding: 7px 11px;
+    font-size: 12px;
+    line-height: 18px;
+    font-weight: 700;
+    white-space: nowrap;
+  }
 
-.badge-pill-primary {
-  background-color: var(--brand-primary-soft-bg);
-  color: var(--brand-primary-text);
-}
+  .badge-pill-primary {
+    background-color: var(--surface-brand-low);
+    color: var(--text-brand);
+  }
 
-.badge-pill-neutral {
-  background-color: var(--brand-border);
-  color: var(--brand-ink2);
+  .badge-pill-neutral {
+    background-color: var(--surface-tertiary);
+    color: var(--text-secondary);
+  }
 }

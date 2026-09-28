@@ -29,6 +29,27 @@ export function getBoard(boardId: string): Promise<BoardSnapshot> {
   return api.get<BoardSnapshot>(`/api/boards/${encodeURIComponent(boardId)}`);
 }
 
+export interface PublishBoardThumbnailResult {
+  updated: boolean;
+  thumbnailUrl: string | null;
+}
+
+/**
+ * Публикует производный снимок; сервер примет его только для той же ревизии и
+ * перекодирует в WebP. Safari кодирует canvas только в PNG — тип берём у Blob.
+ */
+export function publishBoardThumbnail(
+  boardId: string,
+  revision: number,
+  image: Blob,
+): Promise<PublishBoardThumbnailResult> {
+  return api.uploadBlob<PublishBoardThumbnailResult>(
+    `/api/boards/${encodeURIComponent(boardId)}/thumbnail?revision=${revision}`,
+    image,
+    image.type === 'image/png' ? 'image/png' : 'image/webp',
+  );
+}
+
 /** Переименовать доску — доступно автору или администратору команды. Доступно и для архивной. */
 export function renameBoard(boardId: string, title: string): Promise<Board> {
   return api

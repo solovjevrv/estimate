@@ -5,7 +5,9 @@ const { t } = useI18n();
 </script>
 
 <template>
-  <section class="flex flex-col items-center py-16 text-center">
+  <!-- 11_System «404»: блок по центру экрана — вся высота за вычетом шапки (76),
+       паддингов main (2×56) и подвала (68) -->
+  <section class="flex min-h-[calc(100dvh-256px)] flex-col items-center justify-center text-center">
     <div class="mb-6 flex gap-2.5">
       <div
         v-for="(digit, i) in ['4', '0', '4']"

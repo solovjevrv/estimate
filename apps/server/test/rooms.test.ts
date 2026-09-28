@@ -211,6 +211,28 @@ describeDb('комнаты', () => {
       // Без входа комната всё равно видна: гости заходят по прямой ссылке
       const anonymous = await app.inject({ method: 'GET', url: `/api/rooms/${room.id}` });
       expect(anonymous.statusCode).toBe(200);
+      // Личная комната — команды для шапки нет
+      expect(anonymous.json()).toMatchObject({ room: { id: room.id }, teamName: null });
+    });
+
+    it('по ссылке командной комнаты видно название команды — и без входа тоже', async () => {
+      const owner = await newUser('team-room-name');
+      const teamName = `Платформа ${randomUUID().slice(0, 8)}`;
+      const team = await teamsService.create(owner.id, teamName);
+      teamIds.push(team.id);
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(owner),
+        payload: { name: 'Спринт 24', teamId: team.id },
+      });
+      const roomId = (created.json() as { room: { id: string } }).room.id;
+      roomIds.push(roomId);
+
+      const anonymous = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}` });
+
+      expect(anonymous.statusCode).toBe(200);
+      expect(anonymous.json()).toMatchObject({ room: { id: roomId, teamId: team.id }, teamName });
     });
 
     it('схема принимает запас на trim, но не строку за его пределом', async () => {

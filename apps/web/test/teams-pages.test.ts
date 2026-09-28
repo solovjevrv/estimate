@@ -7,6 +7,7 @@ import { createMemoryHistory } from 'vue-router';
 
 import App from '../src/App.vue';
 import { createAppI18n } from '../src/i18n';
+import { loginModal } from '../src/lib/login-modal';
 import { createAppRouter } from '../src/router';
 
 function json(status: number, body: unknown): Response {
@@ -182,7 +183,7 @@ describe('страница команд', () => {
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('У вас пока нет команд'));
 
-    await byText(wrapper, 'button', 'Создать команду')!.trigger('click');
+    await byText(wrapper, 'button', 'Новая команда')!.trigger('click');
 
     // Контент модалки телепортируется в body
     await vi.waitFor(() => expect(document.body.textContent).toContain('Новая команда'));
@@ -251,7 +252,7 @@ describe('карточка команды', () => {
     await byText(wrapper, 'button', 'Пригласить')!.trigger('click');
     await vi.waitFor(() => expect(dialog()?.textContent).toContain('Приглашение'));
 
-    dialogButton('Скопировать ссылку')!.click();
+    dialogButton('Скопировать')!.click();
 
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining('/invite/abcdef'));
   });
@@ -267,6 +268,29 @@ const other: TeamMember = {
 };
 
 describe('управление составом', () => {
+  it('состав показывается по 5 участников на страницу, как другие списки', async () => {
+    const many: TeamMember[] = Array.from({ length: 7 }, (_, i) => ({
+      ...other,
+      userId: `u-${i}`,
+      name: `Участник ${i + 1}`,
+    }));
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: many }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
+    await byText(wrapper, 'button', 'Состав')!.trigger('click');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участник 5'));
+    expect(wrapper.text()).not.toContain('Участник 6');
+
+    await byText(wrapper, 'button', '2')!.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участник 7'));
+    expect(wrapper.text()).not.toContain('Участник 1');
+  });
+
   it('администратору доступно исключение других участников', async () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
@@ -451,7 +475,7 @@ describe('управление составом', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
 
     await clickTeamMenuItem('Удалить команду');
-    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Удалить команду?'));
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Удалить команду «Команда А»?'));
     dialogButton('Удалить')!.click();
 
     await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('teams'));
@@ -696,6 +720,82 @@ describe('создание комнаты команды', () => {
 
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/rooms/r5'));
   });
+
+  /** Тело POST /api/rooms из вызовов замоканного fetch */
+  function postedRoom(fetchImpl: ReturnType<typeof vi.fn>): unknown {
+    const call = fetchImpl.mock.calls.find(
+      ([url, init]) => url === '/api/rooms' && (init as RequestInit | undefined)?.method === 'POST',
+    );
+    return call ? JSON.parse((call[1] as RequestInit).body as string) : undefined;
+  }
+
+  async function createRoomFromTeamPage(
+    teamsList: unknown[],
+    beforeSubmit?: () => Promise<void> | void,
+  ): Promise<ReturnType<typeof vi.fn>> {
+    const created: Room = { ...activeRoom, id: 'r5', teamId: 't1', name: 'Спринт' };
+    const fetchImpl = makeFetch(true, {
+      'GET /api/teams': () => json(200, { teams: teamsList }),
+      'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: [admin] }),
+      'GET /api/teams/t1/rooms': () => json(200, { rooms: [] }),
+      'GET /api/rooms/r5': () => json(200, { room: created }),
+      'POST /api/rooms': () => json(201, { room: created }),
+    });
+    const { wrapper, router } = await mountApp('/teams/t1', fetchImpl);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('В команде пока нет комнат'));
+    await byText(wrapper, 'button', 'Создать комнату')!.trigger('click');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Командная комната'));
+
+    const input = dialog()!.querySelector('input') as HTMLInputElement;
+    input.value = 'Спринт';
+    input.dispatchEvent(new Event('input'));
+    await beforeSubmit?.();
+    dialogButton('Создать комнату')!.click();
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/rooms/r5'));
+    return fetchImpl;
+  }
+
+  it('окно создания на странице команды: «Командная» включена и выбрана эта команда (DS-063)', async () => {
+    const fetchImpl = await createRoomFromTeamPage([{ ...teamA, role: 'admin', memberCount: 1 }]);
+    expect(postedRoom(fetchImpl)).toEqual({ name: 'Спринт', teamId: 't1' });
+  });
+
+  it('с одной командой выбора нет — под переключателем видно, куда попадёт комната', async () => {
+    await createRoomFromTeamPage([{ ...teamA, role: 'admin', memberCount: 1 }], () => {
+      expect(dialog()!.textContent).toContain(`Команда «${teamA.name}»`);
+      expect(dialog()!.querySelector('[role="combobox"]')).toBeNull();
+    });
+  });
+
+  it('выключенный переключатель создаёт личную комнату — без teamId', async () => {
+    const fetchImpl = await createRoomFromTeamPage(
+      [{ ...teamA, role: 'admin', memberCount: 1 }],
+      async () => {
+        (dialog()!.querySelector('[role="switch"]') as HTMLElement).click();
+        await vi.waitFor(() =>
+          expect(dialog()!.querySelector('[role="switch"]')!.getAttribute('aria-checked')).toBe(
+            'false',
+          ),
+        );
+      },
+    );
+    expect(postedRoom(fetchImpl)).toEqual({ name: 'Спринт' });
+  });
+
+  it('несколько команд с правом — появляется выбор команды, по умолчанию текущая', async () => {
+    await createRoomFromTeamPage(
+      [
+        { id: 't2', name: 'Гарантии', createdAt: teamA.createdAt, role: 'admin', memberCount: 3 },
+        { ...teamA, role: 'admin', memberCount: 1 },
+        // Участнику командные комнаты создавать нельзя — в выборе её нет
+        { id: 't3', name: 'Чужая', createdAt: teamA.createdAt, role: 'member', memberCount: 5 },
+      ],
+      () => {
+        const combobox = dialog()!.querySelector('[role="combobox"]');
+        expect(combobox?.textContent).toContain(teamA.name);
+      },
+    );
+  });
 });
 
 describe('страница приглашения', () => {
@@ -711,7 +811,7 @@ describe('страница приглашения', () => {
     expect(wrapper.text()).toContain('Войти и вступить');
   });
 
-  it('гостя по кнопке уводит на вход с возвратом на приглашение', async () => {
+  it('гостю по кнопке открывает окно входа с возвратом на приглашение', async () => {
     const { wrapper, router } = await mountApp(
       '/invite/abcdef',
       makeFetch(false, {
@@ -722,8 +822,10 @@ describe('страница приглашения', () => {
 
     await byText(wrapper, 'button', 'Войти и вступить')!.trigger('click');
 
-    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('login'));
-    expect(router.currentRoute.value.query.redirect).toBe('/invite/abcdef');
+    // Окно открывается поверх приглашения, без перехода; возврат — на приглашение
+    await vi.waitFor(() => expect(loginModal.open).toBe(true));
+    expect(loginModal.redirect).toBe('/invite/abcdef');
+    expect(router.currentRoute.value.path).toBe('/invite/abcdef');
   });
 
   it('вошедшего вступает в команду и ведёт на её страницу', async () => {

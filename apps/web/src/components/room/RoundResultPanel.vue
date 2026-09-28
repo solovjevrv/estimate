@@ -37,24 +37,15 @@ const confetti = ref<ConfettiPiece[]>([]);
 let nextConfettiId = 0;
 let clearConfettiTimer: ReturnType<typeof setTimeout> | null = null;
 
-/**
- * Панель монтируется заново на каждое вскрытие (`v-if="room.result"` в RoomPage —
- * `result` обнуляется новым раундом), поэтому `{ immediate: true }` = «сработай при
- * каждом реальном вскрытии» без отдельного watch на явное событие reveal.
- *
- * Эффект теперь не только для единодушного консенсуса (10.12: «анимация после любого
- * вскрытия» + «увеличить видимость конфетти») — срабатывает всегда, но при 100%
- * agreement заметно масштабнее (в 3+ раза больше конфетти), чем при частичном согласии.
- */
+/** Конфетти при вскрытии — согласованный эффект комнаты (10.12). */
 watch(
   () => props.agreement,
   (agreement) => {
-    const isUnanimous = agreement === 100;
-    const count = isUnanimous ? 70 : 18;
+    const count = agreement === 100 ? 70 : 18;
     confetti.value = Array.from({ length: count }, (_, i) => ({
       id: nextConfettiId++,
       left: Math.random() * 100,
-      delay: Math.random() * (isUnanimous ? 0.4 : 0.2),
+      delay: Math.random() * (agreement === 100 ? 0.4 : 0.2),
       duration: 1.4 + Math.random() * 0.8,
       color: confettiColors[i % confettiColors.length] ?? confettiColors[0]!,
     }));
@@ -69,7 +60,6 @@ watch(
 
 <template>
   <Teleport to="body">
-    <!-- Во весь экран (не заперто в карточке результата) — 10.12: «увеличить видимость конфетти» -->
     <div class="pointer-events-none fixed inset-0 z-[9999] overflow-hidden">
       <div
         v-for="piece in confetti"
@@ -84,40 +74,33 @@ watch(
       />
     </div>
   </Teleport>
-  <div class="reveal-pop relative">
-    <h2 class="text-muted mb-[18px] text-sm font-bold tracking-[0.03em] uppercase">
-      {{ t('room.resultTitle') }}
-    </h2>
-    <div class="flex flex-wrap items-center gap-6">
-      <div v-if="props.winnerLabel" class="flex flex-col items-center gap-1">
-        <span class="text-muted text-xs">{{ t('room.resultWinnerLabel') }}</span>
-        <span class="font-heading text-2xl font-extrabold text-[var(--brand-primary-text)]">{{
-          props.winnerLabel
-        }}</span>
-      </div>
-
+  <!-- 54_RoundResult / RoundResultPanel: без видимого заголовка (только кольца через 32px),
+       заголовок панели только для скринридеров -->
+  <section class="reveal-pop relative">
+    <h2 class="sr-only">{{ t('room.resultTitle') }}</h2>
+    <div class="flex flex-wrap items-center gap-8">
+      <StatRing
+        v-if="props.winnerLabel"
+        :value-label="props.winnerLabel"
+        :label="t('room.resultWinnerLabel')"
+        is-winner
+      />
       <StatRing
         v-if="props.average !== null"
         :value-label="String(props.average)"
-        :label="t('room.resultAverage', { average: props.average })"
+        :label="t('room.resultAverageLabel')"
       />
       <StatRing
         :value-label="`${props.agreement}%`"
         :percent="props.agreement"
-        :label="t('room.resultAgreement', { agreement: props.agreement })"
+        :label="t('room.resultAgreementLabel')"
       />
-      <StatRing
-        :value-label="props.minLabel"
-        :label="t('room.resultMin', { min: props.minLabel })"
-      />
-      <StatRing
-        :value-label="props.maxLabel"
-        :label="t('room.resultMax', { max: props.maxLabel })"
-      />
+      <StatRing :value-label="props.minLabel" :label="t('room.resultMinLabel')" />
+      <StatRing :value-label="props.maxLabel" :label="t('room.resultMaxLabel')" />
     </div>
 
-    <div v-if="props.departedVotes.length" class="mt-4">
-      <h3 class="text-muted mb-2 text-xs font-bold tracking-[0.03em] uppercase">
+    <div v-if="props.departedVotes.length" class="mt-6">
+      <h3 class="text-text-tertiary mb-2 text-xs font-bold tracking-[0.03em] uppercase">
         {{ t('room.resultDepartedTitle') }}
       </h3>
       <div class="flex flex-wrap gap-2">
@@ -130,7 +113,7 @@ watch(
         </span>
       </div>
     </div>
-  </div>
+  </section>
 </template>
 
 <style scoped>
