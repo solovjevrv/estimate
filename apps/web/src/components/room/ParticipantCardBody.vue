@@ -104,6 +104,13 @@ function onBadgeClick(emoji: EmojiSequence): void {
               {{ props.participant.hasVoted ? t('room.voted') : t('room.notVoted') }}
             </span>
           </template>
+          <!-- До первого раунда — тот же Waiting из макета, но без пульсации и без
+               статуса «Ожидаем»: голосования ещё нет, никого не ждут -->
+          <UIcon
+            v-else-if="props.roundStatus === 'none'"
+            name="i-lucide-clock"
+            class="text-icons-secondary size-6"
+          />
         </div>
         <!-- Обратная сторона: вскрытое значение -->
         <div

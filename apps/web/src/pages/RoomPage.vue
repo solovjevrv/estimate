@@ -491,7 +491,9 @@ function retry(): void {
               </h2>
               <p class="text-text-secondary mt-1 text-sm font-medium">{{ participantsSubtitle }}</p>
             </div>
+            <!-- Архивная комната только для чтения — звать в неё некого (07_Room) -->
             <UButton
+              v-if="!isArchived"
               icon="i-lucide-user-plus"
               color="neutral"
               variant="outline"
@@ -504,7 +506,7 @@ function retry(): void {
 
           <!-- pt-5 резервирует место под аватар-бейдж участника, который своим -top-5
                выходит за пределы карточки — без отступа он наезжает на текст/контент выше -->
-          <div class="flex flex-wrap justify-center gap-[22px] pt-5 sm:justify-start">
+          <div class="flex flex-wrap justify-center gap-6 pt-5 sm:justify-start">
             <ParticipantCard
               v-for="(p, participantIndex) in room.participants"
               :key="p.participantId"
@@ -541,7 +543,13 @@ function retry(): void {
           :is-scrum-master="room.isScrumMaster"
           :revealed="room.round.status === 'revealed'"
           :revealing="revealing"
-          :reveal-label="revealing ? t('room.revealing') : t('room.reveal')"
+          :reveal-label="
+            revealing
+              ? t('room.revealing')
+              : waitingForText
+                ? t('room.revealEarly')
+                : t('room.reveal')
+          "
           :waiting-for-text="waitingForText"
           @vote="onVote"
           @reveal="onRevealClick"

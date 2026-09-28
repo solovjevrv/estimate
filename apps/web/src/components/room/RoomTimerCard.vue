@@ -138,7 +138,7 @@ function onToggleClick(): void {
         <UIcon name="i-lucide-timer" class="size-3.5" />
         {{ t('room.timerTitle') }}
       </div>
-      <div class="flex flex-wrap items-center justify-center gap-2 sm:justify-start">
+      <div class="flex flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:justify-start">
         <UButton
           size="sm"
           :icon="props.timer.running ? 'i-lucide-pause' : 'i-lucide-play'"

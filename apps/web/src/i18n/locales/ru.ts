@@ -219,6 +219,8 @@ export default {
     waitingFor: 'Ждём: {names}',
     voteError: 'Не удалось отправить оценку. Попробуйте ещё раз.',
     reveal: 'Вскрыть карты',
+    /** Кнопка вскрытия, пока проголосовали не все (07_Room) */
+    revealEarly: 'Вскрыть досрочно',
     revealing: 'Вскрываем…',
     revealError: 'Не удалось вскрыть карты. Попробуйте ещё раз.',
     revealConfirmTitle: 'Вскрыть карты досрочно?',
@@ -232,7 +234,7 @@ export default {
     resultWinnerLabel: 'Победитель',
     resultDepartedTitle: 'Проголосовали и вышли',
     historyTitle: 'История раундов',
-    historyEmpty: 'Раундов пока не было.',
+    historyEmpty: 'Раундов пока нет',
     historyLoadError: 'Не удалось загрузить историю раундов.',
     historyRound: 'Раунд {seq}',
     historyVotes: 'Голоса: {votes}',

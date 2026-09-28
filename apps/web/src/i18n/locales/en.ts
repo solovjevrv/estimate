@@ -218,6 +218,8 @@ export default {
     waitingFor: 'Waiting on: {names}',
     voteError: 'Could not submit your vote. Please try again.',
     reveal: 'Reveal cards',
+    /** Кнопка вскрытия, пока проголосовали не все (07_Room) */
+    revealEarly: 'Reveal early',
     revealing: 'Revealing…',
     revealError: 'Could not reveal the cards. Please try again.',
     revealConfirmTitle: 'Reveal cards early?',
@@ -231,7 +233,7 @@ export default {
     resultWinnerLabel: 'Winner',
     resultDepartedTitle: 'Voted and left',
     historyTitle: 'Round history',
-    historyEmpty: 'No rounds yet.',
+    historyEmpty: 'No rounds yet',
     historyLoadError: 'Could not load round history.',
     historyRound: 'Round {seq}',
     historyVotes: 'Votes: {votes}',

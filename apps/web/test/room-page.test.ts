@@ -1146,8 +1146,12 @@ describe('вскрытие карт', () => {
       makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Ждём: Мария'));
+    // Пока проголосовали не все, кнопка так и называется (07_Room)
+    expect(wrapper.text()).not.toContain('Вскрыть карты');
 
-    const revealButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Вскрыть карты');
+    const revealButton = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === 'Вскрыть досрочно');
     await revealButton!.trigger('click');
     await vi.waitFor(() => expect(document.body.textContent).toContain('Вскрыть карты досрочно?'));
     expect(socket.sent.some((s) => s.event === 'reveal_cards')).toBe(false);
@@ -1545,6 +1549,8 @@ describe('архивация комнаты', () => {
     // Читаемо, но действия за столом больше не предлагаются
     expect(wrapper.text()).not.toContain('Оценки');
     expect(wrapper.text()).not.toContain('Архивировать комнату');
+    // и звать в комнату только для чтения некого
+    expect(wrapper.text()).not.toContain('Пригласить');
   });
 });
 

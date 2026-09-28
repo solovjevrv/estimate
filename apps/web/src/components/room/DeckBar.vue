@@ -40,13 +40,14 @@ const emit = defineEmits<{ vote: [value: number]; reveal: [] }>();
         {{ props.cardLabel(card) }}
       </button>
     </div>
-    <div v-if="!props.revealed || props.waitingForText" class="flex flex-col items-start gap-2.5">
+    <!-- Status (07_Room): «Ждём: …» и кнопка вскрытия (Button Md) через 24 -->
+    <div v-if="!props.revealed || props.waitingForText" class="flex flex-col items-start gap-6">
       <span v-if="props.waitingForText" class="text-text-secondary text-sm font-medium">
         {{ props.waitingForText }}
       </span>
       <UButton
         v-if="props.isScrumMaster && !props.revealed"
-        class="w-full justify-center rounded-[12px] px-[26px] py-3.5 text-[15px] font-bold sm:w-auto"
+        class="w-full justify-center sm:w-auto"
         :loading="props.revealing"
         @click="emit('reveal')"
       >
