@@ -147,7 +147,9 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
       />
 
       <div class="flex flex-col items-center gap-2">
-        <p class="text-text-brand text-sm font-medium">{{ session.user.email }}</p>
+        <p class="text-text-brand text-center text-sm font-medium break-all">
+          {{ session.user.email }}
+        </p>
         <span class="badge-pill badge-pill-neutral">
           {{ providerLabel(session.user.provider) }}
         </span>
@@ -171,6 +173,7 @@ async function onSubmit(event: FormSubmitEvent<{ name: string; jobTitle: string 
           <UInput
             v-model="form.name"
             class="w-full"
+            :placeholder="t('profile.namePlaceholder')"
             :ui="{ base: 'bg-surface-frame border-border-strong' }"
           />
         </UFormField>

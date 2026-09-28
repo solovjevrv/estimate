@@ -580,6 +580,7 @@ export default {
   profile: {
     notLoaded: 'Профиль ещё не загружен.',
     nameLabel: 'Имя',
+    namePlaceholder: 'Введите имя',
     nameRequired: 'Введите имя',
     nameTooLong: 'Слишком длинное имя (максимум {max})',
     jobTitleLabel: 'Должность',

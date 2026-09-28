@@ -580,6 +580,7 @@ export default {
   profile: {
     notLoaded: 'The profile hasn’t loaded yet.',
     nameLabel: 'Name',
+    namePlaceholder: 'Enter your name',
     nameRequired: 'Enter a name',
     nameTooLong: 'Name is too long (maximum {max})',
     jobTitleLabel: 'Job title',

@@ -53,7 +53,13 @@ async function confirm(close: () => void): Promise<void> {
 </script>
 
 <template>
-  <UModal v-model:open="open" :title="t('profile.avatar.cropTitle')" :ui="cropModalUi">
+  <!-- Без автофокуса: иначе крестик сразу открывается в рамке фокуса (как в окне входа) -->
+  <UModal
+    v-model:open="open"
+    :title="t('profile.avatar.cropTitle')"
+    :ui="cropModalUi"
+    :content="{ onOpenAutoFocus: (e: Event) => e.preventDefault() }"
+  >
     <template #body>
       <div class="h-[360px] overflow-hidden rounded-[12px] bg-[var(--brand-border)]">
         <Cropper
@@ -63,6 +69,8 @@ async function confirm(close: () => void): Promise<void> {
           :src="imageSrc"
           :stencil-component="CircleStencil"
           :stencil-props="{ aspectRatio: 1 }"
+          background-class="avatar-crop-background"
+          foreground-class="avatar-crop-foreground"
           @ready="cropperReady = true"
         />
       </div>
@@ -78,3 +86,16 @@ async function confirm(close: () => void): Promise<void> {
     </template>
   </UModal>
 </template>
+
+<style>
+/* 10_Profile «Кроп аватара»: светлая область вместо чёрных полос библиотеки
+   (её стили без слоя, поэтому переопределяем тоже без слоя, по классам-пропам) */
+.avatar-crop-background {
+  background: var(--surface-tertiary);
+}
+
+.avatar-crop-foreground {
+  background: var(--surface-block);
+  opacity: 0.6;
+}
+</style>
