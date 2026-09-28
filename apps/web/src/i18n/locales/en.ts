@@ -350,6 +350,8 @@ export default {
     creating: 'Creating…',
     createError: 'Could not create the board. Please try again.',
     boardMenu: 'Board actions',
+    openBoard: 'Open board “{title}”',
+    thumbnailAlt: 'Preview of board “{title}”',
     rename: 'Rename',
     renameTitle: 'Rename board',
     renamed: 'Name updated',

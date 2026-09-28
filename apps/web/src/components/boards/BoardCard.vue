@@ -2,6 +2,7 @@
 import type { DropdownMenuItem } from '@nuxt/ui';
 import type { BoardSummary } from '@estimate/shared';
 import { ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 
 const props = defineProps<{
   board: BoardSummary;
@@ -14,6 +15,8 @@ const props = defineProps<{
   menuItems?: DropdownMenuItem[][];
   menuAriaLabel: string;
 }>();
+
+const { t } = useI18n();
 
 const thumbnailFailed = ref(false);
 watch(
@@ -29,12 +32,12 @@ watch(
     <RouterLink
       :to="{ name: 'board', params: { id: board.id } }"
       class="bg-surface-tertiary flex h-[140px] shrink-0 items-center justify-center"
-      :aria-label="`Открыть доску «${board.title}»`"
+      :aria-label="t('board.openBoard', { title: board.title })"
     >
       <img
         v-if="board.thumbnailUrl && !thumbnailFailed"
         :src="board.thumbnailUrl"
-        :alt="`Превью доски «${board.title}»`"
+        :alt="t('board.thumbnailAlt', { title: board.title })"
         class="size-full object-cover"
         @error="thumbnailFailed = true"
       />

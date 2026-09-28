@@ -34,7 +34,10 @@ export interface PublishBoardThumbnailResult {
   thumbnailUrl: string | null;
 }
 
-/** Публикует производный WebP-снимок; сервер примет его только для той же ревизии. */
+/**
+ * Публикует производный снимок; сервер примет его только для той же ревизии и
+ * перекодирует в WebP. Safari кодирует canvas только в PNG — тип берём у Blob.
+ */
 export function publishBoardThumbnail(
   boardId: string,
   revision: number,
@@ -43,7 +46,7 @@ export function publishBoardThumbnail(
   return api.uploadBlob<PublishBoardThumbnailResult>(
     `/api/boards/${encodeURIComponent(boardId)}/thumbnail?revision=${revision}`,
     image,
-    'image/webp',
+    image.type === 'image/png' ? 'image/png' : 'image/webp',
   );
 }
 

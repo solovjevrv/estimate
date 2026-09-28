@@ -196,21 +196,38 @@ export class BoardsRepository {
   }
 
   /**
-   * Записывает снимок только если он построен из текущей ревизии. Условие в
-   * UPDATE, а не предварительное чтение, закрывает гонку с applyOps: устаревший
-   * браузер не может перетереть актуальное превью.
+   * Записывает снимок, только если он построен из текущей ревизии и превью этой
+   * ревизии ещё нет. Вызывать внутри транзакции: строка блокируется (FOR UPDATE),
+   * поэтому applyOps и параллельная публикация того же снимка ждут, а устаревший
+   * или повторный снимок не перетирает актуальный и не плодит объекты в хранилище.
+   * `previousKey` — прежний объект, который после успешной замены нужно удалить;
+   * `currentKey` — уже готовое превью этой ревизии, если снимок оказался лишним.
    */
-  async setThumbnailIfCurrent(
+  async replaceThumbnailIfCurrent(
     boardId: string,
     revision: number,
     thumbnailKey: string,
-  ): Promise<boolean> {
-    const rows = await this.db
+  ): Promise<{ updated: boolean; previousKey: string | null; currentKey: string | null }> {
+    const [row] = await this.db
+      .select({
+        revision: schema.boards.revision,
+        thumbnailKey: schema.boards.thumbnailKey,
+        thumbnailRevision: schema.boards.thumbnailRevision,
+      })
+      .from(schema.boards)
+      .where(eq(schema.boards.id, boardId))
+      .for('update');
+    if (!row || row.revision !== revision) {
+      return { updated: false, previousKey: null, currentKey: null };
+    }
+    if (row.thumbnailRevision === revision) {
+      return { updated: false, previousKey: null, currentKey: row.thumbnailKey };
+    }
+    await this.db
       .update(schema.boards)
       .set({ thumbnailKey, thumbnailRevision: revision })
-      .where(and(eq(schema.boards.id, boardId), eq(schema.boards.revision, revision)))
-      .returning({ id: schema.boards.id });
-    return rows.length === 1;
+      .where(eq(schema.boards.id, boardId));
+    return { updated: true, previousKey: row.thumbnailKey, currentKey: thumbnailKey };
   }
 
   /**

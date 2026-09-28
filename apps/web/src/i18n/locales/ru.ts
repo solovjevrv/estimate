@@ -350,6 +350,8 @@ export default {
     creating: 'Создаём…',
     createError: 'Не удалось создать доску. Попробуйте ещё раз.',
     boardMenu: 'Меню доски',
+    openBoard: 'Открыть доску «{title}»',
+    thumbnailAlt: 'Превью доски «{title}»',
     rename: 'Переименовать',
     renameTitle: 'Переименовать доску',
     renamed: 'Название обновлено',

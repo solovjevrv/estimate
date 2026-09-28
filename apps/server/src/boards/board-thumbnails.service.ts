@@ -10,6 +10,11 @@ import type { ObjectStorage } from '../platform/storage';
 export const BOARD_THUMBNAIL_MAX_BYTES = 2 * 1024 * 1024;
 const BOARD_THUMBNAIL_MAX_WIDTH = 960;
 const BOARD_THUMBNAIL_MAX_HEIGHT = 540;
+/**
+ * Снимок публикует любой, у кого есть просмотр (в т.ч. аноним по ссылке): без
+ * лимита 2 МБ сжатых данных могут развернуться в ~16k×16k и занять гигабайт памяти.
+ */
+const BOARD_THUMBNAIL_MAX_INPUT_PIXELS = 4096 * 4096;
 const KEY_RE = /^\d+-[a-f0-9]{32}\.webp$/;
 
 export function boardThumbnailKey(boardId: string, key: string): string {
@@ -31,7 +36,10 @@ export class BoardThumbnailsService {
 
     let image: Buffer;
     try {
-      image = await sharp(source, { failOn: 'error' })
+      image = await sharp(source, {
+        failOn: 'error',
+        limitInputPixels: BOARD_THUMBNAIL_MAX_INPUT_PIXELS,
+      })
         .rotate()
         .resize(BOARD_THUMBNAIL_MAX_WIDTH, BOARD_THUMBNAIL_MAX_HEIGHT, {
           fit: 'inside',

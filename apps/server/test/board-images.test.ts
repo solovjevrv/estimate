@@ -18,7 +18,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../src/app';
 import { ACCESS_COOKIE, TokenService, UsersRepository } from '../src/auth';
-import { BoardImagesService, BoardsService } from '../src/boards';
+import { BoardImagesService, BoardsRepository, BoardsService } from '../src/boards';
 import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
 import { FakeObjectStorage } from '../src/platform/storage';
@@ -322,28 +322,49 @@ describeDb('картинки досок', () => {
   });
 
   describe('превью доски', () => {
-    it('принимает WebP только для текущей ревизии и отдаёт его через immutable-кэш', async () => {
-      const owner = await newUser('thumbnail-owner');
-      const boardId = await newBoard(owner);
-      const source = await sharp({
+    async function thumbnailSource(): Promise<Buffer> {
+      return sharp({
         create: { width: 80, height: 50, channels: 3, background: { r: 30, g: 180, b: 80 } },
       })
         .webp()
         .toBuffer();
+    }
 
-      const publish = await app.inject({
+    function publishThumbnail(
+      boardId: string,
+      revision: number,
+      payload: Buffer,
+      headers: Record<string, string> = {},
+      contentType = 'image/webp',
+    ) {
+      return app.inject({
         method: 'POST',
-        url: `/api/boards/${boardId}/thumbnail?revision=0`,
-        headers: { ...as(owner), 'content-type': 'image/webp' },
-        payload: source,
+        url: `/api/boards/${boardId}/thumbnail?revision=${revision}`,
+        headers: { ...headers, 'content-type': contentType },
+        payload,
       });
+    }
+
+    function thumbnailKeys(boardId: string): string[] {
+      return storage.keys().filter((entry) => entry.startsWith(`boards/${boardId}/thumbnails/`));
+    }
+
+    it('принимает WebP только для текущей ревизии и отдаёт его через immutable-кэш', async () => {
+      const owner = await newUser('thumbnail-owner');
+      const boardId = await newBoard(owner);
+      const source = await thumbnailSource();
+
+      const publish = await publishThumbnail(boardId, 0, source, as(owner));
       expect(publish.statusCode).toBe(200);
       expect(publish.json()).toMatchObject({ updated: true });
 
-      const key = storage.keys().find((entry) => entry.includes(`/thumbnails/`));
+      const [key] = thumbnailKeys(boardId);
       expect(key).toBeDefined();
       const filename = key!.split('/').at(-1)!;
       expect(storage.peek(boardThumbnailKey(boardId, filename))?.contentType).toBe('image/webp');
+      expect((publish.json() as { thumbnailUrl: string }).thumbnailUrl).toBe(
+        `/api/boards/${boardId}/thumbnail/${filename}`,
+      );
 
       const read = await app.inject({
         method: 'GET',
@@ -353,14 +374,134 @@ describeDb('картинки досок', () => {
       expect(read.statusCode).toBe(200);
       expect(read.headers['cache-control']).toContain('immutable');
 
-      const stale = await app.inject({
-        method: 'POST',
-        url: `/api/boards/${boardId}/thumbnail?revision=1`,
-        headers: { ...as(owner), 'content-type': 'image/webp' },
-        payload: source,
-      });
+      const stale = await publishThumbnail(boardId, 1, source, as(owner));
       expect(stale.statusCode).toBe(200);
       expect(stale.json()).toEqual({ updated: false, thumbnailUrl: null });
+      expect(thumbnailKeys(boardId)).toHaveLength(1);
+    });
+
+    it('повторная публикация той же ревизии не пишет новый объект и отдаёт готовое превью', async () => {
+      const owner = await newUser('thumbnail-repeat');
+      const boardId = await newBoard(owner);
+      const source = await thumbnailSource();
+
+      const first = await publishThumbnail(boardId, 0, source, as(owner));
+      const second = await publishThumbnail(boardId, 0, source, as(owner));
+
+      expect(second.statusCode).toBe(200);
+      expect(second.json()).toEqual({
+        updated: false,
+        thumbnailUrl: (first.json() as { thumbnailUrl: string }).thumbnailUrl,
+      });
+      expect(thumbnailKeys(boardId)).toHaveLength(1);
+    });
+
+    it('параллельные публикации одной ревизии оставляют ровно один объект', async () => {
+      const owner = await newUser('thumbnail-race');
+      const boardId = await newBoard(owner);
+      const source = await thumbnailSource();
+
+      const results = await Promise.all(
+        [0, 1, 2].map(() => publishThumbnail(boardId, 0, source, as(owner))),
+      );
+
+      expect(results.map((res) => res.statusCode)).toEqual([200, 200, 200]);
+      const urls = new Set(
+        results.map((res) => (res.json() as { thumbnailUrl: string }).thumbnailUrl),
+      );
+      expect(urls.size).toBe(1);
+      expect(thumbnailKeys(boardId)).toHaveLength(1);
+    });
+
+    it('превью новой ревизии заменяет старое и удаляет его объект', async () => {
+      const owner = await newUser('thumbnail-replace');
+      const boardId = await newBoard(owner);
+      const source = await thumbnailSource();
+      await publishThumbnail(boardId, 0, source, as(owner));
+      const [oldKey] = thumbnailKeys(boardId);
+
+      await new BoardsRepository(db).bumpRevision(boardId);
+      const next = await publishThumbnail(boardId, 1, source, as(owner));
+
+      expect(next.json()).toMatchObject({ updated: true });
+      const keys = thumbnailKeys(boardId);
+      expect(keys).toHaveLength(1);
+      expect(keys[0]).not.toBe(oldKey);
+    });
+
+    it('принимает PNG (Safari не кодирует canvas в WebP) и хранит его как WebP', async () => {
+      const owner = await newUser('thumbnail-png');
+      const boardId = await newBoard(owner);
+      const png = await sharp({
+        create: { width: 80, height: 50, channels: 3, background: { r: 10, g: 20, b: 200 } },
+      })
+        .png()
+        .toBuffer();
+
+      const res = await publishThumbnail(boardId, 0, png, as(owner), 'image/png');
+
+      expect(res.json()).toMatchObject({ updated: true });
+      const [key] = thumbnailKeys(boardId);
+      expect(storage.peek(key!)?.contentType).toBe('image/webp');
+    });
+
+    it('не-изображение отклоняется с 400 и ничего не записывает', async () => {
+      const owner = await newUser('thumbnail-garbage');
+      const boardId = await newBoard(owner);
+
+      const res = await publishThumbnail(boardId, 0, Buffer.from('not an image'), as(owner));
+
+      expect(res.statusCode).toBe(400);
+      expect(thumbnailKeys(boardId)).toHaveLength(0);
+    });
+
+    it('маленький файл с огромным холстом отклоняется до декодирования — 400', async () => {
+      const owner = await newUser('thumbnail-bomb');
+      const boardId = await newBoard(owner);
+      const huge = await sharp({
+        create: { width: 5000, height: 5000, channels: 3, background: { r: 0, g: 0, b: 0 } },
+      })
+        .png({ compressionLevel: 9 })
+        .toBuffer();
+
+      const res = await publishThumbnail(boardId, 0, huge, as(owner), 'image/png');
+
+      expect(res.statusCode).toBe(400);
+      expect(thumbnailKeys(boardId)).toHaveLength(0);
+    });
+
+    it('наблюдатель команды публикует и читает превью командной доски', async () => {
+      const admin = await newUser('thumbnail-team-admin');
+      const viewer = await newUser('thumbnail-team-guest');
+      const teamId = await newTeam(admin, [[viewer, 'guest']]);
+      const boardId = await newBoard(admin, teamId);
+
+      const res = await publishThumbnail(boardId, 0, await thumbnailSource(), as(viewer));
+      expect(res.json()).toMatchObject({ updated: true });
+
+      const read = await app.inject({
+        method: 'GET',
+        url: (res.json() as { thumbnailUrl: string }).thumbnailUrl,
+        headers: as(viewer),
+      });
+      expect(read.statusCode).toBe(200);
+    });
+
+    it('посторонний и аноним без ссылки получают 404 и на публикацию, и на чтение', async () => {
+      const owner = await newUser('thumbnail-private-owner');
+      const stranger = await newUser('thumbnail-stranger');
+      const boardId = await newBoard(owner);
+      const source = await thumbnailSource();
+      const published = await publishThumbnail(boardId, 0, source, as(owner));
+      const url = (published.json() as { thumbnailUrl: string }).thumbnailUrl;
+
+      expect((await publishThumbnail(boardId, 0, source, as(stranger))).statusCode).toBe(404);
+      expect((await publishThumbnail(boardId, 0, source)).statusCode).toBe(404);
+      const byStranger = await app.inject({ method: 'GET', url, headers: as(stranger) });
+      const byAnonymous = await app.inject({ method: 'GET', url });
+      expect(byStranger.statusCode).toBe(404);
+      expect(byAnonymous.statusCode).toBe(404);
+      expect(thumbnailKeys(boardId)).toHaveLength(1);
     });
   });
 

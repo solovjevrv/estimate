@@ -14,10 +14,7 @@ import { idParamsSchema, uuidSchema } from '../http/schemas';
 import type { ObjectStorage } from '../platform/storage';
 
 import { BoardImagesService } from './board-images.service';
-import {
-  BoardThumbnailsService,
-  BOARD_THUMBNAIL_MAX_BYTES,
-} from './board-thumbnails.service';
+import { BoardThumbnailsService, BOARD_THUMBNAIL_MAX_BYTES } from './board-thumbnails.service';
 import { BoardsRepository } from './boards.repository';
 import { BoardsService } from './boards.service';
 
@@ -51,8 +48,10 @@ async function boardImagesPluginImpl(
     await instance.register(fastifyMultipart, {
       limits: { fileSize: BOARD_IMAGE_MAX_BYTES, files: 1 },
     });
+    // Safari не кодирует canvas в WebP и отдаёт PNG — принимаем оба, sharp всё
+    // равно перекодирует снимок в WebP
     instance.addContentTypeParser(
-      'image/webp',
+      ['image/webp', 'image/png'],
       { parseAs: 'buffer', bodyLimit: BOARD_THUMBNAIL_MAX_BYTES },
       (_req, body, done) => done(null, body),
     );
@@ -68,7 +67,8 @@ async function boardImagesPluginImpl(
         schema: {
           tags: [DOCS_TAGS.boards],
           summary: 'Опубликовать превью доски',
-          description: 'Производный WebP-снимок текущей ревизии доски. Требует доступа на просмотр.',
+          description:
+            'Производный WebP-снимок текущей ревизии доски. Требует доступа на просмотр.',
           security: [{ session: [] }],
           params: idParamsSchema,
           querystring: {
@@ -79,7 +79,10 @@ async function boardImagesPluginImpl(
           response: {
             200: {
               type: 'object',
-              properties: { updated: { type: 'boolean' }, thumbnailUrl: { type: ['string', 'null'] } },
+              properties: {
+                updated: { type: 'boolean' },
+                thumbnailUrl: { type: ['string', 'null'] },
+              },
             },
             400: { description: 'Некорректное изображение или ревизия', ...errorResponse },
             404: { description: 'Доска не найдена', ...errorResponse },
@@ -92,20 +95,32 @@ async function boardImagesPluginImpl(
         if (!Number.isSafeInteger(revision) || revision < 0) {
           throw new ValidationError('Некорректная ревизия доски');
         }
-        const boardsService = BoardsService.forDatabase(app.db, opts.auth.guestSecret);
-        const board = await boardsService.assertViewAccess(req.actorId ?? null, req.params.id);
-        if (board.revision !== revision) return { updated: false, thumbnailUrl: null };
-
-        const key = await thumbnails.create(req.params.id, revision, req.body);
-        const updated = await new BoardsRepository(app.db).setThumbnailIfCurrent(
-          req.params.id,
-          revision,
-          key,
-        );
-        if (!updated) {
-          await thumbnails.remove(req.params.id, key);
+        if (!Buffer.isBuffer(req.body)) {
+          throw new ValidationError('Превью доски должно быть изображением');
         }
-        return { updated, thumbnailUrl: updated ? boardThumbnailUrl(req.params.id, key) : null };
+        const boardId = req.params.id;
+        const boardsService = BoardsService.forDatabase(app.db, opts.auth.guestSecret);
+        const board = await boardsService.assertViewAccess(req.actorId ?? null, boardId);
+        if (board.revision !== revision) return { updated: false, thumbnailUrl: null };
+        // Превью этой ревизии уже есть (его опубликовал другой клиент) — отдаём
+        // готовое, не перекодируя и не записывая лишний объект
+        if (board.thumbnailRevision === revision) {
+          return { updated: false, thumbnailUrl: board.thumbnailUrl };
+        }
+
+        const key = await thumbnails.create(boardId, revision, req.body);
+        const result = await app.db.transaction((tx) =>
+          new BoardsRepository(tx).replaceThumbnailIfCurrent(boardId, revision, key),
+        );
+        // Уборка объектов не должна ронять ответ: запись в БД уже решена
+        const staleKey = result.updated ? result.previousKey : key;
+        await thumbnails.remove(boardId, staleKey).catch((err: unknown) => {
+          req.log.warn({ err, boardId }, 'не удалось удалить старое превью доски');
+        });
+        return {
+          updated: result.updated,
+          thumbnailUrl: result.currentKey ? boardThumbnailUrl(boardId, result.currentKey) : null,
+        };
       },
     );
 

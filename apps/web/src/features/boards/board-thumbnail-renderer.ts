@@ -5,8 +5,36 @@ import { findStickerAsset, personalStickerUrl } from './config/sticker-packs';
 const WIDTH = 960;
 const HEIGHT = 540;
 const PADDING = 36;
+/**
+ * Сколько ждать одно медиа стикера. Очередь списка последовательная: без
+ * таймаута зависший fetch/видео остановил бы превью всех следующих карточек.
+ */
+const MEDIA_TIMEOUT_MS = 5000;
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+/** Результат промиса или null, если он не успел за `ms` (сам промис не отменяется). */
+function withTimeout<T>(promise: Promise<T | null>, ms = MEDIA_TIMEOUT_MS): Promise<T | null> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => resolve(null), ms);
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      () => {
+        clearTimeout(timer);
+        resolve(null);
+      },
+    );
+  });
+}
+
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, Math.min(18, w / 5, h / 5));
 }
@@ -70,7 +98,12 @@ function drawContainedImage(
   width: number,
   height: number,
 ): void {
-  const source = image as { width?: number; height?: number; videoWidth?: number; videoHeight?: number };
+  const source = image as {
+    width?: number;
+    height?: number;
+    videoWidth?: number;
+    videoHeight?: number;
+  };
   const sourceWidth = source.videoWidth ?? source.width ?? 0;
   const sourceHeight = source.videoHeight ?? source.height ?? 0;
   if (!sourceWidth || !sourceHeight) return;
@@ -89,31 +122,45 @@ function loadImage(src: string): Promise<HTMLImageElement | null> {
   });
 }
 
-function loadVideoFrame(src: string): Promise<HTMLVideoElement | null> {
-  return new Promise((resolve) => {
-    const video = document.createElement('video');
-    video.muted = true;
-    video.preload = 'auto';
-    const fail = () => resolve(null);
-    video.addEventListener('error', fail, { once: true });
+/**
+ * Первый кадр видео-стикера, скопированный на canvas: сам `<video>` сразу
+ * отпускает загрузку, чтобы не держать соединение после снимка.
+ */
+function loadVideoFrame(src: string): Promise<HTMLCanvasElement | null> {
+  const video = document.createElement('video');
+  video.muted = true;
+  video.preload = 'auto';
+  const release = () => {
+    video.removeAttribute('src');
+    video.load();
+  };
+  const frame = new Promise<HTMLCanvasElement | null>((resolve) => {
+    video.addEventListener('error', () => resolve(null), { once: true });
     video.addEventListener(
       'loadeddata',
       () => {
-        video.currentTime = 0;
-        resolve(video);
+        const canvas = document.createElement('canvas');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        canvas.getContext('2d')?.drawImage(video, 0, 0);
+        resolve(canvas.width && canvas.height ? canvas : null);
       },
       { once: true },
     );
     video.src = src;
   });
+  return withTimeout(frame).finally(release);
 }
 
 /** Первый отрисованный кадр Telegram TGS (Lottie JSON), без запуска анимации. */
 async function loadLottieFrame(src: string): Promise<HTMLCanvasElement | null> {
   try {
-    const response = await fetch(src);
-    if (!response.ok) return null;
-    const data: unknown = await response.json();
+    const controller = new AbortController();
+    const abort = setTimeout(() => controller.abort(), MEDIA_TIMEOUT_MS);
+    // Таймер до конца чтения тела: зависнуть может и само скачивание JSON
+    const data: unknown = await fetch(src, { signal: controller.signal })
+      .then((response) => (response.ok ? response.json() : null))
+      .finally(() => clearTimeout(abort));
     if (!data || typeof data !== 'object') return null;
     const host = document.createElement('div');
     const { default: lottie } = await import('lottie-web');
@@ -124,23 +171,26 @@ async function loadLottieFrame(src: string): Promise<HTMLCanvasElement | null> {
       autoplay: false,
       animationData: data,
     });
-    const canvas = await new Promise<HTMLCanvasElement | null>((resolve) => {
-      animation.addEventListener('DOMLoaded', () => {
-        animation.goToAndStop(0, true);
-        const rendered = host.querySelector('canvas');
-        if (!rendered) {
-          resolve(null);
-          return;
-        }
-        // destroy() очищает canvas lottie; возвращаем независимый снимок кадра.
-        const frame = document.createElement('canvas');
-        frame.width = rendered.width;
-        frame.height = rendered.height;
-        frame.getContext('2d')?.drawImage(rendered, 0, 0);
-        resolve(frame);
-      });
-      animation.addEventListener('data_failed', () => resolve(null));
-    });
+    const canvas = await withTimeout(
+      new Promise<HTMLCanvasElement | null>((resolve) => {
+        animation.addEventListener('DOMLoaded', () => {
+          animation.goToAndStop(0, true);
+          const rendered = host.querySelector('canvas');
+          if (!rendered) {
+            resolve(null);
+            return;
+          }
+          // destroy() очищает canvas lottie; возвращаем независимый снимок кадра.
+          const frame = document.createElement('canvas');
+          frame.width = rendered.width;
+          frame.height = rendered.height;
+          frame.getContext('2d')?.drawImage(rendered, 0, 0);
+          resolve(frame);
+        });
+        animation.addEventListener('data_failed', () => resolve(null));
+      }),
+    );
+    // destroy() и при таймауте: иначе lottie продолжит ждать шрифты/данные
     animation.destroy();
     return canvas;
   } catch {
@@ -155,7 +205,7 @@ async function loadStickerFrame(item: BoardItem): Promise<CanvasImageSource | nu
     personalStickerUrl(item.content.pack, item.content.id);
   if (item.content.format === 'animated') return loadLottieFrame(source);
   if (item.content.format === 'video') return loadVideoFrame(source);
-  return loadImage(source);
+  return withTimeout(loadImage(source));
 }
 
 /**
@@ -174,13 +224,18 @@ export async function renderBoardThumbnail(snapshot: BoardSnapshot): Promise<Blo
   ctx.fillStyle = '#56616b';
   ctx.fillRect(0, 0, WIDTH, HEIGHT);
   const items = [...snapshot.items].filter((item) => item.content.type !== 'group');
-  if (items.length === 0) return new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.8));
+  if (items.length === 0)
+    return new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.8));
 
   const left = Math.min(...items.map((item) => item.x));
   const top = Math.min(...items.map((item) => item.y));
   const right = Math.max(...items.map((item) => item.x + item.width));
   const bottom = Math.max(...items.map((item) => item.y + item.height));
-  const scale = Math.min((WIDTH - PADDING * 2) / Math.max(1, right - left), (HEIGHT - PADDING * 2) / Math.max(1, bottom - top), 1);
+  const scale = Math.min(
+    (WIDTH - PADDING * 2) / Math.max(1, right - left),
+    (HEIGHT - PADDING * 2) / Math.max(1, bottom - top),
+    1,
+  );
   const offsetX = (WIDTH - (right - left) * scale) / 2 - left * scale;
   const offsetY = (HEIGHT - (bottom - top) * scale) / 2 - top * scale;
   const point = (x: number, y: number) => ({ x: x * scale + offsetX, y: y * scale + offsetY });
@@ -216,21 +271,41 @@ export async function renderBoardThumbnail(snapshot: BoardSnapshot): Promise<Blo
       ctx.strokeRect(0, 0, width, height);
       drawText(ctx, text, 0, 0, width, Math.min(height, 42), 16, '#f7f9fb', 'left');
     } else if (item.content.type === 'text') {
-      drawText(ctx, text, 0, 0, width, height, (item.style.fontSize ?? 20) * scale, textColor, item.style.textAlign ?? 'center');
+      drawText(
+        ctx,
+        text,
+        0,
+        0,
+        width,
+        height,
+        (item.style.fontSize ?? 20) * scale,
+        textColor,
+        item.style.textAlign ?? 'center',
+      );
     } else if (item.content.type === 'emoji') {
       ctx.font = `${Math.min(width, height) * 0.7}px system-ui`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(text, width / 2, height / 2);
     } else {
-      ctx.fillStyle = item.content.type === 'image' || item.content.type === 'sticker' || item.content.type === 'giphy' ? '#78838d' : item.style.color;
+      ctx.fillStyle =
+        item.content.type === 'image' ||
+        item.content.type === 'sticker' ||
+        item.content.type === 'giphy'
+          ? '#78838d'
+          : item.style.color;
       if (item.content.type === 'shape' && item.content.shape === 'ellipse') {
         ctx.beginPath();
         ctx.ellipse(width / 2, height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
         ctx.fill();
       } else if (item.content.type === 'shape' && item.content.shape === 'diamond') {
         ctx.beginPath();
-        ctx.moveTo(width / 2, 0); ctx.lineTo(width, height / 2); ctx.lineTo(width / 2, height); ctx.lineTo(0, height / 2); ctx.closePath(); ctx.fill();
+        ctx.moveTo(width / 2, 0);
+        ctx.lineTo(width, height / 2);
+        ctx.lineTo(width / 2, height);
+        ctx.lineTo(0, height / 2);
+        ctx.closePath();
+        ctx.fill();
       } else {
         roundRect(ctx, 0, 0, width, height);
         ctx.fill();
@@ -239,11 +314,26 @@ export async function renderBoardThumbnail(snapshot: BoardSnapshot): Promise<Blo
         const frame = await loadStickerFrame(item);
         if (frame) drawContainedImage(ctx, frame, width, height);
         else {
-          ctx.strokeStyle = '#d6dde3'; ctx.lineWidth = 2; ctx.strokeRect(width * 0.3, height * 0.3, width * 0.4, height * 0.4);
+          ctx.strokeStyle = '#d6dde3';
+          ctx.lineWidth = 2;
+          ctx.strokeRect(width * 0.3, height * 0.3, width * 0.4, height * 0.4);
         }
       } else if (item.content.type === 'image' || item.content.type === 'giphy') {
-        ctx.strokeStyle = '#d6dde3'; ctx.lineWidth = 2; ctx.strokeRect(width * 0.3, height * 0.3, width * 0.4, height * 0.4);
-      } else drawText(ctx, text, 0, 0, width, height, (item.style.fontSize ?? 20) * scale, textColor, item.style.textAlign ?? 'center');
+        ctx.strokeStyle = '#d6dde3';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(width * 0.3, height * 0.3, width * 0.4, height * 0.4);
+      } else
+        drawText(
+          ctx,
+          text,
+          0,
+          0,
+          width,
+          height,
+          (item.style.fontSize ?? 20) * scale,
+          textColor,
+          item.style.textAlign ?? 'center',
+        );
     }
     ctx.restore();
   }
