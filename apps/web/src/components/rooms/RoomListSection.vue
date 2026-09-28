@@ -146,11 +146,13 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
               formatDate(room.createdAt)
             }}</span>
             <UDropdownMenu v-if="canManageRoom(room)" :items="activeMenuItems(room)">
+              <!-- Строка на hover уже surface-hover — у ⋮ внутри неё фон темнее (кит: ListRow/MemberRow) -->
               <UButton
                 icon="i-lucide-ellipsis-vertical"
                 color="neutral"
                 variant="ghost"
                 size="sm"
+                class="hover:bg-surface-tertiary"
                 :aria-label="t('room.roomMenu')"
               />
             </UDropdownMenu>
@@ -210,6 +212,7 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
                   color="neutral"
                   variant="ghost"
                   size="sm"
+                  class="hover:bg-surface-tertiary"
                   :aria-label="t('room.roomMenu')"
                 />
               </UDropdownMenu>
