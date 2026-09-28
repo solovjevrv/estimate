@@ -62,8 +62,9 @@ services:
   # (21.5) пишутся сюда. API/консоль не публикуются — доступ только по внутренней
   # сети Compose.
   minio:
-    # minio/minio снят с Docker Hub (см. docker-compose.yml) — quay.io/minio/minio
-    image: quay.io/minio/minio:RELEASE.2025-04-08T15-41-24Z
+    # Официальные образы MinIO недоступны (Docker Hub, затем quay.io) — сборка
+    # сообщества pgsty, см. docker-compose.yml
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
     restart: unless-stopped
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
@@ -81,8 +82,8 @@ services:
   # Идемпотентный init: приватный бакет + учётка приложения (не root) с правами
   # только на этот бакет. Одноразовый — гоняется при каждом up, безопасно повторно.
   minio-init:
-    # minio/mc снят с Docker Hub так же, как minio/minio (см. выше) — quay.io/minio/mc
-    image: quay.io/minio/mc:RELEASE.2025-04-08T15-39-49Z
+    # mc — из той же сборки pgsty, что и сервер выше
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
     depends_on:
       minio:
         condition: service_healthy
@@ -175,7 +176,7 @@ services:
   # локальный снимок, хранение 14 дней, не защита от потери диска целиком.
   # Аватарки (21.2) и картинки досок (21.5) бэкапятся тем же способом.
   minio-backup:
-    image: quay.io/minio/mc:RELEASE.2025-04-08T15-39-49Z
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
     restart: unless-stopped
     environment:
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
