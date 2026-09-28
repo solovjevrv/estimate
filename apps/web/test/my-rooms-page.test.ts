@@ -100,6 +100,19 @@ describe('страница «Мои комнаты»', () => {
     expect(wrapper.text()).not.toContain('Командная');
   });
 
+  it('помечает личную комнату плашкой «Личная»', async () => {
+    const { wrapper } = await mountApp(
+      makeFetch({
+        'GET /api/rooms?archived=false': () =>
+          json(200, { rooms: [{ ...activeRoom, name: 'Ретро' }] }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ретро'));
+    const tags = wrapper.findAll('.badge-pill-neutral').map((tag) => tag.text());
+    expect(tags).toContain('Личная');
+  });
+
   it('помечает плашкой с именем команды комнаты, созданные от лица команды', async () => {
     const teamRoom: Room = { ...activeRoom, id: 'r3', teamId: 't1', name: 'Планёрка команды' };
     const { wrapper } = await mountApp(

@@ -189,6 +189,8 @@ export default {
     toRooms: 'К комнатам',
     teamRoomSubtitle: 'Командная комната',
     personalRoomSubtitle: 'Личная комната',
+    /** Плашка личной комнаты в общем списке «Комнаты» — в пару к имени команды у командных */
+    personalTag: 'Личная',
     participantsTitle: 'Участники',
     participantsNoRound: 'Раунда ещё не было',
     participantsVoting: 'Голосование запущено',

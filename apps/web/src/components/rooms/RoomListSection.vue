@@ -22,7 +22,7 @@ const props = defineProps<{
   emptyArchiveMessage: string;
   closedBadgeLabel: string;
   deleteLabel: string;
-  /** Плашка с именем команды у личных комнат (06_Rooms, «Комнаты — Список») — в контексте самой команды не нужна */
+  /** Плашка с именем команды или «Личная» (06_Rooms, «Комнаты — Список») — в контексте самой команды не нужна */
   teamTagFor?: (room: Room) => string | null;
 }>();
 

@@ -49,8 +49,10 @@ function canManageRoom(room: Room): boolean {
   return !!role && hasTeamRole(role, 'admin');
 }
 
+/** В общем списке у каждой строки плашка: имя команды или «Личная» */
 function teamTagFor(room: Room): string | null {
-  return room.teamId ? (teamNameById.value.get(room.teamId) ?? null) : null;
+  if (!room.teamId) return t('room.personalTag');
+  return teamNameById.value.get(room.teamId) ?? null;
 }
 
 function formatDate(iso: string): string {
