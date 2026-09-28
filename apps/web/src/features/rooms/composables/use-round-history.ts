@@ -36,11 +36,8 @@ export function useRoundHistory(options: UseRoundHistoryOptions): {
       .join(', ');
   }
 
-  /** Среднее — для футболочных размеров его не считают, показываем самое частое значение */
+  /** Итог истории — выбранная большинством оценка, как в карточке результатов. */
   function historyResultLabel(entry: RoundHistoryEntry): string {
-    if (entry.round.average !== null) {
-      return String(entry.round.average);
-    }
     const counts = new Map<number, number>();
     for (const vote of entry.result.votes) {
       counts.set(vote.value, (counts.get(vote.value) ?? 0) + 1);

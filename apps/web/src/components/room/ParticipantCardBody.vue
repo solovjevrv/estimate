@@ -73,7 +73,7 @@ function onBadgeClick(emoji: EmojiSequence): void {
 
 <template>
   <div
-    class="flex w-[150px] flex-col items-center gap-2.5"
+    class="group flex w-[150px] flex-col items-center gap-2.5"
     :data-winner="props.roundStatus === 'revealed' && props.isWinner ? 'true' : undefined"
   >
     <div
@@ -183,7 +183,7 @@ function onBadgeClick(emoji: EmojiSequence): void {
       <UPopover :content="{ side: 'top' }">
         <button
           type="button"
-          class="bg-surface-block shadow-elevation-2 hover:bg-surface-hover absolute -top-2 -right-2 flex size-7 cursor-pointer items-center justify-center rounded-full"
+          class="bg-surface-block shadow-elevation-2 hover:bg-surface-hover pointer-events-none absolute -top-2 -right-2 flex size-7 cursor-pointer items-center justify-center rounded-full opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
           :aria-label="t('room.reactionTriggerLabel', { name: participant.name })"
           @click.stop
         >

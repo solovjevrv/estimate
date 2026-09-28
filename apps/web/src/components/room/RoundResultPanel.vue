@@ -37,24 +37,15 @@ const confetti = ref<ConfettiPiece[]>([]);
 let nextConfettiId = 0;
 let clearConfettiTimer: ReturnType<typeof setTimeout> | null = null;
 
-/**
- * Панель монтируется заново на каждое вскрытие (`v-if="room.result"` в RoomPage —
- * `result` обнуляется новым раундом), поэтому `{ immediate: true }` = «сработай при
- * каждом реальном вскрытии» без отдельного watch на явное событие reveal.
- *
- * Эффект теперь не только для единодушного консенсуса (10.12: «анимация после любого
- * вскрытия» + «увеличить видимость конфетти») — срабатывает всегда, но при 100%
- * agreement заметно масштабнее (в 3+ раза больше конфетти), чем при частичном согласии.
- */
+/** Конфетти при вскрытии — согласованный эффект комнаты (10.12). */
 watch(
   () => props.agreement,
   (agreement) => {
-    const isUnanimous = agreement === 100;
-    const count = isUnanimous ? 70 : 18;
+    const count = agreement === 100 ? 70 : 18;
     confetti.value = Array.from({ length: count }, (_, i) => ({
       id: nextConfettiId++,
       left: Math.random() * 100,
-      delay: Math.random() * (isUnanimous ? 0.4 : 0.2),
+      delay: Math.random() * (agreement === 100 ? 0.4 : 0.2),
       duration: 1.4 + Math.random() * 0.8,
       color: confettiColors[i % confettiColors.length] ?? confettiColors[0]!,
     }));
@@ -69,7 +60,6 @@ watch(
 
 <template>
   <Teleport to="body">
-    <!-- Во весь экран (не заперто в карточке результата) — 10.12: «увеличить видимость конфетти» -->
     <div class="pointer-events-none fixed inset-0 z-[9999] overflow-hidden">
       <div
         v-for="piece in confetti"

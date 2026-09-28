@@ -408,12 +408,12 @@ function retry(): void {
           :description="t('room.archivedAlert')"
         />
 
-        <div v-if="!isArchived" class="flex flex-col gap-5 lg:flex-row lg:items-stretch">
+        <div v-if="!isArchived" class="grid grid-cols-1 gap-5 lg:grid-cols-12">
           <div
             v-if="room.isScrumMaster"
-            class="surface-card surface-card-lg min-w-0 flex-[1.4] px-4 py-5 sm:px-8 sm:py-8"
+            class="surface-card surface-card-lg min-w-0 px-4 py-5 sm:px-8 sm:py-8 lg:col-span-7"
           >
-            <h2 class="font-heading text-text-secondary mb-6 text-xl font-bold tracking-[-0.4px]">
+            <h2 class="font-heading text-text-secondary mb-5 text-xl font-bold tracking-[-0.4px]">
               {{ t('room.deckTitle') }}
             </h2>
             <div class="flex flex-col gap-3 sm:flex-row">
@@ -437,16 +437,35 @@ function retry(): void {
           </div>
 
           <RoomTimerCard
-            class="min-w-0 flex-1"
+            class="min-w-0 lg:col-span-5"
             :timer="room.timer"
             :pending="timerPending"
             @start="onTimerStart"
             @pause="onTimerPause"
             @reset="onTimerReset"
           />
+
+          <!-- У участника нет панели управления колодой: таймер и статистика делят
+               одну 12-колоночную строку 5/7, без пустых семи колонок слева. -->
+          <div
+            v-if="room.result && !room.isScrumMaster"
+            class="surface-card surface-card-lg min-w-0 px-4 py-5 sm:px-8 sm:py-8 lg:col-span-7"
+          >
+            <RoundResultPanel
+              :average="room.result.average"
+              :min-label="cardLabel(room.result.min)"
+              :max-label="cardLabel(room.result.max)"
+              :agreement="room.result.agreement"
+              :winner-label="winnerLabel"
+              :departed-votes="departedVotes"
+            />
+          </div>
         </div>
 
-        <div v-if="room.result" class="surface-card surface-card-lg px-4 py-5 sm:px-8 sm:py-8">
+        <div
+          v-if="room.result && (room.isScrumMaster || isArchived)"
+          class="surface-card surface-card-lg px-4 py-5 sm:px-8 sm:py-8"
+        >
           <RoundResultPanel
             :average="room.result.average"
             :min-label="cardLabel(room.result.min)"
@@ -457,7 +476,9 @@ function retry(): void {
           />
         </div>
 
-        <div class="surface-card surface-card-lg flex flex-col gap-4 px-4 py-5 sm:px-8 sm:py-8">
+        <div
+          class="surface-card surface-card-lg flex flex-col gap-4 px-4 py-5 sm:px-8 sm:py-8 lg:min-h-[375px]"
+        >
           <div class="flex items-start justify-between gap-3">
             <div>
               <h2 class="font-heading text-text-secondary text-xl font-bold tracking-[-0.4px]">
