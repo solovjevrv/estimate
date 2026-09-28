@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n';
 
 import { usePagedList } from '../../composables/use-paged-list';
 import { roleBadgeColor, teamAvatarColor } from '../../lib/team-roles';
+import ListPagination from '../ListPagination.vue';
 
 const props = defineProps<{
   teamId: string;
@@ -119,15 +120,6 @@ function menuItems(member: TeamMember): DropdownMenuItem[][] {
         </div>
       </div>
     </div>
-    <div
-      v-if="membersPaging.total.value > membersPaging.pageSize"
-      class="flex justify-center px-4 py-4 sm:px-8"
-    >
-      <UPagination
-        v-model:page="membersPaging.page.value"
-        :total="membersPaging.total.value"
-        :items-per-page="membersPaging.pageSize"
-      />
-    </div>
+    <ListPagination :paging="membersPaging" />
   </div>
 </template>

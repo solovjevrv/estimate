@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n';
 
 import type { ArchiveTab } from '../../composables/use-archive-tab';
 import type { PagedList } from '../../composables/use-paged-list';
+import ListPagination from '../ListPagination.vue';
 
 const props = defineProps<{
   roomsFailed: boolean;
@@ -144,20 +145,7 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
           </div>
         </div>
       </div>
-      <div
-        v-if="activeRoomsPaging.total.value > activeRoomsPaging.pageSize"
-        class="border-default flex justify-center border-t px-4 py-4 sm:px-8"
-      >
-        <!-- eslint-disable vue/no-mutating-props -- `page` — общая Ref-ячейка
-             composable'а usePagedList, а не сам объект prop-а; перетаскивание
-             страницы в родителе работает так же -->
-        <UPagination
-          v-model:page="activeRoomsPaging.page.value"
-          :total="activeRoomsPaging.total.value"
-          :items-per-page="activeRoomsPaging.pageSize"
-        />
-        <!-- eslint-enable vue/no-mutating-props -->
-      </div>
+      <ListPagination :paging="activeRoomsPaging" />
     </template>
     <template v-else>
       <!-- Ошибка тянет только заархивированную часть (доступна лишь администратору) —
@@ -210,18 +198,7 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
             </div>
           </div>
         </div>
-        <div
-          v-if="archiveTabPaging.total.value > archiveTabPaging.pageSize"
-          class="border-default flex justify-center border-t px-4 py-4 sm:px-8"
-        >
-          <!-- eslint-disable vue/no-mutating-props -- см. пояснение выше -->
-          <UPagination
-            v-model:page="archiveTabPaging.page.value"
-            :total="archiveTabPaging.total.value"
-            :items-per-page="archiveTabPaging.pageSize"
-          />
-          <!-- eslint-enable vue/no-mutating-props -->
-        </div>
+        <ListPagination :paging="archiveTabPaging" />
       </template>
     </template>
   </div>

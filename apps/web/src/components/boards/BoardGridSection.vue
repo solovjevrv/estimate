@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n';
 import type { ArchiveTab } from '../../composables/use-archive-tab';
 import type { PagedList } from '../../composables/use-paged-list';
 import BoardCard from './BoardCard.vue';
+import ListPagination from '../ListPagination.vue';
 
 defineProps<{
   boardsFailed: boolean;
@@ -132,20 +133,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
           :menu-aria-label="t('board.boardMenu')"
         />
       </div>
-      <div
-        v-if="activeBoardsPaging.total.value > activeBoardsPaging.pageSize"
-        class="border-default flex justify-center border-t px-4 py-4 sm:px-8"
-      >
-        <!-- eslint-disable vue/no-mutating-props -- `page` — общая Ref-ячейка
-             composable'а usePagedList, а не сам объект prop-а; перетаскивание
-             страницы в родителе работает так же -->
-        <UPagination
-          v-model:page="activeBoardsPaging.page.value"
-          :total="activeBoardsPaging.total.value"
-          :items-per-page="activeBoardsPaging.pageSize"
-        />
-        <!-- eslint-enable vue/no-mutating-props -->
-      </div>
+      <ListPagination :paging="activeBoardsPaging" />
     </template>
     <template v-else>
       <UAlert
@@ -174,18 +162,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
             :menu-aria-label="t('board.boardMenu')"
           />
         </div>
-        <div
-          v-if="archiveBoardsPaging.total.value > archiveBoardsPaging.pageSize"
-          class="border-default flex justify-center border-t px-4 py-4 sm:px-8"
-        >
-          <!-- eslint-disable vue/no-mutating-props -- см. пояснение выше -->
-          <UPagination
-            v-model:page="archiveBoardsPaging.page.value"
-            :total="archiveBoardsPaging.total.value"
-            :items-per-page="archiveBoardsPaging.pageSize"
-          />
-          <!-- eslint-enable vue/no-mutating-props -->
-        </div>
+        <ListPagination :paging="archiveBoardsPaging" />
       </template>
     </template>
   </div>
