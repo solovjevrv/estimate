@@ -271,8 +271,8 @@ async function confirmDelete(): Promise<void> {
 
     <div v-else-if="loading" class="space-y-5">
       <p class="text-muted text-sm">{{ t('boards.subtitle') }}</p>
-      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
-        <div v-for="i in 3" :key="i" class="overflow-hidden rounded-r24">
+      <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-12">
+        <div v-for="i in 3" :key="i" class="overflow-hidden rounded-r24 lg:col-span-4">
           <USkeleton class="h-[140px] w-full rounded-none" />
           <div class="surface-card space-y-2 rounded-t-none px-5 py-4">
             <USkeleton class="h-5 w-2/3" />

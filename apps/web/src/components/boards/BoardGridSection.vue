@@ -122,7 +122,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
       <p v-if="activeBoardsPaging.total.value === 0" class="text-muted pb-5 text-sm">
         {{ emptyActiveMessage }}
       </p>
-      <div v-else class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+      <div v-else class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-12">
         <BoardCard
           v-for="board in activeBoardsPaging.items.value"
           :key="board.id"
@@ -131,6 +131,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
           :team-tag="teamTagFor?.(board) ?? null"
           :menu-items="canManageBoard(board) ? activeMenuItems(board) : undefined"
           :menu-aria-label="t('board.boardMenu')"
+          class="lg:col-span-4"
         />
       </div>
       <ListPagination :paging="activeBoardsPaging" />
@@ -151,7 +152,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
         <p v-if="archiveBoardsPaging.total.value === 0" class="text-muted pb-5 text-sm">
           {{ emptyArchiveMessage }}
         </p>
-        <div v-else class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        <div v-else class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-12">
           <BoardCard
             v-for="board in archiveBoardsPaging.items.value"
             :key="board.id"
@@ -160,6 +161,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
             :team-tag="teamTagFor?.(board) ?? null"
             :menu-items="canManageBoard(board) ? archivedMenuItems(board) : undefined"
             :menu-aria-label="t('board.boardMenu')"
+            class="lg:col-span-4"
           />
         </div>
         <ListPagination :paging="archiveBoardsPaging" />

@@ -75,8 +75,8 @@ async function onSubmit(name: string, teamId: string | null): Promise<void> {
        шапки (отступ main), H1 Headings/48, лид Body/Xlarge, иллюстрация 513×269 справа,
        фичи — Card (elevation/3) с Card Content — Feature из кита -->
   <section class="pb-11">
-    <div class="flex flex-col items-start gap-10 lg:flex-row lg:gap-0">
-      <div class="min-w-0 flex-1">
+    <div class="grid grid-cols-1 items-start gap-10 lg:grid-cols-12 lg:gap-0">
+      <div class="min-w-0 lg:col-span-7">
         <span class="badge-pill badge-pill-primary mb-5 inline-block uppercase">
           {{ t('home.eyebrow') }}
         </span>
@@ -116,9 +116,7 @@ async function onSubmit(name: string, teamId: string | null): Promise<void> {
         </div>
       </div>
 
-      <div
-        class="aspect-[513/269] w-full shrink-0 overflow-hidden rounded-r24 lg:mt-[74px] lg:w-[513px]"
-      >
+      <div class="aspect-[513/269] w-full overflow-hidden rounded-r24 lg:col-span-5 lg:mt-[74px]">
         <img
           src="/hero-illustration-light.webp"
           :alt="t('home.illustrationAlt')"
@@ -132,11 +130,11 @@ async function onSubmit(name: string, teamId: string | null): Promise<void> {
       </div>
     </div>
 
-    <div class="mt-[54px] grid gap-6 sm:grid-cols-3">
+    <div class="mt-[54px] grid grid-cols-1 gap-6 sm:grid-cols-12">
       <div
         v-for="card in cards"
         :key="card.title"
-        class="bg-surface-block shadow-elevation-2 flex min-h-[214px] flex-col gap-3 rounded-r24 p-8"
+        class="bg-surface-block shadow-elevation-2 flex min-h-[214px] flex-col gap-3 rounded-r24 p-8 sm:col-span-4"
       >
         <div class="bg-surface-brand flex size-11 items-center justify-center rounded-r12">
           <UIcon :name="card.icon" class="text-icons-on-brand size-5.5" />
