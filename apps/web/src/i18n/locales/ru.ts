@@ -56,7 +56,7 @@ export default {
   role: {
     admin: 'Администратор',
     member: 'Участник',
-    guest: 'Гость',
+    guest: 'Наблюдатель',
   },
   teams: {
     title: 'Команды',

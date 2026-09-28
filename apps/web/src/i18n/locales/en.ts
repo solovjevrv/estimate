@@ -56,7 +56,7 @@ export default {
   role: {
     admin: 'Admin',
     member: 'Member',
-    guest: 'Guest',
+    guest: 'Viewer',
   },
   teams: {
     title: 'Teams',
