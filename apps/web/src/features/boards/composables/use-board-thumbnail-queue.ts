@@ -29,8 +29,12 @@ export function useBoardThumbnailQueue(
     visibleBoards,
     (boards) => {
       const currentGeneration = ++generation;
+      // Пустая доска — заглушка из макета, снимок не нужен
       const stale = boards.filter(
-        (board) => board.thumbnailRevision !== board.revision && !failed.has(attemptKey(board)),
+        (board) =>
+          board.itemCount > 0 &&
+          board.thumbnailRevision !== board.revision &&
+          !failed.has(attemptKey(board)),
       );
       void (async () => {
         for (const board of stale) {

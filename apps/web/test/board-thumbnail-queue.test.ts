@@ -31,7 +31,7 @@ function board(id: string, over: Partial<BoardSummary> = {}): BoardSummary {
     shareRole: null,
     thumbnailUrl: null,
     thumbnailRevision: null,
-    itemCount: 0,
+    itemCount: 2,
     ...over,
   };
 }
@@ -85,6 +85,13 @@ describe('очередь превью досок', () => {
       ['a', 3, '/thumb/a'],
       ['c', 3, '/thumb/c'],
     ]);
+  });
+
+  it('пустую доску не рендерит — у неё заглушка', async () => {
+    start([board('empty', { itemCount: 0 }), board('a')]);
+    await settle();
+
+    expect(getBoard.mock.calls.map(([id]) => id)).toEqual(['a']);
   });
 
   it('не запускает второй рендер, пока не закончен первый', async () => {

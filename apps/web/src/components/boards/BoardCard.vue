@@ -35,7 +35,7 @@ watch(
       :aria-label="t('board.openBoard', { title: board.title })"
     >
       <img
-        v-if="board.thumbnailUrl && !thumbnailFailed"
+        v-if="board.itemCount > 0 && board.thumbnailUrl && !thumbnailFailed"
         :src="board.thumbnailUrl"
         :alt="t('board.thumbnailAlt', { title: board.title })"
         class="size-full object-cover"

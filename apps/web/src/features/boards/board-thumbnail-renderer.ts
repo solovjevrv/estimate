@@ -6,6 +6,13 @@ const WIDTH = 960;
 const HEIGHT = 540;
 const PADDING = 36;
 /**
+ * Снимок хранится один на всех, а тема у каждого своя — поэтому фон прозрачный
+ * (под ним фон карточки из токенов), а служебные линии и подписи нейтрально-серые,
+ * читаемые и на светлом, и на тёмном фоне.
+ */
+const NEUTRAL_LINE = '#8b95a1';
+const MEDIA_FILL = 'rgba(139, 149, 161, 0.35)';
+/**
  * Сколько ждать одно медиа стикера. Очередь списка последовательная: без
  * таймаута зависший fetch/видео остановил бы превью всех следующих карточек.
  */
@@ -221,11 +228,9 @@ export async function renderBoardThumbnail(snapshot: BoardSnapshot): Promise<Blo
   const ctx = canvas.getContext('2d');
   if (!ctx) return null;
 
-  ctx.fillStyle = '#56616b';
-  ctx.fillRect(0, 0, WIDTH, HEIGHT);
   const items = [...snapshot.items].filter((item) => item.content.type !== 'group');
-  if (items.length === 0)
-    return new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.8));
+  // Пустой доске снимок не нужен — карточка показывает заглушку из макета
+  if (items.length === 0) return null;
 
   const left = Math.min(...items.map((item) => item.x));
   const top = Math.min(...items.map((item) => item.y));
@@ -241,7 +246,7 @@ export async function renderBoardThumbnail(snapshot: BoardSnapshot): Promise<Blo
   const point = (x: number, y: number) => ({ x: x * scale + offsetX, y: y * scale + offsetY });
   const byId = new Map(items.map((item) => [item.id, item]));
 
-  ctx.strokeStyle = '#d6dde3';
+  ctx.strokeStyle = NEUTRAL_LINE;
   ctx.lineWidth = 2;
   for (const edge of snapshot.edges) {
     const source = byId.get(edge.sourceItemId);
@@ -264,12 +269,15 @@ export async function renderBoardThumbnail(snapshot: BoardSnapshot): Promise<Blo
     ctx.rotate((item.rotation * Math.PI) / 180);
     ctx.translate(-width / 2, -height / 2);
     const text = itemText(item);
-    const textColor = item.style.textColor ?? '#202936';
+    // Текст на заливке стикера/фигуры — тёмный; текст прямо на холсте лежит на
+    // фоне карточки, чей цвет зависит от темы, — нейтральный
+    const textColor =
+      item.style.textColor ?? (item.content.type === 'text' ? NEUTRAL_LINE : '#202936');
     if (item.content.type === 'frame') {
       ctx.strokeStyle = item.style.color;
       ctx.lineWidth = 2;
       ctx.strokeRect(0, 0, width, height);
-      drawText(ctx, text, 0, 0, width, Math.min(height, 42), 16, '#f7f9fb', 'left');
+      drawText(ctx, text, 0, 0, width, Math.min(height, 42), 16, NEUTRAL_LINE, 'left');
     } else if (item.content.type === 'text') {
       drawText(
         ctx,
@@ -292,7 +300,7 @@ export async function renderBoardThumbnail(snapshot: BoardSnapshot): Promise<Blo
         item.content.type === 'image' ||
         item.content.type === 'sticker' ||
         item.content.type === 'giphy'
-          ? '#78838d'
+          ? MEDIA_FILL
           : item.style.color;
       if (item.content.type === 'shape' && item.content.shape === 'ellipse') {
         ctx.beginPath();
@@ -314,12 +322,12 @@ export async function renderBoardThumbnail(snapshot: BoardSnapshot): Promise<Blo
         const frame = await loadStickerFrame(item);
         if (frame) drawContainedImage(ctx, frame, width, height);
         else {
-          ctx.strokeStyle = '#d6dde3';
+          ctx.strokeStyle = NEUTRAL_LINE;
           ctx.lineWidth = 2;
           ctx.strokeRect(width * 0.3, height * 0.3, width * 0.4, height * 0.4);
         }
       } else if (item.content.type === 'image' || item.content.type === 'giphy') {
-        ctx.strokeStyle = '#d6dde3';
+        ctx.strokeStyle = NEUTRAL_LINE;
         ctx.lineWidth = 2;
         ctx.strokeRect(width * 0.3, height * 0.3, width * 0.4, height * 0.4);
       } else
