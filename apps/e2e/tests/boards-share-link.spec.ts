@@ -32,7 +32,7 @@ test.describe('доски по ссылке (14.4)', () => {
     await page.goto('/boards');
 
     // Создаём личную доску
-    await page.getByRole('button', { name: 'Создать доску' }).click();
+    await page.getByRole('button', { name: 'Новая доска' }).click();
     const boardName = `ShareBoard ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
@@ -78,7 +78,7 @@ test.describe('доски по ссылке (14.4)', () => {
     await loginAs(contextA, owner);
     await page.goto('/boards');
 
-    await page.getByRole('button', { name: 'Создать доску' }).click();
+    await page.getByRole('button', { name: 'Новая доска' }).click();
     const boardName = `ShareEdit ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
@@ -134,7 +134,7 @@ test.describe('доски по ссылке (14.4)', () => {
     await loginAs(contextA, owner);
     await page.goto('/boards');
 
-    await page.getByRole('button', { name: 'Создать доску' }).click();
+    await page.getByRole('button', { name: 'Новая доска' }).click();
     const boardName = `ShareDisable ${randomUUID().slice(0, 8)}`;
     await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
     await page.getByRole('button', { name: 'Создать доску', exact: true }).click();

@@ -63,7 +63,7 @@ test.describe('Доски: копирование/вставка', () => {
 
     async function createBoard(name: string): Promise<void> {
       await page.goto('/boards');
-      await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+      await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
       await page.getByPlaceholder('Например, Ретро спринта 24').fill(name);
       await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
       await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
@@ -201,7 +201,7 @@ test.describe('Доски: копирование/вставка', () => {
 
     // Создаём доску
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     await page
       .getByPlaceholder('Например, Ретро спринта 24')
       .fill(`${E2E_ROOM_PREFIX}CopyEdges ${randomUUID().slice(0, 8)}`);

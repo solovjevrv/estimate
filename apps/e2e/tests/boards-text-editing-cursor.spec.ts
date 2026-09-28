@@ -26,7 +26,7 @@ for (const scenario of [
     const page = await context.newPage();
 
     await page.goto('/boards');
-    await page.getByRole('button', { name: 'Создать доску', exact: true }).click();
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
     await page
       .getByPlaceholder('Например, Ретро спринта 24')
       .fill(`${E2E_ROOM_PREFIX} Text cursor ${randomUUID().slice(0, 8)}`);
