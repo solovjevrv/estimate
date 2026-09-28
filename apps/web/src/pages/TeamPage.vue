@@ -522,9 +522,16 @@ async function confirmDelete(): Promise<void> {
       {{ t('team.back') }}
     </RouterLink>
 
-    <UAlert v-if="notFound" color="error" variant="subtle" :description="t('team.notFound')" />
+    <UAlert
+      v-if="notFound"
+      icon="i-lucide-circle-alert"
+      color="error"
+      variant="subtle"
+      :description="t('team.notFound')"
+    />
     <UAlert
       v-else-if="loadFailed"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       :description="t('team.loadError')"

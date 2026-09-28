@@ -85,12 +85,14 @@ async function act(): Promise<void> {
 
     <UAlert
       v-else-if="notFound"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       :description="t('invite.notFound')"
     />
     <UAlert
       v-else-if="loadFailed"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       :description="t('invite.loadError')"
@@ -116,8 +118,10 @@ async function act(): Promise<void> {
 
       <UAlert
         v-if="joinFailed"
+        icon="i-lucide-circle-alert"
         color="error"
         variant="subtle"
+        class="text-left"
         :description="t('invite.joinError')"
       />
 

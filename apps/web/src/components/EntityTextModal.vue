@@ -57,7 +57,13 @@ function onSubmit(event: FormSubmitEvent<{ value: string }>): void {
   <UModal v-model:open="modalOpen" :title="title">
     <template #body>
       <UForm :state="state" :validate="validate" class="space-y-4" @submit="onSubmit">
-        <UAlert v-if="errorMessage" color="error" variant="subtle" :description="errorMessage" />
+        <UAlert
+          v-if="errorMessage"
+          icon="i-lucide-circle-alert"
+          color="error"
+          variant="subtle"
+          :description="errorMessage"
+        />
         <UFormField :label="label" name="value">
           <UInput
             v-model="state.value"

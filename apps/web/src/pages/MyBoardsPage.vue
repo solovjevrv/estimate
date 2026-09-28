@@ -249,6 +249,7 @@ async function confirmDelete(): Promise<void> {
 
     <UAlert
       v-if="loadFailed"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       :description="t('boards.loadError')"

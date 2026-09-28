@@ -127,7 +127,7 @@ async function onSubmit(name: string): Promise<void> {
       <div
         v-for="card in cards"
         :key="card.title"
-        class="bg-surface-block shadow-elevation-3 flex min-h-[214px] flex-col gap-3 rounded-r24 p-8"
+        class="bg-surface-block shadow-elevation-2 flex min-h-[214px] flex-col gap-3 rounded-r24 p-8"
       >
         <div class="bg-surface-brand flex size-11 items-center justify-center rounded-r12">
           <UIcon :name="card.icon" class="text-icons-on-brand size-5.5" />

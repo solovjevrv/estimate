@@ -265,6 +265,7 @@ async function confirmDelete(): Promise<void> {
     <div v-if="!board" class="mx-auto w-full max-w-[calc(73.75rem+2rem)] px-4 pt-8 pb-5 md:pt-14">
       <UAlert
         v-if="notFound"
+        icon="i-lucide-circle-alert"
         color="error"
         variant="subtle"
         :description="t('board.notFound')"
@@ -280,6 +281,7 @@ async function confirmDelete(): Promise<void> {
       />
       <UAlert
         v-else-if="loadFailed"
+        icon="i-lucide-circle-alert"
         color="error"
         variant="subtle"
         :description="t('board.loadError')"
@@ -326,6 +328,7 @@ async function confirmDelete(): Promise<void> {
           </UFormField>
           <UAlert
             v-if="guestJoinFailed"
+            icon="i-lucide-circle-alert"
             color="error"
             variant="subtle"
             :description="t('board.guestJoinError')"

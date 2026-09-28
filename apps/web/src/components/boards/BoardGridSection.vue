@@ -101,6 +101,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
 
     <UAlert
       v-if="boardsFailed"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       class="mb-5"
@@ -148,6 +149,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
     <template v-else>
       <UAlert
         v-if="boardArchive.failed"
+        icon="i-lucide-circle-alert"
         color="error"
         variant="subtle"
         class="mb-5"

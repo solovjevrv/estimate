@@ -57,12 +57,14 @@ async function load(): Promise<void> {
 
     <UAlert
       v-if="notFound"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       :description="t('teamMember.notFound')"
     />
     <UAlert
       v-else-if="loadFailed"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       :description="t('teamMember.loadError')"

@@ -271,12 +271,14 @@ function retry(): void {
   <section class="space-y-6">
     <UAlert
       v-if="phase === 'notFound'"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       :description="t('room.notFound')"
     />
     <UAlert
       v-else-if="phase === 'loadError'"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       :description="t('room.loadError')"
@@ -338,7 +340,12 @@ function retry(): void {
       </div>
 
       <template v-else-if="phase === 'joinError'">
-        <UAlert color="error" variant="subtle" :description="t('room.joinError')" />
+        <UAlert
+          icon="i-lucide-circle-alert"
+          color="error"
+          variant="subtle"
+          :description="t('room.joinError')"
+        />
         <UButton
           color="neutral"
           variant="outline"
@@ -353,6 +360,7 @@ function retry(): void {
         <!-- Не «Войти снова» — того же результата (исключения) можно добиться только
              уведя человека из этой комнаты, повторный вход сюда же ни к чему не приведёт -->
         <UAlert
+          icon="i-lucide-circle-alert"
           color="warning"
           variant="subtle"
           :description="t('room.kickedMessage')"
@@ -382,6 +390,7 @@ function retry(): void {
 
         <UAlert
           v-if="!room.connected"
+          icon="i-lucide-circle-alert"
           color="warning"
           variant="subtle"
           :title="t('room.disconnectedTitle')"
@@ -390,6 +399,7 @@ function retry(): void {
 
         <UAlert
           v-if="isArchived"
+          icon="i-lucide-circle-alert"
           color="warning"
           variant="subtle"
           :title="t('room.archivedAlertTitle')"
@@ -516,6 +526,7 @@ function retry(): void {
 
           <UAlert
             v-if="historyFailed"
+            icon="i-lucide-circle-alert"
             color="error"
             variant="subtle"
             :description="t('room.historyLoadError')"

@@ -78,6 +78,7 @@ async function onSubmit(name: string): Promise<void> {
 
     <UAlert
       v-if="loadFailed"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       :description="t('teams.loadError')"

@@ -93,6 +93,7 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
 
     <UAlert
       v-if="roomsFailed"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       class="mb-5"
@@ -163,6 +164,7 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
            за баннером. -->
       <UAlert
         v-if="roomArchive.failed"
+        icon="i-lucide-circle-alert"
         color="error"
         variant="subtle"
         class="mb-5"

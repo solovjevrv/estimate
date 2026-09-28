@@ -69,15 +69,15 @@ onMounted(() => {
       <h1 class="font-heading text-xl leading-8 font-bold">{{ t('login.title') }}</h1>
       <p class="text-text-secondary mt-3 text-sm font-medium">{{ t('login.lead') }}</p>
 
-      <UAlert
-        v-if="failed"
-        color="error"
-        variant="subtle"
-        class="mt-4"
-        :description="t('login.failed')"
-      />
-
-      <div class="mt-6 space-y-3">
+      <!-- 27_Modal Login dialog: Header → Body 16, внутри Body (алерт, кнопки) — 12 -->
+      <div class="mt-4 flex flex-col gap-3">
+        <UAlert
+          v-if="failed"
+          icon="i-lucide-circle-alert"
+          color="error"
+          variant="subtle"
+          :description="t('login.failed')"
+        />
         <UButton
           v-for="provider in session.providers"
           :key="provider"
@@ -95,7 +95,7 @@ onMounted(() => {
             <UIcon v-if="provider === 'google'" name="i-logos-google-icon" class="size-6" />
             <span
               v-else
-              class="flex size-6 items-center justify-center rounded-full bg-[#fc3f1d] text-xs font-extrabold text-white"
+              class="flex size-6 items-center justify-center rounded-full bg-[#fc3f1d] text-[13px] font-extrabold text-white"
             >
               Я
             </span>
@@ -105,6 +105,7 @@ onMounted(() => {
 
         <UAlert
           v-if="session.providers.length === 0"
+          icon="i-lucide-circle-alert"
           color="error"
           variant="subtle"
           :description="t('login.noProviders')"
