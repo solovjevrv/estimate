@@ -27,7 +27,7 @@
     </template>
 
     <template #footer>
-      <UButton color="neutral" variant="outline" @click="modelValue = false">
+      <UButton @click="modelValue = false">
         {{ t('board.hotkeysClose') }}
       </UButton>
     </template>
