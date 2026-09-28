@@ -115,10 +115,11 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
         {{ emptyActiveMessage }}
       </p>
       <div>
+        <!-- Строка списка — 70px, одна на комнаты и состав (в макете 70/68, унифицировано) -->
         <div
           v-for="room in activeRoomsPaging.items.value"
           :key="room.id"
-          class="border-default hover:bg-surface-hover flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 first:border-t-0 sm:px-8"
+          class="border-default hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-t px-4 py-3 first:border-t-0 sm:px-[30px]"
         >
           <RouterLink
             :to="{ name: 'room', params: { id: room.id } }"
@@ -167,10 +168,11 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
           {{ emptyArchiveMessage }}
         </p>
         <div>
+          <!-- Строка списка — 70px, одна на комнаты и состав (в макете 70/68, унифицировано) -->
           <div
             v-for="room in archiveTabPaging.items.value"
             :key="room.id"
-            class="border-default hover:bg-surface-hover flex flex-wrap items-center justify-between gap-3 border-t px-4 py-5 first:border-t-0 sm:px-8"
+            class="border-default hover:bg-surface-hover flex min-h-[70px] flex-wrap items-center justify-between gap-3 border-t px-4 py-3 first:border-t-0 sm:px-[30px]"
           >
             <RouterLink
               :to="{ name: 'room', params: { id: room.id } }"
