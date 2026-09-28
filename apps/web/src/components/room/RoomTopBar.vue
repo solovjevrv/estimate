@@ -82,7 +82,8 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
         icon="i-lucide-ellipsis-vertical"
         color="neutral"
         variant="ghost"
-        class="h-8 w-9 shrink-0 rounded-[8px]"
+        size="sm"
+        class="shrink-0"
         :aria-label="t('room.roomMenu')"
       />
     </UDropdownMenu>
