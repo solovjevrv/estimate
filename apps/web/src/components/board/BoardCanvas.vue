@@ -975,10 +975,19 @@ useBoardHotkeys({
       />
 
       <div v-if="items.length === 0" class="board-empty-state">
-        <UIcon name="i-lucide-sticky-note" class="text-muted size-12" />
-        <div class="font-heading text-lg font-extrabold">{{ t('board.emptyTitle') }}</div>
-        <div v-if="canEdit" class="text-muted max-w-[320px] text-center text-sm leading-relaxed">
-          {{ t('board.emptyHint') }}
+        <!-- 09_BoardCanvas «Пустой холст»: иконка 48, через 14 — Empty (паддинг 48,
+             заголовок Body/Large Bold 18, подпись 14 secondary через 16) -->
+        <UIcon name="i-lucide-sticky-note" class="text-icons-primary size-12" />
+        <div class="flex flex-col items-center gap-4 pt-12">
+          <div class="text-text-primary text-lg leading-[26px] font-bold">
+            {{ t('board.emptyTitle') }}
+          </div>
+          <div
+            v-if="canEdit"
+            class="text-text-secondary max-w-[320px] text-center text-sm leading-5 font-medium"
+          >
+            {{ t('board.emptyHint') }}
+          </div>
         </div>
       </div>
 

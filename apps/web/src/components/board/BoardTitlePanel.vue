@@ -22,7 +22,7 @@ const { t } = useI18n();
 
 <template>
   <Panel position="top-left">
-    <div class="surface-card flex items-center gap-3.5 py-3.5 pr-2.5 pl-[18px]">
+    <div class="surface-card shadow-elevation-2 flex items-center gap-3.5 py-3.5 pr-2.5 pl-[18px]">
       <div class="flex min-w-0 flex-col">
         <RouterLink
           :to="{ name: 'boards' }"

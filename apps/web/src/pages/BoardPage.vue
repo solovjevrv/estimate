@@ -308,24 +308,36 @@ async function confirmDelete(): Promise<void> {
     поэтому просим представиться прежде, чем показать холст -->
     <div
       v-if="board && needsGuestName"
-      class="mx-auto flex w-full max-w-sm flex-1 flex-col justify-center px-4"
+      class="mx-auto flex w-full max-w-[420px] flex-1 flex-col justify-center px-4 sm:px-0"
     >
-      <h1 class="font-heading mb-4 text-2xl font-extrabold">{{ board.title }}</h1>
-      <div class="surface-card surface-card-lg px-4 py-5 sm:px-[30px] sm:py-[26px]">
-        <h2 class="mb-[18px] text-[17px] font-bold">{{ t('board.guestNameTitle') }}</h2>
+      <!-- 09_BoardCanvas «Гость, вход»: та же форма, что у гостя комнаты (07_Room) —
+           заголовок 32 по центру, паддинг 40, поле с иконкой -->
+      <h1 class="font-heading mb-4 text-[32px] leading-10 font-bold tracking-[-0.96px]">
+        {{ board.title }}
+      </h1>
+      <div class="surface-card surface-card-lg flex flex-col items-center gap-6 p-6 sm:p-10">
+        <h2 class="font-heading text-[32px] leading-[40px] font-bold tracking-[-0.96px]">
+          {{ t('board.guestNameTitle') }}
+        </h2>
         <UForm
           :state="guestState"
           :validate="validateGuestName"
-          class="space-y-4"
+          class="flex w-full flex-col gap-6"
           @submit="onGuestNameSubmit"
         >
-          <UFormField :label="t('board.guestName')" name="name">
+          <UFormField
+            :label="t('board.guestName')"
+            name="name"
+            :ui="{ label: 'text-sm font-bold' }"
+          >
             <UInput
               v-model="guestState.name"
+              icon="i-lucide-user"
               :placeholder="t('board.guestNamePlaceholder')"
               :maxlength="GUEST_NAME_MAX_LENGTH"
               autofocus
               class="w-full"
+              :ui="{ base: 'bg-surface-frame border-border-strong' }"
             />
           </UFormField>
           <UAlert
@@ -335,7 +347,7 @@ async function confirmDelete(): Promise<void> {
             variant="subtle"
             :description="t('board.guestJoinError')"
           />
-          <UButton type="submit" block :loading="guestJoining">
+          <UButton type="submit" block class="justify-center" :loading="guestJoining">
             {{ t('board.guestJoin') }}
           </UButton>
         </UForm>
