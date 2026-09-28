@@ -349,11 +349,11 @@ export default defineConfig({
         // surface-tertiary, текущая страница — surface-brand (activeVariant solid)
         pagination: {
           slots: {
-            first:
-              'size-9 justify-center p-0 rounded-r10 ring-0 bg-transparent hover:bg-surface-tertiary',
+            // В ките Pagination — только ‹ › без «в начало/в конец» (5×36 + gap 4 = 196)
+            first: 'hidden',
             prev: 'size-9 justify-center p-0 rounded-r10 ring-0 bg-transparent hover:bg-surface-tertiary',
             next: 'size-9 justify-center p-0 rounded-r10 ring-0 bg-transparent hover:bg-surface-tertiary',
-            last: 'size-9 justify-center p-0 rounded-r10 ring-0 bg-transparent hover:bg-surface-tertiary',
+            last: 'hidden',
             item: 'size-9 justify-center p-0 rounded-r10 text-xs text-text-secondary ring-0 bg-transparent hover:bg-surface-tertiary aria-[current=page]:bg-surface-brand aria-[current=page]:text-text-on-brand aria-[current=page]:hover:bg-surface-brand-hover',
             ellipsis: 'size-9 justify-center p-0 text-text-secondary',
           },

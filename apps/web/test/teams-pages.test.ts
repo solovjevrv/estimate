@@ -268,6 +268,29 @@ const other: TeamMember = {
 };
 
 describe('управление составом', () => {
+  it('состав показывается по 5 участников на страницу, как другие списки', async () => {
+    const many: TeamMember[] = Array.from({ length: 7 }, (_, i) => ({
+      ...other,
+      userId: `u-${i}`,
+      name: `Участник ${i + 1}`,
+    }));
+    const { wrapper } = await mountApp(
+      '/teams/t1',
+      makeFetch(true, {
+        'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: many }),
+      }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Состав'));
+    await byText(wrapper, 'button', 'Состав')!.trigger('click');
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участник 5'));
+    expect(wrapper.text()).not.toContain('Участник 6');
+
+    await byText(wrapper, 'button', '2')!.trigger('click');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участник 7'));
+    expect(wrapper.text()).not.toContain('Участник 1');
+  });
+
   it('администратору доступно исключение других участников', async () => {
     const { wrapper } = await mountApp(
       '/teams/t1',
