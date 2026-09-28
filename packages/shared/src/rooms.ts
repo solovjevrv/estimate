@@ -92,6 +92,17 @@ export interface Room {
   linksVersion: number;
 }
 
+/**
+ * Комната по ссылке (GET /api/rooms/:id) вместе с названием её команды — для
+ * подзаголовка «Команда «…»» в шапке комнаты (07_Room). Отдельно от `Room`, чтобы
+ * не тянуть join с командами во все выборки и в снимки стола по WS.
+ */
+export interface RoomDetails {
+  room: Room;
+  /** null — личная комната (или команда удалена и комната стала личной) */
+  teamName: string | null;
+}
+
 export interface Round {
   id: string;
   roomId: string;

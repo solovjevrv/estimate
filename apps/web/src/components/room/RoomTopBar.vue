@@ -7,6 +7,8 @@ import { useI18n } from 'vue-i18n';
 const props = defineProps<{
   name: string;
   teamId: string | null;
+  /** Название команды для подзаголовка «Команда «…»» (07_Room); null — не известно */
+  teamName: string | null;
   archived: boolean;
   connected: boolean;
   canArchive: boolean;
@@ -17,6 +19,11 @@ const emit = defineEmits<{ archive: []; rename: [] }>();
 
 const { t } = useI18n();
 const toast = useToast();
+
+const subtitle = computed(() => {
+  if (!props.teamId) return t('room.personalRoomSubtitle');
+  return props.teamName ? t('common.teamOf', { name: props.teamName }) : t('room.teamRoomSubtitle');
+});
 
 async function copyLink(): Promise<void> {
   try {
@@ -74,7 +81,7 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
         </span>
       </div>
       <p class="text-text-secondary mt-1 text-sm">
-        {{ props.teamId ? t('room.teamRoomSubtitle') : t('room.personalRoomSubtitle') }}
+        {{ subtitle }}
       </p>
     </div>
     <UDropdownMenu :items="menuItems">

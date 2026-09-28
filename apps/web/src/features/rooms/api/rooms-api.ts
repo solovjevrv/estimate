@@ -1,16 +1,19 @@
 /** REST-слой комнат: единственное место, знающее URL `/api/rooms` и коды ответов. */
-import type { Room, RoomStats, RoundHistoryEntry } from '@estimate/shared';
+import type { Room, RoomDetails, RoomStats, RoundHistoryEntry } from '@estimate/shared';
 import { api } from '../../../lib/api';
 
 export function createRoom(name: string, teamId?: string): Promise<Room> {
   return api.post<{ room: Room }>('/api/rooms', { name, teamId }).then((res) => res.room);
 }
 
-/** Комната по идентификатору — открыта по прямой ссылке, отдельных прав на просмотр нет */
-export function getRoom(roomId: string): Promise<Room> {
+/**
+ * Комната по идентификатору вместе с названием команды для шапки — открыта по
+ * прямой ссылке, отдельных прав на просмотр нет
+ */
+export function getRoom(roomId: string): Promise<RoomDetails> {
   return api
-    .get<{ room: Room }>(`/api/rooms/${encodeURIComponent(roomId)}`)
-    .then((res) => res.room);
+    .get<RoomDetails>(`/api/rooms/${encodeURIComponent(roomId)}`)
+    .then((res) => ({ room: res.room, teamName: res.teamName ?? null }));
 }
 
 /** История вскрытых раундов с итогами — для страницы комнаты */

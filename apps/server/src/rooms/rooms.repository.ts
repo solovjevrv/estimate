@@ -1,4 +1,4 @@
-import type { DeckType, Room, RoomStats, Round } from '@estimate/shared';
+import type { DeckType, Room, RoomDetails, RoomStats, Round } from '@estimate/shared';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 
@@ -31,6 +31,16 @@ export class RoomsRepository {
       throw new Error('Не удалось создать комнату');
     }
     return this.toRoom(row);
+  }
+
+  /** Комната вместе с названием её команды (null — личная) */
+  async findRoomDetails(roomId: string): Promise<RoomDetails | null> {
+    const [row] = await this.db
+      .select({ room: schema.rooms, teamName: schema.teams.name })
+      .from(schema.rooms)
+      .leftJoin(schema.teams, eq(schema.teams.id, schema.rooms.teamId))
+      .where(eq(schema.rooms.id, roomId));
+    return row ? { room: this.toRoom(row.room), teamName: row.teamName } : null;
   }
 
   async findRoom(roomId: string): Promise<Room | null> {

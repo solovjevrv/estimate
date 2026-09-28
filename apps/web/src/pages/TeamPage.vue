@@ -112,14 +112,10 @@ const archiveTabRooms = computed(() =>
 const activeRoomsPaging = usePagedList(computed(() => teamRooms.active));
 const archiveTabPaging = usePagedList(archiveTabRooms);
 
-const activeBoardsPaging = usePagedList(
-  computed(() => teamBoards.active),
-  6,
-);
-const archiveBoardsPaging = usePagedList(
-  computed(() => teamBoards.archived),
-  6,
-);
+// Сетка досок трёхколоночная: две полные строки (6 карточек) на страницу
+const pagedBoards = <T,>(pick: () => T[]) => usePagedList(computed(pick), 6);
+const activeBoardsPaging = pagedBoards(() => teamBoards.active);
+const archiveBoardsPaging = pagedBoards(() => teamBoards.archived);
 
 /** Код приходит только администратору — по нему и показываем блок приглашения */
 const inviteUrl = computed(() =>

@@ -100,10 +100,16 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
         schema: {
           tags: [DOCS_TAGS.rooms],
           summary: 'Комната по ссылке',
-          description: 'Открыта без входа: по прямой ссылке в комнату может зайти и гость.',
+          description:
+            'Открыта без входа: по прямой ссылке в комнату может зайти и гость. `teamName` — ' +
+            'название команды для шапки комнаты, null у личной.',
           params: idParamsSchema,
           response: {
-            200: { description: 'Комната', type: 'object', properties: { room: roomResponse } },
+            200: {
+              description: 'Комната',
+              type: 'object',
+              properties: { room: roomResponse, teamName: { type: ['string', 'null'] } },
+            },
             404: { description: 'Комната не найдена', ...errorResponse },
           },
         },

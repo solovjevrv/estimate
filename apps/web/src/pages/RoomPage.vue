@@ -7,6 +7,7 @@ import {
   trimText,
   type DeckType,
   type Room,
+  type RoomDetails,
 } from '@estimate/shared';
 import { onBeforeUnmount, reactive, ref, watch, computed } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -132,6 +133,8 @@ type Phase =
 
 const phase = ref<Phase>('loading');
 const roomInfo = ref<Room | null>(null);
+/** Название команды для шапки — приходит вместе с комнатой, переименование его не меняет */
+const roomTeamName = ref<string | null>(null);
 const guestIdentity = useGuestIdentity('room');
 const guestState = reactive({ name: guestIdentity.name.value });
 
@@ -155,16 +158,17 @@ async function load(): Promise<void> {
   const token = ++currentToken;
   phase.value = 'loading';
   room.leave();
-  let loadedRoom: Room;
+  let loaded: RoomDetails;
   try {
-    loadedRoom = await getRoom(props.id);
+    loaded = await getRoom(props.id);
   } catch (err) {
     if (token !== currentToken) return; // уже перешли дальше — этот ответ не наш
     phase.value = err instanceof ApiError && err.status === 404 ? 'notFound' : 'loadError';
     return;
   }
   if (token !== currentToken) return;
-  roomInfo.value = loadedRoom;
+  roomInfo.value = loaded.room;
+  roomTeamName.value = loaded.teamName;
   resetHistory();
 
   if (session.isAuthenticated) {
@@ -382,6 +386,7 @@ function retry(): void {
         <RoomTopBar
           :name="roomInfo.name"
           :team-id="roomInfo.teamId"
+          :team-name="roomTeamName"
           :archived="isArchived"
           :connected="room.connected"
           :can-archive="room.isScrumMaster && !isArchived"

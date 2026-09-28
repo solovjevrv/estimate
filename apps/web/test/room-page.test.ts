@@ -462,7 +462,7 @@ describe('вход в комнату', () => {
   });
 });
 
-describe('подзаголовок «Командная/Личная комната» (10.5)', () => {
+describe('подзаголовок «Команда «…»/Личная комната» (10.5, 07_Room)', () => {
   it('у комнаты без команды показывает «Личная комната»', async () => {
     socket.next = { state: roomState(), guestToken: null, participantId: 'u1' };
 
@@ -476,7 +476,23 @@ describe('подзаголовок «Командная/Личная комна�
     expect(wrapper.text()).not.toContain('Командная комната');
   });
 
-  it('у комнаты команды показывает «Командная комната»', async () => {
+  it('у комнаты команды показывает название команды', async () => {
+    const teamRoom: Room = { ...room1, teamId: 't1' };
+    socket.next = { state: roomState({ room: teamRoom }), guestToken: null, participantId: 'u1' };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, {
+        'GET /api/rooms/r1': () => json(200, { room: teamRoom, teamName: 'Платформа' }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
+    expect(wrapper.text()).toContain('Команда «Платформа»');
+    expect(wrapper.text()).not.toContain('Командная комната');
+  });
+
+  it('без названия команды в ответе показывает «Командная комната»', async () => {
     const teamRoom: Room = { ...room1, teamId: 't1' };
     socket.next = { state: roomState({ room: teamRoom }), guestToken: null, participantId: 'u1' };
 
