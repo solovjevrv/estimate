@@ -289,8 +289,21 @@ export default defineConfig({
           slots: {
             root: 'gap-4 px-8 py-12 sm:px-8 sm:py-12 lg:px-8 lg:py-12',
             header: 'gap-4 max-w-[340px]',
-            title: 'text-lg leading-[26px] font-bold text-text-primary',
-            description: 'text-sm font-medium text-text-secondary',
+            title: 'leading-[26px] font-bold text-text-primary',
+            description: 'font-medium text-text-secondary text-wrap',
+          },
+          // Размеры шрифта у Nuxt UI — в варианте size (md: title text-base), слот их не
+          // перебивает; в ките Title 18/26, Description 14/20 без balance-переносов
+          variants: {
+            size: { md: { title: 'text-lg', description: 'text-sm' } },
+            // outline (по умолчанию) — ring-рамка, bg-default и text-muted; в ките Empty —
+            // карточка без рамки, фон и тень даёт .surface-card, описание text-secondary
+            variant: {
+              outline: {
+                root: 'bg-surface-block ring-0 shadow-elevation-1',
+                description: 'text-text-secondary',
+              },
+            },
           },
         },
         // Подпись поля — Body/Medium/Bold text-primary, отступ до поля 6px (06_Input)

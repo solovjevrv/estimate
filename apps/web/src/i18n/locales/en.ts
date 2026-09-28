@@ -64,7 +64,7 @@ export default {
     create: 'Create team',
     loadError: 'Could not load teams. Try refreshing the page.',
     createTitle: 'New team',
-    namePlaceholder: 'For example, Frontend team',
+    namePlaceholder: 'For example, Warranty',
     submit: 'Create',
     createError: 'Could not create the team. Please try again.',
     memberCount: '{count} member | {count} members',

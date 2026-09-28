@@ -268,6 +268,7 @@ async function confirmDelete(): Promise<void> {
         icon="i-lucide-circle-alert"
         color="error"
         variant="subtle"
+        orientation="horizontal"
         :description="t('board.notFound')"
         :actions="[
           {
@@ -284,6 +285,7 @@ async function confirmDelete(): Promise<void> {
         icon="i-lucide-circle-alert"
         color="error"
         variant="subtle"
+        orientation="horizontal"
         :description="t('board.loadError')"
         :actions="[
           {

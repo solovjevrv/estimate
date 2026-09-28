@@ -64,7 +64,7 @@ export default {
     create: 'Создать команду',
     loadError: 'Не удалось загрузить команды. Попробуйте обновить страницу.',
     createTitle: 'Новая команда',
-    namePlaceholder: 'Например, Команда фронтенда',
+    namePlaceholder: 'Например, Гарантии',
     submit: 'Создать',
     createError: 'Не удалось создать команду. Попробуйте ещё раз.',
     memberCount: '{count} участник | {count} участника | {count} участников',

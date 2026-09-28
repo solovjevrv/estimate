@@ -281,6 +281,7 @@ function retry(): void {
       icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
+      orientation="horizontal"
       :description="t('room.loadError')"
       :actions="[
         {
@@ -363,6 +364,7 @@ function retry(): void {
           icon="i-lucide-circle-alert"
           color="warning"
           variant="subtle"
+          orientation="horizontal"
           :description="t('room.kickedMessage')"
           :actions="[
             {

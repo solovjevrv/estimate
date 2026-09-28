@@ -25,7 +25,7 @@ test('вступление в команду по инвайт-ссылке и �
   // состояния с тем же текстом — берём первую (шапка)
   await ownerPage.getByRole('button', { name: 'Создать команду' }).first().click();
   const teamName = `${E2E_ROOM_PREFIX}Team ${randomUUID().slice(0, 8)}`;
-  await ownerPage.getByPlaceholder('Например, Команда фронтенда').fill(teamName);
+  await ownerPage.getByPlaceholder('Например, Гарантии').fill(teamName);
   await ownerPage.locator('form').getByRole('button', { name: 'Создать', exact: true }).click();
   await ownerPage.waitForURL(/\/teams\/[0-9a-f-]{36}/);
   await expect(ownerPage.getByRole('heading', { name: teamName })).toBeVisible();

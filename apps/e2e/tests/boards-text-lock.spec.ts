@@ -32,7 +32,7 @@ test('мягкая блокировка текстового редактиро�
   // Команда + инвайт
   await pageA.getByRole('button', { name: 'Создать команду' }).click();
   const teamName = `${E2E_ROOM_PREFIX}Team ${randomUUID().slice(0, 8)}`;
-  await pageA.getByPlaceholder('Например, Команда фронтенда').fill(teamName);
+  await pageA.getByPlaceholder('Например, Гарантии').fill(teamName);
   await pageA.locator('form').getByRole('button', { name: 'Создать', exact: true }).click();
   await pageA.waitForURL(/\/teams\/[0-9a-f-]{36}/);
   const inviteUrl = await pageA.locator('input[readonly]').inputValue();

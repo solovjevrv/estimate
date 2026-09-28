@@ -81,6 +81,7 @@ async function onSubmit(name: string): Promise<void> {
       icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
+      orientation="horizontal"
       :description="t('teams.loadError')"
       :actions="[
         {
@@ -94,9 +95,9 @@ async function onSubmit(name: string): Promise<void> {
     />
 
     <ul v-else-if="loading" class="flex flex-col gap-4">
-      <li v-for="i in 3" :key="i" class="surface-card flex items-center gap-4 p-6">
+      <li v-for="i in 3" :key="i" class="surface-card flex items-center gap-4 px-8 py-6">
         <USkeleton class="size-[46px] shrink-0 rounded-r12" />
-        <USkeleton class="h-5 w-1/3" />
+        <USkeleton class="h-5 w-full max-w-[280px] rounded-r12" />
       </li>
     </ul>
 

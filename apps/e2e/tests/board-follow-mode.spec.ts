@@ -36,7 +36,7 @@ test.describe('follow-mode камеры (14.5)', () => {
 
     await pageA.getByRole('button', { name: 'Создать команду' }).click();
     const teamName = `${E2E_ROOM_PREFIX}Team ${randomUUID().slice(0, 8)}`;
-    await pageA.getByPlaceholder('Например, Команда фронтенда').fill(teamName);
+    await pageA.getByPlaceholder('Например, Гарантии').fill(teamName);
     await pageA.locator('form').getByRole('button', { name: 'Создать', exact: true }).click();
     await pageA.waitForURL(/\/teams\/[0-9a-f-]{36}/);
     const inviteUrl = await pageA.locator('input[readonly]').inputValue();
@@ -132,7 +132,7 @@ test('ручной пан/зум участника B во время слеже
 
   await pageA.getByRole('button', { name: 'Создать команду' }).click();
   const teamName = `${E2E_ROOM_PREFIX}Team ${randomUUID().slice(0, 8)}`;
-  await pageA.getByPlaceholder('Например, Команда фронтенда').fill(teamName);
+  await pageA.getByPlaceholder('Например, Гарантии').fill(teamName);
   await pageA.locator('form').getByRole('button', { name: 'Создать', exact: true }).click();
   await pageA.waitForURL(/\/teams\/[0-9a-f-]{36}/);
   const inviteUrl = await pageA.locator('input[readonly]').inputValue();
@@ -201,7 +201,7 @@ test('уход A с доски снимает слежение у B', async ({
 
   await pageA.getByRole('button', { name: 'Создать команду' }).click();
   const teamName = `${E2E_ROOM_PREFIX}Team ${randomUUID().slice(0, 8)}`;
-  await pageA.getByPlaceholder('Например, Команда фронтенда').fill(teamName);
+  await pageA.getByPlaceholder('Например, Гарантии').fill(teamName);
   await pageA.locator('form').getByRole('button', { name: 'Создать', exact: true }).click();
   await pageA.waitForURL(/\/teams\/[0-9a-f-]{36}/);
   const inviteUrl = await pageA.locator('input[readonly]').inputValue();

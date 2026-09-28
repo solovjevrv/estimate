@@ -104,6 +104,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
       icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
+      orientation="horizontal"
       class="mb-5"
       :description="errorMessage"
       :actions="[

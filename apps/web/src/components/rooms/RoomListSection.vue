@@ -96,6 +96,7 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
       icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
+      orientation="horizontal"
       class="mb-5"
       :description="errorMessage"
       :actions="[
