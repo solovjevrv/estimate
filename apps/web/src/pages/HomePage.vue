@@ -8,6 +8,7 @@ import { useRouter } from 'vue-router';
 import { useAsyncAction } from '../composables/use-async-action';
 import { useEntityModal } from '../composables/use-entity-modal';
 import EntityTextModal from '../components/EntityTextModal.vue';
+import { openLogin } from '../lib/login-modal';
 import { createRoom as createRoomRequest } from '../features/rooms/api/rooms-api';
 import { useSessionStore } from '../stores/session';
 
@@ -91,7 +92,7 @@ async function onSubmit(name: string): Promise<void> {
               {{ t('home.startWithTeam') }}
             </UButton>
           </template>
-          <UButton v-else size="lg" to="/login">
+          <UButton v-else size="lg" @click="openLogin()">
             {{ t('home.startAsGuest') }}
           </UButton>
         </div>

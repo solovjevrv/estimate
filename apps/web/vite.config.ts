@@ -347,22 +347,32 @@ export default defineConfig({
         },
         modal: {
           slots: {
-            content:
-              'w-[calc(100%-2rem)] max-w-[420px] rounded-r24 shadow-elevation-4 ring-0 divide-y-0 bg-[var(--brand-surface)]',
+            content: 'divide-y-0 bg-[var(--brand-surface)]',
             // Строка заголовка 32px (по кнопке закрытия), у Nuxt UI — min-h 64px;
             // крестик — в этой строке у правого края (отступ 24), а не в углу на 16
             header: 'p-6 pb-0 min-h-0',
-            close: 'top-6 end-6',
-            body: 'p-6 pt-4',
-            footer: 'p-6 pt-4 justify-end gap-2.5',
+            // Close в ките — Button Neutral/Ghost/Sm (36×32, иконка 16); Nuxt UI рисует
+            // крестик размером md без возможности задать size через тему
+            close: 'top-6 end-6 px-2.5 py-2 [&_[data-slot=leadingIcon]]:size-4',
+            // sm:pt-4 — у Nuxt UI в body/footer зашит sm:p-6, без брейкпоинта pt-4 ему проигрывает
+            body: 'p-6 pt-4 sm:p-6 sm:pt-4',
+            footer: 'p-6 pt-4 sm:p-6 sm:pt-4 justify-end gap-2.5',
             // Title row 32px (по кнопке закрытия), до описания 12px — 27_Modal
             title: 'font-heading text-xl leading-8 font-bold text-text-primary',
             description: 'mt-3 text-sm font-medium text-text-secondary',
           },
           // surface-overlay: black/40 в Light, black/60 в Dark. Цвет у Nuxt UI задан в
           // варианте overlay=true (bg-elevated/75), а не в слоте — там его и перебиваем
+          // То же с размером окна: ширина, радиус, тень и рамка у Nuxt UI — в варианте
+          // fullscreen=false (max-w-lg = 512), слот content их не перебивает. Окно в
+          // ките — 420, r24, elevation/4, без рамки
           variants: {
             overlay: { true: { overlay: 'bg-surface-overlay' } },
+            fullscreen: {
+              false: {
+                content: 'w-[calc(100vw-2rem)] max-w-[420px] rounded-r24 shadow-elevation-4 ring-0',
+              },
+            },
           },
         },
         // По факту компонента DropdownMenu в Kit (35_DropdownMenu) — раньше не

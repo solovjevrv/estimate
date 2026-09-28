@@ -7,6 +7,7 @@ import { createMemoryHistory } from 'vue-router';
 
 import App from '../src/App.vue';
 import { createAppI18n } from '../src/i18n';
+import { loginModal } from '../src/lib/login-modal';
 import { createAppRouter } from '../src/router';
 
 function json(status: number, body: unknown): Response {
@@ -711,7 +712,7 @@ describe('страница приглашения', () => {
     expect(wrapper.text()).toContain('Войти и вступить');
   });
 
-  it('гостя по кнопке уводит на вход с возвратом на приглашение', async () => {
+  it('гостю по кнопке открывает окно входа с возвратом на приглашение', async () => {
     const { wrapper, router } = await mountApp(
       '/invite/abcdef',
       makeFetch(false, {
@@ -722,8 +723,10 @@ describe('страница приглашения', () => {
 
     await byText(wrapper, 'button', 'Войти и вступить')!.trigger('click');
 
-    await vi.waitFor(() => expect(router.currentRoute.value.name).toBe('login'));
-    expect(router.currentRoute.value.query.redirect).toBe('/invite/abcdef');
+    // Окно открывается поверх приглашения, без перехода; возврат — на приглашение
+    await vi.waitFor(() => expect(loginModal.open).toBe(true));
+    expect(loginModal.redirect).toBe('/invite/abcdef');
+    expect(router.currentRoute.value.path).toBe('/invite/abcdef');
   });
 
   it('вошедшего вступает в команду и ведёт на её страницу', async () => {

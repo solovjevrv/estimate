@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import { ApiError } from '../lib/api';
+import { openLogin } from '../lib/login-modal';
 import { teamAvatarColor } from '../lib/team-roles';
 import { useSessionStore } from '../stores/session';
 import { useTeamsStore } from '../stores/teams';
@@ -43,13 +44,13 @@ onMounted(async () => {
 });
 
 /**
- * Гостя сначала отправляем на вход, запомнив приглашение: после входа сработает
+ * Гостю открываем окно входа, запомнив приглашение: после входа сработает
  * возврат на этот адрес (см. post-login), и он окажется здесь уже с сессией.
  * Вошедшего — вступляем и ведём в команду.
  */
 async function act(): Promise<void> {
   if (!session.isAuthenticated) {
-    await router.push({ name: 'login', query: { redirect: `/invite/${props.code}` } });
+    openLogin(`/invite/${props.code}`);
     return;
   }
 

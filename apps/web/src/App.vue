@@ -4,8 +4,10 @@ import { computed, onMounted, watchEffect } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRoute, useRouter } from 'vue-router';
 
+import LoginModal from './components/LoginModal.vue';
 import ThemeSwitchTrack from './components/ThemeSwitchTrack.vue';
 import { LOCALES, rememberLocale, type Locale } from './i18n';
+import { openLogin } from './lib/login-modal';
 import { teamAvatarColor } from './lib/team-roles';
 import { initTheme, theme, toggleTheme } from './lib/theme';
 import { useSessionStore } from './stores/session';
@@ -223,7 +225,12 @@ async function logout(): Promise<void> {
                 <UIcon name="i-lucide-chevron-down" class="text-icons-secondary size-4" />
               </button>
             </UDropdownMenu>
-            <UButton v-else size="md" to="/login">{{ t('nav.login') }}</UButton>
+            <UButton
+              v-else
+              size="md"
+              @click="openLogin(route.path === '/' ? null : route.fullPath)"
+              >{{ t('nav.login') }}</UButton
+            >
           </div>
         </nav>
       </header>
@@ -238,6 +245,8 @@ async function logout(): Promise<void> {
       >
         <RouterView />
       </main>
+
+      <LoginModal v-if="!session.isAuthenticated" />
 
       <footer
         v-if="!route.meta.fullBleedCanvas"

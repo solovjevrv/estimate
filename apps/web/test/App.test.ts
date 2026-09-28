@@ -1,5 +1,5 @@
 import ui from '@nuxt/ui/vue-plugin';
-import { mount } from '@vue/test-utils';
+import { enableAutoUnmount, mount } from '@vue/test-utils';
 import { createPinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory } from 'vue-router';
@@ -7,6 +7,10 @@ import { createMemoryHistory } from 'vue-router';
 import App from '../src/App.vue';
 import { createAppI18n } from '../src/i18n';
 import { createAppRouter } from '../src/router';
+
+// Окна (вход, создание комнаты) телепортируются в document.body — без размонтирования
+// они копились бы между тестами
+enableAutoUnmount(afterEach);
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -87,18 +91,19 @@ describe('каркас приложения', () => {
   });
 
   it('на странице входа показывает включённые способы входа', async () => {
-    const wrapper = await mountApp('/login');
+    await mountApp('/login');
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Войти через Google'));
-    expect(wrapper.text()).toContain('Войти через Яндекс');
+    // Вход — окно поверх главной (27_Modal), телепортируется в document.body
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Войти через Google'));
+    expect(document.body.textContent).toContain('Войти через Яндекс');
     // Вход — переход браузера на сервер, поэтому именно ссылка
-    expect(wrapper.find('a[href="/api/auth/google"]').exists()).toBe(true);
+    expect(document.body.querySelector('a[href="/api/auth/google"]')).not.toBeNull();
   });
 
   it('после неудачного входа объясняет, что произошло', async () => {
-    const wrapper = await mountApp('/login?error=oauth');
+    await mountApp('/login?error=oauth');
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Войти не удалось'));
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Войти не удалось'));
   });
 
   it('на несуществующем адресе показывает страницу «не найдено»', async () => {
