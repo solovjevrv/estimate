@@ -296,6 +296,14 @@ export async function renderBoardThumbnail(snapshot: BoardSnapshot): Promise<Blo
       ctx.textBaseline = 'middle';
       ctx.fillText(text, width / 2, height / 2);
     } else {
+      // Стикер на доске рисуется без подложки — серая заливка только у заглушек
+      // (картинки/GIF не скачиваются, стикер не загрузился)
+      const sticker = item.content.type === 'sticker' ? await loadStickerFrame(item) : null;
+      if (sticker) {
+        drawContainedImage(ctx, sticker, width, height);
+        ctx.restore();
+        continue;
+      }
       ctx.fillStyle =
         item.content.type === 'image' ||
         item.content.type === 'sticker' ||
@@ -319,13 +327,9 @@ export async function renderBoardThumbnail(snapshot: BoardSnapshot): Promise<Blo
         ctx.fill();
       }
       if (item.content.type === 'sticker') {
-        const frame = await loadStickerFrame(item);
-        if (frame) drawContainedImage(ctx, frame, width, height);
-        else {
-          ctx.strokeStyle = NEUTRAL_LINE;
-          ctx.lineWidth = 2;
-          ctx.strokeRect(width * 0.3, height * 0.3, width * 0.4, height * 0.4);
-        }
+        ctx.strokeStyle = NEUTRAL_LINE;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(width * 0.3, height * 0.3, width * 0.4, height * 0.4);
       } else if (item.content.type === 'image' || item.content.type === 'giphy') {
         ctx.strokeStyle = NEUTRAL_LINE;
         ctx.lineWidth = 2;
