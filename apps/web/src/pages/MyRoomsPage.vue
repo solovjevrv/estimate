@@ -339,6 +339,7 @@ async function confirmDelete(): Promise<void> {
       <p class="text-text-secondary text-sm font-medium">{{ t('myRooms.subtitle') }}</p>
 
       <RoomListSection
+        page-level
         :rooms-failed="false"
         :rooms-tab="roomsTab"
         :active-rooms-paging="activeRoomsPaging"

@@ -64,7 +64,7 @@ export default {
     title: 'Teams',
     emptyTitle: 'Nothing here yet',
     empty: 'You have no teams yet. Create the first one to invite your colleagues.',
-    create: 'Create team',
+    create: 'New team',
     loadError: 'Could not load teams. Try refreshing the page.',
     createTitle: 'New team',
     namePlaceholder: 'For example, Warranty',
@@ -353,6 +353,8 @@ export default {
     create: 'Create board',
     teamSwitch: 'Team board',
     personalHint: 'A personal board will be created',
+    /** Кнопка в заголовке страницы «Доски» — в пару к «Новой комнате» */
+    newBoard: 'New board',
     creating: 'Creating…',
     createError: 'Could not create the board. Please try again.',
     boardMenu: 'Board actions',

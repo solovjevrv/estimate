@@ -259,7 +259,8 @@ async function confirmDelete(): Promise<void> {
 </script>
 
 <template>
-  <section class="space-y-5">
+  <!-- 08_Boards «Доски — Список»: блоки страницы через 32, как в «Комнатах» -->
+  <section class="space-y-8">
     <div class="flex flex-wrap items-center justify-between gap-3">
       <h1
         class="font-heading text-text-primary text-[32px] leading-10 font-bold tracking-[-0.03em]"
@@ -267,7 +268,7 @@ async function confirmDelete(): Promise<void> {
         {{ t('boards.title') }}
       </h1>
       <UButton icon="i-lucide-plus" size="lg" @click="createBoardModal.show">
-        {{ t('board.create') }}
+        {{ t('board.newBoard') }}
       </UButton>
     </div>
 
@@ -306,6 +307,7 @@ async function confirmDelete(): Promise<void> {
       <p class="text-muted text-sm">{{ t('boards.subtitle') }}</p>
 
       <BoardGridSection
+        page-level
         :boards-failed="false"
         :boards-tab="boardsTab"
         :active-boards-paging="activeBoardsPaging"

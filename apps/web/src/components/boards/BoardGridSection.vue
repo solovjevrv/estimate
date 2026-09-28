@@ -25,6 +25,9 @@ defineProps<{
   /** Плашка с именем команды или «Личная» (08_Boards, «Доски — Список») — в
    *  контексте самой команды не нужна */
   teamTagFor?: (board: BoardSummary) => string | null;
+  /** Отдельная страница «Доски»: блоки через 32, как в 06/08 «Список»; на вкладке
+   *  команды — 20, как у вкладки «Комнаты» */
+  pageLevel?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -80,7 +83,10 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
 
 <template>
   <div>
-    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div
+      class="flex flex-wrap items-center justify-between gap-3"
+      :class="pageLevel ? 'mb-8' : 'mb-5'"
+    >
       <div class="flex items-center gap-2">
         <button
           v-for="tab in boardTabs"

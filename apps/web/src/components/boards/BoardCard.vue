@@ -31,7 +31,7 @@ watch(
   <div class="bg-surface-block shadow-elevation-2 flex flex-col overflow-hidden rounded-r24">
     <RouterLink
       :to="{ name: 'board', params: { id: board.id } }"
-      class="bg-surface-tertiary flex h-[140px] shrink-0 items-center justify-center"
+      class="bg-surface-skeleton flex h-[140px] shrink-0 items-center justify-center"
       :aria-label="t('board.openBoard', { title: board.title })"
     >
       <img
@@ -62,10 +62,12 @@ watch(
         </UDropdownMenu>
       </div>
       <div class="flex flex-col items-start gap-2">
-        <span class="text-muted text-xs">{{ formatDate(board.createdAt) }}</span>
+        <span class="text-text-secondary text-xs leading-[18px] font-medium">
+          {{ formatDate(board.createdAt) }}
+        </span>
         <div v-if="teamTag" class="flex h-[34px] items-start gap-2">
           <span
-            class="bg-surface-brand shrink-0 rounded-full px-3 py-2 text-xs font-bold text-white"
+            class="bg-surface-brand text-text-on-brand shrink-0 rounded-full px-3 py-2 text-xs font-bold"
           >
             {{ teamTag }}
           </span>

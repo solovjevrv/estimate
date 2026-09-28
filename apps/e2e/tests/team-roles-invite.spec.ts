@@ -23,7 +23,7 @@ test('вступление в команду по инвайт-ссылке и �
 
   // На пустом списке команд одновременно видны кнопка в шапке и кнопка пустого
   // состояния с тем же текстом — берём первую (шапка)
-  await ownerPage.getByRole('button', { name: 'Создать команду' }).first().click();
+  await ownerPage.getByRole('button', { name: 'Новая команда' }).first().click();
   const teamName = `${E2E_ROOM_PREFIX}Team ${randomUUID().slice(0, 8)}`;
   await ownerPage.getByPlaceholder('Например, Гарантии').fill(teamName);
   await ownerPage.locator('form').getByRole('button', { name: 'Создать', exact: true }).click();

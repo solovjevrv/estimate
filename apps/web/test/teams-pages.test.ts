@@ -183,7 +183,7 @@ describe('страница команд', () => {
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('У вас пока нет команд'));
 
-    await byText(wrapper, 'button', 'Создать команду')!.trigger('click');
+    await byText(wrapper, 'button', 'Новая команда')!.trigger('click');
 
     // Контент модалки телепортируется в body
     await vi.waitFor(() => expect(document.body.textContent).toContain('Новая команда'));

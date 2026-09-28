@@ -24,6 +24,9 @@ const props = defineProps<{
   deleteLabel: string;
   /** Плашка с именем команды или «Личная» (06_Rooms, «Комнаты — Список») — в контексте самой команды не нужна */
   teamTagFor?: (room: Room) => string | null;
+  /** Отдельная страница «Комнаты»: пилюли и список через 32 (06_Rooms «Список»);
+   *  на вкладке команды — 20 */
+  pageLevel?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -72,7 +75,10 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
 
 <template>
   <div>
-    <div class="mb-5 flex flex-wrap items-center justify-between gap-3">
+    <div
+      class="flex flex-wrap items-center justify-between gap-3"
+      :class="pageLevel ? 'mb-8' : 'mb-5'"
+    >
       <div class="flex items-center gap-2">
         <button
           v-for="tab in roomTabs"

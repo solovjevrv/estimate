@@ -144,9 +144,9 @@ describe('страница «Мои доски»', () => {
       'POST /api/boards': () => json(201, { board: created }),
     });
     const { wrapper } = await mountApp(fetchImpl);
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Создать доску'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Новая доска'));
 
-    const openButton = wrapper.findAll('button').find((b) => b.text().includes('Создать доску'));
+    const openButton = wrapper.findAll('button').find((b) => b.text().includes('Новая доска'));
     await openButton!.trigger('click');
     const dialog = () => document.body.querySelector('[role="dialog"]');
     await vi.waitFor(() => expect(dialog()?.textContent).toContain('Командная доска'));
