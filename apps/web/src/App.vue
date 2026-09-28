@@ -115,9 +115,12 @@ async function logout(): Promise<void> {
       class="flex flex-col bg-[var(--page-bg)] text-highlighted"
       :class="route.meta.fullBleedCanvas ? 'h-screen overflow-hidden' : 'min-h-screen'"
     >
+      <!-- Шапка, main и футер — один контейнер (1180 + гаттер 16): края логотипа и контента
+         на одной вертикали. В макете у шапки внутри ещё 56px паддинга — отказались
+         по решению пользователя, чтобы шапка не была уже контента -->
       <header class="border-default border-b" style="background-color: var(--brand-surface)">
         <nav
-          class="mx-auto flex h-[64px] w-full max-w-[73.75rem] items-center gap-3 px-4 sm:gap-6 sm:px-6 md:h-[76px] md:gap-8 md:px-14"
+          class="mx-auto flex h-[64px] w-full max-w-[calc(73.75rem+2rem)] items-center gap-3 px-4 sm:gap-6 md:h-[76px] md:gap-8"
         >
           <RouterLink to="/" class="flex shrink-0 items-center gap-2">
             <!-- Логомарк — вектор из Header кита (62_Header, Real Logo): зелёный — примитив

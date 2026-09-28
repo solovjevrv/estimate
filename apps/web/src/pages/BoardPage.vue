@@ -262,7 +262,7 @@ async function confirmDelete(): Promise<void> {
 
 <template>
   <div class="flex h-full min-h-0 flex-1 flex-col">
-    <div v-if="!board" class="mx-auto w-full max-w-[73.75rem] px-4 pt-8 pb-5 md:px-14 md:pt-14">
+    <div v-if="!board" class="mx-auto w-full max-w-[calc(73.75rem+2rem)] px-4 pt-8 pb-5 md:pt-14">
       <UAlert
         v-if="notFound"
         color="error"
