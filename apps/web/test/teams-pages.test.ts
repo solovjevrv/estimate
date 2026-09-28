@@ -720,6 +720,82 @@ describe('создание комнаты команды', () => {
 
     await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/rooms/r5'));
   });
+
+  /** Тело POST /api/rooms из вызовов замоканного fetch */
+  function postedRoom(fetchImpl: ReturnType<typeof vi.fn>): unknown {
+    const call = fetchImpl.mock.calls.find(
+      ([url, init]) => url === '/api/rooms' && (init as RequestInit | undefined)?.method === 'POST',
+    );
+    return call ? JSON.parse((call[1] as RequestInit).body as string) : undefined;
+  }
+
+  async function createRoomFromTeamPage(
+    teamsList: unknown[],
+    beforeSubmit?: () => Promise<void> | void,
+  ): Promise<ReturnType<typeof vi.fn>> {
+    const created: Room = { ...activeRoom, id: 'r5', teamId: 't1', name: 'Спринт' };
+    const fetchImpl = makeFetch(true, {
+      'GET /api/teams': () => json(200, { teams: teamsList }),
+      'GET /api/teams/t1': () => json(200, { team: teamA, role: 'admin', members: [admin] }),
+      'GET /api/teams/t1/rooms': () => json(200, { rooms: [] }),
+      'GET /api/rooms/r5': () => json(200, { room: created }),
+      'POST /api/rooms': () => json(201, { room: created }),
+    });
+    const { wrapper, router } = await mountApp('/teams/t1', fetchImpl);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('В команде пока нет комнат'));
+    await byText(wrapper, 'button', 'Создать комнату')!.trigger('click');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Командная комната'));
+
+    const input = dialog()!.querySelector('input') as HTMLInputElement;
+    input.value = 'Спринт';
+    input.dispatchEvent(new Event('input'));
+    await beforeSubmit?.();
+    dialogButton('Создать комнату')!.click();
+    await vi.waitFor(() => expect(router.currentRoute.value.path).toBe('/rooms/r5'));
+    return fetchImpl;
+  }
+
+  it('окно создания на странице команды: «Командная» включена и выбрана эта команда (DS-063)', async () => {
+    const fetchImpl = await createRoomFromTeamPage([{ ...teamA, role: 'admin', memberCount: 1 }]);
+    expect(postedRoom(fetchImpl)).toEqual({ name: 'Спринт', teamId: 't1' });
+  });
+
+  it('с одной командой выбора нет — под переключателем видно, куда попадёт комната', async () => {
+    await createRoomFromTeamPage([{ ...teamA, role: 'admin', memberCount: 1 }], () => {
+      expect(dialog()!.textContent).toContain(`Команда «${teamA.name}»`);
+      expect(dialog()!.querySelector('[role="combobox"]')).toBeNull();
+    });
+  });
+
+  it('выключенный переключатель создаёт личную комнату — без teamId', async () => {
+    const fetchImpl = await createRoomFromTeamPage(
+      [{ ...teamA, role: 'admin', memberCount: 1 }],
+      async () => {
+        (dialog()!.querySelector('[role="switch"]') as HTMLElement).click();
+        await vi.waitFor(() =>
+          expect(dialog()!.querySelector('[role="switch"]')!.getAttribute('aria-checked')).toBe(
+            'false',
+          ),
+        );
+      },
+    );
+    expect(postedRoom(fetchImpl)).toEqual({ name: 'Спринт' });
+  });
+
+  it('несколько команд с правом — появляется выбор команды, по умолчанию текущая', async () => {
+    await createRoomFromTeamPage(
+      [
+        { id: 't2', name: 'Гарантии', createdAt: teamA.createdAt, role: 'admin', memberCount: 3 },
+        { ...teamA, role: 'admin', memberCount: 1 },
+        // Участнику командные комнаты создавать нельзя — в выборе её нет
+        { id: 't3', name: 'Чужая', createdAt: teamA.createdAt, role: 'member', memberCount: 5 },
+      ],
+      () => {
+        const combobox = dialog()!.querySelector('[role="combobox"]');
+        expect(combobox?.textContent).toContain(teamA.name);
+      },
+    );
+  });
 });
 
 describe('страница приглашения', () => {

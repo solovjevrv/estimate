@@ -188,6 +188,21 @@ export default defineConfig({
             { size: 'sm' as const, square: true, class: 'px-2.5 py-2' },
             { size: 'md' as const, square: true, class: 'px-3 py-2.5' },
             { size: 'lg' as const, square: true, class: 'px-4 py-3' },
+            // Загрузка (Modal → Confirm State=Loading в ките): кнопка остаётся своего цвета
+            // со спиннером. Nuxt UI при loading ставит disabled — без этого сработали бы
+            // серые DIS_* выше. В ките Loading есть только у Primary/Danger Solid
+            {
+              color: 'primary' as const,
+              variant: 'solid' as const,
+              loading: true,
+              class: 'disabled:bg-surface-brand disabled:text-text-on-brand cursor-wait',
+            },
+            {
+              color: 'error' as const,
+              variant: 'solid' as const,
+              loading: true,
+              class: 'disabled:bg-surface-error disabled:text-text-white cursor-wait',
+            },
           ],
         },
         // Высоты — по факту Container (counterAxisSizingMode: FIXED) компонента
@@ -320,8 +335,13 @@ export default defineConfig({
         // темах (у Nuxt UI — bg-default, в Dark тёмный), Disabled — прозрачность 45%
         switch: {
           slots: {
+            // Дорожка по центру блока «подпись + описание», как Switch в ките (у Nuxt UI — по верху)
+            root: 'items-center',
             base: 'disabled:opacity-45',
-            thumb: 'bg-icons-white',
+            thumb: 'bg-icons-white shadow-none',
+            // Switch в ките: подпись 12/Bold, описание 12/Medium — во всех размерах
+            label: 'text-xs leading-[18px] font-bold text-text-primary',
+            description: 'text-xs leading-[18px] font-medium text-text-secondary',
           },
         },
         // 29_Alert: единственный стиль — subtle, Error/Warning на *-low подложке без

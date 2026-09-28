@@ -60,7 +60,8 @@ test('вступление в команду по инвайт-ссылке и �
   // Состав команды — обычный REST, не WS-рассылка, поэтому владельцу нужна перезагрузка
   await ownerPage.reload();
   await ownerPage.getByRole('button', { name: 'Состав' }).click();
-  const memberRow = ownerPage.locator('.border-default').filter({ hasText: member.name });
+  // Строка состава — родитель ссылки с именем участника (привязка к разметке, не к стилям)
+  const memberRow = ownerPage.getByRole('link', { name: member.name }).locator('xpath=..');
   await memberRow.getByRole('button', { name: 'Действия с участником' }).click();
   await ownerPage.getByRole('menuitem', { name: 'Изменить роль' }).click();
   await ownerPage.getByRole('menuitemcheckbox', { name: 'Администратор' }).click();

@@ -6,6 +6,7 @@ import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 
 import { useAsyncAction } from '../composables/use-async-action';
+import { useCreationTeams } from '../composables/use-creation-teams';
 import { useEntityModal } from '../composables/use-entity-modal';
 import EntityTextModal from '../components/EntityTextModal.vue';
 import { openLogin } from '../lib/login-modal';
@@ -43,11 +44,18 @@ const cards = computed(() => [
 ]);
 
 const createRoomModal = useEntityModal();
+/** Командную комнату заводит администратор команды (DS-063) */
+const roomTeams = useCreationTeams('admin');
+
+async function openCreateRoom(): Promise<void> {
+  await roomTeams.ensureLoaded();
+  createRoomModal.show();
+}
 
 const toast = useToast();
 
 const { pending: creating, execute: createRoom } = useAsyncAction({
-  run: (name: string) => createRoomRequest(name),
+  run: (name: string, teamId: string | null) => createRoomRequest(name, teamId ?? undefined),
   success: async (room) => {
     createRoomModal.close();
     await router.push({ name: 'room', params: { id: room.id } });
@@ -57,8 +65,8 @@ const { pending: creating, execute: createRoom } = useAsyncAction({
   },
 });
 
-async function onSubmit(name: string): Promise<void> {
-  await createRoom(name);
+async function onSubmit(name: string, teamId: string | null): Promise<void> {
+  await createRoom(name, teamId);
 }
 </script>
 
@@ -85,7 +93,7 @@ async function onSubmit(name: string): Promise<void> {
 
         <div class="mt-10 flex flex-wrap gap-3">
           <template v-if="session.isAuthenticated">
-            <UButton size="lg" icon="i-lucide-plus" @click="createRoomModal.show">
+            <UButton size="lg" icon="i-lucide-plus" @click="openCreateRoom">
               {{ t('room.create') }}
             </UButton>
             <UButton size="lg" color="neutral" variant="outline" to="/teams">
@@ -153,6 +161,9 @@ async function onSubmit(name: string): Promise<void> {
       :cancel-label="t('common.cancel')"
       :submit-label="creating ? t('room.creating') : t('room.create')"
       :pending="creating"
+      :teams="roomTeams.options.value"
+      :team-switch-label="t('room.teamSwitch')"
+      :personal-description="t('room.personalHint')"
       @submit="onSubmit"
     />
   </section>

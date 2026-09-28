@@ -41,6 +41,7 @@ import { useSessionStore } from '../stores/session';
 import { useTeamBoardsStore } from '../stores/team-boards';
 import { useTeamRoomsStore } from '../stores/team-rooms';
 import { useTeamsStore } from '../stores/teams';
+import { useCreationTeams, type CreationTeam } from '../composables/use-creation-teams';
 
 const props = defineProps<{ id: string }>();
 
@@ -298,11 +299,37 @@ async function confirmArchiveRoom(): Promise<void> {
   await archiveRoom(target);
 }
 
-// --- Создание комнаты от лица команды ---
+// --- Создание комнаты: по умолчанию от лица этой команды, в окне можно выбрать
+// другую команду или личную (DS-063) ---
 const createRoomModal = useEntityModal();
+const roomTeams = useCreationTeams('admin');
+const boardTeams = useCreationTeams('member');
+
+/**
+ * Эта команда в выборе есть всегда, если в ней можно создавать, — даже когда общий
+ * список команд не загрузился: иначе окно открылось бы без выбора и молча создало
+ * личную комнату/доску вместо командной.
+ */
+function withCurrentTeam(options: CreationTeam[], allowed: boolean): CreationTeam[] {
+  const team = overview.value?.team;
+  if (!allowed || !team || options.some((option) => option.id === team.id)) return options;
+  return [{ id: team.id, name: team.name }, ...options];
+}
+const roomTeamOptions = computed(() =>
+  withCurrentTeam(roomTeams.options.value, canManageTeam.value),
+);
+const boardTeamOptions = computed(() =>
+  withCurrentTeam(boardTeams.options.value, canCreateBoard.value),
+);
+
+/** Список команд страница сама не грузит — нужен окну создания для выбора команды */
+async function openCreateRoom(): Promise<void> {
+  await roomTeams.ensureLoaded();
+  createRoomModal.show();
+}
 
 const { pending: creatingRoom, execute: createTeamRoom } = useAsyncAction({
-  run: (name: string) => createRoomRequest(name, props.id),
+  run: (name: string, teamId: string | null) => createRoomRequest(name, teamId ?? undefined),
   success: async (room) => {
     createRoomModal.close();
     await router.push({ name: 'room', params: { id: room.id } });
@@ -312,15 +339,15 @@ const { pending: creatingRoom, execute: createTeamRoom } = useAsyncAction({
   },
 });
 
-async function onCreateRoom(name: string): Promise<void> {
-  await createTeamRoom(name);
+async function onCreateRoom(name: string, teamId: string | null): Promise<void> {
+  await createTeamRoom(name, teamId);
 }
 
 // --- Создание доски от лица команды ---
 const createBoardModal = useEntityModal();
 
 const { pending: creatingBoard, execute: createTeamBoard } = useAsyncAction({
-  run: (title: string) => createBoardRequest(title, props.id),
+  run: (title: string, teamId: string | null) => createBoardRequest(title, teamId ?? undefined),
   success: async (board) => {
     createBoardModal.close();
     await router.push({ name: 'board', params: { id: board.id } });
@@ -330,8 +357,13 @@ const { pending: creatingBoard, execute: createTeamBoard } = useAsyncAction({
   },
 });
 
-async function onCreateBoard(title: string): Promise<void> {
-  await createTeamBoard(title);
+async function openCreateBoard(): Promise<void> {
+  await boardTeams.ensureLoaded();
+  createBoardModal.show();
+}
+
+async function onCreateBoard(title: string, teamId: string | null): Promise<void> {
+  await createTeamBoard(title, teamId);
 }
 
 // --- Переименование/архивация/восстановление/удаление доски из списка
@@ -592,7 +624,7 @@ async function confirmDelete(): Promise<void> {
         :room-archive="roomArchive"
         :format-date="formatDate"
         @select-tab="selectRoomsTab"
-        @create="createRoomModal.show"
+        @create="openCreateRoom"
         @rename="askRenameRoom"
         @archive="askArchiveRoom"
         @delete="askDeleteRoom"
@@ -610,7 +642,7 @@ async function confirmDelete(): Promise<void> {
         :board-archive="boardArchive"
         :format-date="formatDate"
         @select-tab="selectBoardsTab"
-        @create="createBoardModal.show"
+        @create="openCreateBoard"
         @rename="askRenameBoard"
         @archive="askArchiveBoard"
         @unarchive="unarchiveBoard"
@@ -745,6 +777,10 @@ async function confirmDelete(): Promise<void> {
       :cancel-label="t('common.cancel')"
       :submit-label="creatingRoom ? t('room.creating') : t('room.create')"
       :pending="creatingRoom"
+      :teams="roomTeamOptions"
+      :default-team-id="props.id"
+      :team-switch-label="t('room.teamSwitch')"
+      :personal-description="t('room.personalHint')"
       @submit="onCreateRoom"
     />
 
@@ -759,6 +795,10 @@ async function confirmDelete(): Promise<void> {
       :cancel-label="t('common.cancel')"
       :submit-label="creatingBoard ? t('board.creating') : t('board.create')"
       :pending="creatingBoard"
+      :teams="boardTeamOptions"
+      :default-team-id="props.id"
+      :team-switch-label="t('board.teamSwitch')"
+      :personal-description="t('board.personalHint')"
       @submit="onCreateBoard"
     />
 

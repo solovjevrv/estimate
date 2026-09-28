@@ -22,6 +22,7 @@ import {
 } from '../features/boards/api/boards-api';
 import { useSessionStore } from '../stores/session';
 import { useTeamsStore } from '../stores/teams';
+import { useCreationTeams } from '../composables/use-creation-teams';
 
 const { t, locale } = useI18n();
 const router = useRouter();
@@ -121,7 +122,7 @@ async function reloadBoardsAfterMutation(): Promise<void> {
 const createBoardModal = useEntityModal();
 
 const { pending: creating, execute: createBoard } = useAsyncAction({
-  run: (title: string) => createBoardRequest(title),
+  run: (title: string, teamId: string | null) => createBoardRequest(title, teamId ?? undefined),
   success: async (board) => {
     createBoardModal.close();
     await router.push({ name: 'board', params: { id: board.id } });
@@ -131,8 +132,11 @@ const { pending: creating, execute: createBoard } = useAsyncAction({
   },
 });
 
-async function onCreateBoard(title: string): Promise<void> {
-  await createBoard(title);
+/** Командную доску заводит участник или администратор (DS-063); список команд уже грузит load() */
+const boardTeams = useCreationTeams('member');
+
+async function onCreateBoard(title: string, teamId: string | null): Promise<void> {
+  await createBoard(title, teamId);
 }
 
 // --- Переименование ---
@@ -313,6 +317,9 @@ async function confirmDelete(): Promise<void> {
       :cancel-label="t('common.cancel')"
       :submit-label="creating ? t('board.creating') : t('board.create')"
       :pending="creating"
+      :teams="boardTeams.options.value"
+      :team-switch-label="t('board.teamSwitch')"
+      :personal-description="t('board.personalHint')"
       @submit="onCreateBoard"
     />
 

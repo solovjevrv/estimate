@@ -22,6 +22,7 @@ import {
 } from '../features/rooms/api/rooms-api';
 import { useSessionStore } from '../stores/session';
 import { useTeamsStore } from '../stores/teams';
+import { useCreationTeams } from '../composables/use-creation-teams';
 
 const { t, locale } = useI18n();
 const router = useRouter();
@@ -159,7 +160,7 @@ async function reloadRoomsAfterMutation(): Promise<void> {
 const createRoomModal = useEntityModal();
 
 const { pending: creating, execute: createRoom } = useAsyncAction({
-  run: (name: string) => createRoomRequest(name),
+  run: (name: string, teamId: string | null) => createRoomRequest(name, teamId ?? undefined),
   success: async (room) => {
     createRoomModal.close();
     await router.push({ name: 'room', params: { id: room.id } });
@@ -169,8 +170,11 @@ const { pending: creating, execute: createRoom } = useAsyncAction({
   },
 });
 
-async function onCreateRoom(name: string): Promise<void> {
-  await createRoom(name);
+/** Командную комнату заводит администратор команды (DS-063); список команд уже грузит load() */
+const roomTeams = useCreationTeams('admin');
+
+async function onCreateRoom(name: string, teamId: string | null): Promise<void> {
+  await createRoom(name, teamId);
 }
 
 // --- Переименование ---
@@ -365,6 +369,9 @@ async function confirmDelete(): Promise<void> {
       :cancel-label="t('common.cancel')"
       :submit-label="creating ? t('room.creating') : t('room.create')"
       :pending="creating"
+      :teams="roomTeams.options.value"
+      :team-switch-label="t('room.teamSwitch')"
+      :personal-description="t('room.personalHint')"
       @submit="onCreateRoom"
     />
 

@@ -114,6 +114,49 @@ describe('страница «Мои доски»', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Платформа'));
   });
 
+  it('создание доски: «Командная доска» по умолчанию, в выборе — только команды с правом (DS-063)', async () => {
+    const created: Board = { ...activeBoard, id: 'b9', teamId: 't1', title: 'Ретро' };
+    const fetchImpl = makeFetch({
+      'GET /api/boards?archived=false': () => json(200, { boards: [] }),
+      'GET /api/teams': () =>
+        json(200, {
+          teams: [
+            // Наблюдателю заводить доски команды нельзя — в выборе её нет
+            { id: 't2', name: 'Чужая', role: 'guest', memberCount: 5 },
+            { id: 't1', name: 'Платформа', role: 'member', memberCount: 3 },
+          ],
+        }),
+      'POST /api/boards': () => json(201, { board: created }),
+    });
+    const { wrapper } = await mountApp(fetchImpl);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Создать доску'));
+
+    const openButton = wrapper.findAll('button').find((b) => b.text().includes('Создать доску'));
+    await openButton!.trigger('click');
+    const dialog = () => document.body.querySelector('[role="dialog"]');
+    await vi.waitFor(() => expect(dialog()?.textContent).toContain('Командная доска'));
+    // Команда с правом одна — выбора нет, подпись показывает, куда попадёт доска
+    expect(dialog()!.textContent).toContain('Команда «Платформа»');
+
+    const input = dialog()!.querySelector('input') as HTMLInputElement;
+    input.value = 'Ретро';
+    input.dispatchEvent(new Event('input'));
+    Array.from(dialog()!.querySelectorAll('button'))
+      .find((b) => b.textContent?.trim() === 'Создать доску')!
+      .click();
+
+    await vi.waitFor(() => {
+      const call = fetchImpl.mock.calls.find(
+        ([url, init]) =>
+          url === '/api/boards' && (init as RequestInit | undefined)?.method === 'POST',
+      );
+      expect(call && JSON.parse((call[1] as RequestInit).body as string)).toEqual({
+        title: 'Ретро',
+        teamId: 't1',
+      });
+    });
+  });
+
   it('ошибка загрузки показывает сообщение', async () => {
     const { wrapper } = await mountApp(
       makeFetch({
