@@ -98,6 +98,11 @@ export function boardImageUrl(boardId: string, filename: string): string {
   return `/api/boards/${boardId}/assets/${filename}`;
 }
 
+/** Уникальный thumbnail хранится отдельно от пользовательских картинок доски. */
+export function boardThumbnailUrl(boardId: string, key: string): string {
+  return `/api/boards/${boardId}/thumbnail/${key}`;
+}
+
 /**
  * Проверяет, что url — это путь ИМЕННО к картинке этой доски, а не произвольная
  * строка под /api/boards/ (защита от SSRF/XSS через content.url и от подмены
@@ -511,6 +516,10 @@ export interface Board {
   updatedAt: string;
   /** Ссылка на просмотр/правку — null, если шаринг выключен (по умолчанию) */
   shareRole: BoardShareRole | null;
+  /** Последний готовый thumbnail; null для новой/ещё не отрендеренной доски */
+  thumbnailUrl: string | null;
+  /** Ревизия, из которой сделан thumbnail; null означает, что его нет */
+  thumbnailRevision: number | null;
 }
 
 /** Доска в списке — без содержимого, для «Мои доски»/страницы команды */

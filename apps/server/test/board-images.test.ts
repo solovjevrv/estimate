@@ -24,6 +24,7 @@ import { createDb, schema } from '../src/db';
 import { FakeObjectStorage } from '../src/platform/storage';
 import { TeamsRepository, TeamsService } from '../src/teams';
 import { boardImageKey } from '../src/boards/board-images.service';
+import { boardThumbnailKey } from '../src/boards/board-thumbnails.service';
 
 try {
   process.loadEnvFile(fileURLToPath(new URL('../../../.env', import.meta.url)));
@@ -317,6 +318,49 @@ describeDb('картинки досок', () => {
       });
 
       expect(res.statusCode).toBe(404);
+    });
+  });
+
+  describe('превью доски', () => {
+    it('принимает WebP только для текущей ревизии и отдаёт его через immutable-кэш', async () => {
+      const owner = await newUser('thumbnail-owner');
+      const boardId = await newBoard(owner);
+      const source = await sharp({
+        create: { width: 80, height: 50, channels: 3, background: { r: 30, g: 180, b: 80 } },
+      })
+        .webp()
+        .toBuffer();
+
+      const publish = await app.inject({
+        method: 'POST',
+        url: `/api/boards/${boardId}/thumbnail?revision=0`,
+        headers: { ...as(owner), 'content-type': 'image/webp' },
+        payload: source,
+      });
+      expect(publish.statusCode).toBe(200);
+      expect(publish.json()).toMatchObject({ updated: true });
+
+      const key = storage.keys().find((entry) => entry.includes(`/thumbnails/`));
+      expect(key).toBeDefined();
+      const filename = key!.split('/').at(-1)!;
+      expect(storage.peek(boardThumbnailKey(boardId, filename))?.contentType).toBe('image/webp');
+
+      const read = await app.inject({
+        method: 'GET',
+        url: `/api/boards/${boardId}/thumbnail/${filename}`,
+        headers: as(owner),
+      });
+      expect(read.statusCode).toBe(200);
+      expect(read.headers['cache-control']).toContain('immutable');
+
+      const stale = await app.inject({
+        method: 'POST',
+        url: `/api/boards/${boardId}/thumbnail?revision=1`,
+        headers: { ...as(owner), 'content-type': 'image/webp' },
+        payload: source,
+      });
+      expect(stale.statusCode).toBe(200);
+      expect(stale.json()).toEqual({ updated: false, thumbnailUrl: null });
     });
   });
 

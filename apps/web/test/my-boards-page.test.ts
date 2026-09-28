@@ -35,6 +35,8 @@ const activeBoard: Board = {
   createdAt: '2026-08-06T00:00:00.000Z',
   updatedAt: '2026-08-06T00:00:00.000Z',
   shareRole: null,
+  thumbnailUrl: null,
+  thumbnailRevision: null,
 };
 
 type Handlers = Record<string, () => Response>;
@@ -83,7 +85,7 @@ describe('страница «Мои доски»', () => {
       makeFetch({ 'GET /api/boards?archived=false': () => json(200, { boards: [] }) }),
     );
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('У вас пока нет личных досок'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('У вас пока нет досок'));
   });
 
   it('показывает список личных досок со ссылкой', async () => {

@@ -1,6 +1,6 @@
-import type { Board, BoardEdge, BoardItem } from '@estimate/shared';
+import { boardThumbnailUrl, type Board, type BoardEdge, type BoardItem } from '@estimate/shared';
 import { type BoardShareRole } from '@estimate/shared';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, isNull, or, sql } from 'drizzle-orm';
 
 import { schema } from '../db';
 import type { DbExecutor } from '../common/db-executor';
@@ -57,6 +57,40 @@ export class BoardsRepository {
           eq(schema.boards.ownerId, ownerId),
           sql`${schema.boards.teamId} is null`,
           eq(schema.boards.status, archived ? 'archived' : 'active'),
+        ),
+      )
+      .groupBy(schema.boards.id)
+      .orderBy(sql`${schema.boards.updatedAt} desc`);
+    return rows.map(({ board, itemCount }) => ({ ...this.toBoard(board), itemCount }));
+  }
+
+  /** Все доски, доступные пользователю: его личные и доски команд, где он состоит. */
+  async listAvailableBoards(
+    userId: string,
+    archived = false,
+  ): Promise<Array<Board & { itemCount: number }>> {
+    const rows = await this.db
+      .select({
+        board: schema.boards,
+        itemCount: sql<number>`count(${schema.boardItems.id})::int`,
+      })
+      .from(schema.boards)
+      // Уникальность (team_id, user_id) не раздувает count элементов при join.
+      .leftJoin(
+        schema.teamMembers,
+        and(
+          eq(schema.teamMembers.teamId, schema.boards.teamId),
+          eq(schema.teamMembers.userId, userId),
+        ),
+      )
+      .leftJoin(schema.boardItems, eq(schema.boardItems.boardId, schema.boards.id))
+      .where(
+        and(
+          eq(schema.boards.status, archived ? 'archived' : 'active'),
+          or(
+            and(isNull(schema.boards.teamId), eq(schema.boards.ownerId, userId)),
+            isNotNull(schema.teamMembers.userId),
+          ),
         ),
       )
       .groupBy(schema.boards.id)
@@ -159,6 +193,24 @@ export class BoardsRepository {
       throw new Error('Не удалось обновить ревизию доски');
     }
     return row.revision;
+  }
+
+  /**
+   * Записывает снимок только если он построен из текущей ревизии. Условие в
+   * UPDATE, а не предварительное чтение, закрывает гонку с applyOps: устаревший
+   * браузер не может перетереть актуальное превью.
+   */
+  async setThumbnailIfCurrent(
+    boardId: string,
+    revision: number,
+    thumbnailKey: string,
+  ): Promise<boolean> {
+    const rows = await this.db
+      .update(schema.boards)
+      .set({ thumbnailKey, thumbnailRevision: revision })
+      .where(and(eq(schema.boards.id, boardId), eq(schema.boards.revision, revision)))
+      .returning({ id: schema.boards.id });
+    return rows.length === 1;
   }
 
   /**
@@ -321,6 +373,8 @@ export class BoardsRepository {
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       shareRole: row.shareRole,
+      thumbnailUrl: row.thumbnailKey ? boardThumbnailUrl(row.id, row.thumbnailKey) : null,
+      thumbnailRevision: row.thumbnailRevision,
     };
   }
 

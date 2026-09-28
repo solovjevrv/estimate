@@ -1,8 +1,9 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui';
 import type { BoardSummary } from '@estimate/shared';
+import { ref, watch } from 'vue';
 
-defineProps<{
+const props = defineProps<{
   board: BoardSummary;
   formatDate: (iso: string) => string;
   /** Плашка с именем команды (08_Boards, «Доски — Список») — видна только на личной
@@ -13,13 +14,32 @@ defineProps<{
   menuItems?: DropdownMenuItem[][];
   menuAriaLabel: string;
 }>();
+
+const thumbnailFailed = ref(false);
+watch(
+  () => props.board.thumbnailUrl,
+  () => {
+    thumbnailFailed.value = false;
+  },
+);
 </script>
 
 <template>
   <div class="bg-surface-block shadow-elevation-2 flex flex-col overflow-hidden rounded-r24">
-    <div class="bg-surface-tertiary flex h-[140px] shrink-0 items-center justify-center">
-      <UIcon name="i-lucide-image" class="text-muted size-8" />
-    </div>
+    <RouterLink
+      :to="{ name: 'board', params: { id: board.id } }"
+      class="bg-surface-tertiary flex h-[140px] shrink-0 items-center justify-center"
+      :aria-label="`Открыть доску «${board.title}»`"
+    >
+      <img
+        v-if="board.thumbnailUrl && !thumbnailFailed"
+        :src="board.thumbnailUrl"
+        :alt="`Превью доски «${board.title}»`"
+        class="size-full object-cover"
+        @error="thumbnailFailed = true"
+      />
+      <UIcon v-else name="i-lucide-image" class="text-muted size-8" />
+    </RouterLink>
     <div class="flex flex-col gap-1.5 py-4 pr-4 pl-5">
       <div class="flex h-8 items-center gap-2">
         <RouterLink
@@ -38,14 +58,15 @@ defineProps<{
           />
         </UDropdownMenu>
       </div>
-      <div class="flex h-[34px] items-center gap-2">
+      <div class="flex flex-col items-start gap-2">
         <span class="text-muted text-xs">{{ formatDate(board.createdAt) }}</span>
-        <span
-          v-if="teamTag"
-          class="bg-surface-brand shrink-0 rounded-full px-3 py-2 text-xs font-bold text-white"
-        >
-          {{ teamTag }}
-        </span>
+        <div v-if="teamTag" class="flex h-[34px] items-start gap-2">
+          <span
+            class="bg-surface-brand shrink-0 rounded-full px-3 py-2 text-xs font-bold text-white"
+          >
+            {{ teamTag }}
+          </span>
+        </div>
       </div>
     </div>
   </div>

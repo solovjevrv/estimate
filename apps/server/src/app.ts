@@ -62,7 +62,7 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
   // тем же /api/ (см. nginx/vite-прокси), но их собственный cache-control
   // (10.15, 13.2, 21.3, 21.9) не должен затираться этим хуком.
   const CACHEABLE_ASSET_PATTERN =
-    /^\/api\/(avatars\/|boards\/[^/]+\/assets\/|stickers\/|giphy\/media\/)/;
+    /^\/api\/(avatars\/|boards\/[^/]+\/(assets|thumbnail)\/|stickers\/|giphy\/media\/)/;
   app.addHook('onSend', async (req, reply) => {
     if (req.url.startsWith('/api/') && !CACHEABLE_ASSET_PATTERN.test(req.url)) {
       reply.header('cache-control', 'no-store');

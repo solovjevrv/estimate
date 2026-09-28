@@ -44,7 +44,7 @@ export class BoardsController {
   readonly listMine = async (
     req: FastifyRequest<{ Querystring: ArchivedQuery }>,
   ): Promise<unknown> => ({
-    boards: await this.service.listPersonal(req.user.sub, req.query.archived === 'true'),
+    boards: await this.service.listAvailable(req.user.sub, req.query.archived === 'true'),
   });
 
   readonly listByTeam = async (

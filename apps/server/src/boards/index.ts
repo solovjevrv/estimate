@@ -15,3 +15,4 @@ export {
   type CreateBoardInput,
 } from './boards.service';
 export { BoardImagesService } from './board-images.service';
+export { BoardThumbnailsService, boardThumbnailKey } from './board-thumbnails.service';

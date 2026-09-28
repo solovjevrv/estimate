@@ -81,9 +81,9 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
       preHandler: authenticate,
       schema: {
         tags: [DOCS_TAGS.boards],
-        summary: 'Мои личные доски',
+        summary: 'Доступные мне доски',
         description:
-          'Личные доски текущего пользователя (без командных). По умолчанию без архивных; ' +
+          'Личные доски пользователя и доски команд, где он состоит. По умолчанию без архивных; ' +
           '`archived=true` — только архивные.',
         security: [{ session: [] }],
         querystring: archivedQuerySchema,

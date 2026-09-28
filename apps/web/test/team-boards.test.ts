@@ -24,6 +24,8 @@ function board(over: Partial<BoardSummary>): BoardSummary {
     updatedAt: '2026-08-04T00:00:00.000Z',
     itemCount: 0,
     shareRole: null,
+    thumbnailUrl: null,
+    thumbnailRevision: null,
     ...over,
   };
 }

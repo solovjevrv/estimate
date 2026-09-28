@@ -140,8 +140,8 @@ export class BoardsService {
     return this.repository.insertBoard(title, teamId, actorId);
   }
 
-  async listPersonal(actorId: string, archived = false): Promise<BoardSummary[]> {
-    return this.repository.listPersonalBoards(actorId, archived);
+  async listAvailable(actorId: string, archived = false): Promise<BoardSummary[]> {
+    return this.repository.listAvailableBoards(actorId, archived);
   }
 
   async listForTeam(actorId: string, teamId: string, archived = false): Promise<BoardSummary[]> {

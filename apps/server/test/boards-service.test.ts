@@ -22,6 +22,8 @@ const BOARD: Board = {
   createdAt: new Date().toISOString(),
   updatedAt: new Date().toISOString(),
   shareRole: null,
+  thumbnailUrl: null,
+  thumbnailRevision: null,
 };
 
 function serviceWith(

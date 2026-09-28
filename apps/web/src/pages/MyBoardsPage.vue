@@ -20,6 +20,7 @@ import {
   renameBoard as renameBoardRequest,
   unarchiveBoard as unarchiveBoardRequest,
 } from '../features/boards/api/boards-api';
+import { useBoardThumbnailQueue } from '../features/boards/composables/use-board-thumbnail-queue';
 import { useSessionStore } from '../stores/session';
 import { useTeamsStore } from '../stores/teams';
 import { useCreationTeams } from '../composables/use-creation-teams';
@@ -62,13 +63,30 @@ const boardsTab = ref<'active' | 'archive'>('active');
 const activeBoards = computed(() =>
   [...list.value].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 );
-const activeBoardsPaging = usePagedList(activeBoards);
+// Сетка досок трёхколоночная: две полные строки на страницу.
+const activeBoardsPaging = usePagedList(activeBoards, 6);
 
 const archived = ref<BoardSummary[]>([]);
 const archivedSorted = computed(() =>
   [...archived.value].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
 );
-const archiveBoardsPaging = usePagedList(archivedSorted);
+const archiveBoardsPaging = usePagedList(archivedSorted, 6);
+const visibleBoards = computed(() =>
+  boardsTab.value === 'active' ? activeBoardsPaging.items.value : archiveBoardsPaging.items.value,
+);
+
+function applyThumbnail(boardId: string, revision: number, thumbnailUrl: string): void {
+  const apply = (boards: BoardSummary[]) =>
+    boards.map((board) =>
+      board.id === boardId && board.revision === revision
+        ? { ...board, thumbnailUrl, thumbnailRevision: revision }
+        : board,
+    );
+  list.value = apply(list.value);
+  archived.value = apply(archived.value);
+}
+
+useBoardThumbnailQueue(visibleBoards, applyThumbnail);
 const boardArchive = useArchiveTab(async () => {
   archived.value = await listMyBoards(true);
 }, archiveBoardsPaging.reset);

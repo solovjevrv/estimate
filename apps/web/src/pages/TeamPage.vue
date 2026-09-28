@@ -112,8 +112,8 @@ const archiveTabRooms = computed(() =>
 const activeRoomsPaging = usePagedList(computed(() => teamRooms.active));
 const archiveTabPaging = usePagedList(archiveTabRooms);
 
-const activeBoardsPaging = usePagedList(computed(() => teamBoards.active));
-const archiveBoardsPaging = usePagedList(computed(() => teamBoards.archived));
+const activeBoardsPaging = usePagedList(computed(() => teamBoards.active), 6);
+const archiveBoardsPaging = usePagedList(computed(() => teamBoards.archived), 6);
 
 /** Код приходит только администратору — по нему и показываем блок приглашения */
 const inviteUrl = computed(() =>

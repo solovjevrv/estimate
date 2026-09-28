@@ -29,6 +29,24 @@ export function getBoard(boardId: string): Promise<BoardSnapshot> {
   return api.get<BoardSnapshot>(`/api/boards/${encodeURIComponent(boardId)}`);
 }
 
+export interface PublishBoardThumbnailResult {
+  updated: boolean;
+  thumbnailUrl: string | null;
+}
+
+/** Публикует производный WebP-снимок; сервер примет его только для той же ревизии. */
+export function publishBoardThumbnail(
+  boardId: string,
+  revision: number,
+  image: Blob,
+): Promise<PublishBoardThumbnailResult> {
+  return api.uploadBlob<PublishBoardThumbnailResult>(
+    `/api/boards/${encodeURIComponent(boardId)}/thumbnail?revision=${revision}`,
+    image,
+    'image/webp',
+  );
+}
+
 /** Переименовать доску — доступно автору или администратору команды. Доступно и для архивной. */
 export function renameBoard(boardId: string, title: string): Promise<Board> {
   return api

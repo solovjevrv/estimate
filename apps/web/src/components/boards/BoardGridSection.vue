@@ -134,7 +134,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
           class="lg:col-span-4"
         />
       </div>
-      <ListPagination :paging="activeBoardsPaging" />
+      <ListPagination class="mt-6" :paging="activeBoardsPaging" />
     </template>
     <template v-else>
       <UAlert
@@ -164,7 +164,7 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
             class="lg:col-span-4"
           />
         </div>
-        <ListPagination :paging="archiveBoardsPaging" />
+        <ListPagination class="mt-6" :paging="archiveBoardsPaging" />
       </template>
     </template>
   </div>

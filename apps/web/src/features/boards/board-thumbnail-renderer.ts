@@ -1,0 +1,251 @@
+import type { BoardItem, BoardSnapshot } from '@estimate/shared';
+
+import { findStickerAsset, personalStickerUrl } from './config/sticker-packs';
+
+const WIDTH = 960;
+const HEIGHT = 540;
+const PADDING = 36;
+
+function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number): void {
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, h, Math.min(18, w / 5, h / 5));
+}
+
+function itemText(item: BoardItem): string {
+  switch (item.content.type) {
+    case 'sticky':
+    case 'shape':
+    case 'text':
+      return item.content.text;
+    case 'emoji':
+      return item.content.emoji;
+    case 'frame':
+      return item.content.title;
+    default:
+      return '';
+  }
+}
+
+function drawText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  fontSize: number,
+  color: string,
+  align: CanvasTextAlign = 'center',
+): void {
+  if (!text) return;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.font = `600 ${Math.max(11, Math.min(fontSize, 28))}px system-ui, sans-serif`;
+  ctx.textAlign = align;
+  ctx.textBaseline = 'middle';
+  ctx.beginPath();
+  ctx.rect(x + 8, y + 8, Math.max(0, width - 16), Math.max(0, height - 16));
+  ctx.clip();
+  const words = text.replace(/\s+/g, ' ').trim().split(' ');
+  const lines: string[] = [];
+  let line = '';
+  for (const word of words) {
+    const candidate = line ? `${line} ${word}` : word;
+    if (ctx.measureText(candidate).width > width - 20 && line) {
+      lines.push(line);
+      line = word;
+    } else line = candidate;
+  }
+  if (line) lines.push(line);
+  const visible = lines.slice(0, Math.max(1, Math.floor((height - 16) / (fontSize * 1.25))));
+  const startY = y + height / 2 - ((visible.length - 1) * fontSize * 1.25) / 2;
+  const textX = align === 'left' ? x + 12 : align === 'right' ? x + width - 12 : x + width / 2;
+  visible.forEach((entry, index) => ctx.fillText(entry, textX, startY + index * fontSize * 1.25));
+  ctx.restore();
+}
+
+function drawContainedImage(
+  ctx: CanvasRenderingContext2D,
+  image: CanvasImageSource,
+  width: number,
+  height: number,
+): void {
+  const source = image as { width?: number; height?: number; videoWidth?: number; videoHeight?: number };
+  const sourceWidth = source.videoWidth ?? source.width ?? 0;
+  const sourceHeight = source.videoHeight ?? source.height ?? 0;
+  if (!sourceWidth || !sourceHeight) return;
+  const ratio = Math.min(width / sourceWidth, height / sourceHeight);
+  const drawWidth = sourceWidth * ratio;
+  const drawHeight = sourceHeight * ratio;
+  ctx.drawImage(image, (width - drawWidth) / 2, (height - drawHeight) / 2, drawWidth, drawHeight);
+}
+
+function loadImage(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => resolve(null);
+    image.src = src;
+  });
+}
+
+function loadVideoFrame(src: string): Promise<HTMLVideoElement | null> {
+  return new Promise((resolve) => {
+    const video = document.createElement('video');
+    video.muted = true;
+    video.preload = 'auto';
+    const fail = () => resolve(null);
+    video.addEventListener('error', fail, { once: true });
+    video.addEventListener(
+      'loadeddata',
+      () => {
+        video.currentTime = 0;
+        resolve(video);
+      },
+      { once: true },
+    );
+    video.src = src;
+  });
+}
+
+/** Первый отрисованный кадр Telegram TGS (Lottie JSON), без запуска анимации. */
+async function loadLottieFrame(src: string): Promise<HTMLCanvasElement | null> {
+  try {
+    const response = await fetch(src);
+    if (!response.ok) return null;
+    const data: unknown = await response.json();
+    if (!data || typeof data !== 'object') return null;
+    const host = document.createElement('div');
+    const { default: lottie } = await import('lottie-web');
+    const animation = lottie.loadAnimation({
+      container: host,
+      renderer: 'canvas',
+      loop: false,
+      autoplay: false,
+      animationData: data,
+    });
+    const canvas = await new Promise<HTMLCanvasElement | null>((resolve) => {
+      animation.addEventListener('DOMLoaded', () => {
+        animation.goToAndStop(0, true);
+        const rendered = host.querySelector('canvas');
+        if (!rendered) {
+          resolve(null);
+          return;
+        }
+        // destroy() очищает canvas lottie; возвращаем независимый снимок кадра.
+        const frame = document.createElement('canvas');
+        frame.width = rendered.width;
+        frame.height = rendered.height;
+        frame.getContext('2d')?.drawImage(rendered, 0, 0);
+        resolve(frame);
+      });
+      animation.addEventListener('data_failed', () => resolve(null));
+    });
+    animation.destroy();
+    return canvas;
+  } catch {
+    return null;
+  }
+}
+
+async function loadStickerFrame(item: BoardItem): Promise<CanvasImageSource | null> {
+  if (item.content.type !== 'sticker') return null;
+  const source =
+    findStickerAsset(item.content.pack, item.content.id)?.src ??
+    personalStickerUrl(item.content.pack, item.content.id);
+  if (item.content.format === 'animated') return loadLottieFrame(source);
+  if (item.content.format === 'video') return loadVideoFrame(source);
+  return loadImage(source);
+}
+
+/**
+ * Лёгкий, изолированный от Vue Flow renderer для карточек списка. Он намеренно
+ * не скачивает внешние картинки/GIF: одна карточка не должна удерживать очередь
+ * из-за CORS или медленного CDN. Геометрия, текст, цвета и связи остаются
+ * узнаваемым снимком доски.
+ */
+export async function renderBoardThumbnail(snapshot: BoardSnapshot): Promise<Blob | null> {
+  const canvas = document.createElement('canvas');
+  canvas.width = WIDTH;
+  canvas.height = HEIGHT;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  ctx.fillStyle = '#56616b';
+  ctx.fillRect(0, 0, WIDTH, HEIGHT);
+  const items = [...snapshot.items].filter((item) => item.content.type !== 'group');
+  if (items.length === 0) return new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.8));
+
+  const left = Math.min(...items.map((item) => item.x));
+  const top = Math.min(...items.map((item) => item.y));
+  const right = Math.max(...items.map((item) => item.x + item.width));
+  const bottom = Math.max(...items.map((item) => item.y + item.height));
+  const scale = Math.min((WIDTH - PADDING * 2) / Math.max(1, right - left), (HEIGHT - PADDING * 2) / Math.max(1, bottom - top), 1);
+  const offsetX = (WIDTH - (right - left) * scale) / 2 - left * scale;
+  const offsetY = (HEIGHT - (bottom - top) * scale) / 2 - top * scale;
+  const point = (x: number, y: number) => ({ x: x * scale + offsetX, y: y * scale + offsetY });
+  const byId = new Map(items.map((item) => [item.id, item]));
+
+  ctx.strokeStyle = '#d6dde3';
+  ctx.lineWidth = 2;
+  for (const edge of snapshot.edges) {
+    const source = byId.get(edge.sourceItemId);
+    const target = byId.get(edge.targetItemId);
+    if (!source || !target) continue;
+    const a = point(source.x + source.width / 2, source.y + source.height / 2);
+    const b = point(target.x + target.width / 2, target.y + target.height / 2);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+
+  for (const item of items.sort((a, b) => a.zIndex - b.zIndex)) {
+    const { x, y } = point(item.x, item.y);
+    const width = Math.max(3, item.width * scale);
+    const height = Math.max(3, item.height * scale);
+    ctx.save();
+    ctx.translate(x + width / 2, y + height / 2);
+    ctx.rotate((item.rotation * Math.PI) / 180);
+    ctx.translate(-width / 2, -height / 2);
+    const text = itemText(item);
+    const textColor = item.style.textColor ?? '#202936';
+    if (item.content.type === 'frame') {
+      ctx.strokeStyle = item.style.color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(0, 0, width, height);
+      drawText(ctx, text, 0, 0, width, Math.min(height, 42), 16, '#f7f9fb', 'left');
+    } else if (item.content.type === 'text') {
+      drawText(ctx, text, 0, 0, width, height, (item.style.fontSize ?? 20) * scale, textColor, item.style.textAlign ?? 'center');
+    } else if (item.content.type === 'emoji') {
+      ctx.font = `${Math.min(width, height) * 0.7}px system-ui`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, width / 2, height / 2);
+    } else {
+      ctx.fillStyle = item.content.type === 'image' || item.content.type === 'sticker' || item.content.type === 'giphy' ? '#78838d' : item.style.color;
+      if (item.content.type === 'shape' && item.content.shape === 'ellipse') {
+        ctx.beginPath();
+        ctx.ellipse(width / 2, height / 2, width / 2, height / 2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (item.content.type === 'shape' && item.content.shape === 'diamond') {
+        ctx.beginPath();
+        ctx.moveTo(width / 2, 0); ctx.lineTo(width, height / 2); ctx.lineTo(width / 2, height); ctx.lineTo(0, height / 2); ctx.closePath(); ctx.fill();
+      } else {
+        roundRect(ctx, 0, 0, width, height);
+        ctx.fill();
+      }
+      if (item.content.type === 'sticker') {
+        const frame = await loadStickerFrame(item);
+        if (frame) drawContainedImage(ctx, frame, width, height);
+        else {
+          ctx.strokeStyle = '#d6dde3'; ctx.lineWidth = 2; ctx.strokeRect(width * 0.3, height * 0.3, width * 0.4, height * 0.4);
+        }
+      } else if (item.content.type === 'image' || item.content.type === 'giphy') {
+        ctx.strokeStyle = '#d6dde3'; ctx.lineWidth = 2; ctx.strokeRect(width * 0.3, height * 0.3, width * 0.4, height * 0.4);
+      } else drawText(ctx, text, 0, 0, width, height, (item.style.fontSize ?? 20) * scale, textColor, item.style.textAlign ?? 'center');
+    }
+    ctx.restore();
+  }
+  return new Promise((resolve) => canvas.toBlob(resolve, 'image/webp', 0.8));
+}
