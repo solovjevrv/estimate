@@ -69,6 +69,15 @@ jobs:
       - name: Сборка сервера
         run: pnpm --filter @estimate/server build
 
+      # Бакет в проде создаёт minio-init (docker-compose.prod.yml), сервер его только
+      # проверяет: без бакета /health отвечает ошибкой и Playwright не дожидается сервера
+      - name: Бакет MinIO
+        run: |
+          docker run --rm --network host \
+            -e MINIO_ACCESS_KEY -e MINIO_SECRET_KEY -e MINIO_BUCKET \
+            --entrypoint sh pgsty/mc:RELEASE.2026-09-16T00-00-00Z -c \
+            'mc alias set local http://localhost:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" && mc mb --ignore-existing "local/$MINIO_BUCKET"'
+
       - name: Установка браузера Playwright
         run: pnpm --filter @estimate/e2e exec playwright install --with-deps chromium
 
