@@ -1,7 +1,6 @@
-import { randomUUID } from 'node:crypto';
-
 import { boardLocators } from '../src/board-locators';
-import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
+import { createTeamBoard, createTeamWithInvite } from '../src/team-helpers';
+import { expect, test } from '../src/fixtures';
 
 /**
  * E2E на мягкую блокировку текстового редактирования (14.2).
@@ -27,22 +26,10 @@ test('мягкая блокировка текстового редактиро�
   const contextA = await newContext(browser);
   await loginAs(contextA, owner);
   const pageA = await contextA.newPage();
-  await pageA.goto('/teams');
-
-  // Команда + инвайт
-  await pageA.getByRole('button', { name: 'Новая команда' }).click();
-  const teamName = `${E2E_ROOM_PREFIX}Team ${randomUUID().slice(0, 8)}`;
-  await pageA.getByPlaceholder('Например, Гарантии').fill(teamName);
-  await pageA.locator('form').getByRole('button', { name: 'Создать', exact: true }).click();
-  await pageA.waitForURL(/\/teams\/[0-9a-f-]{36}/);
-  const inviteUrl = await pageA.locator('input[readonly]').inputValue();
+  const { inviteUrl } = await createTeamWithInvite(pageA);
 
   // Доска внутри команды
-  await pageA.getByRole('button', { name: 'Создать доску', exact: true }).click();
-  const boardName = `${E2E_ROOM_PREFIX}TextLock ${randomUUID().slice(0, 8)}`;
-  await pageA.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
-  await pageA.locator('form').getByRole('button', { name: 'Создать доску' }).click();
-  await pageA.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+  await createTeamBoard(pageA, 'TextLock');
   const boardA = boardLocators(pageA);
   const boardUrl = pageA.url();
 

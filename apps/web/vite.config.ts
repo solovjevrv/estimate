@@ -1,7 +1,7 @@
 /// <reference types="vitest/config" />
 import ui from '@nuxt/ui/vite';
 import vue from '@vitejs/plugin-vue';
-import { defineConfig } from 'vite';
+import { defineConfig, type Plugin } from 'vite';
 
 // Figma (06_Input, Focus): рамка становится border-brand (зелёная), без
 // внешнего свечения/кольца — у Nuxt UI дефолт для фокуса (color="primary",
@@ -153,9 +153,37 @@ const buttonColors = [
 const fieldOutline =
   'text-text-primary bg-surface-frame ring ring-inset ring-accented hover:ring-[var(--border-secondary)] disabled:opacity-100 disabled:bg-surface-disabled disabled:ring-[var(--border-tertiary)] disabled:text-text-disabled';
 
+/**
+ * index.html Vite не минифицирует: HTML-комментарии и комментарии встроенных
+ * скриптов доходили бы до прода как есть (видны в «Просмотре кода страницы»).
+ * Только в сборке — в исходнике и в dev-сервере комментарии остаются.
+ * Проверка результата — scripts/check-build-comments.mjs в CI.
+ */
+const stripIndexHtmlComments: Plugin = {
+  name: 'estimate:strip-index-html-comments',
+  apply: 'build',
+  transformIndexHtml: {
+    order: 'post',
+    handler: (html) =>
+      html
+        .replace(/<!--[\s\S]*?-->\s*/g, '')
+        .replace(
+          /(<script(?![^>]*\bsrc=)[^>]*>)([\s\S]*?)(<\/script>)/g,
+          (_, open: string, body: string, close: string) =>
+            open + body.replace(/^[ \t]*\/\/.*(?:\r?\n|$)/gm, '') + close,
+        ),
+  },
+};
+
 export default defineConfig({
+  build: {
+    // Source maps восстанавливают исходники целиком, вместе с комментариями —
+    // в прод не отдаём (явно, чтобы не включили случайно)
+    sourcemap: false,
+  },
   plugins: [
     vue(),
+    stripIndexHtmlComments,
     // Плагин сам поднимает автоимпорт компонентов и генерирует
     // auto-imports.d.ts и components.d.ts — оба файла в git не хранятся.
     // Размеры Button/Input/Select/Textarea/Modal — по факту компонентов

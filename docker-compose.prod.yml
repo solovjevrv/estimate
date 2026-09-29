@@ -45,12 +45,20 @@ services:
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
       MINIO_ENDPOINT: minio
       MINIO_BUCKET: ${MINIO_BUCKET:-estimate-assets}
+      # Необязательные интеграции: без ключа сервер не регистрирует их роуты
+      # (поиск GIF — 21.9, импорт стикер-паков из Telegram — 21.6)
+      GIPHY_API_KEY: ${GIPHY_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     volumes:
       - avatars_data:/app/apps/server/avatars
       - board_assets_data:/app/apps/server/board-assets
     depends_on:
       postgres:
         condition: service_healthy
+      # На старте сервер наполняет бакет встроенными стикерами — бакет и учётка
+      # приложения к этому моменту должны уже существовать
+      minio-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/health >/dev/null || exit 1']
       interval: 10s

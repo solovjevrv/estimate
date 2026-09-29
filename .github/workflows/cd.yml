@@ -46,7 +46,18 @@ jobs:
           YANDEX_CLIENT_ID: ${{ secrets.YANDEX_CLIENT_ID }}
           YANDEX_CLIENT_SECRET: ${{ secrets.YANDEX_CLIENT_SECRET }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          MINIO_ROOT_USER: ${{ secrets.MINIO_ROOT_USER }}
+          MINIO_ROOT_PASSWORD: ${{ secrets.MINIO_ROOT_PASSWORD }}
+          MINIO_ACCESS_KEY: ${{ secrets.MINIO_ACCESS_KEY }}
+          MINIO_SECRET_KEY: ${{ secrets.MINIO_SECRET_KEY }}
+          GIPHY_API_KEY: ${{ secrets.GIPHY_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         run: |
+          # Без учёток MinIO docker-compose.prod.yml не соберётся (${VAR:?}) — падаем
+          # здесь, с понятной причиной, а не посреди деплоя на сервере
+          for var in MINIO_ROOT_USER MINIO_ROOT_PASSWORD MINIO_ACCESS_KEY MINIO_SECRET_KEY; do
+            [ -n "${!var}" ] || { echo "Не задан секрет $var"; exit 1; }
+          done
           # GitHub Secrets — источник правды; .env на сервере перезаписывается
           # каждым деплоем. printf трактует значение как данные, а не shell-код —
           # безопасно, даже если в секрете случайно окажутся `$()`/бэктики (в
@@ -61,6 +72,12 @@ jobs:
             printf 'YANDEX_CLIENT_ID=%s\n' "$YANDEX_CLIENT_ID"
             printf 'YANDEX_CLIENT_SECRET=%s\n' "$YANDEX_CLIENT_SECRET"
             printf 'SENTRY_DSN=%s\n' "$SENTRY_DSN"
+            printf 'MINIO_ROOT_USER=%s\n' "$MINIO_ROOT_USER"
+            printf 'MINIO_ROOT_PASSWORD=%s\n' "$MINIO_ROOT_PASSWORD"
+            printf 'MINIO_ACCESS_KEY=%s\n' "$MINIO_ACCESS_KEY"
+            printf 'MINIO_SECRET_KEY=%s\n' "$MINIO_SECRET_KEY"
+            printf 'GIPHY_API_KEY=%s\n' "$GIPHY_API_KEY"
+            printf 'TELEGRAM_BOT_TOKEN=%s\n' "$TELEGRAM_BOT_TOKEN"
           } | ssh -i ~/.ssh/deploy_key -o BatchMode=yes -o ConnectTimeout=10 \
             "$SSH_USER@$SSH_HOST" 'cat > ~/estimate/.env && chmod 600 ~/estimate/.env'
 
