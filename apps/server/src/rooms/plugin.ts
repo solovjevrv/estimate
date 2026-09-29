@@ -1,10 +1,9 @@
 import fastifyRateLimit from '@fastify/rate-limit';
-import { ROOM_NAME_MAX_LENGTH } from '@estimate/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
-import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
+import { archivedQuerySchema, idParamsSchema } from '../http/schemas';
 
 import type {
   ArchivedQuery,
@@ -14,112 +13,15 @@ import type {
   TeamIdParams,
 } from './rooms.controller';
 import { RoomsController } from './rooms.controller';
+import {
+  createRoomBody,
+  nameBody,
+  roomResponse,
+  roomStatsResponse,
+  roomsResponse,
+  roundHistoryResponse,
+} from './rooms.schemas';
 import { RoomsService } from './rooms.service';
-
-const uuid = { type: 'string', format: 'uuid' } as const;
-
-const idParams = { type: 'object', required: ['id'], properties: { id: uuid } } as const;
-
-const createRoomBody = {
-  type: 'object',
-  required: ['name'],
-  properties: {
-    // Настоящий предел длины проверяет сервис после обрезки пробелов
-    name: { type: 'string', minLength: 1, maxLength: ROOM_NAME_MAX_LENGTH + 100 },
-    teamId: { type: ['string', 'null'], format: 'uuid' },
-  },
-} as const;
-
-const nameBody = {
-  type: 'object',
-  required: ['name'],
-  properties: {
-    name: { type: 'string', minLength: 1, maxLength: ROOM_NAME_MAX_LENGTH + 100 },
-  },
-} as const;
-
-const roomResponse = {
-  type: 'object',
-  properties: {
-    id: { type: 'string' },
-    teamId: { type: ['string', 'null'] },
-    creatorId: { type: ['string', 'null'] },
-    name: { type: 'string' },
-    status: { type: 'string' },
-    revision: { type: 'integer' },
-    createdAt: { type: 'string' },
-    archivedAt: { type: ['string', 'null'] },
-  },
-} as const;
-
-const roomsResponse = {
-  type: 'object',
-  properties: { rooms: { type: 'array', items: roomResponse } },
-} as const;
-
-const roomStatsResponse = {
-  type: 'object',
-  properties: {
-    roundsPlayed: { type: 'integer' },
-    tasksEstimated: { type: 'integer' },
-    avgRoundDurationSec: { type: ['number', 'null'] },
-  },
-} as const;
-
-const roundResponse = {
-  type: 'object',
-  properties: {
-    id: { type: 'string' },
-    roomId: { type: 'string' },
-    seq: { type: 'integer' },
-    deckType: { type: 'string' },
-    status: { type: 'string' },
-    average: { type: ['number', 'null'] },
-    createdAt: { type: 'string' },
-    revealedAt: { type: ['string', 'null'] },
-  },
-} as const;
-
-const roundResultResponse = {
-  type: 'object',
-  properties: {
-    average: { type: ['number', 'null'] },
-    min: { type: 'number' },
-    max: { type: 'number' },
-    agreement: { type: 'number' },
-    votes: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          participantId: { type: 'string' },
-          name: { type: 'string' },
-          value: { type: 'number' },
-        },
-      },
-    },
-  },
-} as const;
-
-const roundHistoryResponse = {
-  type: 'object',
-  properties: {
-    rounds: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: { round: roundResponse, result: roundResultResponse },
-      },
-    },
-  },
-} as const;
-
-// coerceTypes выключен глобально, поэтому булево из строки запроса не собрать
-// схемой — принимаем строку 'true'/'false' и разбираем её в контроллере
-const archivedQuery = {
-  type: 'object',
-  properties: { archived: { type: 'string', enum: ['true', 'false'] } },
-} as const;
 
 export interface RoomsRateLimitOptions {
   max: number;
@@ -127,7 +29,6 @@ export interface RoomsRateLimitOptions {
 }
 
 export interface RoomsPluginOptions {
-  auth: AuthConfig;
   /** Переопределение для интеграционных тестов, где один и тот же IP легитимно шлёт много запросов подряд */
   rateLimit?: RoomsRateLimitOptions;
 }
@@ -143,7 +44,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
   }
 
   // Отдельный секрет гостевых токенов (выведен из jwtSecret) — их выдаёт только сервер
-  const controller = new RoomsController(RoomsService.forDatabase(app.db, opts.auth.guestSecret));
+  const controller = new RoomsController(RoomsService.forDatabase(app.db));
 
   /**
    * Отдельный вложенный контекст (без fp): так у лимитера свои границы и он не
@@ -199,10 +100,16 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
         schema: {
           tags: [DOCS_TAGS.rooms],
           summary: 'Комната по ссылке',
-          description: 'Открыта без входа: по прямой ссылке в комнату может зайти и гость.',
-          params: idParams,
+          description:
+            'Открыта без входа: по прямой ссылке в комнату может зайти и гость. `teamName` — ' +
+            'название команды для шапки комнаты, null у личной.',
+          params: idParamsSchema,
           response: {
-            200: { description: 'Комната', type: 'object', properties: { room: roomResponse } },
+            200: {
+              description: 'Комната',
+              type: 'object',
+              properties: { room: roomResponse, teamName: { type: ['string', 'null'] } },
+            },
             404: { description: 'Комната не найдена', ...errorResponse },
           },
         },
@@ -219,7 +126,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
           description:
             'Вскрытые раунды комнаты с итогами, от последнего к первому. Открыта без входа — ' +
             'так же, как и сама комната.',
-          params: idParams,
+          params: idParamsSchema,
           response: {
             200: { description: 'История раундов', ...roundHistoryResponse },
             404: { description: 'Комната не найдена', ...errorResponse },
@@ -240,7 +147,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
             'Все комнаты, которые создал пользователь — личные и командные вместе. ' +
             'По умолчанию без архивных; `archived=true` — только архивные.',
           security: [{ session: [] }],
-          querystring: archivedQuery,
+          querystring: archivedQuerySchema,
           response: {
             200: { description: 'Список комнат', ...roomsResponse },
             401: { description: 'Требуется вход', ...errorResponse },
@@ -285,8 +192,8 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
             'Обычный список доступен любому участнику команды. Архивный (`archived=true`) — ' +
             'только владельцу и администратору.',
           security: [{ session: [] }],
-          params: idParams,
-          querystring: archivedQuery,
+          params: idParamsSchema,
+          querystring: archivedQuerySchema,
           response: {
             200: { description: 'Список комнат', ...roomsResponse },
             401: { description: 'Требуется вход', ...errorResponse },
@@ -313,7 +220,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
             'из основных списков, но остаётся открыта по прямой ссылке для чтения. Настоящее ' +
             'удаление — отдельным действием, только для уже заархивированной комнаты.',
           security: [{ session: [] }],
-          params: idParams,
+          params: idParamsSchema,
           response: {
             200: {
               description: 'Комната заархивирована',
@@ -341,7 +248,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
             'Доступно скрам-мастеру (создателю или админу/владельцу команды). Доступно и для ' +
             'уже заархивированной комнаты.',
           security: [{ session: [] }],
-          params: idParams,
+          params: idParamsSchema,
           body: nameBody,
           response: {
             200: {
@@ -370,7 +277,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
             'Необратимо: удаляет раунды и голоса вместе с комнатой. Доступно только для уже ' +
             'заархивированной комнаты и только скрам-мастеру.',
           security: [{ session: [] }],
-          params: idParams,
+          params: idParamsSchema,
           response: {
             204: { description: 'Комната удалена' },
             401: { description: 'Требуется вход', ...errorResponse },

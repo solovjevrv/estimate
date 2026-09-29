@@ -28,6 +28,34 @@ export interface AuthConfig {
   providers: Partial<Record<AuthProvider, OAuthCredentials>>;
 }
 
+export interface ObjectStorageConfig {
+  endpoint: string;
+  port: number;
+  useSSL: boolean;
+  /** Учётная запись уровня приложения — не root MinIO, права только на свой бакет (21.1) */
+  accessKey: string;
+  secretKey: string;
+  bucket: string;
+}
+
+/**
+ * Bot API — токен Telegram-бота для импорта личных стикер-паков (21.6).
+ * Фича полностью выключена, если токен не задан: роуты не регистрируются вовсе.
+ */
+export interface TelegramConfig {
+  botToken: string;
+}
+
+/**
+ * Giphy API — ключ для поиска/показа GIF на досках (21.9). Фича полностью
+ * выключена, если ключ не задан: роуты не регистрируются вовсе (как у
+ * Telegram Bot API выше). Сервер целиком проксирует Giphy — ключ на клиент
+ * никогда не попадает, и клиент никогда не обращается к Giphy напрямую.
+ */
+export interface GiphyConfig {
+  apiKey: string;
+}
+
 export interface Config {
   port: number;
   host: string;
@@ -39,8 +67,23 @@ export interface Config {
   auth: AuthConfig;
   /** DSN проекта Sentry; не задан — мониторинг ошибок/логов выключен */
   sentryDsn?: string;
-  /** Куда пишутся загруженные пользователями аватарки (10.15) */
+  /** Легаси-каталог аватарок для переходного чтения и migrate:avatars (Epic 21) */
   avatarsDir: string;
+  /** Легаси-каталог картинок досок для переходного чтения и migrate:board-images (Epic 21) */
+  boardAssetsDir: string;
+  /** Каталог исходников встроенных стикер-паков для автозаполнения MinIO при старте (21.3) */
+  stickersAssetsDir: string;
+  /**
+   * MinIO (Epic 21) — обязателен для аватарок (21.2) и картинок досок (21.5):
+   * без него их роуты не регистрируются вовсе (см. `app.ts`). `avatarsDir`/
+   * `boardAssetsDir` используются только как источник переходного
+   * legacy-чтения и для migration-скриптов, не для записи.
+   */
+  objectStorage?: ObjectStorageConfig;
+  /** Telegram Bot API (21.6) — выключена без токена */
+  telegram?: TelegramConfig;
+  /** Giphy API (21.9) — выключена без ключа */
+  giphy?: GiphyConfig;
 }
 
 /**
@@ -106,6 +149,53 @@ function loadAuthConfig(webOrigin: string, port: number): AuthConfig {
   };
 }
 
+/**
+ * Обе учётные части (access/secret) обязаны идти вместе — как у OAuth-провайдеров
+ * выше: одна без другой означает опечатку в конфиге, а не «выключено».
+ */
+export function loadObjectStorageConfig(): ObjectStorageConfig | undefined {
+  const accessKey = process.env.MINIO_ACCESS_KEY;
+  const secretKey = process.env.MINIO_SECRET_KEY;
+  if (!accessKey && !secretKey) return undefined;
+  if (!accessKey || !secretKey) {
+    throw new Error('Заданы не обе части MINIO_ACCESS_KEY/MINIO_SECRET_KEY');
+  }
+
+  const port = Number(process.env.MINIO_PORT ?? 9000);
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error(`Некорректное значение MINIO_PORT: "${process.env.MINIO_PORT}"`);
+  }
+
+  return {
+    endpoint: process.env.MINIO_ENDPOINT ?? 'minio',
+    port,
+    useSSL: process.env.MINIO_USE_SSL === 'true',
+    accessKey,
+    secretKey,
+    bucket: process.env.MINIO_BUCKET ?? 'estimate-assets',
+  };
+}
+
+/**
+ * Telegram Bot API (21.6) — без токена фича полностью выключена: роуты
+ * импорта личных стикеров не регистрируются вовсе (см. app.ts).
+ */
+export function loadTelegramConfig(): TelegramConfig | undefined {
+  const botToken = process.env.TELEGRAM_BOT_TOKEN;
+  if (!botToken) return undefined;
+  return { botToken };
+}
+
+/**
+ * Giphy API (21.9) — без ключа фича полностью выключена: роуты поиска/показа
+ * GIF не регистрируются вовсе (см. app.ts).
+ */
+export function loadGiphyConfig(): GiphyConfig | undefined {
+  const apiKey = process.env.GIPHY_API_KEY;
+  if (!apiKey) return undefined;
+  return { apiKey };
+}
+
 export function loadConfig(): Config {
   loadDotenv();
 
@@ -132,5 +222,11 @@ export function loadConfig(): Config {
     auth: loadAuthConfig(webOrigin, port),
     sentryDsn: process.env.SENTRY_DSN || undefined,
     avatarsDir: process.env.AVATARS_DIR ?? join(process.cwd(), 'avatars'),
+    boardAssetsDir: process.env.BOARD_ASSETS_DIR ?? join(process.cwd(), 'board-assets'),
+    stickersAssetsDir:
+      process.env.STICKERS_ASSETS_DIR ?? join(process.cwd(), 'assets', 'sticker-packs'),
+    objectStorage: loadObjectStorageConfig(),
+    telegram: loadTelegramConfig(),
+    giphy: loadGiphyConfig(),
   };
 }

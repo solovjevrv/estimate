@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
+import { joinAsGuest } from '../src/room-helpers';
 
 /**
  * Регрессионный набор: таймер обсуждения синхронизируется между участниками
@@ -29,8 +30,7 @@ test('таймер обсуждения синхронизируется меж�
   const guestContext = await newContext(browser);
   const guestPage = await guestContext.newPage();
   await guestPage.goto(roomUrl);
-  await guestPage.getByPlaceholder('Например, Мария').fill('Гость Таймер');
-  await guestPage.getByRole('button', { name: 'Войти в комнату' }).click();
+  await joinAsGuest(guestPage, 'Гость Таймер');
   await expect(ownerPage.getByText('Участники')).toBeVisible();
 
   // По умолчанию 5 мин, ещё не запущен

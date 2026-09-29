@@ -142,3 +142,37 @@ describe('страница «Профиль» — аватарка (10.15)', () 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось сохранить аватарку'));
   });
 });
+
+describe('страница «Профиль» — карточка «Команды» (20.3.5)', () => {
+  it('показывает список команд с ролью и числом участников', async () => {
+    const { wrapper } = await mountApp(
+      makeFetch({
+        'GET /api/teams': () =>
+          json(200, {
+            teams: [
+              { id: 't1', name: 'Платформа', role: 'admin', memberCount: 4 },
+              { id: 't2', name: 'Гарантии', role: 'member', memberCount: 9 },
+            ],
+          }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Платформа'));
+    expect(wrapper.text()).toContain('4 участника');
+    expect(wrapper.text()).toContain('Администратор');
+    expect(wrapper.text()).toContain('Гарантии');
+    expect(wrapper.text()).toContain('9 участников');
+    expect(wrapper.text()).toContain('Участник');
+    expect(wrapper.find('a[href="/teams/t1"]').exists()).toBe(true);
+  });
+
+  it('без команд показывает пустое состояние со ссылкой на «Команды»', async () => {
+    const { wrapper } = await mountApp(
+      makeFetch({ 'GET /api/teams': () => json(200, { teams: [] }) }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Пока пусто'));
+    expect(wrapper.text()).toContain('Вы ещё не состоите ни в одной команде.');
+    expect(wrapper.find('a[href="/teams"]').exists()).toBe(true);
+  });
+});

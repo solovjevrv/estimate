@@ -1,10 +1,14 @@
 name: CI
 
+# Ветки накопления крупных фич (`<feature>-feature`, от dev) тоже под CI: без них
+# PR внутрь такой ветки не проверялся вообще — эпики досок накопили 107 коммитов и
+# +30k строк без единого прогона, а красный format:check всплыл бы только на мерже
+# в dev. Push-триггер там же, чтобы прямые коммиты в ветку накопления не проскакивали.
 on:
   pull_request:
-    branches: [dev, main]
+    branches: [dev, main, '*-feature']
   push:
-    branches: [dev]
+    branches: [dev, '*-feature']
 
 permissions:
   contents: read
@@ -31,8 +35,33 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # Объектное хранилище (Epic 21) — интеграционный тест MinioObjectStorage
+      # (apps/server/test/minio-object-storage.test.ts) гоняется против настоящего
+      # MinIO, не только фейка. Тот же образ/тег, что и в docker-compose.yml —
+      # уже проверен вживую локально. command: у служебных контейнеров GitHub
+      # Actions поддерживается с апреля 2026 — до этого minio/minio было нечем
+      # завести (без command он допечатывает usage и выходит).
+      # minio/minio снят с Docker Hub (22.09.2026), затем MinIO закрыл и quay.io
+      # (unauthorized, 28.09.2026) — сборка сообщества pgsty, как в docker-compose.yml.
+      minio:
+        image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin123
+        ports:
+          - 9000:9000
+        command: server /data
     env:
       DATABASE_URL: postgres://estimate:estimate@localhost:5432/estimate
+      MINIO_ENDPOINT: localhost
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: 'false'
+      # В CI — сразу root-учётка MinIO, без отдельной app-учётки с урезанными
+      # правами: контейнер одноразовый и живёт только на время джобы, разделение
+      # ролей имеет смысл в проде (см. minio-init в docker-compose.prod.yml), не здесь.
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: estimate-assets
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -49,6 +78,28 @@ jobs:
       - name: Установка зависимостей
         run: pnpm install --frozen-lockfile
 
+      # minio/minio, в отличие от bitnami-образов, не создаёт бакет из env
+      # переменной сам — заводим его тем же mc, что и в docker-compose. Раздача
+      # бинарника mc с dl.min.io закрыта (410 Gone, тот же архив community-релизов,
+      # что снял minio/minio с Docker Hub, см. коммент у service-контейнера выше) —
+      # берём mc из образа pgsty/mc, а не скачиваем бинарник напрямую.
+      - name: Подготовить бакет MinIO для тестов
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9000/minio/health/live && break
+            if [ "$i" -eq 30 ]; then
+              echo "MinIO не поднялся за 30с" >&2
+              exit 1
+            fi
+            sleep 1
+          done
+          docker run --rm --network host \
+            -e MINIO_ACCESS_KEY -e MINIO_SECRET_KEY -e MINIO_BUCKET \
+            --entrypoint sh pgsty/mc:RELEASE.2026-09-16T00-00-00Z -c '
+              mc alias set local http://localhost:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" &&
+              mc mb --ignore-existing "local/$MINIO_BUCKET"
+            '
+
       - name: Линтер
         run: pnpm lint
 
@@ -58,8 +109,17 @@ jobs:
       - name: Проверка типов
         run: pnpm typecheck
 
-      - name: Unit-тесты
-        run: pnpm test
+      # Разделены намеренно: unit не требует БД и падает быстрее, поэтому по
+      # красной джобе сразу видно, сломана логика или интеграция с PostgreSQL.
+      - name: Unit-тесты (без БД)
+        run: pnpm test:unit
+
+      - name: Тесты сервера (с PostgreSQL и MinIO)
+        run: pnpm test:server
 
       - name: Сборка
         run: pnpm build
+
+      # Комментарии разработчиков и source maps не должны попадать в браузер
+      - name: Сборка фронта без комментариев
+        run: node scripts/check-build-comments.mjs apps/web/dist

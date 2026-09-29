@@ -36,9 +36,8 @@ export class RoomsController {
   };
 
   /** Комната открыта по прямой ссылке, поэтому вход не требуется */
-  readonly get = async (req: FastifyRequest<{ Params: RoomIdParams }>): Promise<unknown> => ({
-    room: await this.service.getRoom(req.params.id),
-  });
+  readonly get = async (req: FastifyRequest<{ Params: RoomIdParams }>): Promise<unknown> =>
+    this.service.getRoomDetails(req.params.id);
 
   readonly listMine = async (
     req: FastifyRequest<{ Querystring: ArchivedQuery }>,

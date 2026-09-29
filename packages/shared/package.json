@@ -4,13 +4,17 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./emoji/catalog": "./src/emoji/catalog.generated.ts",
+    "./emoji/validate": "./src/emoji/validate.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "generate:emoji": "node scripts/generate-emoji-catalog.mjs"
   },
   "devDependencies": {
+    "emojibase-data": "^17.0.0",
     "typescript": "~6.0.3",
     "vitest": "^4.1.10"
   }

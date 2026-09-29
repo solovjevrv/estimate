@@ -27,14 +27,32 @@ jobs:
           --health-interval 5s
           --health-timeout 3s
           --health-retries 10
+      # Объектное хранилище (Epic 21): без него любая загрузка файла в e2e
+      # (аватарка, картинка на доске) падала — регрессия была красной с 22.08.2026.
+      # Настройка — как в ci.yml (образ pgsty, root-учётка на время джобы)
+      minio:
+        image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+        env:
+          MINIO_ROOT_USER: minioadmin
+          MINIO_ROOT_PASSWORD: minioadmin123
+        ports:
+          - 9000:9000
+        command: server /data
     env:
       DATABASE_URL: postgres://estimate:estimate@localhost:5432/estimate
       JWT_SECRET: e2e-regression-secret-подставной-но-длиннее-32-символов
+      MINIO_ENDPOINT: localhost
+      MINIO_PORT: 9000
+      MINIO_USE_SSL: 'false'
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_BUCKET: estimate-assets
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          ref: dev
+          # Ночной прогон — всегда dev; ручной запуск — выбранная ветка (проверить PR до мержа)
+          ref: ${{ github.event_name == 'schedule' && 'dev' || github.ref }}
 
       - name: Установка pnpm
         uses: pnpm/action-setup@v4
@@ -50,6 +68,15 @@ jobs:
 
       - name: Сборка сервера
         run: pnpm --filter @estimate/server build
+
+      # Бакет в проде создаёт minio-init (docker-compose.prod.yml), сервер его только
+      # проверяет: без бакета /health отвечает ошибкой и Playwright не дожидается сервера
+      - name: Бакет MinIO
+        run: |
+          docker run --rm --network host \
+            -e MINIO_ACCESS_KEY -e MINIO_SECRET_KEY -e MINIO_BUCKET \
+            --entrypoint sh pgsty/mc:RELEASE.2026-09-16T00-00-00Z -c \
+            'mc alias set local http://localhost:9000 "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" && mc mb --ignore-existing "local/$MINIO_BUCKET"'
 
       - name: Установка браузера Playwright
         run: pnpm --filter @estimate/e2e exec playwright install --with-deps chromium

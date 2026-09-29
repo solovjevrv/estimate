@@ -395,45 +395,6 @@ describe('стор комнаты', () => {
       expect(created.id).toBe('r2');
     });
 
-    it('к правке ссылок прикладывает версию комнаты; ответ — пустой', async () => {
-      const store = useRoomStore();
-      store.applyState(state(2, { room: roomFixture(2, { linksVersion: 4 }) }));
-      // Сервер на правку ссылок отвечает null — новая версия придёт рассылкой
-      socket.next = null;
-
-      await store.updateLinks({ jiraUrl: 'https://jira.example/PP-1' });
-
-      expect(socket.sent[0]).toEqual({
-        event: WS_EVENTS.UPDATE_LINKS,
-        payload: { jiraUrl: 'https://jira.example/PP-1', version: 4 },
-      });
-    });
-
-    it('отказ сервера доходит до вызывающего кода с кодом ошибки', async () => {
-      const store = useRoomStore();
-      socket.nextError = { error: 'conflict', message: 'Ссылки уже изменили' };
-
-      await expect(
-        store.updateLinks({ jiraUrl: 'https://jira.example/PP-2' }),
-      ).rejects.toMatchObject({ code: 'conflict', message: 'Ссылки уже изменили' });
-    });
-
-    it('явно переданная версия перекрывает версию из уже обновившейся комнаты', async () => {
-      const store = useRoomStore();
-      store.applyState(state(2, { room: roomFixture(2, { linksVersion: 4 }) }));
-      // Пока где-то держали черновик на версии 4, кто-то другой уже сохранил правки —
-      // версия в сторе уехала вперёд раньше, чем черновик отправили на сохранение
-      store.applyState(state(3, { room: roomFixture(3, { linksVersion: 5 }) }));
-      socket.next = null;
-
-      await store.updateLinks({ jiraUrl: 'https://jira.example/PP-1', version: 4 });
-
-      expect(socket.sent[0]).toEqual({
-        event: WS_EVENTS.UPDATE_LINKS,
-        payload: { jiraUrl: 'https://jira.example/PP-1', version: 4 },
-      });
-    });
-
     it('не даёт действовать без подключения к комнате', async () => {
       const store = useRoomStore();
       store.leave();

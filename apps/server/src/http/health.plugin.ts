@@ -9,13 +9,16 @@ const healthResponse = {
   properties: {
     status: { type: 'string' },
     db: { type: 'string' },
+    storage: { type: 'string' },
     uptime: { type: 'number', description: 'Время работы процесса в секундах' },
   },
 } as const;
 
 /**
  * Признак живости сервиса: деплой ждёт этот роут, поэтому он проверяет
- * не только процесс, но и доступность базы.
+ * не только процесс, но и доступность базы (и объектного хранилища, если
+ * оно подключено — Epic 21, до миграции 21.2/21.5 остаётся опциональным
+ * шагом поверх Compose, см. `Config.objectStorage`).
  * Отдельным плагином — чтобы попасть в спецификацию OpenAPI, которая
  * собирает роуты, зарегистрированные после неё.
  */
@@ -26,21 +29,39 @@ async function healthPluginImpl(app: FastifyInstance): Promise<void> {
       schema: {
         tags: [DOCS_TAGS.service],
         summary: 'Состояние сервиса',
-        description: 'Проверяет доступность базы данных.',
+        description: 'Проверяет доступность базы данных и объектного хранилища (если подключено).',
         response: {
-          200: { description: 'Сервис и база отвечают', ...healthResponse },
-          503: { description: 'База недоступна', ...healthResponse },
+          200: { description: 'Сервис и зависимости отвечают', ...healthResponse },
+          503: { description: 'База или хранилище недоступны', ...healthResponse },
         },
       },
     },
     async (_req, reply) => {
+      let degraded = false;
+      let db: 'ok' | 'down' = 'ok';
+      let storage: 'ok' | 'down' | undefined;
+
       try {
         await app.db.execute(sql`select 1`);
       } catch (err) {
         app.log.error(err, 'БД недоступна');
-        return reply.code(503).send({ status: 'degraded', db: 'down', uptime: process.uptime() });
+        db = 'down';
+        degraded = true;
       }
-      return { status: 'ok', db: 'ok', uptime: process.uptime() };
+
+      if (app.storage) {
+        try {
+          await app.storage.ping();
+          storage = 'ok';
+        } catch (err) {
+          app.log.error(err, 'Объектное хранилище недоступно');
+          storage = 'down';
+          degraded = true;
+        }
+      }
+
+      const body = { status: degraded ? 'degraded' : 'ok', db, storage, uptime: process.uptime() };
+      return degraded ? reply.code(503).send(body) : body;
     },
   );
 }

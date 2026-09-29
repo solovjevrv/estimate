@@ -1,14 +1,20 @@
 import { buildApp } from './app';
+import { BoardImagesService, BoardsService } from './boards';
 import { loadConfig } from './config';
 import { createDb } from './db';
 import { attachSentryErrorHandler, initSentry } from './monitoring';
-import { RoomsService } from './rooms';
+import { MinioObjectStorage } from './platform/storage';
+import { RoomsGameService } from './rooms';
 import { SocketGateway } from './socket';
+import { seedStickers } from './scripts/seed-stickers';
 
 async function main(): Promise<void> {
   const config = loadConfig();
   const sentryEnabled = initSentry(config.sentryDsn);
   const { db, pool } = createDb(config.databaseUrl);
+  const objectStorage = config.objectStorage
+    ? new MinioObjectStorage(config.objectStorage)
+    : undefined;
 
   const app = buildApp(
     {
@@ -19,6 +25,10 @@ async function main(): Promise<void> {
       auth: config.auth,
       docsEnabled: config.docsEnabled,
       avatarsDir: config.avatarsDir,
+      boardAssetsDir: config.boardAssetsDir,
+      objectStorage,
+      telegram: config.telegram,
+      giphy: config.giphy,
     },
     { logger: true },
   );
@@ -26,8 +36,17 @@ async function main(): Promise<void> {
     attachSentryErrorHandler(app);
   }
 
-  const roomsService = RoomsService.forDatabase(db, config.auth.guestSecret);
-  new SocketGateway(roomsService, { corsOrigin: config.webOrigin }).attach(app);
+  const roomsService = RoomsGameService.forDatabase(db, config.auth.guestSecret);
+  const boardImagesService = objectStorage
+    ? BoardImagesService.create(objectStorage, config.boardAssetsDir)
+    : undefined;
+  const boardsService = BoardsService.forDatabase(
+    db,
+    config.auth.guestSecret,
+    boardImagesService,
+    app.log,
+  );
+  new SocketGateway(roomsService, boardsService, { corsOrigin: config.webOrigin }).attach(app);
 
   // Одна неудачная операция не должна уносить процесс вместе со всеми комнатами
   process.on('unhandledRejection', (reason) => {
@@ -49,6 +68,29 @@ async function main(): Promise<void> {
         },
       );
     });
+  }
+
+  if (objectStorage) {
+    try {
+      // process.cwd() как у avatarsDir/boardAssetsDir (config.ts), не
+      // import.meta.dirname — tsup бандлит index.ts в CJS, где import.meta
+      // подменяется на пустой объект-шим, и import.meta.dirname всегда
+      // undefined в собранном dist/index.cjs (в отличие от seed-stickers.ts,
+      // который не входит в tsup entry и всегда исполняется напрямую через
+      // tsx — там import.meta.dirname рабочий).
+      const report = await seedStickers({
+        assetsDir: config.stickersAssetsDir,
+        storage: objectStorage,
+        dryRun: false,
+      });
+      if (report.errors.length > 0 || report.mismatches.length > 0) {
+        app.log.warn({ report }, 'Наполнение стикеров в MinIO завершилось с замечаниями');
+      } else {
+        app.log.info({ report }, 'Стикеры наполнены в MinIO');
+      }
+    } catch (err) {
+      app.log.error({ err }, 'Не удалось наполнить стикеры в MinIO — сервер продолжает запуск');
+    }
   }
 
   try {

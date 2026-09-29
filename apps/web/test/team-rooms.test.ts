@@ -69,6 +69,24 @@ describe('стор комнат команды', () => {
     expect(store.list).toEqual([]);
   });
 
+  it('не возвращает архив предыдущей команды после reset', async () => {
+    let resolveRequest: ((response: Response) => void) | undefined;
+    fetchMock.mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveRequest = resolve;
+        }),
+    );
+    const store = useTeamRoomsStore();
+
+    const loading = store.loadArchived('t1');
+    store.reset();
+    resolveRequest?.(json(200, { rooms: [room({ id: 'old', teamId: 't1' })] }));
+    await loading;
+
+    expect(store.archived).toEqual([]);
+  });
+
   it('пробрасывает ApiError при отказе сервера', async () => {
     fetchMock.mockResolvedValue(json(404, { error: 'not_found', message: 'нет' }));
     const store = useTeamRoomsStore();

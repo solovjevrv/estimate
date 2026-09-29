@@ -15,7 +15,12 @@ import type {
   RoundResult,
   WsAck,
 } from '@estimate/shared';
-import { WS_EVENTS, WS_SERVER_EVENTS } from '@estimate/shared';
+import {
+  ROOM_NAME_MAX_LENGTH,
+  TEXT_INPUT_TRIM_ALLOWANCE,
+  WS_EVENTS,
+  WS_SERVER_EVENTS,
+} from '@estimate/shared';
 import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { type Socket, io as createClient } from 'socket.io-client';
@@ -23,11 +28,12 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app';
 import { ACCESS_COOKIE, TokenService, UsersRepository } from '../src/auth';
+import { BoardsService } from '../src/boards';
 import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
 import { ConflictError } from '../src/errors';
 import type { ParticipantIdentity } from '../src/rooms';
-import { RoomsRepository, RoomsService } from '../src/rooms';
+import { RoomsGameService, RoomsRepository, RoomsService } from '../src/rooms';
 import { SocketGateway } from '../src/socket';
 import { TeamsRepository, TeamsService } from '../src/teams';
 
@@ -158,8 +164,9 @@ describeDb('комнаты', () => {
       auth: authConfig,
       roomsRateLimit: { max: 10_000, timeWindow: '1 minute' },
     });
-    const roomsService = RoomsService.forDatabase(db, authConfig.guestSecret);
-    new SocketGateway(roomsService, { corsOrigin: '*' }).attach(app);
+    const roomsService = RoomsGameService.forDatabase(db, authConfig.guestSecret);
+    const boardsService = BoardsService.forDatabase(db, authConfig.guestSecret);
+    new SocketGateway(roomsService, boardsService, { corsOrigin: '*' }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
     port = (app.server.address() as AddressInfo).port;
   });
@@ -204,6 +211,54 @@ describeDb('комнаты', () => {
       // Без входа комната всё равно видна: гости заходят по прямой ссылке
       const anonymous = await app.inject({ method: 'GET', url: `/api/rooms/${room.id}` });
       expect(anonymous.statusCode).toBe(200);
+      // Личная комната — команды для шапки нет
+      expect(anonymous.json()).toMatchObject({ room: { id: room.id }, teamName: null });
+    });
+
+    it('по ссылке командной комнаты видно название команды — и без входа тоже', async () => {
+      const owner = await newUser('team-room-name');
+      const teamName = `Платформа ${randomUUID().slice(0, 8)}`;
+      const team = await teamsService.create(owner.id, teamName);
+      teamIds.push(team.id);
+      const created = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(owner),
+        payload: { name: 'Спринт 24', teamId: team.id },
+      });
+      const roomId = (created.json() as { room: { id: string } }).room.id;
+      roomIds.push(roomId);
+
+      const anonymous = await app.inject({ method: 'GET', url: `/api/rooms/${roomId}` });
+
+      expect(anonymous.statusCode).toBe(200);
+      expect(anonymous.json()).toMatchObject({ room: { id: roomId, teamId: team.id }, teamName });
+    });
+
+    it('схема принимает запас на trim, но не строку за его пределом', async () => {
+      const owner = await newUser('room-trim-allowance');
+      const name = 'к'.repeat(ROOM_NAME_MAX_LENGTH);
+      const accepted = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(owner),
+        payload: { name: `${' '.repeat(TEXT_INPUT_TRIM_ALLOWANCE)}${name}` },
+      });
+
+      expect(accepted.statusCode).toBe(201);
+      const room = (accepted.json() as { room: { id: string; name: string } }).room;
+      roomIds.push(room.id);
+      expect(room.name).toBe(name);
+
+      const rejected = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(owner),
+        payload: {
+          name: 'к'.repeat(ROOM_NAME_MAX_LENGTH + TEXT_INPUT_TRIM_ALLOWANCE + 1),
+        },
+      });
+      expect(rejected.statusCode).toBe(400);
     });
 
     it('комнату команды заводит администратор, но не рядовой участник', async () => {
@@ -276,7 +331,7 @@ describeDb('комнаты', () => {
   });
 
   describe('история раундов и статистика — 5.7/3.6', () => {
-    let service: RoomsService;
+    let service: RoomsGameService;
 
     function asMaster(user: AuthUser): ParticipantIdentity {
       return {
@@ -290,7 +345,7 @@ describeDb('комнаты', () => {
     }
 
     beforeAll(() => {
-      service = RoomsService.forDatabase(db, authConfig.guestSecret);
+      service = RoomsGameService.forDatabase(db, authConfig.guestSecret);
     });
 
     it('история отдаёт вскрытые раунды с итогами, от последнего к первому', async () => {
@@ -361,7 +416,11 @@ describeDb('комнаты', () => {
       await service.startNewRound(archivedRoomId, master, { deckType: 'fibonacci' });
       await service.submitVote(archivedRoomId, master, { value: 13 });
       await service.revealCards(archivedRoomId, master);
-      await service.archiveRoom(owner.id, archivedRoomId);
+      await app.inject({
+        method: 'POST',
+        url: `/api/rooms/${archivedRoomId}/archive`,
+        headers: as(owner),
+      });
 
       // Чужая комната не должна попасть в статистику владельца
       const strangerRoomId = await newRoom(stranger, 'Чужая комната');
@@ -1133,7 +1192,7 @@ describeDb('комнаты', () => {
       ]);
     });
 
-    it('недопустимый эмодзи отклоняется', async () => {
+    it('недопустимая (не-эмодзи) строка отклоняется', async () => {
       const owner = await newUser('reaction-invalid-owner');
       const roomId = await newRoom(owner);
       const master = connect(owner);
@@ -1143,7 +1202,7 @@ describeDb('комнаты', () => {
 
       const ack = await emit(master, WS_EVENTS.SEND_REACTION, {
         targetParticipantId: guestJoin.participantId,
-        emoji: '🍕',
+        emoji: 'not-an-emoji',
       });
 
       expect(ack).toMatchObject({ ok: false, error: 'bad_request' });
@@ -1336,7 +1395,7 @@ describeDb('комнаты', () => {
    * уходят в базу параллельно, без очереди одного сокета.
    */
   describe('одновременные действия', () => {
-    let service: RoomsService;
+    let service: RoomsGameService;
 
     function asMaster(user: AuthUser): ParticipantIdentity {
       return {
@@ -1361,7 +1420,7 @@ describeDb('комнаты', () => {
     }
 
     beforeAll(() => {
-      service = RoomsService.forDatabase(db, authConfig.guestSecret);
+      service = RoomsGameService.forDatabase(db, authConfig.guestSecret);
     });
 
     it('голоса в момент вскрытия не расходятся с зафиксированным средним', async () => {
@@ -1416,7 +1475,9 @@ describeDb('комнаты', () => {
     it('одновременная правка ссылок: побеждает один, второй узнаёт о конфликте', async () => {
       const owner = await newUser('race-links-owner');
       const roomId = await newRoom(owner);
-      const room = await service.getRoom(roomId);
+      // Не через REST: linksVersion — внутреннее поле оптимистичной блокировки,
+      // в публичной схеме ответа его нет (сериализатор Fastify его срежет)
+      const room = await RoomsService.forDatabase(db).getRoom(roomId);
 
       const attempts = await Promise.allSettled([
         service.updateLinks(roomId, {
@@ -1552,7 +1613,14 @@ describeDb('комнаты', () => {
       await service.submitVote(roomId, guestA, { value: 3 });
 
       // Тот же порядок запросов, что и в getState, но нарочно на read committed —
-      // без repeatable read каждый запрос внутри транзакции видит свежий коммит
+      // без repeatable read каждый запрос внутри транзакции видит свежий коммит.
+      // Пауза управляется явным сигналом (11.2), а не реальным setTimeout — раньше
+      // конкурирующий submitVote должен был успеть закоммититься за фиксированные 150мс,
+      // и под нагрузкой CI это один раз не уложилось в срок (флаки на PR #78).
+      let releaseRead: () => void;
+      const readGate = new Promise<void>((resolve) => {
+        releaseRead = resolve;
+      });
       const readWithDelay = db.transaction(
         async (tx) => {
           const repo = new RoomsRepository(tx);
@@ -1560,13 +1628,16 @@ describeDb('комнаты', () => {
           if (!round) {
             throw new Error('нет раунда');
           }
-          await new Promise((resolve) => setTimeout(resolve, 150));
+          await readGate;
           return repo.listVotes(round.id);
         },
         { isolationLevel: 'read committed', accessMode: 'read only' },
       );
 
+      // Голос guestB гарантированно закоммичен раньше listVotes — сигнал отпускает
+      // паузу только после этого, без гонки с таймером
       await service.submitVote(roomId, guestB, { value: 5 });
+      releaseRead!();
       const votes = await readWithDelay;
 
       // В отличие от repeatable read, здесь голос guestB виден тому же чтению —

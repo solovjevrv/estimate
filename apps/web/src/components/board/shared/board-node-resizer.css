@@ -1,0 +1,87 @@
+/**
+ * Переопределение внешнего вида @vue-flow/node-resizer (13.1, ревью UX) —
+ * дефолт библиотеки (базовый style.css, подключён в BoardCanvas.vue) даёт
+ * линию/хендлы вплотную к границе карточки и хендлы-квадратики 5x5px без
+ * зазора — визуально грубо и сливается с рамкой самой карточки. Здесь только
+ * позиционирование и внешний вид, сама логика ресайза (обработка mousedown/
+ * drag) остаётся в библиотеке и от смещения контролов не зависит — она
+ * считает по дельте курсора, а не по текущим CSS-координатам хендла.
+ *
+ * Требует класс .board-node-resizer-gap на корневом элементе компонента —
+ * см. BoardStickyNode.vue/BoardShapeNode.vue/BoardTextNode.vue.
+ */
+
+.board-node-resizer-gap :deep(.vue-flow__resize-control.line) {
+  border-color: var(--ui-primary);
+  opacity: 0.6;
+}
+
+.board-node-resizer-gap :deep(.vue-flow__resize-control.line.top) {
+  top: -6px;
+}
+
+.board-node-resizer-gap :deep(.vue-flow__resize-control.line.bottom) {
+  top: calc(100% + 6px);
+}
+
+.board-node-resizer-gap :deep(.vue-flow__resize-control.line.top),
+.board-node-resizer-gap :deep(.vue-flow__resize-control.line.bottom) {
+  left: -6px;
+  width: calc(100% + 12px);
+}
+
+.board-node-resizer-gap :deep(.vue-flow__resize-control.line.left) {
+  left: -6px;
+}
+
+.board-node-resizer-gap :deep(.vue-flow__resize-control.line.right) {
+  left: calc(100% + 6px);
+}
+
+.board-node-resizer-gap :deep(.vue-flow__resize-control.line.left),
+.board-node-resizer-gap :deep(.vue-flow__resize-control.line.right) {
+  top: -6px;
+  height: calc(100% + 12px);
+}
+
+/* Хендлы — маленькие белые точки с тонкой окантовкой, как остальные
+   круглые UI-элементы поверх карточек (см. .board-reaction-trigger) —
+   вместо дефолтных заливных 5x5 квадратиков библиотеки. Только углы:
+   боковые хендлы библиотека тоже рисует, но у сторон уже есть своя line
+   для ресайза по одной оси — дублирующая точка на середине стороны только
+   зашумляла бы карточку без пользы (тянуть можно и за line). */
+.board-node-resizer-gap :deep(.vue-flow__resize-control.handle) {
+  width: 9px;
+  height: 9px;
+  background: var(--brand-surface);
+  border: 1.5px solid var(--ui-primary);
+  border-radius: 50%;
+  box-shadow: var(--brand-shadow-card);
+}
+
+.board-node-resizer-gap :deep(.vue-flow__resize-control.handle.top:not(.left):not(.right)),
+.board-node-resizer-gap :deep(.vue-flow__resize-control.handle.bottom:not(.left):not(.right)),
+.board-node-resizer-gap :deep(.vue-flow__resize-control.handle.left:not(.top):not(.bottom)),
+.board-node-resizer-gap :deep(.vue-flow__resize-control.handle.right:not(.top):not(.bottom)) {
+  display: none;
+}
+
+.board-node-resizer-gap :deep(.vue-flow__resize-control.handle.top.left) {
+  top: -6px;
+  left: -6px;
+}
+
+.board-node-resizer-gap :deep(.vue-flow__resize-control.handle.top.right) {
+  top: -6px;
+  left: calc(100% + 6px);
+}
+
+.board-node-resizer-gap :deep(.vue-flow__resize-control.handle.bottom.left) {
+  top: calc(100% + 6px);
+  left: -6px;
+}
+
+.board-node-resizer-gap :deep(.vue-flow__resize-control.handle.bottom.right) {
+  top: calc(100% + 6px);
+  left: calc(100% + 6px);
+}

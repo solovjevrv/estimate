@@ -35,17 +35,81 @@ services:
       YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-}
       YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-}
       SENTRY_DSN: ${SENTRY_DSN:-}
+      # Аватарки (21.2) и картинки досок (21.5) пишутся в MinIO, а не на диск.
+      # env-переменные совпадают с теми, что создаёт minio-init (учётка приложения):
+      # MINIO_ENDPOINT=minio — внутренний hostname Docker-сети. avatars_data и
+      # board_assets_data volume остаются смонтированными для переходного чтения
+      # legacy-файлов и для запуска migrate:avatars / migrate:board-images — планово
+      # убрать отдельной задачей после подтверждённой миграции.
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
+      MINIO_ENDPOINT: minio
+      MINIO_BUCKET: ${MINIO_BUCKET:-estimate-assets}
+      # Необязательные интеграции: без ключа сервер не регистрирует их роуты
+      # (поиск GIF — 21.9, импорт стикер-паков из Telegram — 21.6)
+      GIPHY_API_KEY: ${GIPHY_API_KEY:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
     volumes:
       - avatars_data:/app/apps/server/avatars
+      - board_assets_data:/app/apps/server/board-assets
     depends_on:
       postgres:
         condition: service_healthy
+      # На старте сервер наполняет бакет встроенными стикерами — бакет и учётка
+      # приложения к этому моменту должны уже существовать
+      minio-init:
+        condition: service_completed_successfully
     healthcheck:
       test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/health >/dev/null || exit 1']
       interval: 10s
       timeout: 3s
       retries: 6
       start_period: 5s
+
+  # Объектное хранилище (Epic 21) — MinIO. Аватарки (21.2) и картинки досок
+  # (21.5) пишутся сюда. API/консоль не публикуются — доступ только по внутренней
+  # сети Compose.
+  minio:
+    # Официальные образы MinIO недоступны (Docker Hub, затем quay.io) — сборка
+    # сообщества pgsty, см. docker-compose.yml
+    image: pgsty/minio:RELEASE.2026-08-04T00-00-00Z
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 5s
+
+  # Идемпотентный init: приватный бакет + учётка приложения (не root) с правами
+  # только на этот бакет. Одноразовый — гоняется при каждом up, безопасно повторно.
+  minio-init:
+    # mc — из той же сборки pgsty, что и сервер выше
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:?}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?}
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
+      MINIO_BUCKET: ${MINIO_BUCKET:-estimate-assets}
+    entrypoint: >
+      /bin/sh -c '
+      mc alias set local http://minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" &&
+      mc mb --ignore-existing "local/$$MINIO_BUCKET" &&
+      mc admin user add local "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY" &&
+      printf "{\"Version\":\"2012-10-17\",\"Statement\":[{\"Effect\":\"Allow\",\"Action\":[\"s3:GetObject\",\"s3:PutObject\",\"s3:DeleteObject\",\"s3:ListBucket\"],\"Resource\":[\"arn:aws:s3:::%s\",\"arn:aws:s3:::%s/*\"]}]}" "$$MINIO_BUCKET" "$$MINIO_BUCKET" > /tmp/estimate-app-policy.json &&
+      mc admin policy create local estimate-app-policy /tmp/estimate-app-policy.json &&
+      mc admin policy attach local estimate-app-policy --user "$$MINIO_ACCESS_KEY"
+      '
 
   web:
     build:
@@ -90,8 +154,8 @@ services:
       fix;
       while :; do certbot renew --webroot -w /var/www/certbot --quiet --deploy-hook "chown -R root:101 /etc/letsencrypt/live /etc/letsencrypt/archive && chmod -R g+rX /etc/letsencrypt/live /etc/letsencrypt/archive"; sleep 12h & wait $${!}; done'
 
-  # Ежедневный бэкап БД и загруженных аватарок (10.15) на том же диске: раз в сутки
-  # pg_dump + tar аватарок в отдельный volume, хранение 14 дней (find -mtime +14).
+  # Ежедневный бэкап БД и загруженных аватарок (10.15) и картинок досок (13.2) на том же диске: раз в сутки
+  # pg_dump + tar аватарок + tar картинок досок в отдельные volume, хранение 14 дней (find -mtime +14).
   # Не защищает от потери самого сервера/диска — только от порчи данных
   # багом/миграцией/человеческой ошибкой. Восстановление и офсайт-хранение — см. README «Продакшен».
   db-backup:
@@ -104,6 +168,7 @@ services:
     volumes:
       - postgres_backups:/backups
       - avatars_data:/avatars:ro
+      - board_assets_data:/board-assets:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -112,11 +177,37 @@ services:
       while :; do
       pg_dump -h postgres -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -Fc -f "/backups/$$(date +%Y-%m-%d_%H%M%S).dump" && find /backups -name "*.dump" -mtime +14 -delete;
       tar -czf "/backups/avatars_$$(date +%Y-%m-%d_%H%M%S).tar.gz" -C /avatars . && find /backups -name "avatars_*.tar.gz" -mtime +14 -delete;
+      tar -czf "/backups/board-assets_$$(date +%Y-%m-%d_%H%M%S).tar.gz" -C /board-assets . && find /backups -name "board-assets_*.tar.gz" -mtime +14 -delete;
+      sleep 24h & wait $${!}; done'
+
+  # Бэкап бакета MinIO — тем же принципом, что и db-backup выше: ежедневный
+  # локальный снимок, хранение 14 дней, не защита от потери диска целиком.
+  # Аватарки (21.2) и картинки досок (21.5) бэкапятся тем же способом.
+  minio-backup:
+    image: pgsty/mc:RELEASE.2026-09-16T00-00-00Z
+    restart: unless-stopped
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
+      MINIO_BUCKET: ${MINIO_BUCKET:-estimate-assets}
+    volumes:
+      - object_storage_backups:/backups
+    depends_on:
+      minio-init:
+        condition: service_completed_successfully
+    entrypoint: >
+      /bin/sh -c 'trap exit TERM;
+      mc alias set local http://minio:9000 "$$MINIO_ACCESS_KEY" "$$MINIO_SECRET_KEY";
+      while :; do
+      mc mirror --quiet "local/$$MINIO_BUCKET" "/backups/$$(date +%Y-%m-%d_%H%M%S)" && find /backups -maxdepth 1 -mindepth 1 -mtime +14 -exec rm -rf {} \;;
       sleep 24h & wait $${!}; done'
 
 volumes:
   postgres_data:
   postgres_backups:
   avatars_data:
+  board_assets_data:
+  minio_data:
+  object_storage_backups:
   letsencrypt:
   certbot_www:

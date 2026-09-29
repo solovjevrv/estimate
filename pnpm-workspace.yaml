@@ -4,5 +4,8 @@ packages:
 
 allowBuilds:
   esbuild: true
+  # Нативный резолвер путей для eslint-plugin-import-x (19.6) — без сборки
+  # плагин не находит модули и правила границ молча не работают
+  unrs-resolver: true
   # Ставит правильную сборку под Vue 3 — тянется как зависимость Nuxt UI
   vue-demi: true

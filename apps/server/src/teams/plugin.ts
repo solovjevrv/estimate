@@ -1,8 +1,8 @@
-import { TEAM_ROLES } from '@estimate/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
+import { idParamsSchema } from '../http/schemas';
 
 import type {
   InviteParams,
@@ -12,85 +12,18 @@ import type {
   TeamIdParams,
 } from './teams.controller';
 import { TeamsController } from './teams.controller';
+import {
+  inviteParams,
+  memberParams,
+  memberProfileResponse,
+  memberResponse,
+  membersResponse,
+  nameBody,
+  roleBody,
+  teamResponse,
+  teamWithRoleResponse,
+} from './teams.schemas';
 import { TeamsService } from './teams.service';
-
-const uuid = { type: 'string', format: 'uuid' } as const;
-
-const teamIdParams = { type: 'object', required: ['id'], properties: { id: uuid } } as const;
-
-const memberParams = {
-  type: 'object',
-  required: ['id', 'userId'],
-  properties: { id: uuid, userId: uuid },
-} as const;
-
-const inviteParams = {
-  type: 'object',
-  required: ['code'],
-  properties: { code: { type: 'string', pattern: '^[A-Za-z0-9_-]{6,64}$' } },
-} as const;
-
-const nameBody = {
-  type: 'object',
-  required: ['name'],
-  properties: {
-    // Здесь только защита от гигантских тел; настоящий предел длины
-    // проверяет сервис уже после обрезки пробелов
-    name: { type: 'string', minLength: 1, maxLength: 1000 },
-  },
-} as const;
-
-const roleBody = {
-  type: 'object',
-  required: ['role'],
-  properties: { role: { type: 'string', enum: [...TEAM_ROLES] } },
-} as const;
-
-// Схемы ответов задают и контракт, и фильтр сериализации: лишние поля
-// (например, код приглашения) не смогут утечь при будущих правках.
-const teamResponse = {
-  type: 'object',
-  properties: {
-    id: { type: 'string' },
-    name: { type: 'string' },
-    createdAt: { type: 'string' },
-  },
-} as const;
-
-const teamWithRoleResponse = {
-  type: 'object',
-  properties: {
-    ...teamResponse.properties,
-    role: { type: 'string' },
-    memberCount: { type: 'number' },
-  },
-} as const;
-
-const memberResponse = {
-  type: 'object',
-  properties: {
-    userId: { type: 'string' },
-    name: { type: 'string' },
-    email: { type: 'string' },
-    avatarUrl: { type: ['string', 'null'] },
-    role: { type: 'string' },
-    joinedAt: { type: 'string' },
-  },
-} as const;
-
-const membersResponse = {
-  type: 'object',
-  properties: { members: { type: 'array', items: memberResponse } },
-} as const;
-
-const memberProfileResponse = {
-  type: 'object',
-  properties: {
-    ...memberResponse.properties,
-    provider: { type: 'string' },
-    jobTitle: { type: ['string', 'null'] },
-  },
-} as const;
 
 async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
   const authenticate = app.authenticate;
@@ -156,7 +89,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         description:
           'Состав, роль текущего пользователя и код приглашения (только для администратора). Посторонним отвечаем 404.',
         security: [{ session: [] }],
-        params: teamIdParams,
+        params: idParamsSchema,
         response: {
           200: {
             description: 'Команда и её состав',
@@ -185,7 +118,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         summary: 'Переименовать команду',
         description: 'Доступно администратору.',
         security: [{ session: [] }],
-        params: teamIdParams,
+        params: idParamsSchema,
         body: nameBody,
         response: {
           200: {
@@ -212,7 +145,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         summary: 'Удалить команду',
         description: 'Доступно администратору. Комнаты команды сохраняются и остаются без команды.',
         security: [{ session: [] }],
-        params: teamIdParams,
+        params: idParamsSchema,
         response: {
           204: { description: 'Команда удалена', type: 'null' },
           401: { description: 'Требуется вход', ...errorResponse },
@@ -233,7 +166,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         summary: 'Состав команды',
         description: 'Гостю команды адреса участников не показываются.',
         security: [{ session: [] }],
-        params: teamIdParams,
+        params: idParamsSchema,
         response: {
           200: { description: 'Участники', ...membersResponse },
           401: { description: 'Требуется вход', ...errorResponse },
@@ -347,7 +280,7 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
         summary: 'Перевыпустить код приглашения',
         description: 'Доступно администратору. Старая ссылка перестаёт работать.',
         security: [{ session: [] }],
-        params: teamIdParams,
+        params: idParamsSchema,
         response: {
           200: {
             description: 'Новый код',
@@ -380,7 +313,11 @@ async function teamsPluginImpl(app: FastifyInstance): Promise<void> {
             properties: {
               team: {
                 type: 'object',
-                properties: { id: { type: 'string' }, name: { type: 'string' } },
+                properties: {
+                  id: { type: 'string' },
+                  name: { type: 'string' },
+                  memberCount: { type: 'number' },
+                },
               },
             },
           },

@@ -1,0 +1,374 @@
+/**
+ * Общие стили тулбара — переиспользуются в BoardSelectionToolbar.vue и
+ * BoardEdgeToolbar.vue (раньше ~100 строк были продублированы в обоих).
+ * Требует класс .board-toolbar-base на корневом элементе компонента.
+ *
+ * Все правила ниже, кроме самого .board-toolbar-base — ПЛОСКИЕ селекторы, не
+ * `.board-toolbar-base .xxx`: содержимое `<template #content>` любого UPopover
+ * телепортируется в <body> (Nuxt UI Popover, `portal: true` по умолчанию), то
+ * есть в реальном DOM оно больше не потомок корневого div тулбара — селектор
+ * с предком никогда не совпал бы. Scoped-атрибут (data-v-xxxx) для этого не
+ * страдает и корректно ограничивает правила этими двумя компонентами.
+ */
+
+.board-toolbar-base {
+  position: absolute;
+  z-index: 25;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 12px;
+  white-space: nowrap;
+  background: var(--brand-surface);
+  border-radius: 12px;
+  box-shadow: var(--brand-shadow-card);
+  transform: translate(-50%, calc(-100% - 16px));
+}
+
+.board-selection-swatch {
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  cursor: pointer;
+  border: none;
+  border-radius: 50%;
+  /* Не обводка (просьба пользователя — кружки без неё), а еле заметное кольцо
+     только для отличимости белых/светлых свотчей от фона попапа. В тёмной
+     теме тот же тёмный ободок делает и без того тёмный/чёрный свотч
+     (#1A1A1A) практически неразличимым на тёмной карточке попапа — там
+     нужен обратный, светлый ободок (см. :root.dark override ниже). */
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 8%);
+  transition: transform 0.3s;
+}
+
+/* Свотчи внутри палитры выбора цвета (18.4) — крупнее и с hover-эффектом,
+   в отличие от базового размера (20px, без scale), который использует и
+   круглая кнопка-триггер цвета в самом тулбаре (её трогать не просили). */
+.board-color-menu .board-selection-swatch,
+.board-color-recent-swatches .board-selection-swatch {
+  width: 24px;
+  height: 24px;
+}
+.board-color-menu .board-selection-swatch:hover,
+.board-color-recent-swatches .board-selection-swatch:hover {
+  transform: scale(1.2);
+}
+
+:root.dark .board-selection-swatch {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 16%);
+}
+
+.board-selection-swatch-active {
+  box-shadow: inset 0 0 0 2px var(--ui-primary);
+}
+
+/* :root.dark .board-selection-swatch (специфичность 0,3,0) иначе перебивал
+   бы этот же .board-selection-swatch-active (0,1,0) в тёмной теме — те же
+   3 псевдо/класса нужны здесь, чтобы отменить светлый ободок и вернуть
+   цветное кольцо активного свотча */
+:root.dark .board-selection-swatch-active {
+  box-shadow: inset 0 0 0 2px var(--ui-primary);
+}
+
+.board-color-menu {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 14px;
+  padding: 14px;
+}
+
+/* Разделитель между сеткой свотчей / «+ Добавить цвет» / «Недавние» (18.4,
+   референс пользователя) — не .board-selection-divider: та вертикальная
+   (1×20px) для горизонтального ряда кнопок главного тулбара, тут нужна
+   горизонтальная линия для вертикального стека блоков попапа. */
+.board-color-divider {
+  height: 1px;
+  margin: 6px 10px 0;
+  background: var(--brand-border);
+}
+
+.board-color-add-btn {
+  display: flex;
+  width: 20px;
+  height: 20px;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-ink);
+  cursor: pointer;
+  background: var(--ui-bg-elevated);
+  border: none;
+  border-radius: 50%;
+}
+
+.board-form-menu {
+  display: flex;
+  gap: 2px;
+  padding: 6px;
+}
+
+.board-form-menu-item {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-ink);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+}
+
+.board-form-menu-item:hover {
+  background: var(--ui-bg-elevated);
+}
+
+.board-form-menu-item-active {
+  color: var(--ui-primary);
+  background: var(--ui-bg-elevated);
+}
+
+.board-form-menu-item:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.board-form-menu-item:disabled:hover {
+  background: transparent;
+}
+
+.board-selection-divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 6px;
+  background: var(--brand-border);
+}
+
+.board-selection-icon-btn {
+  display: flex;
+  width: 28px;
+  height: 28px;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-ink);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+}
+
+.board-selection-icon-btn:hover {
+  background: var(--ui-bg-elevated);
+}
+
+.board-selection-icon-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.board-selection-icon-btn-active {
+  color: var(--ui-primary);
+  background: var(--ui-bg-elevated);
+}
+
+.board-selection-icon-btn-danger {
+  color: var(--brand-coral);
+}
+
+.board-selection-icon-btn-danger:hover {
+  background: color-mix(in oklch, var(--brand-coral) 12%, transparent);
+}
+
+/* Сетка эмодзи (13.3) — переиспользуется и в тулбаре выделения (замена
+   эмодзи), и в левом тулбаре инструментов (создание) */
+.board-emoji-menu {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 4px;
+  width: 192px;
+  padding: 8px;
+}
+
+.board-emoji-menu-item {
+  display: flex;
+  width: 32px;
+  height: 32px;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: 8px;
+  font-size: 18px;
+}
+
+.board-emoji-menu-item:hover {
+  background: var(--ui-bg-elevated);
+}
+
+/* Кнопка-триггер «+ Добавить цвет» (18.4, заменила пипетку из 18.3 — решение
+   пользователя: маленькая иконка без подписи была неочевидна и ломала ряд
+   4×4 свотчей выше, будучи 17-м элементом той же сетки; теперь отдельная
+   строка под сеткой, открывает ВЛОЖЕННЫЙ UPopover со своей карточкой (тот же
+   принцип, что раньше решал 18.3 для нативного `<input type="color">`). */
+.board-color-add-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 6px 10px 0;
+  padding: 6px 0;
+  color: var(--brand-ink2);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  font-size: 12px;
+  font-weight: 600;
+}
+.board-color-add-trigger:hover {
+  color: var(--ui-primary);
+}
+
+/* Flat-селекторы (board-color-picker-panel и далее) — попап телепортируется
+   в body и не является потомком корня тулбара. */
+.board-color-picker-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px;
+}
+.board-color-picker [data-color-picker-background],
+.board-color-picker [data-color-picker-track] {
+  border-radius: 8px;
+}
+
+/* Коммит цвета из UColorPicker в «недавние» (18.4) — только по явному клику,
+   не по паузе после drag (см. пояснение в BoardColorPickerMenu.vue).
+   Иконка-чекмарк в стиле остальных мелких кнопок тулбара (.board-stepper-btn
+   и т.п.) — большая заливная зелёная кнопка с текстом смотрелась чужеродно
+   рядом с минималистичными круглыми/квадратными иконками (решение
+   пользователя, живая проверка). */
+.board-color-apply-btn {
+  display: flex;
+  width: 100%;
+  height: 34px;
+  align-items: center;
+  justify-content: center;
+  color: var(--ui-text-inverted);
+  cursor: pointer;
+  background: var(--ui-primary);
+  border: none;
+  border-radius: 8px;
+}
+.board-color-apply-btn:hover:not(:disabled) {
+  background: color-mix(in oklch, black 10%, var(--ui-primary));
+}
+.board-color-apply-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.board-color-popover-body {
+  display: flex;
+  flex-direction: column;
+}
+
+/* inline (18.4) — цвет текста встраивает BoardColorPickerMenu прямо в уже
+   отступленный `.board-text-menu-row` (сам `.board-text-menu` несёт
+   padding:10px), а не является всей карточкой попапа, как в заливке/
+   стрелке. Раньше это решалось обнулением padding у board-color-menu/
+   board-color-add-trigger/board-color-recent-* для inline — но тогда сетка
+   свотчей внутри «Aa» получала другую эффективную ширину (170px, по
+   ширине .board-text-menu) относительно заливки/стрелки (там карточка
+   авто-подгонялась под контент, ~127px) — тот же ряд 4×4 выглядел
+   заметно шире/просторнее в одном контексте, чем в другом (нашёл
+   пользователь на живой проверке). Правильный фикс — НЕ трогать padding
+   board-color-menu и остальных внутренних блоков вообще (у них всегда
+   одна и та же вёрстка), а компенсировать padding РОДИТЕЛЯ отрицательным
+   margin на всём компоненте — тогда внутренняя раскладка идентична
+   заливке/стрелке пиксель-в-пиксель в обоих контекстах. */
+.board-color-popover-body--inline {
+  margin: 0 -10px;
+}
+
+.board-color-recent-label {
+  padding: 8px 10px 0;
+  color: var(--brand-ink2);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.board-color-recent-swatches {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 6px 10px 10px;
+}
+
+/* Попап «Aa» (размер шрифта + цвет текста) — переиспользуется в
+   BoardSelectionToolbar.vue (стикеры/фигуры) и BoardEdgeToolbar.vue (12.18,
+   подпись связи). Раньше эти правила жили только в scoped-стиле
+   BoardSelectionToolbar.vue и не долетали до BoardEdgeToolbar.vue — тулбары
+   визуально расходились (найдено пользователем при сравнении). */
+.board-text-options-btn {
+  width: auto;
+  min-width: 28px;
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.board-text-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+}
+
+.board-text-menu-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.board-text-menu-label {
+  color: var(--brand-ink2);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.board-stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.board-stepper-btn {
+  display: flex;
+  width: 24px;
+  height: 24px;
+  align-items: center;
+  justify-content: center;
+  color: var(--brand-ink);
+  cursor: pointer;
+  background: var(--ui-bg-elevated);
+  border: none;
+  border-radius: 6px;
+}
+
+.board-stepper-btn:hover:not(:disabled) {
+  background: color-mix(in oklch, var(--ui-primary) 14%, var(--ui-bg-elevated));
+}
+
+.board-stepper-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+.board-stepper-value {
+  min-width: 26px;
+  color: var(--brand-ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  text-align: center;
+}

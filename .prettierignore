@@ -10,3 +10,22 @@ PROGRESS.md
 credentials.md
 .claude/
 .design/
+
+# Остальные локальные файлы агента и прогресса (в git не коммитятся). Без них
+# `pnpm format:check` локально красный из-за документов, которых в CI вообще нет —
+# а привычка не читать его вывод и есть причина, по которой на ветке накопления
+# незаметно накопились реально неотформатированные исходники.
+PROGRESS_ARCHIVE.md
+PROGRESS_ARCHIVE/
+PROGRESS_BUGS.md
+REFACTORING_PLAN.md
+REVIEW_*.md
+AGENTS.md
+.agents/
+
+# Снимки миграций Drizzle — генерирует drizzle-kit, править руками нечего
+apps/server/drizzle/meta/
+
+# Артефакты прогонов Playwright
+apps/e2e/test-results/
+apps/e2e/playwright-report/

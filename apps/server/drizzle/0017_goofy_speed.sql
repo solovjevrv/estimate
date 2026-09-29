@@ -1,0 +1,1 @@
+ALTER TABLE "board_edges" ADD COLUMN "z_index" integer DEFAULT 0 NOT NULL;

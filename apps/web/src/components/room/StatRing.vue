@@ -8,8 +8,10 @@ const props = withDefaults(
     valueLabel: string;
     label: string;
     percent?: number;
+    /** Ключевой показатель (победившая оценка) — StatRing IsWinner в 54_RoundResult */
+    isWinner?: boolean;
   }>(),
-  { percent: 100 },
+  { percent: 100, isWinner: false },
 );
 
 const radius = 30;
@@ -35,33 +37,40 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="flex flex-col items-center gap-1">
+  <!-- 54_RoundResult / StatRing: кольцо 72px, обводка 4, трек border-medium, значение
+       border-brand; IsWinner — заливка surface-brand-low -->
+  <div
+    class="flex flex-col items-center gap-2"
+    role="group"
+    :aria-label="`${props.label}: ${props.valueLabel}`"
+  >
     <div class="relative flex h-[72px] w-[72px] items-center justify-center">
       <svg viewBox="0 0 72 72" class="absolute inset-0 -rotate-90">
         <circle
           cx="36"
           cy="36"
           :r="radius"
-          fill="none"
-          stroke="currentColor"
-          class="text-default opacity-20"
-          stroke-width="8"
+          :fill="props.isWinner ? 'var(--surface-brand-low)' : 'none'"
+          stroke="var(--border-medium)"
+          stroke-width="4"
         />
         <circle
           cx="36"
           cy="36"
           :r="radius"
           fill="none"
-          stroke="currentColor"
-          class="text-primary transition-[stroke-dashoffset] duration-700 ease-out"
-          stroke-width="8"
+          stroke="var(--border-brand)"
+          class="transition-[stroke-dashoffset] duration-700 ease-out"
+          stroke-width="4"
           stroke-linecap="round"
           :stroke-dasharray="circumference"
           :stroke-dashoffset="dashOffset"
         />
       </svg>
-      <span class="relative text-sm font-semibold">{{ props.valueLabel }}</span>
+      <span class="text-text-primary relative text-base leading-6 font-bold tracking-[-0.01em]">{{
+        props.valueLabel
+      }}</span>
     </div>
-    <span class="text-muted text-xs">{{ props.label }}</span>
+    <span class="text-text-tertiary text-xs font-bold">{{ props.label }}</span>
   </div>
 </template>

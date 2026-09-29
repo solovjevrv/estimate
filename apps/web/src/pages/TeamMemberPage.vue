@@ -57,12 +57,14 @@ async function load(): Promise<void> {
 
     <UAlert
       v-if="notFound"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       :description="t('teamMember.notFound')"
     />
     <UAlert
       v-else-if="loadFailed"
+      icon="i-lucide-circle-alert"
       color="error"
       variant="subtle"
       :description="t('teamMember.loadError')"
@@ -72,9 +74,9 @@ async function load(): Promise<void> {
       v-else-if="loading"
       class="surface-card surface-card-lg mx-auto flex max-w-[480px] flex-col items-center px-[30px] py-[26px]"
     >
-      <USkeleton class="mb-4 size-[100px] rounded-full bg-[var(--brand-border)]" />
-      <USkeleton class="mb-3 h-5 w-1/2 bg-[var(--brand-border)]" />
-      <USkeleton class="h-4 w-1/3 bg-[var(--brand-border)]" />
+      <USkeleton class="mb-4 size-[100px] rounded-full" />
+      <USkeleton class="mb-3 h-5 w-1/2" />
+      <USkeleton class="h-4 w-1/3" />
     </div>
 
     <div
@@ -87,7 +89,7 @@ async function load(): Promise<void> {
         size="3xl"
         class="mb-4 size-[100px]"
         :class="teamAvatarColor(member.userId)"
-        :ui="{ fallback: 'font-heading text-xl font-bold text-white' }"
+        :ui="{ fallback: 'font-heading text-xl font-bold' }"
       />
       <h1 class="font-heading mb-1 text-xl font-extrabold">{{ member.name }}</h1>
       <p v-if="member.jobTitle" class="text-muted mb-3 text-[15px]">{{ member.jobTitle }}</p>

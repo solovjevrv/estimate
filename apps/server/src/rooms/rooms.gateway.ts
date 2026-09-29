@@ -1,5 +1,4 @@
 import {
-  REACTION_EMOJIS,
   WS_EVENTS,
   WS_SERVER_EVENTS,
   type JoinRoomPayload,
@@ -17,16 +16,17 @@ import {
   type UpdateLinksPayload,
   type WsAck,
 } from '@estimate/shared';
+import { isValidEmojiSequence } from '@estimate/shared/emoji/validate';
 import type { FastifyBaseLogger } from 'fastify';
-import type { Socket } from 'socket.io';
 
 import { AppError, ForbiddenError, ValidationError } from '../errors';
-import type { PokerServer } from '../socket';
+import { PresenceRegistry } from '../platform/realtime';
+import type { PokerServer, PokerSocket } from '../socket';
 
-import { RoomPresence, type ParticipantIdentity } from './presence';
+import type { ParticipantIdentity } from './presence';
 import { RoomReactions } from './room-reactions';
 import { RoomTimer } from './room-timer';
-import type { RoomsService } from './rooms.service';
+import type { RoomsGameService } from './rooms.game.service';
 
 type Ack<T> = (response: WsAck<T>) => void;
 
@@ -47,8 +47,8 @@ export class RoomsGateway {
   private readonly broadcasts = new Map<string, Promise<void>>();
 
   constructor(
-    private readonly service: RoomsService,
-    private readonly presence = new RoomPresence(),
+    private readonly service: RoomsGameService,
+    private readonly presence = new PresenceRegistry<ParticipantIdentity>(),
     private readonly timer = new RoomTimer(),
     private readonly reactions = new RoomReactions(),
   ) {}
@@ -179,7 +179,7 @@ export class RoomsGateway {
             throw new ValidationError('Не указан участник');
           }
           const emoji = payload?.emoji;
-          if (!emoji || !(REACTION_EMOJIS as readonly string[]).includes(emoji)) {
+          if (!isValidEmojiSequence(emoji)) {
             throw new ValidationError('Недопустимый эмодзи');
           }
           // Адресат должен реально сидеть за столом — иначе реакции на случайные
@@ -212,7 +212,7 @@ export class RoomsGateway {
 
   private async join(
     io: PokerServer,
-    socket: Socket,
+    socket: PokerSocket,
     payload: JoinRoomPayload | undefined,
   ): Promise<JoinRoomResult> {
     if (!payload?.roomId) {
@@ -227,7 +227,7 @@ export class RoomsGateway {
     });
 
     // Из прошлой комнаты выходим полностью, иначе сокет продолжит получать её рассылки
-    const previousRoom = this.presence.roomOf(socket.id);
+    const previousRoom = this.presence.scopeOf(socket.id);
     if (previousRoom && previousRoom !== payload.roomId) {
       await socket.leave(previousRoom);
     }
@@ -253,8 +253,8 @@ export class RoomsGateway {
   }
 
   /** Действовать может только тот, кто уже сидит за столом */
-  private requireSeat(socket: Socket): { roomId: string; identity: ParticipantIdentity } {
-    const roomId = this.presence.roomOf(socket.id);
+  private requireSeat(socket: PokerSocket): { roomId: string; identity: ParticipantIdentity } {
+    const roomId = this.presence.scopeOf(socket.id);
     const identity = this.presence.identityOf(socket.id);
     if (!roomId || !identity) {
       throw new ForbiddenError('Сначала войдите в комнату');
@@ -309,7 +309,7 @@ export class RoomsGateway {
    * необработанный отказ уронил бы процесс вместе со всеми комнатами.
    */
   private run<T>(
-    socket: Socket,
+    socket: PokerSocket,
     log: FastifyBaseLogger,
     ack: Ack<unknown>,
     action: () => Promise<T>,

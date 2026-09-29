@@ -25,10 +25,11 @@ COPY packages/shared/package.json packages/shared/
 RUN pnpm install --prod --frozen-lockfile --filter @estimate/server
 COPY --from=build /app/apps/server/dist ./apps/server/dist
 COPY --from=build /app/apps/server/drizzle ./apps/server/drizzle
+COPY --from=build /app/apps/server/assets ./apps/server/assets
 WORKDIR /app/apps/server
 # Создаём и передаём владение заранее: Docker переносит содержимое (и права)
-# этой директории в volume при первом монтировании (10.15)
-RUN mkdir -p avatars && chown node:node avatars
+# этой директории в volume при первом монтировании (10.15, 13.2)
+RUN mkdir -p avatars board-assets && chown node:node avatars board-assets
 EXPOSE 3000
 USER node
 CMD ["node", "dist/index.cjs"]

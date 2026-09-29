@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { FIBONACCI_DECK } from '@estimate/shared';
 
 import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
+import { expectVoted, joinAsGuest, stat } from '../src/room-helpers';
 
 /**
  * Регрессионный набор: большая комната (16 участников) голосует одним залпом.
@@ -38,8 +39,7 @@ test('16 участников голосуют одновременно — вс
     const context = await newContext(browser);
     const page = await context.newPage();
     await page.goto(roomUrl);
-    await page.getByPlaceholder('Например, Мария').fill(`Гость ${i + 1}`);
-    await page.getByRole('button', { name: 'Войти в комнату' }).click();
+    await joinAsGuest(page, `Гость ${i + 1}`);
     guestPages.push(page);
   }
 
@@ -51,7 +51,7 @@ test('16 участников голосуют одновременно — вс
 
   await ownerPage.getByRole('button', { name: 'Начать раунд' }).click();
   await expect(guestPages.at(-1)!.getByRole('button', { name: '5', exact: true })).toBeVisible();
-  await expect(ownerPage.getByText(`Проголосовало: 0 из ${pages.length}`)).toBeVisible();
+  await expectVoted(ownerPage, 0, pages.length);
 
   // Голосуем настоящим залпом — все клики летят параллельно, а не по очереди
   await Promise.all(
@@ -60,9 +60,7 @@ test('16 участников голосуют одновременно — вс
     ),
   );
 
-  await expect(
-    ownerPage.getByText(`Проголосовало: ${pages.length} из ${pages.length}`),
-  ).toBeVisible();
+  await expectVoted(ownerPage, pages.length, pages.length);
 
   // Проголосовали все — вскрытие идёт без запроса подтверждения
   await ownerPage.getByRole('button', { name: 'Вскрыть карты' }).click();
@@ -73,7 +71,7 @@ test('16 участников голосуют одновременно — вс
   const min = Math.min(...values);
   const max = Math.max(...values);
 
-  await expect(ownerPage.getByText(`Среднее: ${average}`)).toBeVisible();
-  await expect(ownerPage.getByText(`Мин: ${min}`)).toBeVisible();
-  await expect(ownerPage.getByText(`Макс: ${max}`)).toBeVisible();
+  await expect(stat(ownerPage, 'Среднее', average)).toBeVisible();
+  await expect(stat(ownerPage, 'Мин', min)).toBeVisible();
+  await expect(stat(ownerPage, 'Макс', max)).toBeVisible();
 });

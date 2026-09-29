@@ -192,6 +192,27 @@ afterEach(() => {
   document.body.innerHTML = '';
 });
 
+/**
+ * Открывает USelect (Reka UI) и выбирает опцию по подписи — триггер слушает
+ * `pointerdown` (не `click`), сама опция выбирается по `pointerup` на
+ * `[role="option"]` (см. reka-ui/Select/SelectTrigger.js, SelectItem.js).
+ * jsdom не реализует Pointer Capture — полифилл в test/setup.ts.
+ */
+async function selectDeckOption(label: string): Promise<void> {
+  const trigger = document.body.querySelector('button[role="combobox"]');
+  trigger!.dispatchEvent(
+    new PointerEvent('pointerdown', { bubbles: true, button: 0, pointerId: 1 }),
+  );
+  await Promise.resolve();
+  await new Promise((r) => setTimeout(r, 0));
+  const option = Array.from(document.body.querySelectorAll('[role="option"]')).find(
+    (el) => el.textContent?.trim() === label,
+  );
+  option!.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, pointerId: 1 }));
+  await Promise.resolve();
+  await new Promise((r) => setTimeout(r, 0));
+}
+
 describe('вход в комнату', () => {
   it('гостю показывает форму имени и заходит по WS после отправки', async () => {
     socket.next = { state: roomState(), guestToken: 'tok', participantId: 'g1' };
@@ -201,7 +222,7 @@ describe('вход в комнату', () => {
       makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Введите имя'));
     expect(wrapper.text()).toContain('Планирование спринта');
 
     await wrapper.find('input').setValue('Мария');
@@ -221,7 +242,7 @@ describe('вход в комнату', () => {
     );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
-    expect(wrapper.text()).not.toContain('Представьтесь');
+    expect(wrapper.text()).not.toContain('Введите имя');
     const join = socket.sent.find((s) => s.event === 'join_room');
     expect(join?.payload).toMatchObject({ roomId: 'r1' });
   });
@@ -259,7 +280,7 @@ describe('вход в комнату', () => {
       '/rooms/r1',
       makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Введите имя'));
     await wrapper.find('input').setValue('Мария');
     await wrapper.find('form').trigger('submit');
 
@@ -303,7 +324,7 @@ describe('вход в комнату', () => {
       '/rooms/r1',
       makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Введите имя'));
     await wrapper.find('input').setValue('Мария');
     await wrapper.find('form').trigger('submit');
     await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось войти в комнату'));
@@ -311,7 +332,7 @@ describe('вход в комнату', () => {
     const retryButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Повторить');
     await retryButton!.trigger('click');
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Введите имя'));
   });
 
   it('после переподключения с протухшим токеном молча восстанавливает вход, если сессия ещё жива (7.16)', async () => {
@@ -384,7 +405,7 @@ describe('вход в комнату', () => {
     socket.disconnect();
     socket.connect();
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Введите имя'));
   });
 
   it('после обрыва соединения бейдж показывает разрыв', async () => {
@@ -441,7 +462,7 @@ describe('вход в комнату', () => {
   });
 });
 
-describe('подзаголовок «Командная/Личная комната» (10.5)', () => {
+describe('подзаголовок «Команда «…»/Личная комната» (10.5, 07_Room)', () => {
   it('у комнаты без команды показывает «Личная комната»', async () => {
     socket.next = { state: roomState(), guestToken: null, participantId: 'u1' };
 
@@ -455,7 +476,23 @@ describe('подзаголовок «Командная/Личная комна�
     expect(wrapper.text()).not.toContain('Командная комната');
   });
 
-  it('у комнаты команды показывает «Командная комната»', async () => {
+  it('у комнаты команды показывает название команды', async () => {
+    const teamRoom: Room = { ...room1, teamId: 't1' };
+    socket.next = { state: roomState({ room: teamRoom }), guestToken: null, participantId: 'u1' };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, {
+        'GET /api/rooms/r1': () => json(200, { room: teamRoom, teamName: 'Платформа' }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
+    expect(wrapper.text()).toContain('Команда «Платформа»');
+    expect(wrapper.text()).not.toContain('Командная комната');
+  });
+
+  it('без названия команды в ответе показывает «Командная комната»', async () => {
     const teamRoom: Room = { ...room1, teamId: 't1' };
     socket.next = { state: roomState({ room: teamRoom }), guestToken: null, participantId: 'u1' };
 
@@ -488,15 +525,13 @@ describe('стол участников', () => {
       makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунд ещё не начат'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунда ещё не было'));
     expect(wrapper.text()).toContain('Иван');
     expect(wrapper.text()).toContain('(вы)');
     expect(wrapper.text()).toContain('Мария');
     expect(wrapper.text()).toContain('Гость');
     expect(wrapper.text()).not.toContain('Проголосовал');
     expect(wrapper.text()).not.toContain('Ожидаем');
-    // Ссылки — свойство комнаты, редактируются и без активного раунда (7.25)
-    expect(wrapper.text()).toContain('Ссылки на задачу');
   });
 
   it('с активным раундом показывает статус голосования каждого', async () => {
@@ -519,7 +554,7 @@ describe('стол участников', () => {
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Проголосовал'));
     expect(wrapper.text()).toContain('Ждём: Мария');
-    expect(wrapper.text()).not.toContain('Раунд ещё не начат');
+    expect(wrapper.text()).not.toContain('Раунда ещё не было');
   });
 
   it('участник, подключившийся позже, появляется в столе без перезахода', async () => {
@@ -537,7 +572,7 @@ describe('стол участников', () => {
     );
     // Имя авторизованного участника теперь есть и в шапке — ждём именно вход
     // в комнату (запись в столе участников), а не первое появление имени на странице
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунд ещё не начат'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунда ещё не было'));
     expect(wrapper.text()).not.toContain('Мария');
 
     // Рассылка сервера о новом участнике — стол обновляется без действий пользователя
@@ -603,11 +638,11 @@ describe('выбор колоды и голосование', () => {
       '/rooms/r1',
       makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Введите имя'));
     await wrapper.find('input').setValue('Мария');
     await wrapper.find('form').trigger('submit');
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунд ещё не начат'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунда ещё не было'));
     expect(wrapper.text()).not.toContain('Начать раунд');
   });
 
@@ -626,8 +661,7 @@ describe('выбор колоды и голосование', () => {
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Начать раунд'));
 
-    const scaleTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Шкала 0–5');
-    await scaleTab!.trigger('click');
+    await selectDeckOption('Шкала 0–5');
 
     const activeRound = round({ deckType: 'scale_0_5' });
     socket.next = activeRound;
@@ -647,7 +681,7 @@ describe('выбор колоды и голосование', () => {
       }),
     );
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Оценки'));
     // Шкала 0-5, а не Фибоначчи
     expect(wrapper.text()).toContain('0');
     expect(wrapper.text()).not.toContain('13');
@@ -668,8 +702,7 @@ describe('выбор колоды и голосование', () => {
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Начать раунд'));
 
-    const tshirtTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Футболки');
-    await tshirtTab!.trigger('click');
+    await selectDeckOption('Футболки');
 
     const activeRound = round({ deckType: 'tshirt' });
     socket.next = activeRound;
@@ -694,7 +727,7 @@ describe('выбор колоды и голосование', () => {
       '/rooms/r1',
       makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Оценки'));
 
     socket.next = null;
     const card = wrapper.findAll('button').find((b) => b.text().trim() === '5');
@@ -702,7 +735,7 @@ describe('выбор колоды и голосование', () => {
 
     const voted = socket.sent.find((s) => s.event === 'submit_vote');
     expect(voted?.payload).toMatchObject({ value: 5, roundId: 'rnd1' });
-    expect(card!.classes().join(' ')).toContain('bg-primary');
+    expect(card!.classes().join(' ')).toContain('bg-surface-brand');
   });
 
   it('опоздавший отказ по старому голосу не затирает уже выбранную новую карту', async () => {
@@ -719,7 +752,7 @@ describe('выбор колоды и голосование', () => {
       '/rooms/r1',
       makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Оценки'));
 
     const findCard = (label: string) =>
       wrapper.findAll('button').find((b) => b.text().trim() === label)!;
@@ -731,13 +764,13 @@ describe('выбор колоды и голосование', () => {
     // Пока ждём ответа, передумали и проголосовали за «8» — этот ack приходит сразу
     socket.next = null;
     await findCard('8').trigger('click');
-    expect(findCard('8').classes().join(' ')).toContain('bg-primary');
+    expect(findCard('8').classes().join(' ')).toContain('bg-surface-brand');
 
     // Только теперь долетает отказ по «5» — он не должен откатить уже выбранную «8»
     socket.resolveHeldAck(0, { ok: false, error: 'conflict', message: 'опоздал' });
     await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось отправить оценку'));
-    expect(findCard('8').classes().join(' ')).toContain('bg-primary');
-    expect(findCard('5').classes().join(' ')).not.toContain('bg-primary');
+    expect(findCard('8').classes().join(' ')).toContain('bg-surface-brand');
+    expect(findCard('5').classes().join(' ')).not.toContain('bg-surface-brand');
   });
 });
 
@@ -772,15 +805,15 @@ describe('вскрытие карт', () => {
       '/rooms/r1',
       makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Введите имя'));
     await wrapper.find('input').setValue('Мария');
     await wrapper.find('form').trigger('submit');
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Оценки'));
     expect(wrapper.text()).not.toContain('Вскрыть карты');
   });
 
-  it('вскрытие показывает результаты всем и прячет карты голосования', async () => {
+  it('вскрытие показывает результаты всем и переводит «Оценки» в режим доголосования (20.3.6)', async () => {
     socket.next = {
       state: roomState({
         round: round(),
@@ -822,7 +855,10 @@ describe('вскрытие карт', () => {
     );
 
     await vi.waitFor(() => expect(wrapper.text()).toContain('Результаты раунда'));
-    expect(wrapper.text()).not.toContain('Ваша оценка');
+    // «Оценки» остаются на экране и после вскрытия — можно доголосовать/переголосовать (20.3.6)
+    expect(wrapper.text()).toContain('Оценки');
+    expect(wrapper.text()).toContain('Вы можете изменить оценку после окончания раунда');
+    expect(wrapper.text()).not.toContain('Вскрыть карты');
     expect(wrapper.text()).toContain('Мария');
     expect(wrapper.text()).toContain('8');
   });
@@ -928,7 +964,7 @@ describe('вскрытие карт', () => {
       '/rooms/r1',
       makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Оценки'));
 
     // Карты подписаны буквами размеров, а не числами
     expect(wrapper.findAll('button').find((b) => b.text().trim() === 'M')).toBeDefined();
@@ -954,10 +990,11 @@ describe('вскрытие карт', () => {
       }),
     );
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Согласие: 100%'));
-    expect(wrapper.text()).not.toContain('Среднее:');
-    expect(wrapper.text()).toContain('Мин: M');
-    expect(wrapper.text()).toContain('Макс: M');
+    await vi.waitFor(() => expect(wrapper.text()).toContain('100%'));
+    expect(wrapper.text()).toContain('Согласие');
+    expect(wrapper.text()).not.toContain('Среднее');
+    expect(wrapper.text()).toContain('Мин');
+    expect(wrapper.text()).toContain('Макс');
   });
 
   it('подсвечивает карточки победителей (самое частое значение) и показывает его в результатах', async () => {
@@ -1091,27 +1128,6 @@ describe('вскрытие карт', () => {
     await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось вскрыть карты'));
   });
 
-  it('показывает счётчик проголосовавших', async () => {
-    socket.next = {
-      state: roomState({
-        round: round(),
-        participants: [
-          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
-          participant({ participantId: 'g1', name: 'Мария', isGuest: true, hasVoted: false }),
-        ],
-      }),
-      guestToken: null,
-      participantId: 'u1',
-    };
-
-    const { wrapper } = await mountApp(
-      '/rooms/r1',
-      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
-    );
-
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Проголосовало: 1 из 2'));
-  });
-
   it('вскрытие при неполном голосовании просит подтверждение, а после него вскрывает карты', async () => {
     socket.next = {
       state: roomState({
@@ -1129,11 +1145,15 @@ describe('вскрытие карт', () => {
       '/rooms/r1',
       makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Проголосовало: 1 из 2'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Ждём: Мария'));
+    // Пока проголосовали не все, кнопка так и называется (07_Room)
+    expect(wrapper.text()).not.toContain('Вскрыть карты');
 
-    const revealButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Вскрыть карты');
+    const revealButton = wrapper
+      .findAll('button')
+      .find((b) => b.text().trim() === 'Вскрыть досрочно');
     await revealButton!.trigger('click');
-    await vi.waitFor(() => expect(document.body.textContent).toContain('Проголосовали не все'));
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Вскрыть карты досрочно?'));
     expect(socket.sent.some((s) => s.event === 'reveal_cards')).toBe(false);
 
     socket.next = roundResult();
@@ -1143,6 +1163,67 @@ describe('вскрытие карт', () => {
     confirmButton!.click();
 
     await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'reveal_cards')).toBe(true));
+  });
+});
+
+describe('доголосование/переголосование после вскрытия (20.3.6)', () => {
+  it('опоздавший участник голосует по обычному submit_vote — новый раунд не запускается', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ status: 'revealed', average: 5 }),
+        result: roundResult(),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: false }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Оценки'));
+    expect(wrapper.text()).toContain('Вы можете изменить оценку после окончания раунда');
+
+    socket.next = null;
+    const card = wrapper.findAll('button').find((b) => b.text().trim() === '3');
+    await card!.trigger('click');
+
+    const sent = socket.sent.find((s) => s.event === 'submit_vote');
+    expect(sent?.payload).toMatchObject({ value: 3, roundId: 'rnd1' });
+    expect(socket.sent.some((s) => s.event === 'start_new_round')).toBe(false);
+    expect(card!.classes().join(' ')).toContain('bg-surface-brand');
+  });
+
+  it('уже поданный голос подсвечен сразу при открытии вскрытого раунда, без локального клика', async () => {
+    socket.next = {
+      state: roomState({
+        round: round({ status: 'revealed', average: 6.5 }),
+        result: roundResult({
+          average: 6.5,
+          votes: [
+            { participantId: 'u1', name: 'Иван', value: 5 },
+            { participantId: 'g1', name: 'Мария', value: 8 },
+          ],
+        }),
+        participants: [
+          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
+        ],
+      }),
+      guestToken: null,
+      participantId: 'u1',
+    };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
+    );
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Оценки'));
+
+    const card = wrapper.findAll('button').find((b) => b.text().trim() === '5');
+    expect(card!.classes().join(' ')).toContain('bg-surface-brand');
   });
 });
 
@@ -1271,8 +1352,7 @@ describe('смена шкалы оценки во время активного 
 
     const activeRound = round({ id: 'rnd2', seq: 2, deckType: 'scale_0_5' });
     socket.next = activeRound;
-    const scaleTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Шкала 0–5');
-    await scaleTab!.trigger('click');
+    await selectDeckOption('Шкала 0–5');
 
     const started = socket.sent.find((s) => s.event === 'start_new_round');
     expect(started?.payload).toMatchObject({ deckType: 'scale_0_5', fromRoundId: 'rnd1' });
@@ -1298,8 +1378,7 @@ describe('смена шкалы оценки во время активного 
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Отменить раунд'));
 
-    const tshirtTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Футболки');
-    await tshirtTab!.trigger('click');
+    await selectDeckOption('Футболки');
     await vi.waitFor(() => expect(document.body.textContent).toContain('Отменить голосование?'));
     expect(socket.sent.some((s) => s.event === 'start_new_round')).toBe(false);
 
@@ -1336,8 +1415,7 @@ describe('смена шкалы оценки во время активного 
     // Раунд идёт на Фибоначчи — карта «13» доступна только в этой колоде
     expect(wrapper.text()).toContain('13');
 
-    const scaleTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Шкала 0–5');
-    await scaleTab!.trigger('click');
+    await selectDeckOption('Шкала 0–5');
     await vi.waitFor(() => expect(document.body.textContent).toContain('Отменить голосование?'));
 
     const cancelButton = Array.from(
@@ -1374,8 +1452,7 @@ describe('смена шкалы оценки во время активного 
 
     const activeRound = round({ id: 'rnd2', seq: 2, deckType: 'tshirt' });
     socket.next = activeRound;
-    const tshirtTab = wrapper.findAll('button').find((b) => b.text().trim() === 'Футболки');
-    await tshirtTab!.trigger('click');
+    await selectDeckOption('Футболки');
 
     const started = socket.sent.find((s) => s.event === 'start_new_round');
     expect(started?.payload).toMatchObject({ deckType: 'tshirt', fromRoundId: 'rnd1' });
@@ -1400,10 +1477,7 @@ describe('смена шкалы оценки во время активного 
     );
     await vi.waitFor(() => expect(wrapper.text()).toContain('Отменить раунд'));
 
-    const fibonacciTab = wrapper
-      .findAll('button')
-      .find((b) => b.text().trim() === 'Числа Фибоначчи');
-    await fibonacciTab!.trigger('click');
+    await selectDeckOption('Числа Фибоначчи');
 
     expect(socket.sent.some((s) => s.event === 'start_new_round')).toBe(false);
     expect(document.body.textContent).not.toContain('Отменить голосование?');
@@ -1426,11 +1500,11 @@ describe('архивация комнаты', () => {
       '/rooms/r1',
       makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Введите имя'));
     await wrapper.find('input').setValue('Мария');
     await wrapper.find('form').trigger('submit');
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунд ещё не начат'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунда ещё не было'));
     expect(wrapper.text()).not.toContain('Архивировать комнату');
   });
 
@@ -1453,7 +1527,7 @@ describe('архивация комнаты', () => {
         'POST /api/rooms/r1/archive': archive,
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Оценки'));
 
     // Архивирование теперь спрятано в меню комнаты — оно телепортируется в document.body
     const menuTrigger = document.body.querySelector('button[aria-label="Меню комнаты"]');
@@ -1473,8 +1547,10 @@ describe('архивация комнаты', () => {
     await vi.waitFor(() => expect(archive).toHaveBeenCalled());
     await vi.waitFor(() => expect(wrapper.text()).toContain('Комната в архиве'));
     // Читаемо, но действия за столом больше не предлагаются
-    expect(wrapper.text()).not.toContain('Ваша оценка');
+    expect(wrapper.text()).not.toContain('Оценки');
     expect(wrapper.text()).not.toContain('Архивировать комнату');
+    // и звать в комнату только для чтения некого
+    expect(wrapper.text()).not.toContain('Пригласить');
   });
 });
 
@@ -1494,10 +1570,10 @@ describe('переименование комнаты (7.20)', () => {
       '/rooms/r1',
       makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Введите имя'));
     await wrapper.find('input').setValue('Мария');
     await wrapper.find('form').trigger('submit');
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунд ещё не начат'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Раунда ещё не было'));
 
     const menuTrigger = document.body.querySelector('button[aria-label="Меню комнаты"]');
     (menuTrigger as HTMLElement).click();
@@ -1524,7 +1600,7 @@ describe('переименование комнаты (7.20)', () => {
         'PATCH /api/rooms/r1': rename,
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Оценки'));
     expect(wrapper.text()).toContain('Планирование спринта');
 
     const menuTrigger = document.body.querySelector('button[aria-label="Меню комнаты"]');
@@ -1568,7 +1644,7 @@ describe('переименование комнаты (7.20)', () => {
         'PATCH /api/rooms/r1': rename,
       }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ваша оценка'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Оценки'));
 
     const menuTrigger = document.body.querySelector('button[aria-label="Меню комнаты"]');
     (menuTrigger as HTMLElement).click();
@@ -1634,7 +1710,7 @@ describe('исключение участника (5.8)', () => {
       '/rooms/r1',
       makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Введите имя'));
     await wrapper.find('input').setValue('Мария');
     await wrapper.find('form').trigger('submit');
 
@@ -1698,7 +1774,7 @@ describe('исключение участника (5.8)', () => {
       '/rooms/r1',
       makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Введите имя'));
     await wrapper.find('input').setValue('Мария');
     await wrapper.find('form').trigger('submit');
     await vi.waitFor(() => expect(wrapper.text()).toContain('Иван'));
@@ -1713,7 +1789,9 @@ describe('исключение участника (5.8)', () => {
     await vi.waitFor(() =>
       expect(wrapper.text()).toContain('Скрам-мастер исключил вас из этой комнаты.'),
     );
-    expect(wrapper.text()).toContain('Войти снова');
+    // Не «Войти снова» — повторный вход в ту же комнату ни к чему не приведёт
+    // (20.3.2), а уводит к списку комнат
+    expect(wrapper.text()).toContain('К комнатам');
     // Кик не должен вызвать тот же автореконнект, что и штатное истечение токена (7.7)
     expect(socket.sent.filter((s) => s.event === 'join_room').length).toBe(joinsBefore);
   });
@@ -1766,20 +1844,45 @@ describe('реакции-эмодзи на карточке участника (
 
     const trigger = document.body.querySelector('[aria-label="Поставить реакцию участнику Мария"]');
     (trigger as HTMLElement).click();
-    await vi.waitFor(() => {
-      const buttons = Array.from(document.body.querySelectorAll('button'));
-      const found = buttons.find((b) => b.getAttribute('aria-label') === '👍');
-      expect(found).not.toBeUndefined();
-    });
+    // Пикер открывается свёрнутым (только «Недавние» + кнопка «Показать все
+    // категории», 27.08.2026) — разворачиваем перед поиском конкретного эмодзи.
+    // Каталог эмодзи грузится лениво (await import(...) в onMounted, 21.4) —
+    // на холодном раннере CI трансформация 31k-строчного сгенерированного файла
+    // не укладывается в дефолтный таймаут vi.waitFor (1000мс), даём больше времени
+    await vi.waitFor(
+      () => {
+        const buttons = Array.from(document.body.querySelectorAll('button'));
+        const found = buttons.find(
+          (b) => b.getAttribute('data-testid') === 'emoji-picker-show-all',
+        );
+        expect(found).not.toBeUndefined();
+      },
+      { timeout: 5000 },
+    );
+    const showAllBtn = Array.from(document.body.querySelectorAll('button')).find(
+      (b) => b.getAttribute('data-testid') === 'emoji-picker-show-all',
+    );
+    (showAllBtn as HTMLElement).click();
+    // Разворачивание показывает полный каталог (все категории), а не только
+    // «Недавние» — на холодном раннере CI рендер такого списка тоже не всегда
+    // укладывается в дефолтный таймаут vi.waitFor (1000мс), см. 3ce8091.
+    await vi.waitFor(
+      () => {
+        const buttons = Array.from(document.body.querySelectorAll('button'));
+        const found = buttons.find((b) => b.getAttribute('aria-label') === 'thumbs up');
+        expect(found).not.toBeUndefined();
+      },
+      { timeout: 5000 },
+    );
 
     const emojiButton = Array.from(document.body.querySelectorAll('button')).find(
-      (b) => b.getAttribute('aria-label') === '👍',
+      (b) => b.getAttribute('aria-label') === 'thumbs up',
     );
     (emojiButton as HTMLElement).click();
 
     await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'send_reaction')).toBe(true));
     const sent = socket.sent.find((s) => s.event === 'send_reaction');
-    expect(sent?.payload).toMatchObject({ targetParticipantId: 'g1', emoji: '👍' });
+    expect(sent?.payload).toMatchObject({ targetParticipantId: 'g1', emoji: '👍️' });
   });
 
   it('полученная реакция видна на карточке участника', async () => {
@@ -1965,13 +2068,24 @@ describe('реакции-эмодзи на карточке участника (
 
     const trigger = document.body.querySelector('[aria-label="Поставить реакцию участнику Иван"]');
     (trigger as HTMLElement).click();
+    // Пикер открывается свёрнутым — разворачиваем перед поиском конкретного эмодзи
     await vi.waitFor(() => {
       const buttons = Array.from(document.body.querySelectorAll('button'));
-      expect(buttons.some((b) => b.getAttribute('aria-label') === '🎉')).toBe(true);
+      expect(buttons.some((b) => b.getAttribute('data-testid') === 'emoji-picker-show-all')).toBe(
+        true,
+      );
+    });
+    const showAllBtn = Array.from(document.body.querySelectorAll('button')).find(
+      (b) => b.getAttribute('data-testid') === 'emoji-picker-show-all',
+    );
+    (showAllBtn as HTMLElement).click();
+    await vi.waitFor(() => {
+      const buttons = Array.from(document.body.querySelectorAll('button'));
+      expect(buttons.some((b) => b.getAttribute('aria-label') === 'party popper')).toBe(true);
     });
 
     const emojiButton = Array.from(document.body.querySelectorAll('button')).find(
-      (b) => b.getAttribute('aria-label') === '🎉',
+      (b) => b.getAttribute('aria-label') === 'party popper',
     );
     (emojiButton as HTMLElement).click();
 
@@ -2009,308 +2123,6 @@ describe('меню комнаты: копирование ссылки', () => {
     (copyItem as HTMLElement).click();
 
     await vi.waitFor(() => expect(writeText).toHaveBeenCalledWith(window.location.href));
-  });
-});
-
-function findLinkInput(wrapper: ReturnType<typeof mount>, hint: string) {
-  return wrapper
-    .findAll('input')
-    .find((el) => el.attributes('placeholder')?.toLowerCase().includes(hint));
-}
-
-describe('правка ссылок Jira/Confluence', () => {
-  it('показывает текущие ссылки комнаты и сохраняет новые', async () => {
-    socket.next = {
-      state: roomState({
-        room: { ...room1, jiraUrl: 'https://jira.example.com/OLD-1' },
-        round: round(),
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
-      }),
-      guestToken: null,
-      participantId: 'u1',
-    };
-
-    const { wrapper } = await mountApp(
-      '/rooms/r1',
-      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
-    );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
-
-    const jiraInput = findLinkInput(wrapper, 'jira');
-    expect((jiraInput!.element as HTMLInputElement).value).toBe('https://jira.example.com/OLD-1');
-
-    const confluenceInput = findLinkInput(wrapper, 'confluence');
-    await confluenceInput!.setValue('https://confluence.example.com/NEW');
-
-    socket.next = null;
-    await wrapper.find('form').trigger('submit');
-
-    await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'update_links')).toBe(true));
-    const sent = socket.sent.find((s) => s.event === 'update_links');
-    expect(sent?.payload).toMatchObject({
-      jiraUrl: 'https://jira.example.com/OLD-1',
-      confluenceUrl: 'https://confluence.example.com/NEW',
-      version: 1,
-    });
-  });
-
-  it('ссылки доступны и без активного раунда', async () => {
-    socket.next = {
-      state: roomState({
-        room: { ...room1, jiraUrl: 'https://jira.example.com/NO-ROUND' },
-        round: null,
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
-      }),
-      guestToken: null,
-      participantId: 'u1',
-    };
-
-    const { wrapper } = await mountApp(
-      '/rooms/r1',
-      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
-    );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
-
-    const jiraInput = findLinkInput(wrapper, 'jira');
-    expect((jiraInput!.element as HTMLInputElement).value).toBe(
-      'https://jira.example.com/NO-ROUND',
-    );
-  });
-
-  it('не отправляет ссылку неверного формата', async () => {
-    socket.next = {
-      state: roomState({
-        round: round(),
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
-      }),
-      guestToken: null,
-      participantId: 'u1',
-    };
-
-    const { wrapper } = await mountApp(
-      '/rooms/r1',
-      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
-    );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
-
-    const jiraInput = findLinkInput(wrapper, 'jira');
-    await jiraInput!.setValue('ftp://not-a-link');
-    await wrapper.find('form').trigger('submit');
-
-    await vi.waitFor(() =>
-      expect(wrapper.text()).toContain('Ссылка должна начинаться с http:// или https://'),
-    );
-    expect(socket.sent.some((s) => s.event === 'update_links')).toBe(false);
-  });
-
-  it('при ошибке сохранения показывает уведомление', async () => {
-    socket.next = {
-      state: roomState({
-        round: round(),
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
-      }),
-      guestToken: null,
-      participantId: 'u1',
-    };
-
-    const { wrapper } = await mountApp(
-      '/rooms/r1',
-      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
-    );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
-
-    socket.nextError = { error: 'conflict', message: 'Ссылки уже изменил другой участник' };
-    const jiraInput = findLinkInput(wrapper, 'jira');
-    await jiraInput!.setValue('https://jira.example.com/X');
-    await wrapper.find('form').trigger('submit');
-
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось сохранить ссылки'));
-    // Черновик не теряется при отказе — можно поправить и попробовать снова
-    expect((findLinkInput(wrapper, 'jira')!.element as HTMLInputElement).value).toBe(
-      'https://jira.example.com/X',
-    );
-  });
-
-  it('обновляет поля по рассылке, пока нет несохранённого черновика', async () => {
-    socket.next = {
-      state: roomState({
-        round: round(),
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
-      }),
-      guestToken: null,
-      participantId: 'u1',
-    };
-
-    const { wrapper } = await mountApp(
-      '/rooms/r1',
-      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
-    );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
-
-    // Другой участник сохранил ссылку — рассылка приходит без нашего участия
-    socket.emitLocal(
-      WS_SERVER_EVENTS.ROOM_STATE,
-      roomState({
-        room: {
-          ...room1,
-          revision: room1.revision + 1,
-          jiraUrl: 'https://jira.example.com/SYNCED',
-          linksVersion: 2,
-        },
-        round: round(),
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
-      }),
-    );
-
-    await vi.waitFor(() => {
-      const jiraInput = findLinkInput(wrapper, 'jira');
-      expect((jiraInput!.element as HTMLInputElement).value).toBe(
-        'https://jira.example.com/SYNCED',
-      );
-    });
-  });
-
-  it('не перетирает несохранённый черновик рассылкой от другого участника и шлёт версию черновика, а не свежую', async () => {
-    socket.next = {
-      state: roomState({
-        round: round(),
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
-      }),
-      guestToken: null,
-      participantId: 'u1',
-    };
-
-    const { wrapper } = await mountApp(
-      '/rooms/r1',
-      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
-    );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
-
-    const jiraInput = findLinkInput(wrapper, 'jira');
-    await jiraInput!.setValue('https://jira.example.com/DRAFT');
-
-    // Кто-то другой успел сохранить свои правки, пока мы печатали — версия в сторе уехала вперёд
-    socket.emitLocal(
-      WS_SERVER_EVENTS.ROOM_STATE,
-      roomState({
-        room: {
-          ...room1,
-          revision: room1.revision + 1,
-          jiraUrl: 'https://jira.example.com/OTHER',
-          linksVersion: 2,
-        },
-        round: round(),
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
-      }),
-    );
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    // Черновик на экране не тронут чужой рассылкой
-    const jiraInputAfter = findLinkInput(wrapper, 'jira');
-    expect((jiraInputAfter!.element as HTMLInputElement).value).toBe(
-      'https://jira.example.com/DRAFT',
-    );
-
-    // Наше сохранение бьёт версией, на которой основан черновик (1), а не свежей из стора (2) —
-    // иначе проверка версии на сервере молча пропустила бы перезапись чужой правки
-    socket.nextError = { error: 'conflict', message: 'Ссылки уже изменил другой участник' };
-    await wrapper.find('form').trigger('submit');
-
-    await vi.waitFor(() => expect(socket.sent.some((s) => s.event === 'update_links')).toBe(true));
-    const sent = socket.sent.find((s) => s.event === 'update_links');
-    expect(sent?.payload).toMatchObject({ version: 1 });
-
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Не удалось сохранить ссылки'));
-  });
-
-  it('переход в другую комнату не протаскивает несохранённый черновик ссылок', async () => {
-    const room2: Room = {
-      ...room1,
-      id: 'r2',
-      name: 'Ретро квартала',
-      jiraUrl: 'https://jira.example.com/ROOM2',
-    };
-    socket.next = {
-      state: roomState({
-        room: { ...room1, jiraUrl: 'https://jira.example.com/ROOM1' },
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
-      }),
-      guestToken: null,
-      participantId: 'u1',
-    };
-
-    const { wrapper, router } = await mountApp(
-      '/rooms/r1',
-      makeFetch(true, {
-        'GET /api/rooms/r1': () => json(200, { room: room1 }),
-        'GET /api/rooms/r2': () => json(200, { room: room2 }),
-      }),
-    );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ссылки на задачу'));
-
-    const jiraInput = findLinkInput(wrapper, 'jira');
-    await jiraInput!.setValue('https://jira.example.com/UNSAVED-DRAFT');
-
-    socket.next = {
-      state: roomState({
-        room: room2,
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
-      }),
-      guestToken: null,
-      participantId: 'u1',
-    };
-    await router.push('/rooms/r2');
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Ретро квартала'));
-
-    await vi.waitFor(() => {
-      const input = findLinkInput(wrapper, 'jira');
-      expect((input!.element as HTMLInputElement).value).toBe('https://jira.example.com/ROOM2');
-    });
-  });
-
-  it('новый раунд не сбрасывает несохранённый черновик ссылок комнаты', async () => {
-    socket.next = {
-      state: roomState({
-        room: { ...room1, jiraUrl: 'https://jira.example.com/OLD' },
-        round: round({ status: 'revealed' }),
-        result: roundResult(),
-        participants: [
-          participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master', hasVoted: true }),
-        ],
-      }),
-      guestToken: null,
-      participantId: 'u1',
-    };
-
-    const { wrapper } = await mountApp(
-      '/rooms/r1',
-      makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
-    );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Результаты раунда'));
-
-    const jiraInput = findLinkInput(wrapper, 'jira');
-    await jiraInput!.setValue('https://jira.example.com/UNSAVED-DRAFT');
-
-    const nextRound = round({ id: 'rnd2', seq: 2 });
-    socket.next = nextRound;
-    const startButton = wrapper.findAll('button').find((b) => b.text().trim() === 'Новый раунд');
-    await startButton!.trigger('click');
-
-    socket.emitLocal(
-      WS_SERVER_EVENTS.ROOM_STATE,
-      roomState({
-        room: { ...room1, jiraUrl: 'https://jira.example.com/OLD', revision: room1.revision + 1 },
-        round: nextRound,
-        participants: [participant({ participantId: 'u1', name: 'Иван', role: 'scrum_master' })],
-      }),
-    );
-
-    // Ссылки принадлежат комнате, а не раунду (7.25) — новый раунд не должен затирать черновик
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    const input = findLinkInput(wrapper, 'jira');
-    expect((input!.element as HTMLInputElement).value).toBe(
-      'https://jira.example.com/UNSAVED-DRAFT',
-    );
   });
 });
 
@@ -2365,11 +2177,11 @@ describe('таймер обсуждения', () => {
       '/rooms/r1',
       makeFetch(false, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Представьтесь'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Введите имя'));
     await wrapper.find('input').setValue('Мария');
     await wrapper.find('form').trigger('submit');
 
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Таймер обсуждения'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Таймер раунда'));
     expect(wrapper.text()).toContain('5:00');
 
     socket.next = null;
@@ -2393,7 +2205,7 @@ describe('таймер обсуждения', () => {
       '/rooms/r1',
       makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Таймер обсуждения'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Таймер раунда'));
 
     socket.emitLocal(
       WS_SERVER_EVENTS.ROOM_STATE,
@@ -2433,7 +2245,7 @@ describe('таймер обсуждения', () => {
       '/rooms/r1',
       makeFetch(true, { 'GET /api/rooms/r1': () => json(200, { room: room1 }) }),
     );
-    await vi.waitFor(() => expect(wrapper.text()).toContain('Таймер обсуждения'));
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Таймер раунда'));
 
     socket.next = null;
     const preset10 = wrapper.findAll('button').find((b) => b.text().trim() === '10 мин');

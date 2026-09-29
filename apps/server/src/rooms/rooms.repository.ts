@@ -1,13 +1,10 @@
-import type { DeckType, Room, RoomStats, Round } from '@estimate/shared';
-import { and, desc, eq, isNull, sql } from 'drizzle-orm';
+import type { DeckType, Room, RoomDetails, RoomStats, Round } from '@estimate/shared';
+import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 
-import type { Db } from '../db';
 import { schema } from '../db';
-
-/** Транзакция Drizzle: тот же интерфейс запросов, что и у соединения */
-type Transaction = Parameters<Parameters<Db['transaction']>[0]>[0];
-export type DbExecutor = Db | Transaction;
+import type { DbExecutor } from '../common/db-executor';
+export type { DbExecutor };
 
 /** Голос в текущем раунде вместе с именем голосовавшего */
 export interface VoteRecord {
@@ -34,6 +31,16 @@ export class RoomsRepository {
       throw new Error('Не удалось создать комнату');
     }
     return this.toRoom(row);
+  }
+
+  /** Комната вместе с названием её команды (null — личная) */
+  async findRoomDetails(roomId: string): Promise<RoomDetails | null> {
+    const [row] = await this.db
+      .select({ room: schema.rooms, teamName: schema.teams.name })
+      .from(schema.rooms)
+      .leftJoin(schema.teams, eq(schema.teams.id, schema.rooms.teamId))
+      .where(eq(schema.rooms.id, roomId));
+    return row ? { room: this.toRoom(row.room), teamName: row.teamName } : null;
   }
 
   async findRoom(roomId: string): Promise<Room | null> {
@@ -167,6 +174,19 @@ export class RoomsRepository {
     return row ? this.toRound(row) : null;
   }
 
+  /**
+   * Пересчёт среднего уже вскрытого раунда — доголосование/переголосование после
+   * вскрытия (20.3.6) продолжает менять состав голосов, а `average` в БД иначе
+   * остался бы «замороженным» на момент первого вскрытия (`markRevealed` его
+   * специально больше не трогает — обновляет только строки в статусе `voting`).
+   */
+  async updateRoundAverage(roundId: string, average: number | null): Promise<void> {
+    await this.db
+      .update(schema.rounds)
+      .set({ average: average === null ? null : average.toFixed(2) })
+      .where(eq(schema.rounds.id, roundId));
+  }
+
   /** Голоса раунда вместе с именами: для пользователей — из профиля, для гостей — из голоса */
   async listVotes(roundId: string): Promise<VoteRecord[]> {
     const rows = await this.db
@@ -191,6 +211,42 @@ export class RoomsRepository {
       name: row.userName ?? row.guestName,
       value: row.value,
     }));
+  }
+
+  /**
+   * Голоса нескольких раундов одним запросом. Массив в каждой группе сохраняет
+   * порядок создания голосов — тот же, что у listVotes для одного раунда.
+   */
+  async listVotesForRounds(roundIds: readonly string[]): Promise<Map<string, VoteRecord[]>> {
+    const votesByRound = new Map(roundIds.map((roundId) => [roundId, [] as VoteRecord[]]));
+    if (roundIds.length === 0) return votesByRound;
+
+    const rows = await this.db
+      .select({
+        roundId: schema.votes.roundId,
+        userId: schema.votes.userId,
+        guestSessionId: schema.votes.guestSessionId,
+        guestName: schema.votes.guestName,
+        userName: sql<string | null>`coalesce(${schema.users.displayName}, ${schema.users.name})`,
+        value: schema.votes.value,
+        createdAt: schema.votes.createdAt,
+      })
+      .from(schema.votes)
+      .leftJoin(schema.users, eq(schema.users.id, schema.votes.userId))
+      .where(inArray(schema.votes.roundId, roundIds))
+      .orderBy(schema.votes.createdAt);
+
+    for (const row of rows) {
+      const votes = votesByRound.get(row.roundId);
+      if (votes) {
+        votes.push({
+          participantId: row.userId ?? row.guestSessionId ?? 'unknown',
+          name: row.userName ?? row.guestName,
+          value: row.value,
+        });
+      }
+    }
+    return votesByRound;
   }
 
   /**

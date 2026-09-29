@@ -1,0 +1,284 @@
+import fastifyMultipart from '@fastify/multipart';
+import {
+  BOARD_IMAGE_ALLOWED_MIME_TYPES,
+  BOARD_IMAGE_MAX_BYTES,
+  boardThumbnailUrl,
+} from '@estimate/shared';
+import type { FastifyInstance } from 'fastify';
+import fp from 'fastify-plugin';
+
+import type { AuthConfig } from '../config';
+import { ForbiddenError, NotFoundError, ValidationError } from '../errors';
+import { DOCS_TAGS, errorResponse } from '../http/openapi';
+import { idParamsSchema, uuidSchema } from '../http/schemas';
+import type { ObjectStorage } from '../platform/storage';
+
+import { BoardImagesService } from './board-images.service';
+import { BoardThumbnailsService, BOARD_THUMBNAIL_MAX_BYTES } from './board-thumbnails.service';
+import { BoardsRepository } from './boards.repository';
+import { BoardsService } from './boards.service';
+
+export interface BoardImagesPluginOptions {
+  storage: ObjectStorage;
+  /** Легаси-каталог для переходного чтения; не задан — fallback выключен */
+  legacyAssetsDir?: string;
+  auth: AuthConfig;
+}
+
+const ALLOWED_MIME = new Set<string>(BOARD_IMAGE_ALLOWED_MIME_TYPES);
+
+async function boardImagesPluginImpl(
+  app: FastifyInstance,
+  opts: BoardImagesPluginOptions,
+): Promise<void> {
+  const identify = app.identify;
+  if (!identify) {
+    throw new Error('Роуты картинок досок требуют плагина аутентификации');
+  }
+
+  const service = BoardImagesService.create(opts.storage, opts.legacyAssetsDir);
+  const thumbnails = new BoardThumbnailsService(opts.storage);
+
+  // Свой encapsulation-контекст (обычный register, не fp) только для
+  // multipart+роутов: @fastify/multipart уже зарегистрирован аватарками
+  // (avatar.plugin.ts) тем же fp()-приёмом на общем инстансе — вторая
+  // регистрация плагина multipart на том же неизолированном инстансе падает
+  // с FST_ERR_DEC_ALREADY_PRESENT (декоратор multipartErrors уже занят).
+  await app.register(async (instance) => {
+    await instance.register(fastifyMultipart, {
+      limits: { fileSize: BOARD_IMAGE_MAX_BYTES, files: 1 },
+    });
+    // Safari не кодирует canvas в WebP и отдаёт PNG — принимаем оба, sharp всё
+    // равно перекодирует снимок в WebP
+    instance.addContentTypeParser(
+      ['image/webp', 'image/png'],
+      { parseAs: 'buffer', bodyLimit: BOARD_THUMBNAIL_MAX_BYTES },
+      (_req, body, done) => done(null, body),
+    );
+
+    // POST /api/boards/:id/thumbnail?revision=N — браузер публикует готовый
+    // снимок только для видимых карточек. Source of truth — revision в БД;
+    // поздний результат не заменит thumbnail более новой доски.
+    instance.post<{ Params: { id: string }; Querystring: { revision?: string }; Body: Buffer }>(
+      '/api/boards/:id/thumbnail',
+      {
+        preHandler: app.identify,
+        bodyLimit: BOARD_THUMBNAIL_MAX_BYTES,
+        schema: {
+          tags: [DOCS_TAGS.boards],
+          summary: 'Опубликовать превью доски',
+          description:
+            'Производный WebP-снимок текущей ревизии доски. Требует доступа на просмотр.',
+          security: [{ session: [] }],
+          params: idParamsSchema,
+          querystring: {
+            type: 'object',
+            required: ['revision'],
+            properties: { revision: { type: 'string', pattern: '^[0-9]+$' } },
+          },
+          response: {
+            200: {
+              type: 'object',
+              properties: {
+                updated: { type: 'boolean' },
+                thumbnailUrl: { type: ['string', 'null'] },
+              },
+            },
+            400: { description: 'Некорректное изображение или ревизия', ...errorResponse },
+            404: { description: 'Доска не найдена', ...errorResponse },
+            413: { description: 'Превью больше 2 МБ', ...errorResponse },
+          },
+        },
+      },
+      async (req) => {
+        const revision = Number(req.query.revision);
+        if (!Number.isSafeInteger(revision) || revision < 0) {
+          throw new ValidationError('Некорректная ревизия доски');
+        }
+        if (!Buffer.isBuffer(req.body)) {
+          throw new ValidationError('Превью доски должно быть изображением');
+        }
+        const boardId = req.params.id;
+        const boardsService = BoardsService.forDatabase(app.db, opts.auth.guestSecret);
+        const board = await boardsService.assertViewAccess(req.actorId ?? null, boardId);
+        if (board.revision !== revision) return { updated: false, thumbnailUrl: null };
+        // Превью этой ревизии уже есть (его опубликовал другой клиент) — отдаём
+        // готовое, не перекодируя и не записывая лишний объект
+        if (board.thumbnailRevision === revision) {
+          return { updated: false, thumbnailUrl: board.thumbnailUrl };
+        }
+
+        const key = await thumbnails.create(boardId, revision, req.body);
+        const result = await app.db.transaction((tx) =>
+          new BoardsRepository(tx).replaceThumbnailIfCurrent(boardId, revision, key),
+        );
+        // Уборка объектов не должна ронять ответ: запись в БД уже решена
+        const staleKey = result.updated ? result.previousKey : key;
+        await thumbnails.remove(boardId, staleKey).catch((err: unknown) => {
+          req.log.warn({ err, boardId }, 'не удалось удалить старое превью доски');
+        });
+        return {
+          updated: result.updated,
+          thumbnailUrl: result.currentKey ? boardThumbnailUrl(boardId, result.currentKey) : null,
+        };
+      },
+    );
+
+    instance.get<{ Params: { id: string; key: string } }>(
+      '/api/boards/:id/thumbnail/:key',
+      {
+        preHandler: app.identify,
+        schema: {
+          tags: [DOCS_TAGS.boards],
+          summary: 'Превью доски',
+          params: {
+            type: 'object',
+            required: ['id', 'key'],
+            properties: { id: uuidSchema, key: { type: 'string' } },
+          },
+        },
+      },
+      async (req, reply) => {
+        const boardsService = BoardsService.forDatabase(app.db, opts.auth.guestSecret);
+        await boardsService.assertViewAccess(req.actorId ?? null, req.params.id);
+        const stream = await thumbnails.read(req.params.id, req.params.key);
+        if (!stream) throw new NotFoundError('Превью доски не найдено');
+        reply.header('cache-control', 'public, max-age=31536000, immutable');
+        reply.type('image/webp');
+        return reply.send(stream);
+      },
+    );
+
+    // POST /api/boards/:id/assets — загрузка картинки (требует edit-доступ)
+    instance.post<{ Params: { id: string } }>(
+      '/api/boards/:id/assets',
+      {
+        preHandler: app.identify,
+        schema: {
+          tags: [DOCS_TAGS.boards],
+          summary: 'Загрузить картинку на доску',
+          description:
+            'multipart/form-data с одним файлом (JPEG/PNG/WebP/GIF, до 8 МБ). Пережимается в WebP с ограничением стороны 2048px. Требует права редактирования доски.',
+          security: [{ session: [] }],
+          consumes: ['multipart/form-data'],
+          params: idParamsSchema,
+          response: {
+            200: {
+              description: 'Картинка загружена',
+              type: 'object',
+              properties: {
+                url: { type: 'string' },
+                width: { type: 'integer' },
+                height: { type: 'integer' },
+              },
+            },
+            400: { description: 'Файл не изображение или не передан', ...errorResponse },
+            403: { description: 'Нет прав редактировать эту доску', ...errorResponse },
+            404: { description: 'Доска не найдена', ...errorResponse },
+            413: { description: 'Файл больше 8 МБ', ...errorResponse },
+          },
+        },
+      },
+      async (req, reply) => {
+        const boardId = req.params.id;
+        const boardsService = BoardsService.forDatabase(
+          app.db,
+          opts.auth.guestSecret,
+          undefined,
+          app.log,
+        );
+
+        // Проверяем edit-доступ к доске
+        try {
+          await boardsService.assertEditAccess(req.actorId ?? null, boardId);
+        } catch (err) {
+          if (err instanceof NotFoundError) {
+            throw new NotFoundError('Доска не найдена');
+          }
+          if (err instanceof ForbiddenError) {
+            throw new ForbiddenError('Нет прав редактировать эту доску');
+          }
+          throw err;
+        }
+
+        const file = await req.file();
+        if (!file) {
+          throw new ValidationError('Файл не передан');
+        }
+        if (!ALLOWED_MIME.has(file.mimetype)) {
+          throw new ValidationError('Поддерживаются только JPEG, PNG, WebP и GIF');
+        }
+
+        const buffer = await file.toBuffer();
+        const result = await service.upload(boardId, buffer);
+        return reply.send(result);
+      },
+    );
+
+    // GET /api/boards/:id/assets/:filename — отдача картинки (требует view-доступ к доске)
+    instance.get<{ Params: { id: string; filename: string } }>(
+      '/api/boards/:id/assets/:filename',
+      {
+        preHandler: app.identify,
+        schema: {
+          tags: [DOCS_TAGS.boards],
+          summary: 'Файл картинки доски',
+          description:
+            'Требует view-доступ к доске (членство в команде, владение личной доской, или включённая ссылка).',
+          security: [{ session: [] }],
+          params: {
+            type: 'object',
+            required: ['id', 'filename'],
+            properties: {
+              id: uuidSchema,
+              filename: { type: 'string', pattern: '^[a-f0-9]{32}\\.webp$' },
+            },
+          },
+          response: {
+            403: { description: 'Нет доступа к доске', ...errorResponse },
+            404: { description: 'Картинка не найдена', ...errorResponse },
+          },
+        },
+      },
+      async (req, reply) => {
+        const boardId = req.params.id;
+        const filename = req.params.filename;
+        const boardsService = BoardsService.forDatabase(
+          app.db,
+          opts.auth.guestSecret,
+          undefined,
+          app.log,
+        );
+
+        // Проверяем view-доступ к доске (как у GET /api/boards/:id)
+        try {
+          await boardsService.assertViewAccess(req.actorId ?? null, boardId);
+        } catch (err) {
+          if (err instanceof NotFoundError) throw new NotFoundError('Доска не найдена');
+          if (err instanceof ForbiddenError) throw new ForbiddenError('Нет доступа к этой доске');
+          throw err;
+        }
+
+        let stream = await service.readFromStorage(boardId, filename);
+        if (!stream && opts.legacyAssetsDir) {
+          // Легаси-каталог плоский — без проверки владения filename мог бы
+          // принадлежать чужой доске (см. BoardImagesService.readLegacy, 21.5)
+          if (await boardsService.ownsImage(boardId, filename)) {
+            stream = await service.readLegacy(filename);
+          }
+        }
+        if (!stream) {
+          throw new NotFoundError('Картинка не найдена');
+        }
+        reply.header('cache-control', 'public, max-age=31536000, immutable');
+        reply.type('image/webp');
+        return reply.send(stream);
+      },
+    );
+  });
+}
+
+export const boardImagesPlugin = fp(boardImagesPluginImpl, {
+  name: 'estimate-board-images',
+  dependencies: ['estimate-auth'],
+});

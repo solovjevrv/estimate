@@ -3,12 +3,9 @@ import { randomBytes } from 'node:crypto';
 import type { Team, TeamMember, TeamMemberProfile, TeamRole } from '@estimate/shared';
 import { and, eq, inArray, sql } from 'drizzle-orm';
 
-import type { Db } from '../db';
 import { schema } from '../db';
-
-/** Транзакция Drizzle: тот же интерфейс запросов, что и у соединения */
-type Transaction = Parameters<Parameters<Db['transaction']>[0]>[0];
-export type DbExecutor = Db | Transaction;
+import type { DbExecutor } from '../common/db-executor';
+export type { DbExecutor };
 
 export interface Membership {
   teamId: string;
@@ -96,6 +93,16 @@ export class TeamsRepository {
       .where(eq(schema.teams.inviteCode, code))
       .limit(1);
     return row ? this.toTeam(row) : null;
+  }
+
+  /** Отдельным запросом (не join) — тот же принцип, что в listTeamsForUser: не для одной
+   *  команды нет смысла тащить состав, нужно только число. */
+  async countMembers(teamId: string): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.teamMembers)
+      .where(eq(schema.teamMembers.teamId, teamId));
+    return row?.count ?? 0;
   }
 
   async findMembership(teamId: string, userId: string): Promise<Membership | null> {

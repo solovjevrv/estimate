@@ -6,11 +6,14 @@ export function roleBadgeColor(role: TeamRole): 'primary' | 'neutral' {
   return 'neutral';
 }
 
+// Фон + цвет инициалов — Accent монограммы TeamCard (50_EntityCard) и 18_Avatar:
+// Brand и Brand-dark (surface-brand-pressed) с text-on-brand, Amber/Coral — сырые цвета
+// кита без токена с text-on-bright в обеих темах
 const AVATAR_COLOR_CLASSES = [
-  'bg-primary',
-  'bg-[var(--brand-amber)]',
-  'bg-[var(--brand-coral)]',
-  'bg-primary-700',
+  'bg-surface-brand text-text-on-brand',
+  'bg-[#ff8c00] text-text-on-bright',
+  'bg-[#f06254] text-text-on-bright',
+  'bg-surface-brand-pressed text-text-on-brand',
 ];
 
 /** Детерминированный цвет аватара по id — у одной команды он всегда один и тот же. */
