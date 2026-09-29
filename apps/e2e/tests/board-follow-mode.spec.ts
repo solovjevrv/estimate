@@ -1,7 +1,6 @@
-import { randomUUID } from 'node:crypto';
-
 import { boardLocators } from '../src/board-locators';
-import { E2E_ROOM_PREFIX, expect, test } from '../src/fixtures';
+import { createTeamBoard, createTeamWithInvite } from '../src/team-helpers';
+import { expect, test } from '../src/fixtures';
 
 /**
  * E2E на follow-mode камеры (14.5). По тому же шаблону, что
@@ -32,21 +31,10 @@ test.describe('follow-mode камеры (14.5)', () => {
     const ctxA = await newContext(browser);
     await loginAs(ctxA, owner);
     const pageA = await ctxA.newPage();
-    await pageA.goto('/teams');
-
-    await pageA.getByRole('button', { name: 'Новая команда' }).click();
-    const teamName = `${E2E_ROOM_PREFIX}Team ${randomUUID().slice(0, 8)}`;
-    await pageA.getByPlaceholder('Например, Гарантии').fill(teamName);
-    await pageA.locator('form').getByRole('button', { name: 'Создать', exact: true }).click();
-    await pageA.waitForURL(/\/teams\/[0-9a-f-]{36}/);
-    const inviteUrl = await pageA.locator('input[readonly]').inputValue();
+    const { inviteUrl } = await createTeamWithInvite(pageA);
 
     // Доска внутри команды — оба участника видят её
-    await pageA.getByRole('button', { name: 'Создать доску', exact: true }).click();
-    const boardName = `${E2E_ROOM_PREFIX}Follow ${randomUUID().slice(0, 8)}`;
-    await pageA.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
-    await pageA.locator('form').getByRole('button', { name: 'Создать доску' }).click();
-    await pageA.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await createTeamBoard(pageA, 'Follow');
     const boardA = boardLocators(pageA);
     const boardUrl = pageA.url();
     await expect(boardA.pane).toBeVisible();
@@ -128,20 +116,9 @@ test('ручной пан/зум участника B во время слеже
   const ctxA = await newContext(browser);
   await loginAs(ctxA, owner);
   const pageA = await ctxA.newPage();
-  await pageA.goto('/teams');
+  const { inviteUrl } = await createTeamWithInvite(pageA);
 
-  await pageA.getByRole('button', { name: 'Новая команда' }).click();
-  const teamName = `${E2E_ROOM_PREFIX}Team ${randomUUID().slice(0, 8)}`;
-  await pageA.getByPlaceholder('Например, Гарантии').fill(teamName);
-  await pageA.locator('form').getByRole('button', { name: 'Создать', exact: true }).click();
-  await pageA.waitForURL(/\/teams\/[0-9a-f-]{36}/);
-  const inviteUrl = await pageA.locator('input[readonly]').inputValue();
-
-  await pageA.getByRole('button', { name: 'Создать доску', exact: true }).click();
-  const boardName = `${E2E_ROOM_PREFIX}FollowPan ${randomUUID().slice(0, 8)}`;
-  await pageA.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
-  await pageA.locator('form').getByRole('button', { name: 'Создать доску' }).click();
-  await pageA.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+  await createTeamBoard(pageA, 'FollowPan');
   const boardA = boardLocators(pageA);
   const boardUrl = pageA.url();
   await expect(boardA.pane).toBeVisible();
@@ -197,20 +174,9 @@ test('уход A с доски снимает слежение у B', async ({
   const ctxA = await newContext(browser);
   await loginAs(ctxA, owner);
   const pageA = await ctxA.newPage();
-  await pageA.goto('/teams');
+  const { inviteUrl } = await createTeamWithInvite(pageA);
 
-  await pageA.getByRole('button', { name: 'Новая команда' }).click();
-  const teamName = `${E2E_ROOM_PREFIX}Team ${randomUUID().slice(0, 8)}`;
-  await pageA.getByPlaceholder('Например, Гарантии').fill(teamName);
-  await pageA.locator('form').getByRole('button', { name: 'Создать', exact: true }).click();
-  await pageA.waitForURL(/\/teams\/[0-9a-f-]{36}/);
-  const inviteUrl = await pageA.locator('input[readonly]').inputValue();
-
-  await pageA.getByRole('button', { name: 'Создать доску', exact: true }).click();
-  const boardName = `${E2E_ROOM_PREFIX}FollowLeave ${randomUUID().slice(0, 8)}`;
-  await pageA.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
-  await pageA.locator('form').getByRole('button', { name: 'Создать доску' }).click();
-  await pageA.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+  await createTeamBoard(pageA, 'FollowLeave');
   const boardA = boardLocators(pageA);
   const boardUrl = pageA.url();
   await expect(boardA.pane).toBeVisible();
