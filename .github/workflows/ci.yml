@@ -119,3 +119,7 @@ jobs:
 
       - name: Сборка
         run: pnpm build
+
+      # Комментарии разработчиков и source maps не должны попадать в браузер
+      - name: Сборка фронта без комментариев
+        run: node scripts/check-build-comments.mjs apps/web/dist
