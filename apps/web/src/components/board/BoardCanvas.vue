@@ -756,6 +756,23 @@ function toBoardDragEvent(event: NodeDragEvent): BoardDragEvent {
 
 function onNodeDragStart(event: NodeDragEvent): void {
   dragAndSnap.onNodeDragStart(toBoardDragEvent(event));
+  selection.onNodeDragStart({ nodes: event.nodes as BoardSelectionNode[] });
+}
+
+/**
+ * Двойной клик в фазе перехвата: по участнику группы, в которую не вошли, —
+ * вход в неё (18.19) и гашение события, чтобы узел не начал редактирование
+ * текста своим `@dblclick`; иначе — обычная логика создания на пустом холсте.
+ */
+function onCanvasDoubleClick(event: MouseEvent): void {
+  const nodeId = (event.target as Element | null)
+    ?.closest('.vue-flow__node')
+    ?.getAttribute('data-id');
+  if (nodeId && selection.enterGroupOnDoubleClick(nodeId)) {
+    event.stopPropagation();
+    return;
+  }
+  onPaneDoubleClick(event);
 }
 
 /**
@@ -802,7 +819,7 @@ useBoardHotkeys({
       'board-canvas-tool-armed-arrow': activeTool === 'arrow',
       'board-canvas-dragging': dragIsDragging,
     }"
-    @dblclick.capture="onPaneDoubleClick"
+    @dblclick.capture="onCanvasDoubleClick"
     @drop="onPaneDrop"
     @dragover="onPaneDragOver"
   >

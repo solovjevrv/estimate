@@ -339,18 +339,69 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
    * будет искать совпадение только по свободной оси (Y); если align вообще не
    * снапнул — работает от исходной позиции драга.
    */
+  /**
+   * Что реально едет от драга узла — единица снапа (18.20). Участник группы,
+   * которую саму не тащат, едет вместе со всей группой (`followGroupDuringDrag`),
+   * поэтому выравнивается её рамка, а не он один. Иначе — сам узел.
+   */
+  function snapUnitOf(node: BoardDragNode, draggedIds: ReadonlySet<string>): BoardDragNode {
+    const groupId = node.data.parentId;
+    if (groupId === null || draggedIds.has(groupId)) return node;
+    const group = getNodes().find((candidate) => candidate.id === groupId);
+    return group?.data.content.type === 'group' ? group : node;
+  }
+
+  /**
+   * Движущиеся и неподвижные прямоугольники снапа (18.20):
+   * - движущиеся — единицы снапа (см. `snapUnitOf`) без повторов и без тех, чей
+   *   предок-контейнер тоже едет (он и так везёт их);
+   * - неподвижные — всё, что НЕ едет вместе с жестом (не единица, не её потомок —
+   *   дети фрейма, участники группы), причём чужая группа представлена только
+   *   своей рамкой: её участники по отдельности давали бы по метке на каждого.
+   *   Дети фрейма остаются поштучно — фрейм мини-холст, по ним выравниваться полезно.
+   */
+  function snapRectsOf(event: BoardDragEvent): {
+    units: Map<string, BoardDragNode>;
+    draggedRects: SnapRect[];
+    staticRects: SnapRect[];
+  } {
+    const draggedIds = new Set(event.nodes.map((n) => n.id));
+    const candidates = new Map<string, BoardDragNode>();
+    for (const node of event.nodes) {
+      const unit = snapUnitOf(node, draggedIds);
+      candidates.set(unit.id, unit);
+    }
+    const movingIds = new Set<string>();
+    for (const unit of candidates.values()) {
+      movingIds.add(unit.id);
+      if (isBoardContainer(unit.data.content.type)) {
+        for (const descendant of descendantsOf(unit.id)) movingIds.add(descendant.id);
+      }
+    }
+    const units = new Map(
+      [...candidates].filter(
+        ([, unit]) => unit.data.parentId === null || !candidates.has(unit.data.parentId),
+      ),
+    );
+    const groupIds = new Set(
+      getItems()
+        .filter((candidate) => candidate.content.type === 'group')
+        .map((group) => group.id),
+    );
+    const staticRects = getNodes()
+      .filter((n) => !movingIds.has(n.id))
+      .filter((n) => n.data.parentId === null || !groupIds.has(n.data.parentId))
+      .map(nodeToSnapRect);
+    return { units, draggedRects: [...units.values()].map(nodeToSnapRect), staticRects };
+  }
+
   function computeCombinedSnap(event: BoardDragEvent): {
     alignResult: ReturnType<typeof computeSnapGuides>;
     gapResult: ReturnType<typeof computeEqualGapGuides>;
     draggedRects: SnapRect[];
     staticRects: SnapRect[];
   } {
-    const dragged = event.nodes;
-    const draggedIds = new Set(dragged.map((n) => n.id));
-    const staticRects = getNodes()
-      .filter((n) => !draggedIds.has(n.id))
-      .map(nodeToSnapRect);
-    const draggedRects = dragged.map(nodeToSnapRect);
+    const { draggedRects, staticRects } = snapRectsOf(event);
     const threshold = SNAP_THRESHOLD_PX / Math.max(getZoom(), 0.1);
     const alignResult = computeSnapGuides(draggedRects, staticRects, threshold);
     const effectiveRects = draggedRects.map((d) => {
@@ -396,18 +447,22 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     const dragged = event.nodes;
     if (dragged.length === 0) return;
     const { alignResult, gapResult } = computeCombinedSnap(event);
+    const draggedIds = new Set(dragged.map((n) => n.id));
 
     for (const node of dragged) {
-      // gapResult уже несёт значение align'а по осям, которых сам не касался
-      // (см. computeCombinedSnap) — если гэп-снапа для узла нет вовсе, откат
-      // на чистый align.
-      const snapped = gapResult.positions.get(node.id) ?? alignResult.positions.get(node.id);
-      if (snapped) {
-        node.computedPosition.x = snapped.x;
-        node.computedPosition.y = snapped.y;
-        node.position.x = snapped.x;
-        node.position.y = snapped.y;
-      }
+      // Снап посчитан для единицы (18.20) — самого узла или рамки его группы;
+      // узел сдвигается на ту же дельту, что и единица. gapResult уже несёт
+      // значение align'а по осям, которых сам не касался (см. computeCombinedSnap) —
+      // если гэп-снапа нет вовсе, откат на чистый align.
+      const unit = snapUnitOf(node, draggedIds);
+      const snapped = gapResult.positions.get(unit.id) ?? alignResult.positions.get(unit.id);
+      if (!snapped) continue;
+      const offset = parentOffsetOf(node);
+      const abs = { x: node.position.x + offset.x, y: node.position.y + offset.y };
+      placeNode(node, {
+        x: abs.x + snapped.x - unit.computedPosition.x,
+        y: abs.y + snapped.y - unit.computedPosition.y,
+      });
     }
   }
 
