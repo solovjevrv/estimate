@@ -100,13 +100,13 @@ import BoardFrameSizeMenu from './BoardFrameSizeMenu.vue';
 
 export type { ItemFormKind };
 
-const FORM_OPTIONS: readonly ItemFormKind[] = [
-  'sticky',
-  ...BOARD_SHAPE_KINDS,
-  'text',
-  'image',
-  'emoji',
-];
+/**
+ * Только то, во что конвертация реально возможна с переносом текста/формата
+ * (стикер ↔ фигура ↔ текст). Картинке нужен файл, эмодзи — конкретный символ:
+ * `setSelectedForm` их игнорирует, и пункты молча ничего не делали (18.18).
+ * Создаются они из левого тулбара.
+ */
+const FORM_OPTIONS: readonly ItemFormKind[] = ['sticky', ...BOARD_SHAPE_KINDS, 'text'];
 
 const FORM_ICONS: Record<ItemFormKind, string> = {
   sticky: 'i-lucide-sticky-note',
