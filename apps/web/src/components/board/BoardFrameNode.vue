@@ -249,6 +249,37 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
   /* Группа невидима, но хендлы ресайзера — видны (иначе нельзя изменить размер) */
   border-color: var(--ui-primary);
 }
+/*
+ * Рамка выделения группы — с отступом наружу (как в Miro): оболочка группы — ровно
+ * габарит участников, и линии ресайзера по её краям ложились прямо на крайние
+ * стикеры. Сдвигаем только визуальные контролы (margin у абсолютно
+ * позиционированных элементов), геометрия самой группы не меняется.
+ */
+.board-frame-node--group :deep(.vue-flow__resize-control.left) {
+  margin-left: calc(-1 * var(--board-group-selection-pad));
+}
+.board-frame-node--group :deep(.vue-flow__resize-control.right) {
+  margin-left: var(--board-group-selection-pad);
+}
+.board-frame-node--group :deep(.vue-flow__resize-control.top) {
+  margin-top: calc(-1 * var(--board-group-selection-pad));
+}
+.board-frame-node--group :deep(.vue-flow__resize-control.bottom) {
+  margin-top: var(--board-group-selection-pad);
+}
+.board-frame-node--group :deep(.vue-flow__resize-control.line.left),
+.board-frame-node--group :deep(.vue-flow__resize-control.line.right) {
+  top: calc(-1 * var(--board-group-selection-pad));
+  height: calc(100% + 2 * var(--board-group-selection-pad));
+}
+.board-frame-node--group :deep(.vue-flow__resize-control.line.top),
+.board-frame-node--group :deep(.vue-flow__resize-control.line.bottom) {
+  left: calc(-1 * var(--board-group-selection-pad));
+  width: calc(100% + 2 * var(--board-group-selection-pad));
+}
+.board-frame-node--group {
+  --board-group-selection-pad: 8px;
+}
 .board-frame-border {
   border-width: 2px;
   border-style: dashed;

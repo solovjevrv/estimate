@@ -68,6 +68,7 @@ import {
 import {
   BOARD_ACTIVE_TEXT_EDITOR_KEY,
   BOARD_CAN_EDIT_KEY,
+  BOARD_LOCAL_DRAGGING_KEY,
   BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
   BOARD_PENDING_EDGE_EDIT_ID_KEY,
   BOARD_PENDING_EDIT_ID_KEY,
@@ -636,6 +637,7 @@ provide(
   BOARD_CAN_EDIT_KEY,
   computed(() => props.canEdit),
 );
+provide(BOARD_LOCAL_DRAGGING_KEY, dragIsDragging);
 provide(BOARD_PENDING_EDIT_ID_KEY, pendingEditId);
 provide(BOARD_PENDING_EDGE_EDIT_ID_KEY, edges.pendingEdgeEditId);
 /**
@@ -754,6 +756,23 @@ function toBoardDragEvent(event: NodeDragEvent): BoardDragEvent {
 
 function onNodeDragStart(event: NodeDragEvent): void {
   dragAndSnap.onNodeDragStart(toBoardDragEvent(event));
+  selection.onNodeDragStart({ nodes: event.nodes as BoardSelectionNode[] });
+}
+
+/**
+ * Двойной клик в фазе перехвата: по участнику группы, в которую не вошли, —
+ * вход в неё (18.19) и гашение события, чтобы узел не начал редактирование
+ * текста своим `@dblclick`; иначе — обычная логика создания на пустом холсте.
+ */
+function onCanvasDoubleClick(event: MouseEvent): void {
+  const nodeId = (event.target as Element | null)
+    ?.closest('.vue-flow__node')
+    ?.getAttribute('data-id');
+  if (nodeId && selection.enterGroupOnDoubleClick(nodeId)) {
+    event.stopPropagation();
+    return;
+  }
+  onPaneDoubleClick(event);
 }
 
 /**
@@ -798,8 +817,9 @@ useBoardHotkeys({
     :class="{
       'board-canvas-tool-armed': activeTool !== 'select',
       'board-canvas-tool-armed-arrow': activeTool === 'arrow',
+      'board-canvas-dragging': dragIsDragging,
     }"
-    @dblclick.capture="onPaneDoubleClick"
+    @dblclick.capture="onCanvasDoubleClick"
     @drop="onPaneDrop"
     @dragover="onPaneDragOver"
   >
@@ -1075,9 +1095,13 @@ useBoardHotkeys({
  * интерполяции это выглядит рвано (жалоба пользователя). Плавно доводим
  * transform между патчами, но не во время СВОЕГО активного драга/резайза
  * (класс "dragging"/"resizing" вешает сам Vue Flow) — иначе собственный
- * курсор будет отставать от карточки.
+ * курсор будет отставать от карточки. На время своего драга интерполяция
+ * выключена у всех узлов: оболочка группы и соседи по ней едут за участником
+ * синхронно (`followGroupDuringDrag`), а чужие патчи в это время в холст всё
+ * равно не применяются (см. `isDragging` у watch(flowNodes)).
  */
-:deep(.vue-flow__node:not(.dragging):not(.resizing)) {
+.board-canvas-root:not(.board-canvas-dragging)
+  :deep(.vue-flow__node:not(.dragging):not(.resizing)) {
   transition: transform 120ms linear;
 }
 

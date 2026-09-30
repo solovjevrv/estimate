@@ -2,7 +2,10 @@ import type { BoardItem, BoardOp } from '@estimate/shared';
 import { describe, expect, it, vi } from 'vitest';
 
 import { useBoardDragAndSnap } from '../src/features/boards/composables/use-board-drag-and-snap';
-import type { BoardDragEvent } from '../src/features/boards/adapters/vue-flow-adapter';
+import type {
+  BoardDragEvent,
+  BoardDragNode,
+} from '../src/features/boards/adapters/vue-flow-adapter';
 
 type BoardItemPatchOp = Extract<BoardOp, { type: 'item.patch' }>;
 
@@ -960,5 +963,249 @@ describe('useBoardDragAndSnap — линейка точных расстояни
 
     api.reset();
     expect(api.activeMeasureGuides.value).toEqual([]);
+  });
+});
+
+/** Живой узел как у Vue Flow: `position` относителен родителю, `computedPosition` абсолютен */
+function liveNode(entry: BoardItem, items: BoardItem[]): BoardDragNode {
+  const parent = items.find((candidate) => candidate.id === entry.parentId);
+  return {
+    id: entry.id,
+    data: entry,
+    position: parent
+      ? { x: entry.x - parent.x, y: entry.y - parent.y }
+      : { x: entry.x, y: entry.y },
+    computedPosition: { x: entry.x, y: entry.y },
+    dimensions: { width: entry.width, height: entry.height },
+  };
+}
+
+function makeLiveDrag(items: BoardItem[]) {
+  const nodes = items.map((entry) => liveNode(entry, items));
+  const node = (id: string) => nodes.find((candidate) => candidate.id === id)!;
+  const drag = useBoardDragAndSnap({
+    canEdit: () => true,
+    getItems: () => items,
+    getNodes: () => nodes,
+    getZoom: () => 1,
+    applyOps: vi.fn<(ops: BoardOp[]) => void>(),
+    breakFollowOnEdit: vi.fn(),
+    findFrameAt: () => undefined,
+  });
+  /** Что делает сам Vue Flow на тике драга: абсолютную цель пишет в `position` относительно родителя */
+  function vueFlowMove(id: string, abs: { x: number; y: number }): void {
+    const moved = node(id);
+    const parent = nodes.find((candidate) => candidate.id === moved.data.parentId);
+    moved.position = parent
+      ? { x: abs.x - parent.computedPosition.x, y: abs.y - parent.computedPosition.y }
+      : { ...abs };
+  }
+  return { drag, node, vueFlowMove };
+}
+
+const groupItem = (overrides: Partial<BoardItem> = {}) =>
+  item('group', {
+    x: 100,
+    y: 100,
+    width: 400,
+    height: 180,
+    content: { type: 'group' },
+    ...overrides,
+  });
+
+describe('useBoardDragAndSnap — живое следование группы за драгом участника', () => {
+  it('оболочка группы едет за участником на каждом тике, участник остаётся под курсором', () => {
+    const { drag, node, vueFlowMove } = makeLiveDrag([
+      groupItem(),
+      item('member', { parentId: 'group', x: 100, y: 100 }),
+      item('mate', { parentId: 'group', x: 320, y: 100 }),
+    ]);
+    const event = new MouseEvent('mousemove');
+    drag.onNodeDragStart({ event, nodes: [node('member')] });
+
+    vueFlowMove('member', { x: 150, y: 130 });
+    drag.onNodeDrag({ event, nodes: [node('member')] });
+
+    expect(node('group').computedPosition).toEqual({ x: 150, y: 130 });
+    expect(node('group').position).toEqual({ x: 150, y: 130 });
+    expect(node('member').computedPosition).toEqual({ x: 150, y: 130 });
+    expect(node('member').position).toEqual({ x: 0, y: 0 });
+    // Сосед — Vue Flow-ребёнок группы: его относительная позиция не трогается,
+    // абсолютная пересчитается от новой позиции группы
+    expect(node('mate').position).toEqual({ x: 220, y: 0 });
+
+    // Следующий тик считается от старта жеста, а не накапливается
+    vueFlowMove('member', { x: 200, y: 90 });
+    drag.onNodeDrag({ event, nodes: [node('member')] });
+    expect(node('group').computedPosition).toEqual({ x: 200, y: 90 });
+    expect(node('member').position).toEqual({ x: 0, y: 0 });
+  });
+
+  it('группа внутри фрейма: position группы пишется относительно фрейма', () => {
+    const { drag, node, vueFlowMove } = makeLiveDrag([
+      item('frame', {
+        x: 1000,
+        y: 1000,
+        width: 640,
+        height: 400,
+        content: { type: 'frame', title: '' },
+      }),
+      groupItem({ parentId: 'frame', x: 1100, y: 1100 }),
+      item('member', { parentId: 'group', x: 1100, y: 1100 }),
+      item('mate', { parentId: 'group', x: 1320, y: 1100 }),
+    ]);
+    const event = new MouseEvent('mousemove');
+    drag.onNodeDragStart({ event, nodes: [node('member')] });
+
+    vueFlowMove('member', { x: 1150, y: 1130 });
+    drag.onNodeDrag({ event, nodes: [node('member')] });
+
+    expect(node('group').computedPosition).toEqual({ x: 1150, y: 1130 });
+    expect(node('group').position).toEqual({ x: 150, y: 130 });
+    expect(node('member').position).toEqual({ x: 0, y: 0 });
+  });
+
+  it('несколько участников одной группы в мульти-драге — компенсируются все', () => {
+    const { drag, node, vueFlowMove } = makeLiveDrag([
+      groupItem(),
+      item('member', { parentId: 'group', x: 100, y: 100 }),
+      item('mate', { parentId: 'group', x: 320, y: 100 }),
+    ]);
+    const event = new MouseEvent('mousemove');
+    drag.onNodeDragStart({ event, nodes: [node('member'), node('mate')] });
+
+    vueFlowMove('member', { x: 150, y: 130 });
+    vueFlowMove('mate', { x: 370, y: 130 });
+    drag.onNodeDrag({ event, nodes: [node('member'), node('mate')] });
+
+    expect(node('group').computedPosition).toEqual({ x: 150, y: 130 });
+    expect(node('member').position).toEqual({ x: 0, y: 0 });
+    expect(node('mate').position).toEqual({ x: 220, y: 0 });
+    expect(node('mate').computedPosition).toEqual({ x: 370, y: 130 });
+  });
+
+  it('драг самой группы — участников не трогает, их везёт Vue Flow', () => {
+    const { drag, node, vueFlowMove } = makeLiveDrag([
+      groupItem(),
+      item('member', { parentId: 'group', x: 100, y: 100 }),
+    ]);
+    const event = new MouseEvent('mousemove');
+    drag.onNodeDragStart({ event, nodes: [node('group'), node('member')] });
+
+    vueFlowMove('group', { x: 150, y: 130 });
+    drag.onNodeDrag({ event, nodes: [node('group'), node('member')] });
+
+    expect(node('group').position).toEqual({ x: 150, y: 130 });
+    expect(node('member').position).toEqual({ x: 0, y: 0 });
+  });
+
+  it('участник фрейма (не группы) — фрейм не двигается', () => {
+    const { drag, node, vueFlowMove } = makeLiveDrag([
+      item('frame', {
+        x: 0,
+        y: 0,
+        width: 640,
+        height: 400,
+        content: { type: 'frame', title: '' },
+      }),
+      item('child', { parentId: 'frame', x: 100, y: 100 }),
+    ]);
+    const event = new MouseEvent('mousemove');
+    drag.onNodeDragStart({ event, nodes: [node('child')] });
+
+    vueFlowMove('child', { x: 150, y: 130 });
+    drag.onNodeDrag({ event, nodes: [node('child')] });
+
+    expect(node('frame').position).toEqual({ x: 0, y: 0 });
+    expect(node('child').position).toEqual({ x: 150, y: 130 });
+  });
+});
+
+describe('useBoardDragAndSnap — Shift axis-lock в координатах живого узла', () => {
+  it('верхнеуровневый узел фиксирует меньшую ось на старте', () => {
+    const { drag, node, vueFlowMove } = makeLiveDrag([item('sticky', { x: 0, y: 0 })]);
+    const event = new MouseEvent('mousemove', { shiftKey: true });
+    drag.onNodeDragStart({ event, nodes: [node('sticky')] });
+
+    vueFlowMove('sticky', { x: 60, y: 5 });
+    drag.onNodeDrag({ event, nodes: [node('sticky')] });
+
+    expect(node('sticky').position).toEqual({ x: 60, y: 0 });
+    expect(node('sticky').computedPosition).toEqual({ x: 60, y: 0 });
+  });
+
+  it('участник группы: блокировка считается в абсолютных координатах, position — относительно группы', () => {
+    const { drag, node, vueFlowMove } = makeLiveDrag([
+      groupItem(),
+      item('member', { parentId: 'group', x: 100, y: 100 }),
+    ]);
+    const event = new MouseEvent('mousemove', { shiftKey: true });
+    drag.onNodeDragStart({ event, nodes: [node('member')] });
+
+    vueFlowMove('member', { x: 160, y: 105 });
+    drag.onNodeDrag({ event, nodes: [node('member')] });
+
+    expect(node('member').computedPosition).toEqual({ x: 160, y: 100 });
+    expect(node('group').computedPosition).toEqual({ x: 160, y: 100 });
+    expect(node('member').position).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe('useBoardDragAndSnap — направляющие при драге участника группы (18.20)', () => {
+  it('соседи по своей группе не дают ни направляющих, ни равных отступов — они едут вместе', () => {
+    const { drag, node, vueFlowMove } = makeLiveDrag([
+      groupItem({ height: 409 }),
+      item('member', { parentId: 'group', x: 100, y: 100 }),
+      item('below', { parentId: 'group', x: 100, y: 329 }),
+      item('right', { parentId: 'group', x: 320, y: 100 }),
+    ]);
+    const event = new MouseEvent('mousemove');
+    drag.onNodeDragStart({ event, nodes: [node('member')] });
+
+    vueFlowMove('member', { x: 140, y: 130 });
+    drag.onNodeDrag({ event, nodes: [node('member')] });
+
+    expect(drag.activeSnapGuides.value).toEqual([]);
+    expect(drag.activeGapGuides.value).toEqual([]);
+  });
+
+  it('чужая группа выравнивает только своей рамкой, не участниками', () => {
+    const { drag, node, vueFlowMove } = makeLiveDrag([
+      groupItem({ id: 'foreign', x: 600, y: 100 }),
+      item('foreign-a', { parentId: 'foreign', x: 600, y: 100 }),
+      item('foreign-b', { parentId: 'foreign', x: 820, y: 100 }),
+      item('sticky', { x: 100, y: 400 }),
+    ]);
+    const event = new MouseEvent('mousemove');
+    drag.onNodeDragStart({ event, nodes: [node('sticky')] });
+
+    // Верх стикера — на верхней границе чужой группы (и её участников)
+    vueFlowMove('sticky', { x: 100, y: 100 });
+    node('sticky').computedPosition = { x: 100, y: 100 };
+    drag.onNodeDrag({ event, nodes: [node('sticky')] });
+
+    const targets = drag.activeSnapGuides.value.flatMap((guide) => guide.targetIds);
+    expect(targets).toContain('foreign');
+    expect(targets).not.toContain('foreign-a');
+    expect(targets).not.toContain('foreign-b');
+  });
+
+  it('снап на dragStop выравнивает рамку группы и сдвигает участника на ту же дельту', () => {
+    const { drag, node, vueFlowMove } = makeLiveDrag([
+      item('anchor', { x: -50, y: 600 }),
+      groupItem(),
+      item('member', { parentId: 'group', x: 320, y: 100 }),
+      item('mate', { parentId: 'group', x: 100, y: 100 }),
+    ]);
+    const event = new MouseEvent('mousemove');
+    drag.onNodeDragStart({ event, nodes: [node('member')] });
+
+    // Группа уезжает левым краем на x=-47 — в пределах порога от левого края anchor (x=-50)
+    vueFlowMove('member', { x: 173, y: 100 });
+    drag.onNodeDrag({ event, nodes: [node('member')] });
+    expect(node('group').computedPosition.x).toBe(-47);
+    drag.onNodeDragStop({ event, nodes: [node('member')] });
+
+    expect(node('member').computedPosition).toEqual({ x: 170, y: 100 });
   });
 });

@@ -412,3 +412,22 @@ describe('BoardSelectionToolbar — фрейм (22.4.1/22.4.2)', () => {
     wrapper.unmount();
   });
 });
+
+describe('BoardSelectionToolbar — меню типа элемента (18.18)', () => {
+  it('предлагает только конвертируемые типы — без «Картинки» и «Эмодзи»', async () => {
+    const wrapper = mountToolbar({ editingText: false });
+    await wrapper.find('[aria-label="Тип элемента"]').trigger('click');
+    await nextTick();
+
+    const labels = [
+      ...document.querySelectorAll<HTMLButtonElement>(
+        '[data-testid="board-form-menu"] .board-form-menu-item',
+      ),
+    ].map((button) => button.getAttribute('aria-label'));
+    expect(labels).toContain('Стикер');
+    expect(labels).toContain('Текст');
+    expect(labels).not.toContain('Картинка');
+    expect(labels).not.toContain('Эмодзи');
+    wrapper.unmount();
+  });
+});

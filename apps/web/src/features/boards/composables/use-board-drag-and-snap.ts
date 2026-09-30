@@ -339,18 +339,69 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
    * будет искать совпадение только по свободной оси (Y); если align вообще не
    * снапнул — работает от исходной позиции драга.
    */
+  /**
+   * Что реально едет от драга узла — единица снапа (18.20). Участник группы,
+   * которую саму не тащат, едет вместе со всей группой (`followGroupDuringDrag`),
+   * поэтому выравнивается её рамка, а не он один. Иначе — сам узел.
+   */
+  function snapUnitOf(node: BoardDragNode, draggedIds: ReadonlySet<string>): BoardDragNode {
+    const groupId = node.data.parentId;
+    if (groupId === null || draggedIds.has(groupId)) return node;
+    const group = getNodes().find((candidate) => candidate.id === groupId);
+    return group?.data.content.type === 'group' ? group : node;
+  }
+
+  /**
+   * Движущиеся и неподвижные прямоугольники снапа (18.20):
+   * - движущиеся — единицы снапа (см. `snapUnitOf`) без повторов и без тех, чей
+   *   предок-контейнер тоже едет (он и так везёт их);
+   * - неподвижные — всё, что НЕ едет вместе с жестом (не единица, не её потомок —
+   *   дети фрейма, участники группы), причём чужая группа представлена только
+   *   своей рамкой: её участники по отдельности давали бы по метке на каждого.
+   *   Дети фрейма остаются поштучно — фрейм мини-холст, по ним выравниваться полезно.
+   */
+  function snapRectsOf(event: BoardDragEvent): {
+    units: Map<string, BoardDragNode>;
+    draggedRects: SnapRect[];
+    staticRects: SnapRect[];
+  } {
+    const draggedIds = new Set(event.nodes.map((n) => n.id));
+    const candidates = new Map<string, BoardDragNode>();
+    for (const node of event.nodes) {
+      const unit = snapUnitOf(node, draggedIds);
+      candidates.set(unit.id, unit);
+    }
+    const movingIds = new Set<string>();
+    for (const unit of candidates.values()) {
+      movingIds.add(unit.id);
+      if (isBoardContainer(unit.data.content.type)) {
+        for (const descendant of descendantsOf(unit.id)) movingIds.add(descendant.id);
+      }
+    }
+    const units = new Map(
+      [...candidates].filter(
+        ([, unit]) => unit.data.parentId === null || !candidates.has(unit.data.parentId),
+      ),
+    );
+    const groupIds = new Set(
+      getItems()
+        .filter((candidate) => candidate.content.type === 'group')
+        .map((group) => group.id),
+    );
+    const staticRects = getNodes()
+      .filter((n) => !movingIds.has(n.id))
+      .filter((n) => n.data.parentId === null || !groupIds.has(n.data.parentId))
+      .map(nodeToSnapRect);
+    return { units, draggedRects: [...units.values()].map(nodeToSnapRect), staticRects };
+  }
+
   function computeCombinedSnap(event: BoardDragEvent): {
     alignResult: ReturnType<typeof computeSnapGuides>;
     gapResult: ReturnType<typeof computeEqualGapGuides>;
     draggedRects: SnapRect[];
     staticRects: SnapRect[];
   } {
-    const dragged = event.nodes;
-    const draggedIds = new Set(dragged.map((n) => n.id));
-    const staticRects = getNodes()
-      .filter((n) => !draggedIds.has(n.id))
-      .map(nodeToSnapRect);
-    const draggedRects = dragged.map(nodeToSnapRect);
+    const { draggedRects, staticRects } = snapRectsOf(event);
     const threshold = SNAP_THRESHOLD_PX / Math.max(getZoom(), 0.1);
     const alignResult = computeSnapGuides(draggedRects, staticRects, threshold);
     const effectiveRects = draggedRects.map((d) => {
@@ -396,18 +447,22 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     const dragged = event.nodes;
     if (dragged.length === 0) return;
     const { alignResult, gapResult } = computeCombinedSnap(event);
+    const draggedIds = new Set(dragged.map((n) => n.id));
 
     for (const node of dragged) {
-      // gapResult уже несёт значение align'а по осям, которых сам не касался
-      // (см. computeCombinedSnap) — если гэп-снапа для узла нет вовсе, откат
-      // на чистый align.
-      const snapped = gapResult.positions.get(node.id) ?? alignResult.positions.get(node.id);
-      if (snapped) {
-        node.computedPosition.x = snapped.x;
-        node.computedPosition.y = snapped.y;
-        node.position.x = snapped.x;
-        node.position.y = snapped.y;
-      }
+      // Снап посчитан для единицы (18.20) — самого узла или рамки его группы;
+      // узел сдвигается на ту же дельту, что и единица. gapResult уже несёт
+      // значение align'а по осям, которых сам не касался (см. computeCombinedSnap) —
+      // если гэп-снапа нет вовсе, откат на чистый align.
+      const unit = snapUnitOf(node, draggedIds);
+      const snapped = gapResult.positions.get(unit.id) ?? alignResult.positions.get(unit.id);
+      if (!snapped) continue;
+      const offset = parentOffsetOf(node);
+      const abs = { x: node.position.x + offset.x, y: node.position.y + offset.y };
+      placeNode(node, {
+        x: abs.x + snapped.x - unit.computedPosition.x,
+        y: abs.y + snapped.y - unit.computedPosition.y,
+      });
     }
   }
 
@@ -455,21 +510,80 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
     activeSnapGuides.value = [];
   }
 
+  /**
+   * Абсолютная позиция родителя живого узла (0,0 для верхнеуровневого) — то,
+   * относительно чего Vue Flow считает `position` дочернего узла. Нужна потому,
+   * что на тике драга свежий только `position` перетаскиваемого узла: его
+   * `computedPosition` Vue Flow пересчитывает позже, на post-flush.
+   */
+  function parentOffsetOf(node: BoardDragNode): { x: number; y: number } {
+    if (node.data.parentId === null) return { x: 0, y: 0 };
+    const parent = getNodes().find((candidate) => candidate.id === node.data.parentId);
+    return parent ? parent.computedPosition : { x: 0, y: 0 };
+  }
+
+  /** Живой узел в абсолютную позицию `abs` — `position` пишется относительно родителя */
+  function placeNode(node: BoardDragNode, abs: { x: number; y: number }): void {
+    const offset = parentOffsetOf(node);
+    node.computedPosition.x = abs.x;
+    node.computedPosition.y = abs.y;
+    node.position.x = abs.x - offset.x;
+    node.position.y = abs.y - offset.y;
+  }
+
   /** Shift+drag — ограничение перетаскивания по одной оси */
   function applyAxisLock(event: BoardDragEvent): void {
     if (!(event.event instanceof MouseEvent) || !event.event.shiftKey) return;
     for (const node of event.nodes) {
       const start = dragStartPositions.get(node.id);
       if (!start) continue;
-      const dx = node.computedPosition.x - start.x;
-      const dy = node.computedPosition.y - start.y;
-      if (Math.abs(dx) >= Math.abs(dy)) {
-        node.computedPosition.y = start.y;
-        node.position.y = start.y;
+      const offset = parentOffsetOf(node);
+      const abs = { x: node.position.x + offset.x, y: node.position.y + offset.y };
+      if (Math.abs(abs.x - start.x) >= Math.abs(abs.y - start.y)) {
+        abs.y = start.y;
       } else {
-        node.computedPosition.x = start.x;
-        node.position.x = start.x;
+        abs.x = start.x;
       }
+      placeNode(node, abs);
+    }
+  }
+
+  /**
+   * Живое следование группы за драгом её участника. Vue Flow сам двигает только
+   * `event.nodes` (и их Vue Flow-детей), а оболочка группы — РОДИТЕЛЬ
+   * перетаскиваемого участника, не ребёнок; стор же на время драга в холст не
+   * применяется (см. `isDragging` в `BoardCanvas.vue`). Без этого группа и
+   * соседи стояли на месте весь жест и догоняли участника только после
+   * отпускания. Двигаем саму оболочку — соседи едут за ней как её Vue Flow-дети,
+   * а перетаскиваемых участников компенсируем на тот же шаг, чтобы они остались
+   * под курсором (их `position` относителен группе). В стор это не пишет —
+   * патчи по-прежнему шлёт `dragCascadeOps` (троттлинг и dragStop).
+   */
+  function followGroupDuringDrag(event: BoardDragEvent): void {
+    const draggedIds = new Set(event.nodes.map((node) => node.id));
+    const handledGroups = new Set<string>();
+    for (const node of event.nodes) {
+      const groupId = node.data.parentId;
+      if (groupId === null || draggedIds.has(groupId) || handledGroups.has(groupId)) continue;
+      const groupNode = getNodes().find((candidate) => candidate.id === groupId);
+      if (groupNode?.data.content.type !== 'group') continue;
+      const start = dragStartPositions.get(node.id);
+      const groupStart = dragStartPositions.get(groupId);
+      if (!start || !groupStart) continue;
+      handledGroups.add(groupId);
+
+      const groupBefore = { x: groupNode.computedPosition.x, y: groupNode.computedPosition.y };
+      const members = event.nodes.filter((member) => member.data.parentId === groupId);
+      const membersAbs = members.map((member) => ({
+        x: member.position.x + groupBefore.x,
+        y: member.position.y + groupBefore.y,
+      }));
+      const nodeAbs = membersAbs[members.indexOf(node)]!;
+      placeNode(groupNode, {
+        x: groupStart.x + nodeAbs.x - start.x,
+        y: groupStart.y + nodeAbs.y - start.y,
+      });
+      members.forEach((member, index) => placeNode(member, membersAbs[index]!));
     }
   }
 
@@ -538,6 +652,7 @@ export function useBoardDragAndSnap(options: BoardDragAndSnapOptions): BoardDrag
   function onNodeDrag(event: BoardDragEvent): void {
     if (!canEdit()) return;
     applyAxisLock(event);
+    followGroupDuringDrag(event);
     updateSnapGuides(event);
     // Во время драга узла реальный mousemove на пейне не долетает до cursorThrottler
     // (указатель перехвачен драгом Vue Flow) — Canvas оборачивает onNodeDrag и

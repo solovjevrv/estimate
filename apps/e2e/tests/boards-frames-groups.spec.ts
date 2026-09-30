@@ -305,6 +305,11 @@ test.describe('Доски: фреймы и группы', () => {
       box1Before!.y + box1Before!.height / 2 + 50,
       { steps: 8 },
     );
+    // Сосед едет вместе с участником ещё ДО отпускания мыши, а не догоняет
+    // его после dragStop
+    await expect
+      .poll(async () => (await sticky2.boundingBox())!.x)
+      .toBeGreaterThan(box2Before!.x + 70);
     await page.mouse.up();
 
     await expect
@@ -314,6 +319,177 @@ test.describe('Доски: фреймы и группы', () => {
     await expect
       .poll(async () => (await sticky2.boundingBox())!.x)
       .toBeGreaterThan(box2Before!.x + 70);
+  });
+
+  test('стрелка между соседями по группе едет за драгом участника синхронно, без сглаживания', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+    const owner = await createUser('board-group-edge');
+    const context = await newContext(browser);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}GroupEdge ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    const board = boardLocators(page);
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(board.pane).toBeVisible();
+
+    // Первый стикер — дальше всё относительно его положения после автофита
+    await board.toolbarButton('Стикер').click();
+    await board.pane.click({ position: { x: 300, y: 300 } });
+    await expect(board.stickyNodes).toHaveCount(1);
+    await waitForStableBox(board.stickyNodes.first());
+    await page.keyboard.press('ControlOrMeta+0');
+    await expect(board.zoom).toHaveText('100%');
+    const dragged = await waitForStableBox(board.stickyNodes.first());
+    const centerY = dragged.y + dragged.height / 2;
+    const centerX = dragged.x + dragged.width / 2;
+
+    // Соседи слева и справа от перетаскиваемого; снимаем выделение перед
+    // каждым инструментом — тулбар выделения мог бы перекрыть кнопку
+    for (const x of [centerX - 250, centerX + 250]) {
+      await board.pane.click({ position: { x: 700, y: 600 } });
+      await board.toolbarButton('Стикер').click();
+      await page.mouse.click(x, centerY);
+    }
+    await expect(board.stickyNodes).toHaveCount(3);
+    await board.pane.click({ position: { x: 700, y: 600 } });
+
+    // Слева направо: левый сосед, перетаскиваемый, правый сосед
+    const [leftId, draggedId, rightId] = await board.stickyNodes.evaluateAll((nodes) =>
+      nodes
+        .map((node) => ({
+          id: node.getAttribute('data-node-id')!,
+          x: node.getBoundingClientRect().x,
+        }))
+        .sort((a, b) => a.x - b.x)
+        .map((node) => node.id),
+    );
+
+    // Стрелка — между двумя соседями, НЕ задевая перетаскиваемый
+    const sourceHandle = page.locator(
+      `[data-testid="board-handle"][data-nodeid="${leftId}"][data-handleid="bottom"]`,
+    );
+    const targetHandle = page.locator(
+      `[data-testid="board-handle"][data-nodeid="${rightId}"][data-handleid="bottom"]`,
+    );
+    const sourceBox = (await sourceHandle.boundingBox())!;
+    const targetBox = (await targetHandle.boundingBox())!;
+    await page.mouse.move(sourceBox.x + sourceBox.width / 2, sourceBox.y + sourceBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(targetBox.x + targetBox.width / 2, targetBox.y + targetBox.height / 2, {
+      steps: 10,
+    });
+    await page.mouse.up();
+    await expect(board.edges).toHaveCount(1);
+
+    await board.pane.click({ position: { x: 700, y: 600 } });
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.locator(`[data-node-id="${draggedId}"]`).click({ button: 'right' });
+    await page.getByRole('button', { name: 'Сгруппировать', exact: true }).click();
+    await expect(board.groupNodes).toHaveCount(1);
+    await board.pane.click({ position: { x: 700, y: 600 } });
+
+    /** Позиции соседа и стрелки в одном и том же кадре */
+    const snapshot = () =>
+      page.evaluate(
+        (mateId) =>
+          new Promise<{ mate: number; edge: number }>((resolve) => {
+            requestAnimationFrame(() => {
+              const mate = document.querySelector(`[data-node-id="${mateId}"]`)!;
+              const edge = document.querySelector('[data-testid="board-edge"] path')!;
+              resolve({
+                mate: mate.getBoundingClientRect().x,
+                edge: edge.getBoundingClientRect().x,
+              });
+            });
+          }),
+        rightId,
+      );
+    const before = await snapshot();
+
+    const draggedBox = (await page.locator(`[data-node-id="${draggedId}"]`).boundingBox())!;
+    await page.mouse.move(draggedBox.x + draggedBox.width / 2, draggedBox.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(draggedBox.x + draggedBox.width / 2 + 80, draggedBox.y + 20, {
+      steps: 8,
+    });
+    // Ещё во время драга: сосед уже сдвинулся, и стрелка — на ТУ ЖЕ величину
+    // в том же кадре (раньше она догоняла его 120-мс анимацией)
+    await expect.poll(async () => (await snapshot()).mate - before.mate).toBeGreaterThan(60);
+    const during = await snapshot();
+    expect(Math.abs(during.edge - before.edge - (during.mate - before.mate))).toBeLessThan(2);
+    await page.mouse.up();
+  });
+
+  test('клик по участнику выделяет группу, двойной клик — вход в неё, следующий — редактирование (18.19)', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+    const owner = await createUser('board-group-focus');
+    const context = await newContext(browser);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}GroupFocus ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    const board = boardLocators(page);
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(board.pane).toBeVisible();
+
+    await board.toolbarButton('Стикер').click();
+    await board.pane.click({ position: { x: 300, y: 300 } });
+    await expect(board.stickyNodes).toHaveCount(1);
+    const first = await waitForStableBox(board.stickyNodes.first());
+    await board.pane.click({ position: { x: 700, y: 600 } });
+    await board.toolbarButton('Стикер').click();
+    await page.mouse.click(first.x + first.width * 1.5 + 60, first.y + first.height / 2);
+    await expect(board.stickyNodes).toHaveCount(2);
+
+    await board.pane.click({ position: { x: 700, y: 600 } });
+    await page.keyboard.press('ControlOrMeta+a');
+    await board.stickyNodes.first().click({ button: 'right' });
+    await page.getByRole('button', { name: 'Сгруппировать', exact: true }).click();
+    await expect(board.groupNodes).toHaveCount(1);
+    await board.pane.click({ position: { x: 700, y: 600 } });
+
+    const member = board.stickyNodes.first();
+    const memberEditor = member.locator('[contenteditable="true"]');
+
+    // Снаружи группы клик по участнику выделяет группу целиком
+    await member.click();
+    await expect(board.groupNodes).toHaveAttribute('data-selected', 'true');
+    await expect(member).toHaveAttribute('data-selected', 'false');
+
+    // Двойной клик — вход в группу: выделен только участник, редактирование НЕ началось
+    await member.dblclick();
+    await expect(member).toHaveAttribute('data-selected', 'true');
+    await expect(board.groupNodes).toHaveAttribute('data-selected', 'false');
+    await expect(memberEditor).toHaveCount(0);
+
+    // Уже внутри группы — следующий двойной клик открывает редактирование текста
+    await member.dblclick();
+    await expect(memberEditor).toHaveCount(1);
+
+    // Клик мимо — выход из группы: снова клик по участнику выделяет группу
+    await board.pane.click({ position: { x: 700, y: 600 } });
+    await member.click();
+    await expect(board.groupNodes).toHaveAttribute('data-selected', 'true');
+    await expect(member).toHaveAttribute('data-selected', 'false');
   });
 
   test('разгруппировка распускает группу целиком и удаляет опустевшую оболочку', async ({
@@ -388,16 +564,42 @@ test.describe('Доски: фреймы и группы', () => {
     // задела его геометрию (фрейм создаём уже после группировки)
     await board.toolbarButton('Стикер').click();
     await board.pane.click({ position: { x: 100, y: 300 } });
-    await board.toolbarButton('Стикер').click();
-    await board.pane.click({ position: { x: 250, y: 300 } });
-    await expect(board.stickyNodes).toHaveCount(2);
 
-    // `fit-view-on-init` у `<VueFlow>` подгоняет зум под первый созданный узел —
-    // для одного маленького стикера это может увести зум далеко от 100% (найдено
-    // на этом самом тесте: 200%), а вся геометрия драга ниже считается в
-    // предположении, что boundingBox-пиксели не искажены произвольным зумом
+    // Автофит по первому узлу асинхронно центрирует стикер на экране. Если он
+    // успевал сработать до второго клика по фиксированной точке пана, второй
+    // стикер ложился ЛЕВЕЕ первого, группа растягивалась влево от перетаскиваемого
+    // участника и после драга перекрывала левый край фрейма — второй драг хватал
+    // группу вместо фрейма (флаки на CI). Поэтому ждём автофит, сдвигаем вид
+    // колесом (pan-on-scroll), чтобы стикер ушёл к левому краю, и дальше ставим
+    // всё относительно его фактического положения
+    await expect(board.stickyNodes).toHaveCount(1);
+    await waitForStableBox(board.stickyNodes.first());
+    // Вся геометрия драга ниже считается в предположении, что boundingBox-пиксели
+    // не искажены произвольным зумом
     await page.keyboard.press('ControlOrMeta+0');
     await expect(board.zoom).toHaveText('100%');
+    const paneBox = await waitForStableBox(board.pane);
+    await page.mouse.move(paneBox.x + paneBox.width / 2, paneBox.y + paneBox.height / 2);
+    // Скорость pan-on-scroll не 1:1 с deltaX колеса — докручиваем (в обе стороны),
+    // пока не доедет; каждый шаг — от уже устоявшейся позиции, иначе под нагрузкой
+    // запоздавший пан приводит к перекрутке
+    await expect(async () => {
+      const box = await waitForStableBox(board.stickyNodes.first());
+      const offset = box.x - (paneBox.x + 40);
+      if (Math.abs(offset) > 30) await page.mouse.wheel(offset, 0);
+      expect(Math.abs(offset)).toBeLessThanOrEqual(30);
+    }).toPass();
+    const firstSticky = await waitForStableBox(board.stickyNodes.first());
+
+    // Тулбар выделения над стикером у левого края перекрыл бы левый тулбар доски
+    await board.pane.click({ position: { x: 700, y: 600 } });
+    await expect(page.getByTestId('board-selection-toolbar')).toBeHidden();
+    await board.toolbarButton('Стикер').click();
+    await page.mouse.click(
+      firstSticky.x + firstSticky.width + 60 + firstSticky.width / 2,
+      firstSticky.y + firstSticky.height / 2,
+    );
+    await expect(board.stickyNodes).toHaveCount(2);
 
     await board.pane.click({ position: { x: 700, y: 600 } });
     await page.keyboard.press('ControlOrMeta+a');
@@ -405,9 +607,13 @@ test.describe('Доски: фреймы и группы', () => {
     await page.getByRole('button', { name: 'Сгруппировать', exact: true }).click();
     await expect(board.groupNodes).toHaveCount(1);
 
-    // Фрейм — в стороне от группы
+    // Фрейм — правее группы, не задевая её (фрейм 640px ставится центром в точку клика)
+    const groupBox = await waitForStableBox(board.groupNodes);
     await board.toolbarButton('Фрейм').click();
-    await board.pane.click({ position: { x: 950, y: 450 } });
+    await page.mouse.click(
+      groupBox.x + groupBox.width + 80 + 320,
+      groupBox.y + groupBox.height / 2,
+    );
     await expect(board.frameNodes).toHaveCount(1);
 
     const sticky1 = board.stickyNodes.first();
@@ -415,6 +621,7 @@ test.describe('Доски: фреймы и группы', () => {
     const frameNode = board.frameNodes;
     const frameBox = await frameNode.boundingBox();
     const sticky1Before = await sticky1.boundingBox();
+    const sticky2Before = await sticky2.boundingBox();
     expect(frameBox).not.toBeNull();
 
     // Тащим ОДНОГО участника группы в центр фрейма — группа жёсткая, поэтому
@@ -437,6 +644,12 @@ test.describe('Доски: фреймы и группы', () => {
     await expect
       .poll(async () => (await sticky1.boundingBox())!.x)
       .toBeGreaterThan(sticky1Before!.x + 100);
+    // Сосед по группе доезжает каскадом чуть позже — замер «после» до этого
+    // момента устарел бы, а запоздалый каскад прилетел бы посреди драга фрейма
+    await expect
+      .poll(async () => (await sticky2.boundingBox())!.x)
+      .toBeGreaterThan(sticky2Before!.x + 100);
+    await waitForStableBox(sticky2);
 
     // Главная проверка: раз группа теперь приклеена к фрейму, перетаскивание
     // ФРЕЙМА должно унести за собой ОБА стикера — не только напрямую

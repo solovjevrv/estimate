@@ -236,15 +236,15 @@ describe('useBoardSelection — grouping flags', () => {
     expect(makeSelection({ selectedNodes: [child] }).api.canUngroupSelection.value).toBe(true);
   });
 
-  it('canUngroup: a group nested in a frame is also ungroupable when selected directly (14.8)', () => {
+  it('canUngroup: a directly selected group is ungroupable, top-level or nested in a frame (14.8, 18.19)', () => {
     const topLevelGroup = flowNode(item('g1', { content: { type: 'group' } }));
     const nestedGroup = flowNode(item('g2', { content: { type: 'group' }, parentId: 'fr' }));
 
-    // Верхнеуровневая группа: parentId всегда null — сама по себе не разгруппировывается
+    // Клик по участнику выделяет группу целиком (18.19) — у верхнеуровневой
+    // parentId null, но «Разгруппировать» для неё должно быть доступно
     expect(makeSelection({ selectedNodes: [topLevelGroup] }).api.canUngroupSelection.value).toBe(
-      false,
+      true,
     );
-    // Вложенная во фрейм — её собственный parentId уже не null (14.8)
     expect(makeSelection({ selectedNodes: [nestedGroup] }).api.canUngroupSelection.value).toBe(
       true,
     );
