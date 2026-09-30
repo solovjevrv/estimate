@@ -10,6 +10,13 @@ import type { BoardTextEditorHandle } from '../rich-text/board-rich-text';
 import type { ResizeAxisFlags, SnapRect } from '../domain/board-snap';
 
 export const BOARD_CAN_EDIT_KEY: InjectionKey<Ref<boolean>> = Symbol('boardCanEdit');
+/**
+ * Этот пользователь сейчас тащит узел(ы) — любой, не обязательно концы
+ * конкретной связи: при драге участника группы соседи и оболочка едут за ним
+ * живьём (`followGroupDuringDrag`), и связи между ними должны следовать без
+ * сглаживания, как и сами узлы
+ */
+export const BOARD_LOCAL_DRAGGING_KEY: InjectionKey<Ref<boolean>> = Symbol('boardLocalDragging');
 export const BOARD_PENDING_EDIT_ID_KEY: InjectionKey<Ref<string | null>> =
   Symbol('boardPendingEditId');
 /** Id связи, которую нужно сразу открыть для ввода подписи текстом прямо на стрелке (12.8) */

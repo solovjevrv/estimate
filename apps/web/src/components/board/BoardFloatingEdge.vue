@@ -15,6 +15,7 @@ import { useI18n } from 'vue-i18n';
 
 import {
   BOARD_CAN_EDIT_KEY,
+  BOARD_LOCAL_DRAGGING_KEY,
   BOARD_PENDING_EDGE_EDIT_ID_KEY,
 } from '../../features/boards/context/board-canvas-keys';
 import { resolveEdgeColor } from '../../features/boards/config/board-item-defaults';
@@ -39,6 +40,7 @@ const props = defineProps<EdgeProps<BoardEdge>>();
 const { t } = useI18n();
 const boardSession = useBoardSessionStore();
 const canEdit = inject(BOARD_CAN_EDIT_KEY, ref(true));
+const localDragging = inject(BOARD_LOCAL_DRAGGING_KEY, ref(false));
 const pendingEdgeEditId = inject(BOARD_PENDING_EDGE_EDIT_ID_KEY, ref(null));
 const {
   project,
@@ -112,7 +114,10 @@ const params = computed(() =>
  * Отключается (мгновенный снап без анимации), если хотя бы одна из подключённых
  * карточек тащится ЛОКАЛЬНО этим пользователем (`node.dragging` — Vue Flow-нативный
  * флаг, выставляется исключительно её собственным pointer-драгом, не патчами
- * извне, — иначе линия отставала бы от курсора при обычном перетаскивании), либо
+ * извне, — иначе линия отставала бы от курсора при обычном перетаскивании) или
+ * этот пользователь вообще что-то тащит (`localDragging`: связь между соседями
+ * по группе, которые едут за перетаскиваемым участником, сама `dragging` не
+ * получает — без этого она догоняла бы их с задержкой), либо
  * изменилась сторона крепления (дискретный выбор, не непрерывная величина —
  * интерполировать нечего, скачок и так мгновенный).
  */
@@ -135,7 +140,7 @@ function stepAnchorTween(target: EdgeAnchorParams, now: number): void {
 }
 
 watch(params, (next) => {
-  const isLocalDrag = props.sourceNode.dragging || props.targetNode.dragging;
+  const isLocalDrag = localDragging.value || props.sourceNode.dragging || props.targetNode.dragging;
   const sideChanged =
     next.sourceSide !== renderedAnchor.value.sourceSide ||
     next.targetSide !== renderedAnchor.value.targetSide;
