@@ -30,6 +30,7 @@ import {
 } from './use-board-selection-ops';
 import type { ItemFormKind } from '../board-item-form';
 import type { BoardContextMenuTarget } from '../board-context-menu';
+import { useBoardGroupFocus } from './use-board-group-focus';
 import type { FormatMarkKey } from './use-rich-text-editing';
 import {
   type BoardSelectionEdge,
@@ -645,9 +646,9 @@ export function useBoardSelection(options: BoardSelectionOptions) {
       selectedNodes.value.length >= 2 &&
       !selectedNodes.value.some((n) => isBoardContainer(n.data.content.type)),
   );
-  /** Можно разгруппировать: хотя бы один выделенный элемент сейчас внутри контейнера (14.3) */
+  /** Можно разгруппировать: выделена группа (клик по участнику выделяет её, 18.19) или элемент в контейнере (14.3) */
   const canUngroupSelection = computed(() =>
-    selectedNodes.value.some((n) => n.data.parentId !== null),
+    selectedNodes.value.some((n) => n.data.parentId !== null || n.data.content.type === 'group'),
   );
 
   /**
@@ -928,6 +929,9 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     for (const e of options.getEdges()) e.selected = false;
   }
 
+  // Вход в группу (18.19): клик по участнику выделяет группу целиком
+  const groupFocus = useBoardGroupFocus(options.getNodes, selectedNodes, selectOnlyNode);
+
   /**
    * Клик по узлу-контейнеру (frame/group, 14.3), пока активен инструмент
    * создания элемента. Vue Flow гасит `pane-click` для клика по ЛЮБОМУ узлу —
@@ -937,7 +941,10 @@ export function useBoardSelection(options: BoardSelectionOptions) {
    * приклеиться к нему автоматически (см. containerAt в Canvas).
    */
   function onNodeClick(args: { event: MouseEvent | TouchEvent; node: BoardSelectionNode }): void {
-    if (options.activeTool() === 'select') return;
+    if (options.activeTool() === 'select') {
+      groupFocus.redirectSelectionToGroup(args.node);
+      return;
+    }
     if (!isBoardContainer(args.node.data.content.type)) return;
     if (!(args.event instanceof MouseEvent)) return;
     options.onContainerClick(args.event);
@@ -950,7 +957,10 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     if (!options.canEdit()) return;
     args.event.preventDefault();
     // Правый клик по НЕвыделенной карточке заменяет выделение ей (как в Figma/Miro)
-    if (!args.node.selected) selectOnlyNode(args.node);
+    if (!args.node.selected) {
+      selectOnlyNode(args.node);
+      groupFocus.redirectSelectionToGroup(args.node);
+    }
     contextMenu.value = { target: 'item', ...contextMenuPositionFromEvent(args.event) };
   }
 
@@ -1011,6 +1021,8 @@ export function useBoardSelection(options: BoardSelectionOptions) {
     selectAllElements,
     clearAllSelection,
     onNodeClick,
+    onNodeDragStart: groupFocus.onNodeDragStart,
+    enterGroupOnDoubleClick: groupFocus.enterGroupOnDoubleClick,
     onNodeContextMenu,
     onSelectionContextMenu,
     onEdgeContextMenu,

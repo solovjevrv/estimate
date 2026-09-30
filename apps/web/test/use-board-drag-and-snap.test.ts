@@ -1150,3 +1150,62 @@ describe('useBoardDragAndSnap — Shift axis-lock в координатах жи
     expect(node('member').position).toEqual({ x: 0, y: 0 });
   });
 });
+
+describe('useBoardDragAndSnap — направляющие при драге участника группы (18.20)', () => {
+  it('соседи по своей группе не дают ни направляющих, ни равных отступов — они едут вместе', () => {
+    const { drag, node, vueFlowMove } = makeLiveDrag([
+      groupItem({ height: 409 }),
+      item('member', { parentId: 'group', x: 100, y: 100 }),
+      item('below', { parentId: 'group', x: 100, y: 329 }),
+      item('right', { parentId: 'group', x: 320, y: 100 }),
+    ]);
+    const event = new MouseEvent('mousemove');
+    drag.onNodeDragStart({ event, nodes: [node('member')] });
+
+    vueFlowMove('member', { x: 140, y: 130 });
+    drag.onNodeDrag({ event, nodes: [node('member')] });
+
+    expect(drag.activeSnapGuides.value).toEqual([]);
+    expect(drag.activeGapGuides.value).toEqual([]);
+  });
+
+  it('чужая группа выравнивает только своей рамкой, не участниками', () => {
+    const { drag, node, vueFlowMove } = makeLiveDrag([
+      groupItem({ id: 'foreign', x: 600, y: 100 }),
+      item('foreign-a', { parentId: 'foreign', x: 600, y: 100 }),
+      item('foreign-b', { parentId: 'foreign', x: 820, y: 100 }),
+      item('sticky', { x: 100, y: 400 }),
+    ]);
+    const event = new MouseEvent('mousemove');
+    drag.onNodeDragStart({ event, nodes: [node('sticky')] });
+
+    // Верх стикера — на верхней границе чужой группы (и её участников)
+    vueFlowMove('sticky', { x: 100, y: 100 });
+    node('sticky').computedPosition = { x: 100, y: 100 };
+    drag.onNodeDrag({ event, nodes: [node('sticky')] });
+
+    const targets = drag.activeSnapGuides.value.flatMap((guide) => guide.targetIds);
+    expect(targets).toContain('foreign');
+    expect(targets).not.toContain('foreign-a');
+    expect(targets).not.toContain('foreign-b');
+  });
+
+  it('снап на dragStop выравнивает рамку группы и сдвигает участника на ту же дельту', () => {
+    const { drag, node, vueFlowMove } = makeLiveDrag([
+      item('anchor', { x: -50, y: 600 }),
+      groupItem(),
+      item('member', { parentId: 'group', x: 320, y: 100 }),
+      item('mate', { parentId: 'group', x: 100, y: 100 }),
+    ]);
+    const event = new MouseEvent('mousemove');
+    drag.onNodeDragStart({ event, nodes: [node('member')] });
+
+    // Группа уезжает левым краем на x=-47 — в пределах порога от левого края anchor (x=-50)
+    vueFlowMove('member', { x: 173, y: 100 });
+    drag.onNodeDrag({ event, nodes: [node('member')] });
+    expect(node('group').computedPosition.x).toBe(-47);
+    drag.onNodeDragStop({ event, nodes: [node('member')] });
+
+    expect(node('member').computedPosition).toEqual({ x: 170, y: 100 });
+  });
+});

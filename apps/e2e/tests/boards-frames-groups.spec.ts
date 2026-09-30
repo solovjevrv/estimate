@@ -430,6 +430,68 @@ test.describe('Доски: фреймы и группы', () => {
     await page.mouse.up();
   });
 
+  test('клик по участнику выделяет группу, двойной клик — вход в неё, следующий — редактирование (18.19)', async ({
+    browser,
+    createUser,
+    loginAs,
+    newContext,
+  }) => {
+    test.slow();
+    const owner = await createUser('board-group-focus');
+    const context = await newContext(browser);
+    await loginAs(context, owner);
+    const page = await context.newPage();
+
+    await page.goto('/boards');
+    await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
+    const boardName = `${E2E_ROOM_PREFIX}GroupFocus ${randomUUID().slice(0, 8)}`;
+    await page.getByPlaceholder('Например, Ретро спринта 24').fill(boardName);
+    await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+    const board = boardLocators(page);
+    await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+    await expect(board.pane).toBeVisible();
+
+    await board.toolbarButton('Стикер').click();
+    await board.pane.click({ position: { x: 300, y: 300 } });
+    await expect(board.stickyNodes).toHaveCount(1);
+    const first = await waitForStableBox(board.stickyNodes.first());
+    await board.pane.click({ position: { x: 700, y: 600 } });
+    await board.toolbarButton('Стикер').click();
+    await page.mouse.click(first.x + first.width * 1.5 + 60, first.y + first.height / 2);
+    await expect(board.stickyNodes).toHaveCount(2);
+
+    await board.pane.click({ position: { x: 700, y: 600 } });
+    await page.keyboard.press('ControlOrMeta+a');
+    await board.stickyNodes.first().click({ button: 'right' });
+    await page.getByRole('button', { name: 'Сгруппировать', exact: true }).click();
+    await expect(board.groupNodes).toHaveCount(1);
+    await board.pane.click({ position: { x: 700, y: 600 } });
+
+    const member = board.stickyNodes.first();
+    const memberEditor = member.locator('[contenteditable="true"]');
+
+    // Снаружи группы клик по участнику выделяет группу целиком
+    await member.click();
+    await expect(board.groupNodes).toHaveAttribute('data-selected', 'true');
+    await expect(member).toHaveAttribute('data-selected', 'false');
+
+    // Двойной клик — вход в группу: выделен только участник, редактирование НЕ началось
+    await member.dblclick();
+    await expect(member).toHaveAttribute('data-selected', 'true');
+    await expect(board.groupNodes).toHaveAttribute('data-selected', 'false');
+    await expect(memberEditor).toHaveCount(0);
+
+    // Уже внутри группы — следующий двойной клик открывает редактирование текста
+    await member.dblclick();
+    await expect(memberEditor).toHaveCount(1);
+
+    // Клик мимо — выход из группы: снова клик по участнику выделяет группу
+    await board.pane.click({ position: { x: 700, y: 600 } });
+    await member.click();
+    await expect(board.groupNodes).toHaveAttribute('data-selected', 'true');
+    await expect(member).toHaveAttribute('data-selected', 'false');
+  });
+
   test('разгруппировка распускает группу целиком и удаляет опустевшую оболочку', async ({
     browser,
     createUser,
