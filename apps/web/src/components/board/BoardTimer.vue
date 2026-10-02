@@ -109,7 +109,7 @@ const control = computed(() => {
       v-model:open="open"
       :content="{ side: 'bottom', align: 'end', sideOffset: 8 }"
       :reference="pill ?? undefined"
-      :ui="{ content: 'rounded-r16' }"
+      :ui="{ content: 'rounded-r16 shadow-(--shadow-elevation-3)' }"
     >
       <button
         type="button"
