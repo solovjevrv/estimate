@@ -9,6 +9,8 @@ import {
   BOARD_WS_SERVER_EVENTS,
   isBoardContainer,
   isValidBoardTimerDuration,
+  isValidVotingLimits,
+  isVotableContent,
   type ApplyBoardOpsPayload,
   type ApplyBoardOpsResult,
   type BoardCommittedOp,
@@ -28,12 +30,18 @@ describe('контракт realtime-доски', () => {
       'board:timer:pause',
       'board:timer:reset',
       'board:timer:extend',
+      'board:voting:start',
+      'board:voting:vote',
+      'board:voting:close',
+      'board:voting:cancel',
+      'board:voting:hide',
     ]);
     expect(Object.values(BOARD_WS_SERVER_EVENTS)).toEqual([
       'board:ops',
       'board:awareness',
       'board:presence',
       'board:timer',
+      'board:voting',
     ]);
   });
 
@@ -45,6 +53,25 @@ describe('контракт realtime-доски', () => {
     for (const invalid of [0, 30, 90, 7260, 300.5, Number.NaN]) {
       expect(isValidBoardTimerDuration(invalid)).toBe(false);
     }
+  });
+
+  it('голосование: лимиты точек и элементы, за которые можно голосовать (15.2)', () => {
+    expect(isValidVotingLimits(3, 3)).toBe(true);
+    expect(isValidVotingLimits(20, 1)).toBe(true);
+    for (const [votes, perItem] of [
+      [0, 1],
+      [3, 4],
+      [21, 1],
+      [2.5, 1],
+      ['3', 1],
+    ] as const) {
+      expect(isValidVotingLimits(votes, perItem)).toBe(false);
+    }
+    expect(isVotableContent({ type: 'sticky', text: '' })).toBe(true);
+    expect(isVotableContent({ type: 'shape', shape: 'rectangle', text: '' })).toBe(true);
+    expect(isVotableContent({ type: 'text', text: '' })).toBe(true);
+    expect(isVotableContent({ type: 'emoji', emoji: '👍' })).toBe(false);
+    expect(isVotableContent({ type: 'frame', title: '' })).toBe(false);
   });
 
   it('фиксирует лимиты операции и буфера догона', () => {

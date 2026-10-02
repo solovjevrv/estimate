@@ -6,6 +6,7 @@ import type {
 } from '@estimate/shared';
 import { sql } from 'drizzle-orm';
 import {
+  boolean,
   check,
   doublePrecision,
   index,
@@ -29,6 +30,7 @@ export const deckTypeEnum = pgEnum('deck_type', ['fibonacci', 'scale_0_5', 'tshi
 export const roundStatusEnum = pgEnum('round_status', ['voting', 'revealed']);
 export const boardStatusEnum = pgEnum('board_status', ['active', 'archived']);
 export const boardShareRoleEnum = pgEnum('board_share_role', ['view', 'edit']);
+export const boardVotingStatusEnum = pgEnum('board_voting_status', ['active', 'closed']);
 
 /**
  * Авторизованные пользователи (OAuth Google/Яндекс).
@@ -275,6 +277,62 @@ export const boardEdges = pgTable(
     zIndex: integer('z_index').notNull().default(0),
   },
   (t) => [index('board_edges_board_id_idx').on(t.boardId)],
+);
+
+/**
+ * Голосование точками на доске (15.2). Не больше одного активного на доску
+ * (частичный уникальный индекс). Завершённое хранится: итоги видны, пока их не
+ * скрыли (`results_hidden`), и пригодятся для сортировки по голосам (15.4).
+ * `item_ids` — скоуп (выделенные элементы или элементы фрейма на момент
+ * старта), null — вся доска. Отменённое голосование удаляется вместе с голосами.
+ */
+export const boardVotings = pgTable(
+  'board_votings',
+  {
+    id: uuid('id').primaryKey().defaultRandom(),
+    boardId: uuid('board_id')
+      .notNull()
+      .references(() => boards.id, { onDelete: 'cascade' }),
+    createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
+    status: boardVotingStatusEnum('status').notNull().default('active'),
+    votesPerParticipant: integer('votes_per_participant').notNull(),
+    maxPerItem: integer('max_per_item').notNull(),
+    itemIds: uuid('item_ids').array(),
+    resultsHidden: boolean('results_hidden').notNull().default(false),
+    startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
+    closedAt: timestamp('closed_at', { withTimezone: true }),
+  },
+  (t) => [
+    index('board_votings_board_id_idx').on(t.boardId),
+    uniqueIndex('board_votings_one_active_idx')
+      .on(t.boardId)
+      .where(sql`${t.status} = 'active'`),
+  ],
+);
+
+/**
+ * Точки одного участника на одном элементе. `participant_id` — id пользователя
+ * или сессионный id гостя (не FK: гости в таблице users не живут), имя пишется
+ * сюда же — авторы видны в итогах, а гостевые сессии живут только в памяти
+ * процесса. Удаление элемента уносит его голоса — они возвращаются голосовавшим.
+ */
+export const boardVotes = pgTable(
+  'board_votes',
+  {
+    votingId: uuid('voting_id')
+      .notNull()
+      .references(() => boardVotings.id, { onDelete: 'cascade' }),
+    itemId: uuid('item_id')
+      .notNull()
+      .references(() => boardItems.id, { onDelete: 'cascade' }),
+    participantId: text('participant_id').notNull(),
+    participantName: text('participant_name').notNull(),
+    count: integer('count').notNull(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.votingId, t.itemId, t.participantId] }),
+    check('board_votes_count_positive', sql`${t.count} > 0`),
+  ],
 );
 
 /**

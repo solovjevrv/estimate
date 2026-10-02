@@ -155,6 +155,13 @@
       "when": 1790600536672,
       "tag": "0021_simple_nightcrawler",
       "breakpoints": true
+    },
+    {
+      "idx": 22,
+      "version": "7",
+      "when": 1790946690982,
+      "tag": "0022_light_daredevil",
+      "breakpoints": true
     }
   ]
 }

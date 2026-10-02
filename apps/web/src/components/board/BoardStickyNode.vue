@@ -16,6 +16,7 @@ import { useBoardNodeEditing } from '../../features/boards/composables/use-board
 import { useSessionStore } from '../../stores/session';
 import { useBoardSessionStore } from '../../stores/board-session';
 import BoardEditingBadge from './shared/BoardEditingBadge.vue';
+import BoardVoteBadge from './BoardVoteBadge.vue';
 import BoardRichText from './BoardRichText.vue';
 import EmojiPicker from '../EmojiPicker.vue';
 
@@ -150,6 +151,7 @@ watch(
     :data-selected="props.selected ? 'true' : 'false'"
   >
     <BoardEditingBadge v-if="lockedBy" :name="lockedBy.name" data-testid="board-editing-badge" />
+    <BoardVoteBadge :item="props.data" />
     <NodeResizer
       :is-visible="props.selected && !editing && canEdit && !lockedBy"
       :min-width="STICKY_MIN_WIDTH"

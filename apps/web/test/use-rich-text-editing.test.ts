@@ -90,6 +90,7 @@ function snapshotResult(revision: number, items: BoardItem[] = []): JoinBoardRes
     participantId: 'actor1',
     guestToken: null,
     timer: { durationSec: 300, running: false, endsAt: null, remainingSec: 300 },
+    voting: null,
   };
 }
 

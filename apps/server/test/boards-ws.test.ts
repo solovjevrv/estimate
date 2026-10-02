@@ -14,6 +14,7 @@ import type {
   BoardOpsBatch,
   BoardPresenceEntry,
   BoardTimerState,
+  BoardVotingState,
   JoinBoardResult,
   WsAck,
 } from '@estimate/shared';
@@ -25,7 +26,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { buildApp } from '../src/app';
 import { ACCESS_COOKIE, TokenService, UsersRepository } from '../src/auth';
-import { BoardsService } from '../src/boards';
+import { BoardsService, BoardVotingService } from '../src/boards';
 import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
 import { RoomsGameService } from '../src/rooms';
@@ -185,7 +186,10 @@ describeDb('WS-канал досок', () => {
     app = buildApp({ db, auth: authConfig });
     const roomsService = RoomsGameService.forDatabase(db, authConfig.guestSecret);
     const boardsService = BoardsService.forDatabase(db, authConfig.guestSecret);
-    new SocketGateway(roomsService, boardsService, { corsOrigin: '*' }).attach(app);
+    new SocketGateway(roomsService, boardsService, {
+      corsOrigin: '*',
+      boardVoting: new BoardVotingService(db, boardsService),
+    }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
     port = (app.server.address() as AddressInfo).port;
   });
@@ -724,6 +728,266 @@ describeDb('WS-канал досок', () => {
 
       expect(back.timer.running).toBe(false);
       expect(back.timer.remainingSec).toBe(300);
+    });
+  });
+
+  describe('голосование точками (15.2)', () => {
+    async function addItems(
+      client: Socket,
+      items: Array<Omit<BoardItem, 'boardId' | 'createdBy' | 'updatedAt'>>,
+    ): Promise<void> {
+      const ack = await emit<ApplyBoardOpsResult>(client, BOARD_WS_EVENTS.APPLY, {
+        ops: items.map((item, i) => ({ type: 'item.create', clientOpId: `v${i}`, item })),
+      });
+      if (!ack.ok) throw new Error(ack.message);
+    }
+
+    /**
+     * Команда голосования и снимок, который получил `listener`. У отправителя
+     * персональная рассылка приходит раньше ack (сервер шлёт её до ответа) —
+     * берём последнюю до ответа; у другого сокета ждём первую подходящую под
+     * `expect`, а не просто первую: на сокете могла остаться рассылка от
+     * прошлой команды.
+     */
+    async function act(
+      client: Socket,
+      event: string,
+      payload: unknown,
+      listener: Socket = client,
+      expected: (state: BoardVotingState | null) => boolean = () => true,
+    ): Promise<{ ack: WsAck<null>; state: BoardVotingState | null }> {
+      const received: Array<BoardVotingState | null> = [];
+      let notify: (() => void) | null = null;
+      const onState = (state: BoardVotingState | null): void => {
+        received.push(state);
+        notify?.();
+      };
+      listener.on(BOARD_WS_SERVER_EVENTS.VOTING, onState);
+      try {
+        const ack = await emit<null>(client, event, payload);
+        if (!ack.ok) return { ack, state: null };
+        if (listener === client) return { ack, state: received.at(-1) ?? null };
+        const deadline = Date.now() + ANSWER_TIMEOUT_MS;
+        while (!received.some(expected)) {
+          if (Date.now() > deadline) throw new Error(`${event}: нужная рассылка не пришла`);
+          await new Promise<void>((resolve) => {
+            notify = resolve;
+            setTimeout(resolve, 50);
+          });
+        }
+        return { ack, state: received.find(expected) ?? null };
+      } finally {
+        listener.off(BOARD_WS_SERVER_EVENTS.VOTING, onState);
+      }
+    }
+
+    async function teamBoard(label: string) {
+      const owner = await newUser(`${label}-owner`);
+      const viewer = await newUser(`${label}-viewer`);
+      const teamId = await newTeam(owner, [[viewer, 'guest']]);
+      const boardId = await newBoard(owner, teamId);
+      const ownerClient = connect(owner);
+      const viewerClient = connect(viewer);
+      await joinBoard(ownerClient, boardId);
+      await joinBoard(viewerClient, boardId);
+      const [a, b, c] = [stickyItem(), stickyItem(), stickyItem()];
+      await addItems(ownerClient, [a, b, c]);
+      return { owner, viewer, boardId, ownerClient, viewerClient, a, b, c };
+    }
+
+    it('запуск рассылается всем, вошедший получает голосование в снимке входа', async () => {
+      const { owner, boardId, ownerClient, viewerClient } = await teamBoard('vote-start');
+
+      const { state } = await act(
+        ownerClient,
+        BOARD_WS_EVENTS.VOTING_START,
+        { votesPerParticipant: 3, maxPerItem: 2 },
+        viewerClient,
+        (state) => state?.status === 'active',
+      );
+
+      expect(state).toMatchObject({ status: 'active', votesPerParticipant: 3, myRemaining: 3 });
+      const late = await joinBoard(connect(owner), boardId);
+      expect(late.voting?.id).toBe(state?.id);
+    });
+
+    it('чужие голоса скрыты до завершения, после — итоги с авторами', async () => {
+      const { ownerClient, viewerClient, a, b } = await teamBoard('vote-hidden');
+      const { state: started } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 3,
+        maxPerItem: 2,
+      });
+      const votingId = started!.id;
+
+      // Зритель (view) голосовать может
+      const { state: mine } = await act(viewerClient, BOARD_WS_EVENTS.VOTING_VOTE, {
+        votingId,
+        itemId: a.id,
+        delta: 1,
+      });
+      expect(mine?.myVotes).toEqual({ [a.id]: 1 });
+
+      const { state: ownerView } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_VOTE, {
+        votingId,
+        itemId: b.id,
+        delta: 1,
+      });
+      expect(ownerView?.myVotes).toEqual({ [b.id]: 1 });
+      expect(ownerView?.votedCount).toBe(2);
+      expect(ownerView?.results).toBeNull();
+
+      const { state: closed } = await act(
+        ownerClient,
+        BOARD_WS_EVENTS.VOTING_CLOSE,
+        { votingId },
+        viewerClient,
+        (state) => state?.status === 'closed',
+      );
+      expect(closed?.status).toBe('closed');
+      expect(closed?.results?.map((r) => r.itemId).sort()).toEqual([a.id, b.id].sort());
+      expect(closed?.results?.find((r) => r.itemId === a.id)?.authors[0]?.name).toBe(
+        'Пользователь vote-hidden-viewer',
+      );
+
+      const { state: hidden } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_HIDE, { votingId });
+      expect(hidden).toBeNull();
+    });
+
+    it('лимиты: не больше голосов на человека и на один элемент, минус снимает', async () => {
+      const { ownerClient, a, b } = await teamBoard('vote-limits');
+      const { state } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 2,
+        maxPerItem: 1,
+      });
+      const votingId = state!.id;
+      const vote = (itemId: string, delta: 1 | -1) =>
+        emit<null>(ownerClient, BOARD_WS_EVENTS.VOTING_VOTE, { votingId, itemId, delta });
+
+      expect((await vote(a.id, 1)).ok).toBe(true);
+      const sameItem = await vote(a.id, 1);
+      expect(sameItem.ok).toBe(false);
+      if (!sameItem.ok) expect(sameItem.error).toBe('conflict');
+      expect((await vote(b.id, 1)).ok).toBe(true);
+
+      const third = stickyItem();
+      await addItems(ownerClient, [third]);
+      const overLimit = await vote(third.id, 1);
+      expect(overLimit.ok).toBe(false);
+
+      const { state: after } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_VOTE, {
+        votingId,
+        itemId: a.id,
+        delta: -1,
+      });
+      expect(after?.myVotes).toEqual({ [b.id]: 1 });
+      expect(after?.myRemaining).toBe(1);
+    });
+
+    it('зритель не может запускать, завершать и отменять голосование', async () => {
+      const { ownerClient, viewerClient } = await teamBoard('vote-rights');
+
+      const start = await emit<null>(viewerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 3,
+        maxPerItem: 3,
+      });
+      expect(start.ok).toBe(false);
+      if (!start.ok) expect(start.error).toBe('forbidden');
+
+      const { state } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 3,
+        maxPerItem: 3,
+      });
+      for (const event of [BOARD_WS_EVENTS.VOTING_CLOSE, BOARD_WS_EVENTS.VOTING_CANCEL]) {
+        const ack = await emit<null>(viewerClient, event, { votingId: state!.id });
+        expect(ack.ok).toBe(false);
+      }
+    });
+
+    it('второе голосование на доске не запускается, отмена убирает голосование', async () => {
+      const { ownerClient } = await teamBoard('vote-cancel');
+      const { state } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 3,
+        maxPerItem: 3,
+      });
+
+      const again = await emit<null>(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 3,
+        maxPerItem: 3,
+      });
+      expect(again.ok).toBe(false);
+      if (!again.ok) expect(again.error).toBe('conflict');
+
+      const { state: cancelled } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_CANCEL, {
+        votingId: state!.id,
+      });
+      expect(cancelled).toBeNull();
+    });
+
+    it('недопустимые параметры отклоняются', async () => {
+      const { ownerClient } = await teamBoard('vote-invalid');
+      for (const payload of [
+        { votesPerParticipant: 0, maxPerItem: 1 },
+        { votesPerParticipant: 3, maxPerItem: 4 },
+        { votesPerParticipant: 21, maxPerItem: 1 },
+        { votesPerParticipant: '3', maxPerItem: 1 },
+      ]) {
+        const ack = await emit<null>(ownerClient, BOARD_WS_EVENTS.VOTING_START, payload);
+        expect(ack.ok).toBe(false);
+        if (!ack.ok) expect(ack.error).toBe('bad_request');
+      }
+    });
+
+    it('скоуп: нетекстовые элементы отбрасываются, за элемент вне скоупа голосовать нельзя', async () => {
+      const { ownerClient, a, b } = await teamBoard('vote-scope');
+      const emoji = stickyItem({ content: { type: 'emoji', emoji: '👍' } });
+      await addItems(ownerClient, [emoji]);
+
+      const { state } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 3,
+        maxPerItem: 3,
+        itemIds: [a.id, emoji.id],
+      });
+      expect(state?.itemIds).toEqual([a.id]);
+
+      const outside = await emit<null>(ownerClient, BOARD_WS_EVENTS.VOTING_VOTE, {
+        votingId: state!.id,
+        itemId: b.id,
+        delta: 1,
+      });
+      expect(outside.ok).toBe(false);
+
+      const onlyEmoji = await emit<null>(ownerClient, BOARD_WS_EVENTS.VOTING_CANCEL, {
+        votingId: state!.id,
+      });
+      expect(onlyEmoji.ok).toBe(true);
+      const empty = await emit<null>(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 3,
+        maxPerItem: 3,
+        itemIds: [emoji.id],
+      });
+      expect(empty.ok).toBe(false);
+    });
+
+    it('удаление элемента возвращает его голоса голосовавшим', async () => {
+      const { ownerClient, a } = await teamBoard('vote-delete');
+      const { state } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 3,
+        maxPerItem: 3,
+      });
+      await act(ownerClient, BOARD_WS_EVENTS.VOTING_VOTE, {
+        votingId: state!.id,
+        itemId: a.id,
+        delta: 1,
+      });
+
+      const next = waitFor<BoardVotingState | null>(ownerClient, BOARD_WS_SERVER_EVENTS.VOTING);
+      await emit<ApplyBoardOpsResult>(ownerClient, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.delete', clientOpId: 'del', id: a.id }],
+      });
+      const after = await next;
+
+      expect(after?.myVotes).toEqual({});
+      expect(after?.myRemaining).toBe(3);
     });
   });
 });

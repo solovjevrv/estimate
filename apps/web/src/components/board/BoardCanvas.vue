@@ -69,6 +69,7 @@ import {
 import {
   BOARD_ACTIVE_TEXT_EDITOR_KEY,
   BOARD_CAN_EDIT_KEY,
+  BOARD_VOTING_KEY,
   BOARD_LOCAL_DRAGGING_KEY,
   BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
   BOARD_PENDING_EDGE_EDIT_ID_KEY,
@@ -82,6 +83,7 @@ import type { BoardTextEditorHandle } from '../../features/boards/rich-text/boar
 import { useBoardAutoFit } from '../../features/boards/composables/use-board-auto-fit';
 import { useBoardHotkeys } from '../../features/boards/composables/use-board-hotkeys';
 import type { BoardTimerCommands } from '../../features/boards/composables/use-board-timer';
+import { useBoardVoting } from '../../features/boards/composables/use-board-voting';
 import type {
   BoardDragEvent,
   BoardDragNode,
@@ -114,6 +116,9 @@ import BoardGiphyNode from './BoardGiphyNode.vue';
 import BoardImageNode from './BoardImageNode.vue';
 import BoardPresencePanel from './BoardPresencePanel.vue';
 import BoardTimer from './BoardTimer.vue';
+import BoardVotingBar from './BoardVotingBar.vue';
+import BoardVotingButton from './BoardVotingButton.vue';
+import BoardVotingResults from './BoardVotingResults.vue';
 import BoardShapeNode from './BoardShapeNode.vue';
 import BoardGapGuides from './BoardGapGuides.vue';
 import BoardHotkeysModal from './BoardHotkeysModal.vue';
@@ -169,7 +174,29 @@ const timerCommands: BoardTimerCommands = {
 // снимке → вычищаются как "не увиденные").
 const toFlowNodesMemoized = createFlowNodesConverter();
 const toFlowEdgesMemoized = createFlowEdgesConverter();
-const flowNodes = computed(() => toFlowNodesMemoized(props.items, props.canEdit));
+/**
+ * Голосование точками (15.2): пока оно идёт, клик по элементу ставит точку, а
+ * выделение, перетаскивание и правка узлов выключены; элементы вне голосования
+ * приглушены. Создавать новые элементы можно — инструменты тулбара не трогаем.
+ */
+const voting = useBoardVoting({
+  state: () => boardSession.voting,
+  items: () => props.items,
+  selectedIds: () => selectedNodeIdsForVoting(),
+  commands: {
+    start: (payload) => boardSession.startVoting(payload),
+    vote: (itemId, delta) => boardSession.vote(itemId, delta),
+    close: () => boardSession.closeVoting(),
+    cancel: () => boardSession.cancelVoting(),
+    hide: () => boardSession.hideVotingResults(),
+    startTimer: () => boardSession.startTimer(),
+  },
+});
+provide(BOARD_VOTING_KEY, voting);
+const nodesEditable = computed(() => props.canEdit && !voting.isActive.value);
+const flowNodes = computed(() =>
+  voting.decorateNodes(toFlowNodesMemoized(props.items, nodesEditable.value)),
+);
 const flowEdges = computed(() => toFlowEdgesMemoized(props.edges));
 
 // markRaw — иначе Vue оборачивает объект с компонентами в reactive() и предупреждает
@@ -271,9 +298,30 @@ const {
   setViewport,
   zoomTo,
   fitView,
+  setCenter,
 } = useVueFlow();
 
 const rootEl = useTemplateRef<HTMLElement>('root');
+
+function selectedNodeIdsForVoting(): string[] {
+  return getSelectedNodes.value.map((node) => node.id);
+}
+
+// Голосование началось — выделение снимаем: во время него оно не работает
+watch(voting.isActive, (active) => {
+  if (active) removeSelectedNodes(getSelectedNodes.value);
+});
+
+/** Строка итогов голосования — камера к элементу, масштаб не меняем */
+function focusVotingItem(itemId: string): void {
+  const item = props.items.find((candidate) => candidate.id === itemId);
+  if (!item) return;
+  boardSession.stopFollowing();
+  void setCenter(item.x + item.width / 2, item.y + item.height / 2, {
+    zoom: viewport.value.zoom,
+    duration: 400,
+  });
+}
 
 /** Модалка списка хоткеев (22.9) — открывается иконкой «?» в `BoardControlsCluster.vue` */
 const hotkeysModalOpen = ref(false);
@@ -644,10 +692,7 @@ watch(
 // только provide для потребителей через контекст доски.
 
 /** Id связи, подпись которой нужно открыть для ввода текста прямо на стрелке (12.8) */
-provide(
-  BOARD_CAN_EDIT_KEY,
-  computed(() => props.canEdit),
-);
+provide(BOARD_CAN_EDIT_KEY, nodesEditable);
 provide(BOARD_LOCAL_DRAGGING_KEY, dragIsDragging);
 provide(BOARD_PENDING_EDIT_ID_KEY, pendingEditId);
 provide(BOARD_PENDING_EDGE_EDIT_ID_KEY, edges.pendingEdgeEditId);
@@ -692,6 +737,7 @@ function onPaneClick(event: MouseEvent): void {
 
 /** Клик по существующему узлу отменяет не потреблённый автопереход перед передачей в selection. */
 function onNodeClick(event: NodeMouseEvent): void {
+  if (voting.onNodeClick(event.node.id)) return;
   cancelPendingEdit();
   selection.onNodeClick(event);
 }
@@ -843,8 +889,9 @@ useBoardHotkeys({
       data-testid="board-flow"
       :node-types="nodeTypes"
       :edge-types="edgeTypes"
-      :nodes-draggable="canEdit"
-      :nodes-connectable="canEdit"
+      :nodes-draggable="nodesEditable"
+      :nodes-connectable="nodesEditable"
+      :elements-selectable="!voting.isActive.value"
       :connection-mode="ConnectionMode.Loose"
       :connection-radius="40"
       :pan-on-drag="[1]"
@@ -1030,24 +1077,47 @@ useBoardHotkeys({
         :menu-items="menuItems"
       />
 
-      <!-- Правый верхний угол: таймер доски (15.3) слева от панели присутствия -->
+      <!-- Правый верхний угол: таймер (15.3), голосование (15.2), участники;
+           под ними — итоги голосования -->
       <Panel position="top-right" class="board-top-right">
-        <BoardTimer :timer="boardSession.timer" :can-control="canEdit" :commands="timerCommands" />
-        <BoardPresencePanel
-          v-if="boardSession.presence.length > 0"
-          :presence="boardSession.presence"
-          :participant-id="boardSession.participantId"
-          :followed-participant-id="boardSession.followedParticipantId"
-          :initials="initials"
-          @avatar-click="onPresenceAvatarClick"
+        <div class="board-top-right-row">
+          <BoardTimer
+            :timer="boardSession.timer"
+            :can-control="canEdit"
+            :commands="timerCommands"
+          />
+          <BoardVotingButton :voting="voting" :can-edit="canEdit" />
+          <BoardPresencePanel
+            v-if="boardSession.presence.length > 0"
+            :presence="boardSession.presence"
+            :participant-id="boardSession.participantId"
+            :followed-participant-id="boardSession.followedParticipantId"
+            :initials="initials"
+            @avatar-click="onPresenceAvatarClick"
+          />
+        </div>
+        <BoardVotingResults
+          v-if="voting.hasResults.value && voting.resultsOpen.value"
+          :voting="voting"
+          :can-edit="canEdit"
+          @focus="focusVotingItem"
         />
       </Panel>
 
-      <BoardFollowingBanner
-        v-if="followedName"
-        :name="followedName"
-        @stop="boardSession.stopFollowing()"
-      />
+      <!-- Сверху по центру: плашка голосования и баннер слежения — в одну колонку -->
+      <Panel position="top-center" class="board-top-center">
+        <BoardVotingBar
+          v-if="voting.isActive.value"
+          :voting="voting"
+          :can-edit="canEdit"
+          :participant-count="boardSession.presence.length"
+        />
+        <BoardFollowingBanner
+          v-if="followedName"
+          :name="followedName"
+          @stop="boardSession.stopFollowing()"
+        />
+      </Panel>
 
       <BoardControlsCluster
         :zoom-percent="zoomPercent"
@@ -1090,11 +1160,39 @@ useBoardHotkeys({
   </div>
 </template>
 <style scoped>
-/* Таймер и панель присутствия — в один ряд с зазором 8, по верхнему краю */
+/* Таймер, голосование и панель присутствия — в один ряд с зазором 8, по
+   верхнему краю; итоги голосования — под рядом, по правому краю */
 .board-top-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.board-top-right-row {
   display: flex;
   align-items: flex-start;
   gap: 8px;
+}
+
+.board-top-center {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Уже 1600px плашка голосования по центру наезжает на правый верхний ряд
+   (таймер, голосование, участники) — опускаем её под ряд: отступ 16 + 54 + зазор 8 */
+@media (max-width: 1599px) {
+  .board-top-center {
+    margin-top: 78px;
+  }
+}
+
+/* Голосование идёт — всё, за что голосовать нельзя, приглушено */
+.board-canvas-root :deep(.vue-flow__node.board-node-voting-muted) {
+  opacity: 0.4;
 }
 
 .board-canvas-root:fullscreen {
