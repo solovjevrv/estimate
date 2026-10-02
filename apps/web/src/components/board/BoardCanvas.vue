@@ -1188,7 +1188,8 @@ useBoardHotkeys({
 .board-minimap {
   background: var(--brand-surface);
   border-radius: 1.5rem;
-  box-shadow: var(--brand-shadow-card);
+  /* elevation/2 — как у остальных плавающих панелей холста */
+  box-shadow: var(--shadow-elevation-2);
   overflow: hidden;
 }
 </style>
