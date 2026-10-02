@@ -73,8 +73,8 @@ export class BoardVotingService {
       await repo.insert({
         boardId,
         createdBy: actor.userId,
-        votesPerParticipant: votesPerParticipant as number,
-        maxPerItem: maxPerItem as number,
+        votesPerParticipant: votesPerParticipant as number | null,
+        maxPerItem: maxPerItem as number | null,
         itemIds,
         withTimer: payload?.startTimer === true,
       });
@@ -121,7 +121,8 @@ export class BoardVotingService {
       const used = mine.reduce((sum, vote) => sum + vote.count, 0);
       const current = mine.find((vote) => vote.itemId === item.id)?.count ?? 0;
       if (delta === 1) {
-        if (used >= voting.votesPerParticipant) throw new ConflictError('Голоса закончились');
+        const limit = voting.votesPerParticipant;
+        if (limit !== null && used >= limit) throw new ConflictError('Голоса закончились');
         if (current >= effectiveMaxPerItem(voting)) {
           throw new ConflictError('За этот элемент больше голосовать нельзя');
         }

@@ -289,6 +289,27 @@ describe('useBoardVoting (15.2)', () => {
     expect(commands.close).toHaveBeenCalledTimes(2);
   });
 
+  it('без лимита на человека: голоса не кончаются, завершение — без подтверждения', async () => {
+    const { voting, items, commands, participants } = setup(
+      activeState({
+        votesPerParticipant: null,
+        maxPerItem: 1,
+        myRemaining: null,
+        myVotes: { a: 1 },
+      }),
+    );
+    participants.value = 5;
+
+    expect(voting.canVoteOn(items.value[0]!)).toBe(false);
+    expect(voting.canVoteOn(items.value[1]!)).toBe(true);
+    voting.onNodeClick('b');
+    expect(commands.vote).toHaveBeenCalledWith('b', 1);
+
+    await voting.finish();
+    expect(voting.confirmFinishOpen.value).toBe(false);
+    expect(commands.close).toHaveBeenCalledOnce();
+  });
+
   it('отказ сервера на голос — тост, без исключения наружу', async () => {
     const { voting, commands } = setup();
     commands.vote.mockRejectedValueOnce(new Error('conflict'));

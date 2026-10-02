@@ -29,9 +29,12 @@ const emit = defineEmits<{ start: [setup: BoardVotingSetup] }>();
 
 const { t } = useI18n();
 
-const form = reactive<BoardVotingSetup>({
+const form = reactive({
   votesPerParticipant: BOARD_VOTING_DEFAULT_VOTES,
   maxPerItem: BOARD_VOTING_DEFAULT_MAX_PER_ITEM,
+  /** «Без ограничения» — не оба сразу: вторая галочка блокируется */
+  votesUnlimited: false,
+  perItemUnlimited: false,
   scope: props.defaultScope,
   startTimer: true,
 });
@@ -42,12 +45,15 @@ const selectionEmpty = computed(() =>
 );
 
 function submit(): void {
-  emit('start', {
-    votesPerParticipant: form.votesPerParticipant || BOARD_VOTING_DEFAULT_VOTES,
-    maxPerItem: form.maxPerItem || 1,
+  const setup: BoardVotingSetup = {
+    votesPerParticipant: form.votesUnlimited
+      ? null
+      : form.votesPerParticipant || BOARD_VOTING_DEFAULT_VOTES,
+    maxPerItem: form.perItemUnlimited ? null : form.maxPerItem || 1,
     scope: form.scope,
     startTimer: form.startTimer,
-  });
+  };
+  emit('start', setup);
 }
 </script>
 
@@ -59,24 +65,48 @@ function submit(): void {
     </div>
 
     <div class="flex gap-3">
-      <UFormField :label="t('board.voting.votesPerParticipant')" class="min-w-0 flex-1">
-        <UInputNumber
-          v-model="form.votesPerParticipant"
-          data-testid="board-voting-votes"
-          :min="1"
-          :max="BOARD_VOTING_MAX_VOTES"
-          class="w-full"
-        />
-      </UFormField>
-      <UFormField :label="t('board.voting.maxPerItem')" class="min-w-0 flex-1">
-        <UInputNumber
-          v-model="form.maxPerItem"
-          data-testid="board-voting-max-per-item"
-          :min="1"
-          :max="BOARD_VOTING_MAX_VOTES"
-          class="w-full"
-        />
-      </UFormField>
+      <div class="flex min-w-0 flex-1 flex-col gap-2">
+        <UFormField :label="t('board.voting.votesPerParticipant')">
+          <UInputNumber
+            v-model="form.votesPerParticipant"
+            data-testid="board-voting-votes"
+            :min="1"
+            :max="BOARD_VOTING_MAX_VOTES"
+            :disabled="form.votesUnlimited"
+            class="w-full"
+          />
+        </UFormField>
+        <UTooltip :text="form.perItemUnlimited ? t('board.voting.needOneLimit') : undefined">
+          <UCheckbox
+            v-model="form.votesUnlimited"
+            data-testid="board-voting-votes-unlimited"
+            size="sm"
+            :label="t('board.voting.unlimited')"
+            :disabled="form.perItemUnlimited"
+          />
+        </UTooltip>
+      </div>
+      <div class="flex min-w-0 flex-1 flex-col gap-2">
+        <UFormField :label="t('board.voting.maxPerItem')">
+          <UInputNumber
+            v-model="form.maxPerItem"
+            data-testid="board-voting-max-per-item"
+            :min="1"
+            :max="BOARD_VOTING_MAX_VOTES"
+            :disabled="form.perItemUnlimited"
+            class="w-full"
+          />
+        </UFormField>
+        <UTooltip :text="form.votesUnlimited ? t('board.voting.needOneLimit') : undefined">
+          <UCheckbox
+            v-model="form.perItemUnlimited"
+            data-testid="board-voting-per-item-unlimited"
+            size="sm"
+            :label="t('board.voting.unlimited')"
+            :disabled="form.votesUnlimited"
+          />
+        </UTooltip>
+      </div>
     </div>
 
     <UFormField

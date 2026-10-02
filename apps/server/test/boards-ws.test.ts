@@ -855,6 +855,7 @@ describeDb('WS-канал досок', () => {
         viewerClient,
         BOARD_WS_EVENTS.VOTING_HISTORY,
       );
+      // Номер — в пределах доски, даже если на других досках голосований много
       expect(history.ok && history.data).toMatchObject([
         { id: votingId, number: 1, totalVotes: 2, voterCount: 2 },
       ]);
@@ -1024,6 +1025,29 @@ describeDb('WS-канал досок', () => {
       expect((await vote()).ok).toBe(true);
       expect((await vote()).ok).toBe(true);
       expect((await vote()).ok).toBe(false);
+    });
+
+    it('без лимита на человека — сколько угодно элементов, по лимиту на каждый', async () => {
+      const { ownerClient, a, b, c } = await teamBoard('vote-likes');
+      const { state } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: null,
+        maxPerItem: 1,
+      });
+      expect(state?.myRemaining).toBeNull();
+      const vote = (itemId: string) =>
+        emit<null>(ownerClient, BOARD_WS_EVENTS.VOTING_VOTE, {
+          votingId: state!.id,
+          itemId,
+          delta: 1,
+        });
+      for (const id of [a.id, b.id, c.id]) expect((await vote(id)).ok).toBe(true);
+      expect((await vote(a.id)).ok).toBe(false);
+
+      const both = await emit<null>(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: null,
+        maxPerItem: null,
+      });
+      expect(both.ok).toBe(false);
     });
 
     it('удаление элемента возвращает его голоса голосовавшим', async () => {

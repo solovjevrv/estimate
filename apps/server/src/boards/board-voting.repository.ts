@@ -66,8 +66,9 @@ export class BoardVotingRepository {
    * удаляются, поэтому номера идут подряд среди оставшихся.
    */
   private numberOf() {
-    const t = schema.boardVotings;
-    return sql<number>`(select count(*)::int from ${t} as earlier where earlier.board_id = ${t.boardId} and earlier.started_at <= ${t.startedAt})`;
+    // Внешняя таблица — с явным именем: внутри подзапроса голое board_id
+    // привязалось бы к earlier, и номер считался бы по всем доскам сразу
+    return sql<number>`(select count(*)::int from board_votings as earlier where earlier.board_id = "board_votings"."board_id" and earlier.started_at <= "board_votings"."started_at")`;
   }
 
   /** Голосование с блокировкой строки — голоса одного голосования применяются строго по очереди */
@@ -85,8 +86,8 @@ export class BoardVotingRepository {
   async insert(values: {
     boardId: string;
     createdBy: string | null;
-    votesPerParticipant: number;
-    maxPerItem: number;
+    votesPerParticipant: number | null;
+    maxPerItem: number | null;
     itemIds: string[] | null;
     withTimer: boolean;
   }): Promise<void> {

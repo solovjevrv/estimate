@@ -34,8 +34,9 @@ export interface BoardVotingCommands {
 export type BoardVotingScopeChoice = 'board' | 'selected' | `frame:${string}`;
 
 export interface BoardVotingSetup {
-  votesPerParticipant: number;
-  maxPerItem: number;
+  /** null — без ограничения (не оба сразу) */
+  votesPerParticipant: number | null;
+  maxPerItem: number | null;
   scope: BoardVotingScopeChoice;
   startTimer: boolean;
 }
@@ -189,7 +190,7 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
   function canVoteOn(item: BoardItem): boolean {
     const current = state.value;
     if (!current || current.status !== 'active' || !isInScope(item)) return false;
-    if (current.myRemaining <= 0) return false;
+    if (current.myRemaining !== null && current.myRemaining <= 0) return false;
     return (current.myVotes[item.id] ?? 0) < effectiveMaxPerItem(current);
   }
 
@@ -203,7 +204,7 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
     if (!current || current.status !== 'active') return false;
     const item = itemsById.value.get(itemId);
     if (!item || !isInScope(item)) return true;
-    if (current.myRemaining <= 0) {
+    if (current.myRemaining !== null && current.myRemaining <= 0) {
       toast.add({ title: t('board.voting.noVotesLeft'), color: 'neutral' });
       return true;
     }
@@ -290,7 +291,9 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
   }));
 
   async function finish(): Promise<void> {
-    if (finishStats.value.completed < finishStats.value.total) {
+    // Без лимита на человека «потратить все точки» нельзя — подтверждение не нужно
+    const limited = state.value?.votesPerParticipant != null;
+    if (limited && finishStats.value.completed < finishStats.value.total) {
       confirmFinishOpen.value = true;
       return;
     }

@@ -1201,6 +1201,11 @@ useBoardHotkeys({
   opacity: 1;
 }
 
+/* Курсор на своей точке — клик снимет её: подсветку «+1» со стикера убираем */
+.board-canvas-root :deep(.vue-flow__node:has(.board-vote-badge--mine:hover) .board-vote-hover) {
+  opacity: 0;
+}
+
 .board-canvas-root :deep(.vue-flow__node.board-node-voting-target),
 .board-canvas-root :deep(.vue-flow__node.board-node-voting-target *) {
   cursor: pointer;

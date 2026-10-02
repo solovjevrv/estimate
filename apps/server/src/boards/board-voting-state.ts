@@ -5,8 +5,9 @@ export interface BoardVotingRecord {
   id: string;
   boardId: string;
   status: 'active' | 'closed';
-  votesPerParticipant: number;
-  maxPerItem: number;
+  /** null — без ограничения */
+  votesPerParticipant: number | null;
+  maxPerItem: number | null;
   itemIds: string[] | null;
   withTimer: boolean;
   /** Порядковый номер на доске — «Голосование 2» */
@@ -48,9 +49,13 @@ export function votingStateFor(
       used += vote.count;
     }
   }
+  // Без лимита на человека «потратил все точки» не бывает — предупреждения нет
+  const limit = voting.votesPerParticipant;
   let completedCount = 0;
-  for (const total of usedBy.values()) {
-    if (total >= voting.votesPerParticipant) completedCount += 1;
+  if (limit !== null) {
+    for (const total of usedBy.values()) {
+      if (total >= limit) completedCount += 1;
+    }
   }
   return {
     id: voting.id,
@@ -62,7 +67,7 @@ export function votingStateFor(
     startedAt: voting.startedAt.toISOString(),
     closedAt: voting.closedAt?.toISOString() ?? null,
     myVotes,
-    myRemaining: Math.max(0, voting.votesPerParticipant - used),
+    myRemaining: limit === null ? null : Math.max(0, limit - used),
     votedCount: usedBy.size,
     completedCount,
     results: voting.status === 'closed' ? votingResults(votes) : null,

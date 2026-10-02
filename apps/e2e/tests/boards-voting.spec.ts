@@ -81,15 +81,15 @@ test('голосование точками: старт, точки, сняти�
   // Клик по стикеру — точка, а не выделение
   const first = boardA.stickyNodes.first();
   await first.click();
-  await expect(first.getByTestId('board-vote-badge-mine')).toHaveText('1');
+  await expect(first.getByTestId('board-vote-mine-count')).toHaveText('1');
   await expect(first).toHaveAttribute('data-selected', 'false');
   await first.click();
-  await expect(first.getByTestId('board-vote-badge-mine')).toHaveText('2');
+  await expect(first.getByTestId('board-vote-mine-count')).toHaveText('2');
   await expect(pageA.getByTestId('board-voting-bar')).toContainText('Осталось 0 из 2');
 
   // Клик по своему бейджу снимает одну точку
   await first.getByTestId('board-vote-badge-mine').click();
-  await expect(first.getByTestId('board-vote-badge-mine')).toHaveText('1');
+  await expect(first.getByTestId('board-vote-mine-count')).toHaveText('1');
   await boardA.stickyNodes.nth(1).click();
   await expect(pageA.getByTestId('board-voting-remaining')).toHaveText('0 из 2');
 

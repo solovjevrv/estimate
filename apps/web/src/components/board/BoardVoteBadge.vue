@@ -59,7 +59,8 @@ function initials(name: string): string {
     @mousedown.stop
     @click.stop="voting?.removeVote(props.item.id)"
   >
-    {{ mine }}
+    <span data-testid="board-vote-mine-count" class="board-vote-mine-count">{{ mine }}</span>
+    <span class="board-vote-mine-remove">{{ t('board.voting.removeVoteShort') }}</span>
   </button>
   <UPopover
     v-else-if="result"
@@ -104,21 +105,46 @@ function initials(name: string): string {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  height: 24px;
-  border-radius: 12px;
-  /* Body/Xsmall/Bold 10/12 */
-  font-size: 10px;
-  line-height: 12px;
+  height: 28px;
+  border-radius: 14px;
+  /* Body/Small/Bold 12/18 */
+  font-size: 12px;
+  line-height: 18px;
   font-weight: 700;
 }
 
-/* Свои точки: surface-brand, цифра text-on-brand; клик снимает одну */
-.board-vote-badge--mine {
-  min-width: 24px;
-  padding: 0 7px;
+/* Свои точки и «+1»: surface-brand, цифра text-on-brand; кольцо 2px цвета
+   подложки и elevation-1 — бейдж отделён от листа любого цвета (как реакция) */
+.board-vote-badge--mine,
+.board-vote-badge--preview {
+  min-width: 28px;
+  padding: 0 8px;
   color: var(--text-on-brand);
   background: var(--surface-brand);
+  box-shadow:
+    0 0 0 2px var(--surface-block),
+    var(--shadow-elevation-1);
+}
+
+.board-vote-badge--mine {
   cursor: pointer;
+}
+
+/* Наведение на свою точку — «−1»: клик снимет одну точку, а не добавит */
+.board-vote-mine-remove {
+  display: none;
+}
+
+.board-vote-badge--mine:hover {
+  background: var(--surface-brand-hover);
+}
+
+.board-vote-badge--mine:hover .board-vote-mine-count {
+  display: none;
+}
+
+.board-vote-badge--mine:hover .board-vote-mine-remove {
+  display: inline;
 }
 
 /* Наведение в голосовании (BoardVoteHover): лёгкое затемнение листа, обводка
@@ -127,7 +153,8 @@ function initials(name: string): string {
   position: absolute;
   inset: 0;
   z-index: 3;
-  border-radius: 6px;
+  /* Радиус листа стикера (rounded-md) — иначе на углах видны тёмные уголки */
+  border-radius: 12px;
   background: rgb(0 0 0 / 8%);
   box-shadow: 0 0 0 2px var(--border-brand);
   pointer-events: none;
@@ -139,20 +166,13 @@ function initials(name: string): string {
 
 /* Свои точки уже в углу — «+1» встаёт левее, бейдж своих точек остаётся кликабельным */
 .board-vote-hover--beside-mine .board-vote-badge--preview {
-  right: 36px;
-}
-
-.board-vote-badge--preview {
-  min-width: 24px;
-  padding: 0 7px;
-  color: var(--text-on-brand);
-  background: var(--surface-brand);
+  right: 44px;
 }
 
 /* Итог: пилюля surface-block с точкой бренда, elevation-1 */
 .board-vote-badge--total {
-  gap: 4px;
-  padding: 0 8px 0 6px;
+  gap: 5px;
+  padding: 0 10px 0 8px;
   color: var(--text-primary);
   background: var(--surface-block);
   box-shadow: var(--shadow-elevation-1);

@@ -34,9 +34,16 @@ const total = computed(() => Math.max(props.participantCount, state.value?.voted
     <div class="flex min-w-0 items-center gap-2 text-xs leading-[18px] whitespace-nowrap">
       <UIcon name="i-lucide-vote" class="text-icons-brand size-4 shrink-0" />
       <span class="text-text-brand font-bold">{{ t('board.voting.hint') }}</span>
-      <span data-testid="board-voting-bar-remaining" class="text-text-primary font-bold">
+      <span
+        v-if="state.myRemaining !== null"
+        data-testid="board-voting-bar-remaining"
+        class="text-text-primary font-bold"
+      >
         {{
-          t('board.voting.remaining', { left: state.myRemaining, total: state.votesPerParticipant })
+          t('board.voting.remaining', {
+            left: state.myRemaining,
+            total: state.votesPerParticipant ?? 0,
+          })
         }}
       </span>
       <span class="text-text-secondary font-medium">

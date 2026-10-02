@@ -295,8 +295,9 @@ export const boardVotings = pgTable(
       .references(() => boards.id, { onDelete: 'cascade' }),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     status: boardVotingStatusEnum('status').notNull().default('active'),
-    votesPerParticipant: integer('votes_per_participant').notNull(),
-    maxPerItem: integer('max_per_item').notNull(),
+    /** null — без ограничения (не оба сразу — проверяет сервис) */
+    votesPerParticipant: integer('votes_per_participant'),
+    maxPerItem: integer('max_per_item'),
     itemIds: uuid('item_ids').array(),
     /** Запуск таймера доски вместе с голосованием — завершение/отмена его сбрасывают */
     withTimer: boolean('with_timer').notNull().default(false),

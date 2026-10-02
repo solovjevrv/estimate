@@ -72,7 +72,11 @@ async function onOpenResults(votingId: string): Promise<void> {
     >
       <UIcon name="i-lucide-vote" class="text-icons-brand size-5" />
       <span class="text-text-brand">{{ t('board.voting.button') }}</span>
-      <span data-testid="board-voting-remaining" class="board-voting-remaining">
+      <span
+        v-if="voting.state.value?.myRemaining != null"
+        data-testid="board-voting-remaining"
+        class="board-voting-remaining"
+      >
         {{
           t('board.voting.remainingShort', {
             left: voting.state.value?.myRemaining ?? 0,

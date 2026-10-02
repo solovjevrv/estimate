@@ -63,6 +63,12 @@ describe('контракт realtime-доски', () => {
     // Независимые лимиты: «на элемент» больше «на человека» — допустимо
     expect(isValidVotingLimits(2, 5)).toBe(true);
     expect(effectiveMaxPerItem({ votesPerParticipant: 2, maxPerItem: 5 })).toBe(2);
+    // Без ограничения — один из лимитов, но не оба
+    expect(isValidVotingLimits(null, 1)).toBe(true);
+    expect(isValidVotingLimits(5, null)).toBe(true);
+    expect(isValidVotingLimits(null, null)).toBe(false);
+    expect(effectiveMaxPerItem({ votesPerParticipant: null, maxPerItem: 1 })).toBe(1);
+    expect(effectiveMaxPerItem({ votesPerParticipant: 3, maxPerItem: null })).toBe(3);
     for (const [votes, perItem] of [
       [0, 1],
       [3, 21],

@@ -1,5 +1,5 @@
 {
-  "id": "0ce320d1-a350-44a1-a0f0-80ad6f9a50bc",
+  "id": "558efb1f-b8b4-4eef-bf8f-52d11294c9c2",
   "prevId": "893d4904-2aa9-4972-91f3-3e339151bd61",
   "version": "7",
   "dialect": "postgresql",
@@ -393,13 +393,13 @@
           "name": "votes_per_participant",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "max_per_item": {
           "name": "max_per_item",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
         },
         "item_ids": {
           "name": "item_ids",

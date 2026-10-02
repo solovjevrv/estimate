@@ -67,6 +67,20 @@ describe('votingStateFor', () => {
   });
 });
 
+describe('votingStateFor без лимита на человека', () => {
+  it('остатка нет, «потратили все точки» не считается', () => {
+    const base = snapshot('active');
+    const state = votingStateFor(
+      { ...base, voting: { ...base.voting, votesPerParticipant: null, maxPerItem: 1 } },
+      'anna',
+    );
+
+    expect(state.myRemaining).toBeNull();
+    expect(state.completedCount).toBe(0);
+    expect(state.myVotes).toEqual({ a: 2, b: 1 });
+  });
+});
+
 describe('votingResults', () => {
   it('при равенстве авторов упорядочивает по имени', () => {
     const results = votingResults([

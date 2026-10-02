@@ -32,15 +32,18 @@ export interface BoardVotingState {
   /** Порядковый номер голосования на доске — «Голосование 2» */
   number: number;
   status: BoardVotingStatus;
-  votesPerParticipant: number;
-  maxPerItem: number;
+  /** null — без ограничения (режим «лайков» — тогда обязателен лимит на элемент) */
+  votesPerParticipant: number | null;
+  /** null — без ограничения: упрёшься только в свой лимит на человека */
+  maxPerItem: number | null;
   /** Элементы, за которые можно голосовать; null — вся доска */
   itemIds: string[] | null;
   startedAt: string;
   closedAt: string | null;
   /** Свои точки по элементам (itemId → число) */
   myVotes: Record<string, number>;
-  myRemaining: number;
+  /** null — без лимита на человека, остаток не считается */
+  myRemaining: number | null;
   /** Сколько участников поставили хотя бы одну точку */
   votedCount: number;
   /** Сколько участников использовали все свои точки — для предупреждения при завершении */
@@ -63,20 +66,30 @@ export function isVotableContent(content: BoardItemContent): boolean {
 /**
  * Параметры голосования, которые примет сервер. Лимиты независимы: если «на
  * элемент» больше «на человека», упрёшься в меньший (`effectiveMaxPerItem`).
+ * Любой из них может быть «без ограничения» (null), но не оба сразу — иначе
+ * каждый клик ещё одна точка, и итоги ничего не значат.
  */
 export function isValidVotingLimits(votesPerParticipant: unknown, maxPerItem: unknown): boolean {
-  const inRange = (value: unknown): boolean =>
-    Number.isInteger(value) &&
-    (value as number) >= 1 &&
-    (value as number) <= BOARD_VOTING_MAX_VOTES;
-  return inRange(votesPerParticipant) && inRange(maxPerItem);
+  const valid = (value: unknown): boolean =>
+    value === null ||
+    (Number.isInteger(value) &&
+      (value as number) >= 1 &&
+      (value as number) <= BOARD_VOTING_MAX_VOTES);
+  return (
+    valid(votesPerParticipant) &&
+    valid(maxPerItem) &&
+    !(votesPerParticipant === null && maxPerItem === null)
+  );
 }
 
 /** Сколько точек на самом деле можно поставить одному элементу */
 export function effectiveMaxPerItem(
   state: Pick<BoardVotingState, 'votesPerParticipant' | 'maxPerItem'>,
 ): number {
-  return Math.min(state.votesPerParticipant, state.maxPerItem);
+  return Math.min(
+    state.votesPerParticipant ?? Number.POSITIVE_INFINITY,
+    state.maxPerItem ?? Number.POSITIVE_INFINITY,
+  );
 }
 
 /** Строка истории голосований доски — без голосов, только сводка */
@@ -90,8 +103,9 @@ export interface BoardVotingSummary {
 }
 
 export interface StartBoardVotingPayload {
-  votesPerParticipant: number;
-  maxPerItem: number;
+  /** null — без ограничения (см. `isValidVotingLimits`) */
+  votesPerParticipant: number | null;
+  maxPerItem: number | null;
   /** Скоуп: выделенные элементы или элементы фрейма; null/без поля — вся доска */
   itemIds?: string[] | null;
   /** Перезапустить таймер доски вместе с голосованием; завершение/отмена его сбросят */

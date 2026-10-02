@@ -69,7 +69,7 @@ const meta = computed(() =>
         <span class="text-text-primary min-w-0 flex-1 truncate text-left text-xs font-medium">
           {{ row.text }}
         </span>
-        <span class="badge-pill badge-pill-primary">{{ row.total }}</span>
+        <span class="badge-pill badge-pill-primary board-voting-count">{{ row.total }}</span>
       </button>
     </div>
     <div v-else class="text-text-secondary text-xs">{{ t('board.voting.noResults') }}</div>
@@ -123,6 +123,15 @@ const meta = computed(() =>
 
 .board-voting-result-row:hover {
   background: var(--surface-hover);
+}
+
+/* Счётчик голосов — бейдж кита, но с минимальной шириной 34 = высоте:
+   одна цифра — круг, две и больше — пилюля */
+.board-voting-count {
+  display: inline-flex;
+  flex-shrink: 0;
+  justify-content: center;
+  min-width: 34px;
 }
 
 /* Место: Body/Xsmall/Bold 10/12, text-tertiary */
