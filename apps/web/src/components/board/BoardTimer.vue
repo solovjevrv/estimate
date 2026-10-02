@@ -161,7 +161,7 @@ const control = computed(() => {
 .board-timer {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   min-height: 54px;
   padding: 10px 12px;
   border-radius: 20px;
@@ -176,7 +176,7 @@ const control = computed(() => {
 .board-timer-display {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   border-radius: 8px;
 }
 

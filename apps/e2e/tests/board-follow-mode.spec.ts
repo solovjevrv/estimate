@@ -203,9 +203,10 @@ test('уход A с доски снимает слежение у B', async ({
   // A закрывает вкладку → покидает доску → presence перестраивается без A
   await ctxA.close();
 
-  // B автоматически снимает слежение — когда остаётся один участник,
-  // presence-панель целиком скрывается (а не показывает единственную аватарку).
-  await expect(boardB.presence).toHaveCount(0);
+  // B автоматически снимает слежение — в панели остаётся только своя аватарка
+  // (панель видна и одному участнику на доске, 15.3)
+  await expect(boardB.presenceAvatars).toHaveCount(1);
+  await expect(boardB.selfAvatar).toHaveCount(1);
   await expect(boardB.followingAvatar).toHaveCount(0);
   await expect(boardB.followingBadge.filter({ hasText: /Вы следите за/i })).toHaveCount(0);
 });

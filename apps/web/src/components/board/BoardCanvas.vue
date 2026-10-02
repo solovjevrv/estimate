@@ -1034,7 +1034,7 @@ useBoardHotkeys({
       <Panel position="top-right" class="board-top-right">
         <BoardTimer :timer="boardSession.timer" :can-control="canEdit" :commands="timerCommands" />
         <BoardPresencePanel
-          v-if="boardSession.presence.length > 1"
+          v-if="boardSession.presence.length > 0"
           :presence="boardSession.presence"
           :participant-id="boardSession.participantId"
           :followed-participant-id="boardSession.followedParticipantId"
