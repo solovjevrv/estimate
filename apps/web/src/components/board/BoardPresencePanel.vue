@@ -43,7 +43,7 @@ function isFollowing(entry: BoardPresenceEntry): boolean {
     :aria-label="t('board.presence')"
   >
     <div class="board-presence-count" :title="t('board.presenceCount', { count: presence.length })">
-      <UIcon name="i-lucide-users-2" class="size-4" />
+      <UIcon name="i-lucide-users-2" class="size-[18px]" />
       <span>{{ presence.length }}</span>
     </div>
     <div class="board-presence-stack">
@@ -86,11 +86,12 @@ function isFollowing(entry: BoardPresenceEntry): boolean {
 
 <style scoped>
 /* Панель «кто на доске» (14.1) — общая карточка-подложка, внутри неё —
-   пилюля счётчика и стек аватарок */
+   пилюля счётчика и стек аватарок. Кит 59_BoardPresence: высота 54, паддинг 8,
+   зазор 12 — та же высота, что у таймера доски рядом (15.3) */
 .board-presence {
-  gap: 8px;
+  gap: 12px;
   max-width: 260px;
-  padding: 6px;
+  padding: 8px;
   border-radius: 20px;
   overflow: hidden;
 }
@@ -156,19 +157,20 @@ function isFollowing(entry: BoardPresenceEntry): boolean {
   display: flex;
   flex-shrink: 0;
   align-items: center;
-  gap: 5px;
-  height: 32px;
-  padding: 0 12px;
+  gap: 6px;
+  height: 38px;
+  padding: 0 14px;
   color: var(--brand-ink2);
   /* 09_BoardCanvas: серая пилюля на белой карточке (в светлой теме --ui-bg
      совпадал с карточкой и пилюля пропадала) */
   background: var(--surface-tertiary);
-  border-radius: 16px;
+  border-radius: 999px;
 }
 
 .board-presence-count span {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 16px;
+  line-height: 22px;
+  font-weight: 700;
   color: var(--brand-ink);
 }
 </style>
