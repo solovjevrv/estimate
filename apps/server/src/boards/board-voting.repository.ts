@@ -1,5 +1,5 @@
-import type { BoardItemContent } from '@estimate/shared';
-import { and, desc, eq, inArray, sql } from 'drizzle-orm';
+import type { BoardItemContent, BoardVotingSummary } from '@estimate/shared';
+import { and, desc, eq, getTableColumns, inArray, sql } from 'drizzle-orm';
 
 import type { DbExecutor } from '../common/db-executor';
 import { schema } from '../db';
@@ -12,22 +12,62 @@ type VotingRow = typeof schema.boardVotings.$inferSelect;
 export class BoardVotingRepository {
   constructor(private readonly db: DbExecutor) {}
 
-  /** Идущее голосование, иначе последнее завершённое с не скрытыми итогами */
+  /** Идущее голосование, иначе последнее завершённое (его итоги видны сразу после завершения) */
   async findCurrent(boardId: string): Promise<BoardVotingRecord | null> {
     const t = schema.boardVotings;
     const [row] = await this.db
-      .select()
+      .select({ ...getTableColumns(t), number: this.numberOf() })
       .from(t)
-      .where(
-        and(
-          eq(t.boardId, boardId),
-          sql`(${t.status} = 'active' or (${t.status} = 'closed' and ${t.resultsHidden} = false))`,
-        ),
-      )
+      .where(eq(t.boardId, boardId))
       // active раньше closed, среди завершённых — самое позднее
       .orderBy(sql`${t.status} = 'active' desc`, desc(t.startedAt))
       .limit(1);
     return row ? toRecord(row) : null;
+  }
+
+  /** Завершённое голосование доски — итоги из истории */
+  async findClosed(boardId: string, votingId: string): Promise<BoardVotingRecord | null> {
+    const t = schema.boardVotings;
+    const [row] = await this.db
+      .select({ ...getTableColumns(t), number: this.numberOf() })
+      .from(t)
+      .where(and(eq(t.id, votingId), eq(t.boardId, boardId), eq(t.status, 'closed')))
+      .limit(1);
+    return row ? toRecord(row) : null;
+  }
+
+  /** Завершённые голосования доски со сводкой — новые сверху */
+  async listHistory(boardId: string): Promise<BoardVotingSummary[]> {
+    const t = schema.boardVotings;
+    const v = schema.boardVotes;
+    const rows = await this.db
+      .select({
+        id: t.id,
+        number: this.numberOf(),
+        startedAt: t.startedAt,
+        closedAt: t.closedAt,
+        totalVotes: sql<number>`coalesce(sum(${v.count}), 0)::int`,
+        voterCount: sql<number>`count(distinct ${v.participantId})::int`,
+      })
+      .from(t)
+      .leftJoin(v, eq(v.votingId, t.id))
+      .where(and(eq(t.boardId, boardId), eq(t.status, 'closed')))
+      .groupBy(t.id)
+      .orderBy(desc(t.startedAt));
+    return rows.map((row) => ({
+      ...row,
+      startedAt: row.startedAt.toISOString(),
+      closedAt: row.closedAt?.toISOString() ?? null,
+    }));
+  }
+
+  /**
+   * Порядковый номер голосования на доске по времени старта. Отменённые
+   * удаляются, поэтому номера идут подряд среди оставшихся.
+   */
+  private numberOf() {
+    const t = schema.boardVotings;
+    return sql<number>`(select count(*)::int from ${t} as earlier where earlier.board_id = ${t.boardId} and earlier.started_at <= ${t.startedAt})`;
   }
 
   /** Голосование с блокировкой строки — голоса одного голосования применяются строго по очереди */
@@ -38,7 +78,8 @@ export class BoardVotingRepository {
       .from(t)
       .where(and(eq(t.id, votingId), eq(t.boardId, boardId)))
       .for('update');
-    return row ? toRecord(row) : null;
+    // Номер голосованию под блокировкой не нужен — голос его не показывает
+    return row ? toRecord({ ...row, number: 0 }) : null;
   }
 
   async insert(values: {
@@ -47,40 +88,32 @@ export class BoardVotingRepository {
     votesPerParticipant: number;
     maxPerItem: number;
     itemIds: string[] | null;
-  }): Promise<BoardVotingRecord> {
-    const [row] = await this.db.insert(schema.boardVotings).values(values).returning();
-    if (!row) throw new Error('Не удалось создать голосование');
-    return toRecord(row);
+    withTimer: boolean;
+  }): Promise<void> {
+    await this.db.insert(schema.boardVotings).values(values);
   }
 
-  /** Меняет только голосование в нужном статусе; false — такого нет (уже завершено/отменено) */
-  async close(boardId: string, votingId: string): Promise<boolean> {
+  /**
+   * Меняет только идущее голосование. null — такого нет (уже завершено или
+   * отменено), иначе — запускало ли оно таймер (его тогда нужно сбросить).
+   */
+  async close(boardId: string, votingId: string): Promise<{ withTimer: boolean } | null> {
     const t = schema.boardVotings;
-    const rows = await this.db
+    const [row] = await this.db
       .update(t)
       .set({ status: 'closed', closedAt: new Date() })
       .where(and(eq(t.id, votingId), eq(t.boardId, boardId), eq(t.status, 'active')))
-      .returning({ id: t.id });
-    return rows.length > 0;
+      .returning({ withTimer: t.withTimer });
+    return row ?? null;
   }
 
-  async cancel(boardId: string, votingId: string): Promise<boolean> {
+  async cancel(boardId: string, votingId: string): Promise<{ withTimer: boolean } | null> {
     const t = schema.boardVotings;
-    const rows = await this.db
+    const [row] = await this.db
       .delete(t)
       .where(and(eq(t.id, votingId), eq(t.boardId, boardId), eq(t.status, 'active')))
-      .returning({ id: t.id });
-    return rows.length > 0;
-  }
-
-  async hideResults(boardId: string, votingId: string): Promise<boolean> {
-    const t = schema.boardVotings;
-    const rows = await this.db
-      .update(t)
-      .set({ resultsHidden: true })
-      .where(and(eq(t.id, votingId), eq(t.boardId, boardId), eq(t.status, 'closed')))
-      .returning({ id: t.id });
-    return rows.length > 0;
+      .returning({ withTimer: t.withTimer });
+    return row ?? null;
   }
 
   async listVotes(votingId: string): Promise<BoardVoteRecord[]> {
@@ -155,7 +188,7 @@ export class BoardVotingRepository {
   }
 }
 
-function toRecord(row: VotingRow): BoardVotingRecord {
+function toRecord(row: VotingRow & { number: number }): BoardVotingRecord {
   return {
     id: row.id,
     boardId: row.boardId,
@@ -163,7 +196,8 @@ function toRecord(row: VotingRow): BoardVotingRecord {
     votesPerParticipant: row.votesPerParticipant,
     maxPerItem: row.maxPerItem,
     itemIds: row.itemIds ?? null,
-    resultsHidden: row.resultsHidden,
+    withTimer: row.withTimer,
+    number: row.number,
     startedAt: row.startedAt,
     closedAt: row.closedAt,
   };

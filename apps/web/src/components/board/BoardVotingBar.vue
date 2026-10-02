@@ -1,13 +1,15 @@
 <script setup lang="ts">
 /**
  * Плашка «идёт голосование» сверху по центру (15.2, кит — BoardVotingBar):
- * свой остаток точек и сколько участников уже проголосовали. У тех, кто
- * может править доску, — «Отменить» и «Завершить».
+ * подсказка, свой остаток точек и сколько участников уже проголосовали. У
+ * тех, кто может править доску, — «Отменить» и «Завершить»; если не все
+ * потратили свои точки, «Завершить» сначала спрашивает подтверждение.
  */
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import type { BoardVoting } from '../../features/boards/composables/use-board-voting';
+import ConfirmModal from '../ConfirmModal.vue';
 
 const props = defineProps<{
   voting: BoardVoting;
@@ -31,7 +33,7 @@ const total = computed(() => Math.max(props.participantCount, state.value?.voted
   >
     <div class="flex min-w-0 items-center gap-2 text-xs leading-[18px] whitespace-nowrap">
       <UIcon name="i-lucide-vote" class="text-icons-brand size-4 shrink-0" />
-      <span class="text-text-brand font-bold">{{ t('board.voting.title') }}</span>
+      <span class="text-text-brand font-bold">{{ t('board.voting.hint') }}</span>
       <span data-testid="board-voting-bar-remaining" class="text-text-primary font-bold">
         {{
           t('board.voting.remaining', { left: state.myRemaining, total: state.votesPerParticipant })
@@ -57,12 +59,23 @@ const total = computed(() => Math.max(props.participantCount, state.value?.voted
         icon="i-lucide-circle-check"
         size="sm"
         :disabled="voting.pending.value"
-        @click="voting.close()"
+        @click="voting.finish()"
       >
         {{ t('board.voting.finish') }}
       </UButton>
     </template>
   </div>
+  <ConfirmModal
+    :open="voting.confirmFinishOpen.value"
+    :title="t('board.voting.finishTitle')"
+    :description="t('board.voting.finishDescription', voting.finishStats.value)"
+    :confirm-label="t('board.voting.finish')"
+    :cancel-label="t('board.voting.continueVoting')"
+    confirm-color="primary"
+    :loading="voting.pending.value"
+    @update:open="voting.setConfirmFinishOpen"
+    @confirm="voting.confirmFinish()"
+  />
 </template>
 
 <style scoped>

@@ -15,6 +15,8 @@ import {
   type BoardTimerState,
   type BoardVotePayload,
   type BoardVotingRefPayload,
+  type BoardVotingState,
+  type BoardVotingSummary,
   type JoinBoardPayload,
   type JoinBoardResult,
   type ResetBoardTimerPayload,
@@ -156,9 +158,14 @@ export class BoardsGateway {
 
       socket.on(BOARD_WS_EVENTS.VOTING_START, (...args: unknown[]) => {
         const { payload, ack } = this.readArgs<StartBoardVotingPayload>(args);
-        this.runVoting(io, socket, log, ack, (voting, identity, boardId) =>
-          voting.start(identity, boardId, payload),
-        );
+        this.runVoting(io, socket, log, ack, async (voting, identity, boardId) => {
+          await voting.start(identity, boardId, payload);
+          // Таймер вместе с голосованием — всегда заново, в т.ч. после истёкшего
+          if (payload?.startTimer === true) {
+            this.timer.reset(boardId);
+            this.emitTimer(io, boardId, this.timer.start(boardId));
+          }
+        });
       });
 
       socket.on(BOARD_WS_EVENTS.VOTING_VOTE, (...args: unknown[]) => {
@@ -170,23 +177,34 @@ export class BoardsGateway {
 
       socket.on(BOARD_WS_EVENTS.VOTING_CLOSE, (...args: unknown[]) => {
         const { payload, ack } = this.readArgs<BoardVotingRefPayload>(args);
-        this.runVoting(io, socket, log, ack, (voting, identity, boardId) =>
-          voting.close(identity, boardId, payload?.votingId),
-        );
+        this.runVoting(io, socket, log, ack, async (voting, identity, boardId) => {
+          const { withTimer } = await voting.close(identity, boardId, payload?.votingId);
+          if (withTimer) this.emitTimer(io, boardId, this.timer.reset(boardId));
+        });
       });
 
       socket.on(BOARD_WS_EVENTS.VOTING_CANCEL, (...args: unknown[]) => {
         const { payload, ack } = this.readArgs<BoardVotingRefPayload>(args);
-        this.runVoting(io, socket, log, ack, (voting, identity, boardId) =>
-          voting.cancel(identity, boardId, payload?.votingId),
-        );
+        this.runVoting(io, socket, log, ack, async (voting, identity, boardId) => {
+          const { withTimer } = await voting.cancel(identity, boardId, payload?.votingId);
+          if (withTimer) this.emitTimer(io, boardId, this.timer.reset(boardId));
+        });
       });
 
-      socket.on(BOARD_WS_EVENTS.VOTING_HIDE, (...args: unknown[]) => {
+      socket.on(BOARD_WS_EVENTS.VOTING_HISTORY, (...args: unknown[]) => {
+        const { ack } = this.readArgs(args);
+        this.run<BoardVotingSummary[]>(socket, log, ack, async () => {
+          const { boardId, identity } = this.requireSeat(socket);
+          return this.requireVoting().history(identity, boardId);
+        });
+      });
+
+      socket.on(BOARD_WS_EVENTS.VOTING_RESULTS, (...args: unknown[]) => {
         const { payload, ack } = this.readArgs<BoardVotingRefPayload>(args);
-        this.runVoting(io, socket, log, ack, (voting, identity, boardId) =>
-          voting.hideResults(identity, boardId, payload?.votingId),
-        );
+        this.run<BoardVotingState>(socket, log, ack, async () => {
+          const { boardId, identity } = this.requireSeat(socket);
+          return this.requireVoting().results(identity, boardId, payload?.votingId);
+        });
       });
 
       socket.on('disconnect', () => {
@@ -284,11 +302,19 @@ export class BoardsGateway {
   ): void {
     this.run<null>(socket, log, ack, async () => {
       const { boardId, identity } = this.requireSeat(socket);
-      if (!this.voting) throw new ConflictError('Голосование недоступно');
-      await action(this.voting, identity, boardId);
+      await action(this.requireVoting(), identity, boardId);
       await this.broadcastVoting(io, boardId);
       return null;
     });
+  }
+
+  private requireVoting(): BoardVotingService {
+    if (!this.voting) throw new ConflictError('Голосование недоступно');
+    return this.voting;
+  }
+
+  private emitTimer(io: PokerServer, boardId: string, state: BoardTimerState): void {
+    io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.TIMER, state);
   }
 
   /** Каждому участнику доски — его собственный снимок голосования */
@@ -319,7 +345,7 @@ export class BoardsGateway {
       const { boardId, identity } = this.requireSeat(socket);
       await this.service.assertActiveEditAccess(identity.userId, boardId);
       const state = command(boardId);
-      io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.TIMER, state);
+      this.emitTimer(io, boardId, state);
       return state;
     });
   }

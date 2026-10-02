@@ -16,6 +16,7 @@ import type {
   BoardShareRole,
   BoardTimerState,
   BoardVotingState,
+  BoardVotingSummary,
   JoinBoardResult,
   StartBoardVotingPayload,
 } from '@estimate/shared';
@@ -226,16 +227,23 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     await emitWithAck(requireSocket(), BOARD_WS_EVENTS.VOTING_VOTE, { votingId, itemId, delta });
   }
 
-  /** Завершить/отменить/скрыть итоги — у текущего голосования */
+  /** Завершить/отменить — у текущего голосования */
   async function votingCommand(
-    event:
-      | typeof BOARD_WS_EVENTS.VOTING_CLOSE
-      | typeof BOARD_WS_EVENTS.VOTING_CANCEL
-      | typeof BOARD_WS_EVENTS.VOTING_HIDE,
+    event: typeof BOARD_WS_EVENTS.VOTING_CLOSE | typeof BOARD_WS_EVENTS.VOTING_CANCEL,
   ): Promise<void> {
     const votingId = voting.value?.id;
     if (!votingId) return;
     await emitWithAck(requireSocket(), event, { votingId });
+  }
+
+  /** История завершённых голосований доски — новые сверху */
+  async function fetchVotingHistory(): Promise<BoardVotingSummary[]> {
+    return emitWithAck(requireSocket(), BOARD_WS_EVENTS.VOTING_HISTORY, {});
+  }
+
+  /** Итоги завершённого голосования из истории */
+  async function fetchVotingResults(votingId: string): Promise<BoardVotingState> {
+    return emitWithAck(requireSocket(), BOARD_WS_EVENTS.VOTING_RESULTS, { votingId });
   }
 
   async function setShare(role: BoardShareRole | null): Promise<Board> {
@@ -269,7 +277,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     vote,
     closeVoting: () => votingCommand(BOARD_WS_EVENTS.VOTING_CLOSE),
     cancelVoting: () => votingCommand(BOARD_WS_EVENTS.VOTING_CANCEL),
-    hideVotingResults: () => votingCommand(BOARD_WS_EVENTS.VOTING_HIDE),
+    fetchVotingHistory,
+    fetchVotingResults,
     applyError: optimistic.applyError,
     join,
     leave,

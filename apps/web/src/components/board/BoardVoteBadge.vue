@@ -3,7 +3,9 @@
  * Бейдж голосов на элементе (15.2, кит — BoardVoteBadge): правый нижний угол
  * внутри листа — правый верхний занят кнопкой реакции, левый нижний —
  * полученными реакциями. Во время голосования — свои точки (клик снимает
- * одну), после завершения — общее число с авторами по наведению.
+ * одну) и подсветка при наведении, если за элемент можно проголосовать
+ * (кит — BoardVoteHover: затемнение, обводка, «+1»); после завершения —
+ * общее число с авторами по наведению.
  */
 import type { BoardItem } from '@estimate/shared';
 import { computed, inject } from 'vue';
@@ -20,6 +22,7 @@ const voting = inject(BOARD_VOTING_KEY, null);
 const mine = computed(() =>
   voting?.isActive.value ? (voting.state.value?.myVotes[props.item.id] ?? 0) : 0,
 );
+const canVote = computed(() => voting?.canVoteOn(props.item) ?? false);
 const result = computed(() =>
   voting?.hasResults.value
     ? (voting.resultRows.value.find((row) => row.itemId === props.item.id) ?? null)
@@ -37,6 +40,14 @@ function initials(name: string): string {
 </script>
 
 <template>
+  <div
+    v-if="canVote"
+    data-testid="board-vote-hover"
+    class="board-vote-hover"
+    :class="{ 'board-vote-hover--beside-mine': mine > 0 }"
+  >
+    <span class="board-vote-badge board-vote-badge--preview">+1</span>
+  </div>
   <button
     v-if="mine > 0"
     type="button"
@@ -63,17 +74,21 @@ function initials(name: string): string {
     </span>
     <template #content>
       <div data-testid="board-vote-authors" class="board-vote-authors">
-        <div class="text-text-secondary text-xs leading-[18px] font-bold">
+        <div class="text-text-secondary text-[10px] leading-3 font-bold">
           {{ t('board.voting.votesCount', result.total) }}
         </div>
         <div v-for="author in result.authors" :key="author.participantId" class="board-vote-author">
           <span class="board-vote-avatar" :class="teamAvatarColor(author.participantId)">
             {{ initials(author.name) }}
           </span>
-          <span class="text-text-primary min-w-0 flex-1 truncate text-sm font-medium">
+          <span
+            class="text-text-primary min-w-0 flex-1 truncate text-xs leading-[18px] font-medium"
+          >
             {{ author.name }}
           </span>
-          <span class="text-text-secondary text-sm font-bold">{{ author.count }}</span>
+          <span class="text-text-secondary text-xs leading-[18px] font-bold">
+            {{ author.count }}
+          </span>
         </div>
       </div>
     </template>
@@ -85,14 +100,15 @@ function initials(name: string): string {
   position: absolute;
   right: 8px;
   bottom: 8px;
-  z-index: 2;
+  z-index: 4;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   height: 24px;
   border-radius: 12px;
-  font-size: 12px;
-  line-height: 18px;
+  /* Body/Xsmall/Bold 10/12 */
+  font-size: 10px;
+  line-height: 12px;
   font-weight: 700;
 }
 
@@ -103,6 +119,34 @@ function initials(name: string): string {
   color: var(--text-on-brand);
   background: var(--surface-brand);
   cursor: pointer;
+}
+
+/* Наведение в голосовании (BoardVoteHover): лёгкое затемнение листа, обводка
+   border-brand 2px и «+1» в углу — видно только на наведении узла */
+.board-vote-hover {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  border-radius: 6px;
+  background: rgb(0 0 0 / 8%);
+  box-shadow: 0 0 0 2px var(--border-brand);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+/* Видимость на наведении узла — в BoardCanvas.vue (селектор по .vue-flow__node:hover) */
+
+/* Свои точки уже в углу — «+1» встаёт левее, бейдж своих точек остаётся кликабельным */
+.board-vote-hover--beside-mine .board-vote-badge--preview {
+  right: 36px;
+}
+
+.board-vote-badge--preview {
+  min-width: 24px;
+  padding: 0 7px;
+  color: var(--text-on-brand);
+  background: var(--surface-brand);
 }
 
 /* Итог: пилюля surface-block с точкой бренда, elevation-1 */

@@ -183,13 +183,14 @@ const voting = useBoardVoting({
   state: () => boardSession.voting,
   items: () => props.items,
   selectedIds: () => selectedNodeIdsForVoting(),
+  participantCount: () => boardSession.presence.length,
   commands: {
     start: (payload) => boardSession.startVoting(payload),
     vote: (itemId, delta) => boardSession.vote(itemId, delta),
     close: () => boardSession.closeVoting(),
     cancel: () => boardSession.cancelVoting(),
-    hide: () => boardSession.hideVotingResults(),
-    startTimer: () => boardSession.startTimer(),
+    fetchHistory: () => boardSession.fetchVotingHistory(),
+    fetchResults: (votingId) => boardSession.fetchVotingResults(votingId),
   },
 });
 provide(BOARD_VOTING_KEY, voting);
@@ -1190,9 +1191,19 @@ useBoardHotkeys({
   }
 }
 
-/* Голосование идёт — всё, за что голосовать нельзя, приглушено */
+/* Голосование идёт — всё, за что голосовать нельзя, приглушено; за что можно —
+   курсор-рука на всём элементе */
 .board-canvas-root :deep(.vue-flow__node.board-node-voting-muted) {
   opacity: 0.4;
+}
+
+.board-canvas-root :deep(.vue-flow__node:hover .board-vote-hover) {
+  opacity: 1;
+}
+
+.board-canvas-root :deep(.vue-flow__node.board-node-voting-target),
+.board-canvas-root :deep(.vue-flow__node.board-node-voting-target *) {
+  cursor: pointer;
 }
 
 .board-canvas-root:fullscreen {

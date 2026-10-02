@@ -6,10 +6,12 @@ const props = withDefaults(
     title: string;
     description: string;
     confirmLabel: string;
+    /** Подпись кнопки отказа; не задана — «Отмена» */
+    cancelLabel?: string;
     confirmColor?: 'error' | 'primary' | 'neutral' | 'success' | 'warning';
     loading?: boolean;
   }>(),
-  { confirmColor: 'error', loading: false },
+  { confirmColor: 'error', loading: false, cancelLabel: undefined },
 );
 
 const emit = defineEmits<{ confirm: [] }>();
@@ -22,7 +24,7 @@ const { t } = useI18n();
   <UModal v-model:open="open" :title="props.title" :description="props.description">
     <template #footer="{ close }">
       <UButton color="neutral" variant="outline" @click="close">
-        {{ t('common.cancel') }}
+        {{ props.cancelLabel ?? t('common.cancel') }}
       </UButton>
       <UButton :color="props.confirmColor" :loading="props.loading" @click="emit('confirm')">
         {{ props.confirmLabel }}

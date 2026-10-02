@@ -25,12 +25,15 @@ export const BOARD_WS_EVENTS = {
   TIMER_PAUSE: 'board:timer:pause',
   TIMER_RESET: 'board:timer:reset',
   TIMER_EXTEND: 'board:timer:extend',
-  /** Голосование точками (15.2): запуск/завершение/отмена/скрытие итогов — `edit`, голос — любой на доске */
+  /** Голосование точками (15.2): запуск/завершение/отмена — `edit`, голос и история — любой на доске */
   VOTING_START: 'board:voting:start',
   VOTING_VOTE: 'board:voting:vote',
   VOTING_CLOSE: 'board:voting:close',
   VOTING_CANCEL: 'board:voting:cancel',
-  VOTING_HIDE: 'board:voting:hide',
+  /** Ответ — `BoardVotingSummary[]`, новые сверху */
+  VOTING_HISTORY: 'board:voting:history',
+  /** Ответ — итоги завершённого голосования (`BoardVotingState`) */
+  VOTING_RESULTS: 'board:voting:results',
 } as const;
 
 export type BoardWsEvent = (typeof BOARD_WS_EVENTS)[keyof typeof BOARD_WS_EVENTS];

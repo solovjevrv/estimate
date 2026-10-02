@@ -281,8 +281,8 @@ export const boardEdges = pgTable(
 
 /**
  * Голосование точками на доске (15.2). Не больше одного активного на доску
- * (частичный уникальный индекс). Завершённое хранится: итоги видны, пока их не
- * скрыли (`results_hidden`), и пригодятся для сортировки по голосам (15.4).
+ * (частичный уникальный индекс). Завершённые хранятся — это история голосований
+ * доски, их итоги можно открыть в любой момент (и для сортировки по голосам, 15.4).
  * `item_ids` — скоуп (выделенные элементы или элементы фрейма на момент
  * старта), null — вся доска. Отменённое голосование удаляется вместе с голосами.
  */
@@ -298,7 +298,8 @@ export const boardVotings = pgTable(
     votesPerParticipant: integer('votes_per_participant').notNull(),
     maxPerItem: integer('max_per_item').notNull(),
     itemIds: uuid('item_ids').array(),
-    resultsHidden: boolean('results_hidden').notNull().default(false),
+    /** Запуск таймера доски вместе с голосованием — завершение/отмена его сбрасывают */
+    withTimer: boolean('with_timer').notNull().default(false),
     startedAt: timestamp('started_at', { withTimezone: true }).notNull().defaultNow(),
     closedAt: timestamp('closed_at', { withTimezone: true }),
   },

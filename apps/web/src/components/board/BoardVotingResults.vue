@@ -1,13 +1,17 @@
 <script setup lang="ts">
 /**
  * Панель итогов голосования (15.2, кит — BoardVotingResults) под кнопкой
- * «Итоги»: элементы по убыванию голосов, клик по строке — камера к элементу.
- * «Скрыть результаты» — у тех, кто может править доску: убирает итоги у всех.
+ * голосования: какое голосование открыто, элементы по убыванию голосов, клик
+ * по строке — камера к элементу. Крестик закрывает панель только у себя;
+ * «Новое голосование» — у тех, кто может править доску.
  */
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
 
-import type { BoardVoting } from '../../features/boards/composables/use-board-voting';
+import {
+  formatVotingDate,
+  type BoardVoting,
+} from '../../features/boards/composables/use-board-voting';
 
 const props = defineProps<{
   voting: BoardVoting;
@@ -16,10 +20,17 @@ const props = defineProps<{
 
 const emit = defineEmits<{ focus: [itemId: string] }>();
 
-const { t } = useI18n();
+const { t, locale } = useI18n();
 
 const rows = computed(() => props.voting.resultRows.value);
-const summary = computed(() => props.voting.summary.value);
+const shown = computed(() => props.voting.shownResults.value);
+const meta = computed(() =>
+  t('board.voting.resultsMeta', {
+    date: formatVotingDate(shown.value?.closedAt ?? shown.value?.startedAt ?? '', locale.value),
+    voters: props.voting.summary.value.voters,
+    votes: t('board.voting.votesCount', props.voting.summary.value.votes),
+  }),
+);
 </script>
 
 <template>
@@ -30,7 +41,7 @@ const summary = computed(() => props.voting.summary.value);
     <div class="flex items-center gap-2">
       <UIcon name="i-lucide-trophy" class="text-icons-brand size-[18px] shrink-0" />
       <span class="text-text-primary flex-1 text-sm leading-5 font-bold">
-        {{ t('board.voting.resultsTitle') }}
+        {{ t('board.voting.votingNumber', { number: shown?.number ?? 1 }) }}
       </span>
       <UButton
         color="neutral"
@@ -42,14 +53,7 @@ const summary = computed(() => props.voting.summary.value);
         @click="voting.closeResults()"
       />
     </div>
-    <div class="text-text-secondary text-xs leading-[18px] font-medium">
-      {{
-        t('board.voting.resultsSummary', {
-          voters: summary.voters,
-          votes: t('board.voting.votesCount', summary.votes),
-        })
-      }}
-    </div>
+    <div class="text-text-secondary text-xs leading-[18px] font-medium">{{ meta }}</div>
 
     <div v-if="rows.length > 0" class="board-voting-results-list">
       <button
@@ -60,7 +64,7 @@ const summary = computed(() => props.voting.summary.value);
         class="board-voting-result-row"
         @click="emit('focus', row.itemId)"
       >
-        <span class="text-text-tertiary w-3 shrink-0 text-xs font-bold">{{ row.rank }}</span>
+        <span class="board-voting-rank">{{ row.rank }}</span>
         <span class="board-voting-swatch" :style="{ background: row.color }" />
         <span class="text-text-primary min-w-0 flex-1 truncate text-left text-xs font-medium">
           {{ row.text }}
@@ -70,19 +74,18 @@ const summary = computed(() => props.voting.summary.value);
     </div>
     <div v-else class="text-text-secondary text-xs">{{ t('board.voting.noResults') }}</div>
 
-    <template v-if="canEdit">
+    <template v-if="canEdit && !voting.isActive.value">
       <div class="border-border-light border-t" />
       <UButton
-        data-testid="board-voting-hide"
+        data-testid="board-voting-new-from-results"
         color="neutral"
         variant="ghost"
         size="sm"
-        icon="i-lucide-eye-off"
+        icon="i-lucide-plus"
         class="self-start"
-        :disabled="voting.pending.value"
-        @click="voting.hide()"
+        @click="voting.requestNewVoting()"
       >
-        {{ t('board.voting.hideResults') }}
+        {{ t('board.voting.newVoting') }}
       </UButton>
     </template>
   </div>
@@ -120,6 +123,16 @@ const summary = computed(() => props.voting.summary.value);
 
 .board-voting-result-row:hover {
   background: var(--surface-hover);
+}
+
+/* Место: Body/Xsmall/Bold 10/12, text-tertiary */
+.board-voting-rank {
+  width: 12px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  font-size: 10px;
+  line-height: 12px;
+  font-weight: 700;
 }
 
 .board-voting-swatch {

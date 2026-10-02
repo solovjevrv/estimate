@@ -64,19 +64,19 @@ test('голосование точками: старт, точки, сняти�
   // строим по панелям голосования, не по числу узлов
   await expect(boardLocators(pageB).pane).toBeVisible();
 
-  // A: настройка — 2 голоса, до 2 на стикер, без таймера
+  // A: настройка — 2 голоса, до 2 на стикер, с таймером доски
   await pageA.getByTestId('board-voting-button').click();
   await expect(pageA.getByTestId('board-voting-setup')).toBeVisible();
   // data-testid у UInputNumber может оказаться и на обёртке, и на самом input
   await pageA
     .locator('input[data-testid="board-voting-votes"], [data-testid="board-voting-votes"] input')
     .fill('2');
-  await pageA.getByLabel('Запустить таймер доски').uncheck();
   await pageA.getByTestId('board-voting-start').click();
 
   await expect(pageA.getByTestId('board-voting-bar')).toContainText('Осталось 2 из 2');
   await expect(pageB.getByTestId('board-voting-bar')).toBeVisible();
-  await expect(pageA.getByTestId('board-timer')).toHaveAttribute('data-phase', 'idle');
+  // Галочка «Запустить таймер доски» включена по умолчанию — таймер идёт у всех
+  await expect(pageB.getByTestId('board-timer')).toHaveAttribute('data-phase', 'running');
 
   // Клик по стикеру — точка, а не выделение
   const first = boardA.stickyNodes.first();
@@ -93,21 +93,36 @@ test('голосование точками: старт, точки, сняти�
   await boardA.stickyNodes.nth(1).click();
   await expect(pageA.getByTestId('board-voting-remaining')).toHaveText('0 из 2');
 
-  // Завершение — итоги у обеих вкладок
+  // Завершение (все на доске потратили точки — без подтверждения): итоги у обеих
+  // вкладок, таймер голосования сброшен
   await pageA.getByTestId('board-voting-finish').click();
-  await expect(pageA.getByTestId('board-voting-results')).toBeVisible();
+  await expect(pageA.getByTestId('board-voting-results')).toContainText('Голосование 1');
   await expect(pageA.getByTestId('board-voting-result-row')).toHaveCount(2);
-  await expect(pageB.getByTestId('board-voting-button')).toHaveAttribute('data-phase', 'results');
+  await expect(pageB.getByTestId('board-voting-results')).toBeVisible();
+  await expect(pageB.getByTestId('board-voting-button')).toHaveAttribute('data-phase', 'history');
   await expect(first.getByTestId('board-vote-badge-total')).toContainText('1');
   await expect(pageA.getByTestId('board-voting-bar')).toHaveCount(0);
+  await expect(pageA.getByTestId('board-timer')).toHaveAttribute('data-phase', 'idle');
 
   // После завершения выделение снова работает
   await first.click();
   await expect(first).toHaveAttribute('data-selected', 'true');
 
-  // Скрыть результаты — бейджи и панель пропадают у всех
-  await pageA.getByTestId('board-voting-hide').click();
-  await expect(pageB.getByTestId('board-voting-button')).toHaveAttribute('data-phase', 'idle');
+  // Крестик закрывает итоги только у себя: у A бейджи пропали, у B панель на месте
+  await pageA
+    .getByTestId('board-voting-results')
+    .getByRole('button', { name: 'Свернуть итоги' })
+    .click();
   await expect(pageA.getByTestId('board-vote-badge-total')).toHaveCount(0);
-  await expect(pageA.getByTestId('board-voting-button')).toHaveAttribute('data-phase', 'idle');
+  await expect(pageB.getByTestId('board-voting-results')).toBeVisible();
+
+  // История: меню кнопки — прошлое голосование открывает его итоги снова
+  await pageA.getByTestId('board-voting-button').click();
+  await expect(pageA.getByTestId('board-voting-history-item')).toHaveCount(1);
+  await pageA.getByTestId('board-voting-history-item').click();
+  await expect(pageA.getByTestId('board-voting-results')).toContainText('Голосование 1');
+
+  // «Новое голосование» из итогов — настройка в кнопке верхнего ряда
+  await pageA.getByTestId('board-voting-new-from-results').click();
+  await expect(pageA.getByTestId('board-voting-setup')).toBeVisible();
 });

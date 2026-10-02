@@ -1,5 +1,5 @@
 {
-  "id": "5bf8c86a-17d2-4225-815f-3e649198497e",
+  "id": "0ce320d1-a350-44a1-a0f0-80ad6f9a50bc",
   "prevId": "893d4904-2aa9-4972-91f3-3e339151bd61",
   "version": "7",
   "dialect": "postgresql",
@@ -407,8 +407,8 @@
           "primaryKey": false,
           "notNull": false
         },
-        "results_hidden": {
-          "name": "results_hidden",
+        "with_timer": {
+          "name": "with_timer",
           "type": "boolean",
           "primaryKey": false,
           "notNull": true,

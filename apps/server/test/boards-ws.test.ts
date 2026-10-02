@@ -15,6 +15,7 @@ import type {
   BoardPresenceEntry,
   BoardTimerState,
   BoardVotingState,
+  BoardVotingSummary,
   JoinBoardResult,
   WsAck,
 } from '@estimate/shared';
@@ -849,8 +850,18 @@ describeDb('WS-канал досок', () => {
         'Пользователь vote-hidden-viewer',
       );
 
-      const { state: hidden } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_HIDE, { votingId });
-      expect(hidden).toBeNull();
+      // Итоги прошлого голосования остаются доступны из истории
+      const history = await emit<BoardVotingSummary[]>(
+        viewerClient,
+        BOARD_WS_EVENTS.VOTING_HISTORY,
+      );
+      expect(history.ok && history.data).toMatchObject([
+        { id: votingId, number: 1, totalVotes: 2, voterCount: 2 },
+      ]);
+      const past = await emit<BoardVotingState>(viewerClient, BOARD_WS_EVENTS.VOTING_RESULTS, {
+        votingId,
+      });
+      expect(past.ok && past.data.results?.length).toBe(2);
     });
 
     it('лимиты: не больше голосов на человека и на один элемент, минус снимает', async () => {
@@ -927,7 +938,7 @@ describeDb('WS-канал досок', () => {
       const { ownerClient } = await teamBoard('vote-invalid');
       for (const payload of [
         { votesPerParticipant: 0, maxPerItem: 1 },
-        { votesPerParticipant: 3, maxPerItem: 4 },
+        { votesPerParticipant: 3, maxPerItem: 21 },
         { votesPerParticipant: 21, maxPerItem: 1 },
         { votesPerParticipant: '3', maxPerItem: 1 },
       ]) {
@@ -966,6 +977,53 @@ describeDb('WS-канал досок', () => {
         itemIds: [emoji.id],
       });
       expect(empty.ok).toBe(false);
+    });
+
+    it('таймер: старт с галочкой перезапускает его, завершение сбрасывает', async () => {
+      const { ownerClient } = await teamBoard('vote-timer');
+      await emit<BoardTimerState>(ownerClient, BOARD_WS_EVENTS.TIMER_RESET, { durationSec: 60 });
+
+      const started = waitFor<BoardTimerState>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER);
+      const { state } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 3,
+        maxPerItem: 3,
+        startTimer: true,
+      });
+      expect((await started).running).toBe(true);
+
+      const reset = waitFor<BoardTimerState>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER);
+      await act(ownerClient, BOARD_WS_EVENTS.VOTING_CLOSE, { votingId: state!.id });
+      expect(await reset).toMatchObject({ running: false, remainingSec: 60 });
+    });
+
+    it('без галочки таймер голосованием не трогается', async () => {
+      const { ownerClient, boardId } = await teamBoard('vote-no-timer');
+      await emit<BoardTimerState>(ownerClient, BOARD_WS_EVENTS.TIMER_START);
+      const { state } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 3,
+        maxPerItem: 3,
+      });
+      await act(ownerClient, BOARD_WS_EVENTS.VOTING_CANCEL, { votingId: state!.id });
+
+      const joined = await joinBoard(ownerClient, boardId);
+      expect(joined.timer.running).toBe(true);
+    });
+
+    it('лимит на элемент больше лимита на человека упирается в меньший', async () => {
+      const { ownerClient, a } = await teamBoard('vote-effective');
+      const { state } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 2,
+        maxPerItem: 5,
+      });
+      const vote = () =>
+        emit<null>(ownerClient, BOARD_WS_EVENTS.VOTING_VOTE, {
+          votingId: state!.id,
+          itemId: a.id,
+          delta: 1,
+        });
+      expect((await vote()).ok).toBe(true);
+      expect((await vote()).ok).toBe(true);
+      expect((await vote()).ok).toBe(false);
     });
 
     it('удаление элемента возвращает его голоса голосовавшим', async () => {

@@ -17,7 +17,7 @@ CREATE TABLE "board_votings" (
 	"votes_per_participant" integer NOT NULL,
 	"max_per_item" integer NOT NULL,
 	"item_ids" uuid[],
-	"results_hidden" boolean DEFAULT false NOT NULL,
+	"with_timer" boolean DEFAULT false NOT NULL,
 	"started_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"closed_at" timestamp with time zone
 );

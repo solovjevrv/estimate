@@ -7,10 +7,12 @@
  * с `id`/`class`.
  */
 import {
+  effectiveMaxPerItem,
   isVotableContent,
   type BoardItem,
   type BoardVoteAuthor,
   type BoardVotingState,
+  type BoardVotingSummary,
   type StartBoardVotingPayload,
 } from '@estimate/shared';
 import { useToast } from '@nuxt/ui/composables';
@@ -24,9 +26,8 @@ export interface BoardVotingCommands {
   vote: (itemId: string, delta: 1 | -1) => Promise<void>;
   close: () => Promise<void>;
   cancel: () => Promise<void>;
-  hide: () => Promise<void>;
-  /** Запуск таймера доски — галочка в настройке голосования */
-  startTimer: () => Promise<void>;
+  fetchHistory: () => Promise<BoardVotingSummary[]>;
+  fetchResults: (votingId: string) => Promise<BoardVotingState>;
 }
 
 /** Где голосуем: вся доска, выделенные элементы или фрейм (по его id) */
@@ -51,6 +52,8 @@ export interface BoardVotingResultRow {
 export interface BoardVotingScopeOption {
   value: BoardVotingScopeChoice;
   label: string;
+  /** «Выделенные элементы» без выделения — видно, но выбрать нельзя */
+  disabled?: boolean;
 }
 
 /** Узел холста, достаточный для приглушения — `class` дописывается, остальное не трогаем */
@@ -61,13 +64,27 @@ export interface VotingDecoratableNode {
 }
 
 const MUTED_CLASS = 'board-node-voting-muted';
+/** Элемент в голосовании — курсор-рука на всём узле */
+const TARGET_CLASS = 'board-node-voting-target';
 
 export interface UseBoardVotingOptions {
   state: () => BoardVotingState | null;
   items: () => readonly BoardItem[];
   /** Id выделенных элементов на момент открытия настройки — для скоупа «Выделенные» */
   selectedIds: () => readonly string[];
+  /** Сколько участников на доске — для предупреждения «не все проголосовали» */
+  participantCount: () => number;
   commands: BoardVotingCommands;
+}
+
+/** «2 окт., 14:05» — дата голосования в истории и в заголовке итогов */
+export function formatVotingDate(iso: string, locale: string): string {
+  return new Date(iso).toLocaleString(locale, {
+    day: 'numeric',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 export function useBoardVoting(options: UseBoardVotingOptions) {
@@ -76,16 +93,70 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
 
   const state = computed(() => options.state());
   const isActive = computed(() => state.value?.status === 'active');
-  const hasResults = computed(() => state.value?.status === 'closed' && !!state.value.results);
-  /** Панель итогов: раскрывается сама, когда голосование завершилось */
+  /** На доске уже было голосование — кнопка открывает меню с историей */
+  const hasHistory = computed(() => state.value?.status === 'closed');
+
+  /**
+   * Открытые итоги: голосование из истории или только что завершённое.
+   * Панель и бейджи итогов на элементах — личное: закрыл у себя, у других открыто.
+   */
+  const viewedResults = ref<BoardVotingState | null>(null);
   const resultsOpen = ref(false);
+  const shownResults = computed<BoardVotingState | null>(() => {
+    if (viewedResults.value) return viewedResults.value;
+    return state.value?.status === 'closed' ? state.value : null;
+  });
+  const hasResults = computed(() => resultsOpen.value && !!shownResults.value?.results);
+
+  // Голосование завершилось на глазах — итоги открываются у всех сами
   watch(
-    () => (hasResults.value ? state.value?.id : null),
-    (id) => {
-      resultsOpen.value = id != null;
+    () => [state.value?.id, state.value?.status] as const,
+    ([id, status], [prevId, prevStatus]) => {
+      if (status === 'closed' && id === prevId && prevStatus === 'active') {
+        viewedResults.value = null;
+        resultsOpen.value = true;
+      }
+      if (status === 'active') resultsOpen.value = false;
     },
-    { immediate: true },
   );
+
+  const history = ref<BoardVotingSummary[]>([]);
+  const historyLoading = ref(false);
+
+  async function loadHistory(): Promise<void> {
+    historyLoading.value = true;
+    try {
+      history.value = await options.commands.fetchHistory();
+    } catch {
+      toast.add({ title: t('board.voting.error'), color: 'error' });
+    } finally {
+      historyLoading.value = false;
+    }
+  }
+
+  /** Итоги голосования из истории — с бейджами на элементах */
+  async function openResults(votingId: string): Promise<void> {
+    if (state.value?.status === 'closed' && state.value.id === votingId) {
+      viewedResults.value = null;
+      resultsOpen.value = true;
+      return;
+    }
+    await execute(async () => {
+      viewedResults.value = await options.commands.fetchResults(votingId);
+      resultsOpen.value = true;
+    });
+  }
+
+  function closeResults(): void {
+    resultsOpen.value = false;
+    viewedResults.value = null;
+  }
+
+  /** «Новое голосование» из панели итогов — кнопка в верхнем ряду открывает настройку */
+  const setupRequests = ref(0);
+  function requestNewVoting(): void {
+    setupRequests.value += 1;
+  }
 
   const itemsById = computed(() => new Map(options.items().map((item) => [item.id, item])));
   const scopeSet = computed(() => {
@@ -114,20 +185,32 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
     }
   }
 
+  /** Можно ли сейчас поставить точку на элемент — от этого зависит подсветка при наведении */
+  function canVoteOn(item: BoardItem): boolean {
+    const current = state.value;
+    if (!current || current.status !== 'active' || !isInScope(item)) return false;
+    if (current.myRemaining <= 0) return false;
+    return (current.myVotes[item.id] ?? 0) < effectiveMaxPerItem(current);
+  }
+
   /**
    * Клик по узлу во время голосования — точка, а не выделение. true — клик
    * поглощён (элемент вне скоупа тоже: во время голосования он не выделяется).
+   * Почему точку поставить нельзя, объясняет тост, а не состояние на стикере.
    */
   function onNodeClick(itemId: string): boolean {
-    if (!isActive.value) return false;
+    const current = state.value;
+    if (!current || current.status !== 'active') return false;
     const item = itemsById.value.get(itemId);
     if (!item || !isInScope(item)) return true;
-    if ((state.value?.myRemaining ?? 0) <= 0) {
+    if (current.myRemaining <= 0) {
       toast.add({ title: t('board.voting.noVotesLeft'), color: 'neutral' });
       return true;
     }
-    const mine = state.value?.myVotes[itemId] ?? 0;
-    if (mine >= (state.value?.maxPerItem ?? 0)) return true;
+    if ((current.myVotes[itemId] ?? 0) >= effectiveMaxPerItem(current)) {
+      toast.add({ title: t('board.voting.itemLimit'), color: 'neutral' });
+      return true;
+    }
     void vote(itemId, 1);
     return true;
   }
@@ -164,12 +247,11 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
       { value: 'board', label: t('board.voting.scopeBoard') },
     ];
     const selected = options.selectedIds().length;
-    if (selected > 0) {
-      result.push({
-        value: 'selected',
-        label: t('board.voting.scopeSelected', { count: selected }),
-      });
-    }
+    result.push(
+      selected > 0
+        ? { value: 'selected', label: t('board.voting.scopeSelected', { count: selected }) }
+        : { value: 'selected', label: t('board.voting.scopeSelectedEmpty'), disabled: true },
+    );
     for (const item of options.items()) {
       if (item.content.type !== 'frame') continue;
       result.push({
@@ -192,27 +274,43 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
         votesPerParticipant: setup.votesPerParticipant,
         maxPerItem: setup.maxPerItem,
         itemIds: resolveScope(setup.scope),
+        startTimer: setup.startTimer,
       });
       started = true;
-      if (setup.startTimer) await options.commands.startTimer();
     });
     return started;
   }
 
-  function toggleResults(): void {
-    resultsOpen.value = !resultsOpen.value;
+  /** Предупреждение «не все проголосовали» перед завершением */
+  const confirmFinishOpen = ref(false);
+  /** Сколько участников на доске потратили все точки — для текста предупреждения */
+  const finishStats = computed(() => ({
+    completed: state.value?.completedCount ?? 0,
+    total: Math.max(options.participantCount(), state.value?.completedCount ?? 0),
+  }));
+
+  async function finish(): Promise<void> {
+    if (finishStats.value.completed < finishStats.value.total) {
+      confirmFinishOpen.value = true;
+      return;
+    }
+    await close();
   }
 
-  function closeResults(): void {
-    resultsOpen.value = false;
+  function setConfirmFinishOpen(open: boolean): void {
+    confirmFinishOpen.value = open;
+  }
+
+  async function confirmFinish(): Promise<void> {
+    confirmFinishOpen.value = false;
+    await close();
   }
 
   const close = () => execute(options.commands.close);
   const cancel = () => execute(options.commands.cancel);
-  const hide = () => execute(options.commands.hide);
 
   const resultRows = computed<BoardVotingResultRow[]>(() =>
-    (state.value?.results ?? []).map((result, index) => {
+    (shownResults.value?.results ?? []).map((result, index) => {
       const item = itemsById.value.get(result.itemId);
       const text = item && 'text' in item.content ? item.content.text.trim() : '';
       return {
@@ -229,7 +327,7 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
   const summary = computed(() => {
     const voters = new Set<string>();
     let votes = 0;
-    for (const row of state.value?.results ?? []) {
+    for (const row of shownResults.value?.results ?? []) {
       votes += row.total;
       for (const author of row.authors) voters.add(author.participantId);
     }
@@ -260,7 +358,7 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
       const next = {
         ...node,
         selectable: false,
-        ...(muted ? { class: [node.class, MUTED_CLASS] } : {}),
+        class: [node.class, muted ? MUTED_CLASS : TARGET_CLASS],
       } as T;
       decorated.set(node, next);
       return next;
@@ -270,20 +368,31 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
   return {
     state,
     isActive,
+    hasHistory,
     hasResults,
+    shownResults,
     resultsOpen,
-    toggleResults,
     closeResults,
+    openResults,
+    history,
+    historyLoading,
+    loadHistory,
+    setupRequests,
+    requestNewVoting,
     pending,
     isInScope,
+    canVoteOn,
     onNodeClick,
     removeVote,
     scopeOptions,
     defaultScope,
     start,
-    close,
+    finish,
+    confirmFinish,
+    confirmFinishOpen,
+    setConfirmFinishOpen,
+    finishStats,
     cancel,
-    hide,
     resultRows,
     summary,
     decorateNodes,
@@ -296,6 +405,7 @@ export type BoardVoting = ReturnType<typeof useBoardVoting>;
 export interface BoardVotingNodeContext {
   state: ComputedRef<BoardVotingState | null>;
   isInScope: (item: BoardItem) => boolean;
+  canVoteOn: (item: BoardItem) => boolean;
   removeVote: (itemId: string) => void;
   resultRows: ComputedRef<BoardVotingResultRow[]>;
   hasResults: ComputedRef<boolean>;

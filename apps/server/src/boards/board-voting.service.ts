@@ -1,9 +1,12 @@
 import {
   BOARD_VOTING_MAX_SCOPE_ITEMS,
+  effectiveMaxPerItem,
   isValidVotingLimits,
   isVotableContent,
   type Board,
   type BoardVotePayload,
+  type BoardVotingState,
+  type BoardVotingSummary,
   type StartBoardVotingPayload,
 } from '@estimate/shared';
 
@@ -11,7 +14,7 @@ import type { Db } from '../db';
 import { isUniqueViolation } from '../db/errors';
 import { ConflictError, NotFoundError, ValidationError } from '../errors';
 
-import type { BoardVotingSnapshot } from './board-voting-state';
+import { votingStateFor, type BoardVotingSnapshot } from './board-voting-state';
 import { BoardVotingRepository } from './board-voting.repository';
 import type { DbExecutor } from '../common/db-executor';
 
@@ -73,6 +76,7 @@ export class BoardVotingService {
         votesPerParticipant: votesPerParticipant as number,
         maxPerItem: maxPerItem as number,
         itemIds,
+        withTimer: payload?.startTimer === true,
       });
     } catch (err) {
       if (isUniqueViolation(err, 'board_votings_one_active_idx')) {
@@ -118,7 +122,7 @@ export class BoardVotingService {
       const current = mine.find((vote) => vote.itemId === item.id)?.count ?? 0;
       if (delta === 1) {
         if (used >= voting.votesPerParticipant) throw new ConflictError('Голоса закончились');
-        if (current >= voting.maxPerItem) {
+        if (current >= effectiveMaxPerItem(voting)) {
           throw new ConflictError('За этот элемент больше голосовать нельзя');
         }
       } else if (current === 0) {
@@ -128,48 +132,54 @@ export class BoardVotingService {
     });
   }
 
-  async close(actor: BoardVoter, boardId: string, votingId: unknown): Promise<void> {
-    await this.mutate(
-      actor,
-      boardId,
-      votingId,
-      (repo, id) => repo.close(boardId, id),
-      'Голосование уже завершено',
-    );
+  /** Завершение; ответ — запускало ли голосование таймер (тогда его сбрасывают) */
+  async close(
+    actor: BoardVoter,
+    boardId: string,
+    votingId: unknown,
+  ): Promise<{ withTimer: boolean }> {
+    return this.mutate(actor, boardId, votingId, (repo, id) => repo.close(boardId, id));
   }
 
-  async cancel(actor: BoardVoter, boardId: string, votingId: unknown): Promise<void> {
-    await this.mutate(
-      actor,
-      boardId,
-      votingId,
-      (repo, id) => repo.cancel(boardId, id),
-      'Голосование уже завершено',
-    );
+  /** Отмена удаляет голосование вместе с голосами; ответ — как у `close` */
+  async cancel(
+    actor: BoardVoter,
+    boardId: string,
+    votingId: unknown,
+  ): Promise<{ withTimer: boolean }> {
+    return this.mutate(actor, boardId, votingId, (repo, id) => repo.cancel(boardId, id));
   }
 
-  async hideResults(actor: BoardVoter, boardId: string, votingId: unknown): Promise<void> {
-    await this.mutate(
-      actor,
-      boardId,
-      votingId,
-      (repo, id) => repo.hideResults(boardId, id),
-      'Итоги уже скрыты',
-    );
+  /** История завершённых голосований доски — любой, кто видит доску */
+  async history(viewer: BoardVoter, boardId: string): Promise<BoardVotingSummary[]> {
+    await this.access.assertViewAccess(viewer.userId, boardId);
+    return this.createRepository(this.db).listHistory(boardId);
+  }
+
+  /** Итоги завершённого голосования из истории глазами `viewer` */
+  async results(viewer: BoardVoter, boardId: string, votingId: unknown): Promise<BoardVotingState> {
+    await this.access.assertViewAccess(viewer.userId, boardId);
+    if (!isUuid(votingId)) throw new ValidationError('Не указано голосование');
+    const repo = this.createRepository(this.db);
+    const voting = await repo.findClosed(boardId, votingId);
+    if (!voting) throw new NotFoundError('Голосование не найдено');
+    return votingStateFor({ voting, votes: await repo.listVotes(voting.id) }, viewer.participantId);
   }
 
   private async mutate(
     actor: BoardVoter,
     boardId: string,
     votingId: unknown,
-    change: (repo: BoardVotingRepository, votingId: string) => Promise<boolean>,
-    conflict: string,
-  ): Promise<void> {
+    change: (
+      repo: BoardVotingRepository,
+      votingId: string,
+    ) => Promise<{ withTimer: boolean } | null>,
+  ): Promise<{ withTimer: boolean }> {
     await this.access.assertActiveEditAccess(actor.userId, boardId);
     if (!isUuid(votingId)) throw new ValidationError('Не указано голосование');
-    if (!(await change(this.createRepository(this.db), votingId))) {
-      throw new ConflictError(conflict);
-    }
+    const changed = await change(this.createRepository(this.db), votingId);
+    if (!changed) throw new ConflictError('Голосование уже завершено');
+    return changed;
   }
 
   /**

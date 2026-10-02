@@ -1,4 +1,4 @@
-import type { BoardItem, BoardVotingState } from '@estimate/shared';
+import type { BoardItem, BoardVotingState, BoardVotingSummary } from '@estimate/shared';
 import { mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick, ref } from 'vue';
@@ -38,6 +38,7 @@ function item(id: string, over: Partial<BoardItem> = {}): BoardItem {
 function activeState(over: Partial<BoardVotingState> = {}): BoardVotingState {
   return {
     id: 'v1',
+    number: 1,
     status: 'active',
     votesPerParticipant: 3,
     maxPerItem: 2,
@@ -47,6 +48,7 @@ function activeState(over: Partial<BoardVotingState> = {}): BoardVotingState {
     myVotes: {},
     myRemaining: 3,
     votedCount: 0,
+    completedCount: 0,
     results: null,
     ...over,
   };
@@ -69,9 +71,13 @@ function setup(initial: BoardVotingState | null = activeState()) {
     vote: vi.fn(async () => {}),
     close: vi.fn(async () => {}),
     cancel: vi.fn(async () => {}),
-    hide: vi.fn(async () => {}),
-    startTimer: vi.fn(async () => {}),
+    fetchHistory: vi.fn(async (): Promise<BoardVotingSummary[]> => []),
+    fetchResults: vi.fn(async (votingId: string): Promise<BoardVotingState> => ({
+      ...activeState({ id: votingId, number: 1, status: 'closed' }),
+      results: [{ itemId: 'a', total: 2, authors: [] }],
+    })),
   } satisfies BoardVotingCommands;
+  const participants = ref(2);
   let voting!: BoardVoting;
   mount(
     defineComponent({
@@ -80,6 +86,7 @@ function setup(initial: BoardVotingState | null = activeState()) {
           state: () => state.value,
           items: () => items.value,
           selectedIds: () => selected.value,
+          participantCount: () => participants.value,
           commands,
         });
         return () => null;
@@ -87,7 +94,7 @@ function setup(initial: BoardVotingState | null = activeState()) {
     }),
     { global: { plugins: [createAppI18n('ru')] } },
   );
-  return { voting, state, items, selected, commands };
+  return { voting, state, items, selected, commands, participants };
 }
 
 describe('useBoardVoting (15.2)', () => {
@@ -110,16 +117,32 @@ describe('useBoardVoting (15.2)', () => {
     expect(voting.onNodeClick('b')).toBe(true);
     expect(voting.onNodeClick('img')).toBe(true);
     expect(commands.vote).not.toHaveBeenCalled();
+    expect(toastAdd).not.toHaveBeenCalled();
   });
 
-  it('без оставшихся голосов — подсказка, на лимите элемента — ничего', () => {
-    const { voting, state, commands } = setup(activeState({ myRemaining: 0 }));
+  it('почему точку поставить нельзя — объясняет тост; подсветки на таком элементе нет', () => {
+    const { voting, state, items, commands } = setup(activeState({ myRemaining: 0 }));
     voting.onNodeClick('a');
-    expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({ title: 'Голоса закончились' }));
+    expect(toastAdd).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: 'Голоса закончились' }),
+    );
+    expect(voting.canVoteOn(items.value[0]!)).toBe(false);
 
     state.value = activeState({ myVotes: { a: 2 }, myRemaining: 1 });
     voting.onNodeClick('a');
+    expect(toastAdd).toHaveBeenLastCalledWith(
+      expect.objectContaining({ title: 'На этот стикер больше нельзя' }),
+    );
+    expect(voting.canVoteOn(items.value[0]!)).toBe(false);
+    expect(voting.canVoteOn(items.value[1]!)).toBe(true);
     expect(commands.vote).not.toHaveBeenCalled();
+  });
+
+  it('лимит на элемент больше лимита на человека упирается в меньший', () => {
+    const { voting, items } = setup(
+      activeState({ votesPerParticipant: 2, maxPerItem: 5, myVotes: { a: 1 }, myRemaining: 1 }),
+    );
+    expect(voting.canVoteOn(items.value[0]!)).toBe(true);
   });
 
   it('снять точку можно только свою и только во время голосования', () => {
@@ -133,15 +156,23 @@ describe('useBoardVoting (15.2)', () => {
     expect(commands.vote).toHaveBeenCalledOnce();
   });
 
-  it('скоуп «Выделенные» разворачивает группу в участников, фрейм — в свои элементы', async () => {
+  it('«Где голосуем»: «Выделенные» видно всегда, без выделения — неактивно', () => {
+    const { voting, selected } = setup(null);
+    expect(voting.scopeOptions.value[1]).toEqual({
+      value: 'selected',
+      label: 'Выделенные элементы',
+      disabled: true,
+    });
+    expect(voting.defaultScope.value).toBe('board');
+
+    selected.value = ['a'];
+    expect(voting.scopeOptions.value[1]).toEqual({ value: 'selected', label: 'Выделенные: 1' });
+    expect(voting.defaultScope.value).toBe('selected');
+  });
+
+  it('скоуп разворачивает группу и фрейм в элементы; галочка таймера уходит на сервер', async () => {
     const { voting, selected, commands } = setup(null);
     selected.value = ['a', 'group'];
-    expect(voting.defaultScope.value).toBe('selected');
-    expect(voting.scopeOptions.value.map((o) => o.label)).toEqual([
-      'Вся доска',
-      'Выделенные: 2',
-      'Что мешало',
-    ]);
 
     await voting.start({
       votesPerParticipant: 3,
@@ -153,8 +184,8 @@ describe('useBoardVoting (15.2)', () => {
       votesPerParticipant: 3,
       maxPerItem: 3,
       itemIds: ['a', 'group', 'in-group'],
+      startTimer: false,
     });
-    expect(commands.startTimer).not.toHaveBeenCalled();
 
     await voting.start({
       votesPerParticipant: 2,
@@ -163,9 +194,8 @@ describe('useBoardVoting (15.2)', () => {
       startTimer: true,
     });
     expect(commands.start).toHaveBeenLastCalledWith(
-      expect.objectContaining({ itemIds: ['in-frame'] }),
+      expect.objectContaining({ itemIds: ['in-frame'], startTimer: true }),
     );
-    expect(commands.startTimer).toHaveBeenCalledOnce();
 
     await voting.start({
       votesPerParticipant: 2,
@@ -176,7 +206,7 @@ describe('useBoardVoting (15.2)', () => {
     expect(commands.start).toHaveBeenLastCalledWith(expect.objectContaining({ itemIds: null }));
   });
 
-  it('во время голосования узлы не выделяются, вне скоупа — приглушены; кэш живёт одно голосование', () => {
+  it('узлы: не выделяются, в скоупе — курсор-рука, вне — приглушены; кэш живёт одно голосование', () => {
     const { voting, state } = setup(activeState({ itemIds: ['a'] }));
     const nodes: Array<{ id: string; class?: unknown; selectable?: boolean }> = [
       { id: 'a' },
@@ -185,37 +215,34 @@ describe('useBoardVoting (15.2)', () => {
 
     const first = voting.decorateNodes(nodes);
     expect(first.map((n) => n.selectable)).toEqual([false, false]);
-    expect(first[0]).not.toHaveProperty('class');
+    expect(first[0]?.class).toEqual([undefined, 'board-node-voting-target']);
     expect(first[1]?.class).toEqual([undefined, 'board-node-voting-muted']);
     expect(voting.decorateNodes(nodes)[1]).toBe(first[1]);
 
     state.value = activeState({ id: 'v2', itemIds: ['b'] });
-    const second = voting.decorateNodes(nodes);
-    expect(second[1]).not.toHaveProperty('class');
-    expect(second[0]?.class).toEqual([undefined, 'board-node-voting-muted']);
+    expect(voting.decorateNodes(nodes)[0]?.class).toEqual([undefined, 'board-node-voting-muted']);
 
     state.value = null;
     expect(voting.decorateNodes(nodes)).toBe(nodes);
   });
 
-  it('итоги: строки с текстом и цветом элемента, сводка, панель открывается сама', async () => {
-    const { voting, state } = setup(null);
-    expect(voting.resultsOpen.value).toBe(false);
-
-    state.value = activeState({
+  it('завершение на глазах открывает итоги; вход на доску с прошлыми итогами — нет', async () => {
+    const closed = activeState({
       status: 'closed',
       results: [
         { itemId: 'b', total: 3, authors: [{ participantId: 'p1', name: 'Анна', count: 3 }] },
-        {
-          itemId: 'gone',
-          total: 1,
-          authors: [{ participantId: 'p2', name: 'Иван', count: 1 }],
-        },
+        { itemId: 'gone', total: 1, authors: [{ participantId: 'p2', name: 'Иван', count: 1 }] },
       ],
     });
+    const late = setup(closed);
+    expect(late.voting.hasHistory.value).toBe(true);
+    expect(late.voting.hasResults.value).toBe(false);
+
+    const { voting, state } = setup(activeState());
+    state.value = closed;
     await nextTick();
 
-    expect(voting.resultsOpen.value).toBe(true);
+    expect(voting.hasResults.value).toBe(true);
     expect(voting.resultRows.value.map((r) => [r.rank, r.text, r.total])).toEqual([
       [1, 'b', 3],
       [2, 'Без текста', 1],
@@ -223,9 +250,43 @@ describe('useBoardVoting (15.2)', () => {
     expect(voting.summary.value).toEqual({ voters: 2, votes: 4 });
 
     voting.closeResults();
-    expect(voting.resultsOpen.value).toBe(false);
-    voting.toggleResults();
-    expect(voting.resultsOpen.value).toBe(true);
+    expect(voting.hasResults.value).toBe(false);
+  });
+
+  it('итоги из истории открываются поверх текущих и снова закрываются', async () => {
+    const { voting, commands } = setup(
+      activeState({ id: 'v2', number: 2, status: 'closed', results: [] }),
+    );
+
+    await voting.openResults('v1');
+
+    expect(commands.fetchResults).toHaveBeenCalledWith('v1');
+    expect(voting.shownResults.value?.id).toBe('v1');
+    expect(voting.resultRows.value.map((r) => r.itemId)).toEqual(['a']);
+
+    // Текущее завершённое берётся из состояния, без запроса
+    commands.fetchResults.mockClear();
+    await voting.openResults('v2');
+    expect(commands.fetchResults).not.toHaveBeenCalled();
+    expect(voting.shownResults.value?.id).toBe('v2');
+  });
+
+  it('«Завершить»: если не все потратили точки — сначала подтверждение', async () => {
+    const { voting, state, commands, participants } = setup(activeState({ completedCount: 1 }));
+    participants.value = 3;
+
+    await voting.finish();
+    expect(voting.confirmFinishOpen.value).toBe(true);
+    expect(voting.finishStats.value).toEqual({ completed: 1, total: 3 });
+    expect(commands.close).not.toHaveBeenCalled();
+
+    await voting.confirmFinish();
+    expect(commands.close).toHaveBeenCalledOnce();
+    expect(voting.confirmFinishOpen.value).toBe(false);
+
+    state.value = activeState({ completedCount: 3 });
+    await voting.finish();
+    expect(commands.close).toHaveBeenCalledTimes(2);
   });
 
   it('отказ сервера на голос — тост, без исключения наружу', async () => {

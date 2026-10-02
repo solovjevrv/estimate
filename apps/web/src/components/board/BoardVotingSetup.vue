@@ -1,15 +1,16 @@
 <script setup lang="ts">
 /**
- * Настройка голосования (15.2, кит — BoardVotingSetup): лимиты точек, где
- * голосуем (вся доска / выделенные / фрейм), галочка «запустить таймер».
- * Скоуп по умолчанию — «Выделенные», если перед открытием что-то выделено.
+ * Настройка голосования (15.2, кит — BoardVotingSetup): лимиты точек
+ * (независимые — предел на элемент упирается в меньший из двух), где голосуем
+ * (вся доска / выделенные / фрейм), галочка «запустить таймер». Скоуп по
+ * умолчанию — «Выделенные», если перед открытием что-то выделено.
  */
 import {
   BOARD_VOTING_DEFAULT_MAX_PER_ITEM,
   BOARD_VOTING_DEFAULT_VOTES,
   BOARD_VOTING_MAX_VOTES,
 } from '@estimate/shared';
-import { reactive, watch } from 'vue';
+import { computed, reactive } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import type {
@@ -35,12 +36,9 @@ const form = reactive<BoardVotingSetup>({
   startTimer: true,
 });
 
-// Больше точек на элемент, чем всего у человека, не бывает — подтягиваем лимит вниз
-watch(
-  () => form.votesPerParticipant,
-  (votes) => {
-    if (form.maxPerItem > votes) form.maxPerItem = votes;
-  },
+/** Без выделения «Выделенные элементы» неактивно — подсказка, как ими воспользоваться */
+const selectionEmpty = computed(() =>
+  props.scopeOptions.some((option) => option.value === 'selected' && option.disabled),
 );
 
 function submit(): void {
@@ -75,13 +73,16 @@ function submit(): void {
           v-model="form.maxPerItem"
           data-testid="board-voting-max-per-item"
           :min="1"
-          :max="form.votesPerParticipant"
+          :max="BOARD_VOTING_MAX_VOTES"
           class="w-full"
         />
       </UFormField>
     </div>
 
-    <UFormField v-if="scopeOptions.length > 1" :label="t('board.voting.scope')">
+    <UFormField
+      :label="t('board.voting.scope')"
+      :help="selectionEmpty ? t('board.voting.scopeHint') : undefined"
+    >
       <USelect
         v-model="form.scope"
         data-testid="board-voting-scope"

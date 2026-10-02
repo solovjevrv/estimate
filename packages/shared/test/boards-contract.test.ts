@@ -9,6 +9,7 @@ import {
   BOARD_WS_SERVER_EVENTS,
   isBoardContainer,
   isValidBoardTimerDuration,
+  effectiveMaxPerItem,
   isValidVotingLimits,
   isVotableContent,
   type ApplyBoardOpsPayload,
@@ -34,7 +35,8 @@ describe('контракт realtime-доски', () => {
       'board:voting:vote',
       'board:voting:close',
       'board:voting:cancel',
-      'board:voting:hide',
+      'board:voting:history',
+      'board:voting:results',
     ]);
     expect(Object.values(BOARD_WS_SERVER_EVENTS)).toEqual([
       'board:ops',
@@ -58,9 +60,12 @@ describe('контракт realtime-доски', () => {
   it('голосование: лимиты точек и элементы, за которые можно голосовать (15.2)', () => {
     expect(isValidVotingLimits(3, 3)).toBe(true);
     expect(isValidVotingLimits(20, 1)).toBe(true);
+    // Независимые лимиты: «на элемент» больше «на человека» — допустимо
+    expect(isValidVotingLimits(2, 5)).toBe(true);
+    expect(effectiveMaxPerItem({ votesPerParticipant: 2, maxPerItem: 5 })).toBe(2);
     for (const [votes, perItem] of [
       [0, 1],
-      [3, 4],
+      [3, 21],
       [21, 1],
       [2.5, 1],
       ['3', 1],

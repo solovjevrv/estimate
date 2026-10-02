@@ -550,6 +550,7 @@ describe('стор сессии доски', () => {
   describe('голосование точками (15.2)', () => {
     const active = {
       id: 'v1',
+      number: 1,
       status: 'active' as const,
       votesPerParticipant: 3,
       maxPerItem: 3,
@@ -559,6 +560,7 @@ describe('стор сессии доски', () => {
       myVotes: {},
       myRemaining: 3,
       votedCount: 0,
+      completedCount: 0,
       results: null,
     };
 
@@ -587,9 +589,10 @@ describe('стор сессии доски', () => {
       await store.vote('i1', -1);
       await store.closeVoting();
       await store.cancelVoting();
-      await store.hideVotingResults();
+      await store.fetchVotingHistory();
+      await store.fetchVotingResults('v0');
 
-      expect(socket.sent.slice(-5)).toEqual([
+      expect(socket.sent.slice(-6)).toEqual([
         {
           event: BOARD_WS_EVENTS.VOTING_START,
           payload: { votesPerParticipant: 2, maxPerItem: 1, itemIds: null },
@@ -600,7 +603,8 @@ describe('стор сессии доски', () => {
         },
         { event: BOARD_WS_EVENTS.VOTING_CLOSE, payload: { votingId: 'v1' } },
         { event: BOARD_WS_EVENTS.VOTING_CANCEL, payload: { votingId: 'v1' } },
-        { event: BOARD_WS_EVENTS.VOTING_HIDE, payload: { votingId: 'v1' } },
+        { event: BOARD_WS_EVENTS.VOTING_HISTORY, payload: {} },
+        { event: BOARD_WS_EVENTS.VOTING_RESULTS, payload: { votingId: 'v0' } },
       ]);
     });
 

@@ -14,6 +14,7 @@ import type {
   BoardVotePayload,
   BoardVotingRefPayload,
   BoardVotingState,
+  BoardVotingSummary,
   JoinBoardPayload,
   JoinBoardResult,
   JoinRoomPayload,
@@ -127,7 +128,14 @@ interface ClientToServerEvents {
     p: BoardVotingRefPayload,
     ack: (r: WsAck<null>) => void,
   ) => void;
-  [BOARD_WS_EVENTS.VOTING_HIDE]: (p: BoardVotingRefPayload, ack: (r: WsAck<null>) => void) => void;
+  [BOARD_WS_EVENTS.VOTING_HISTORY]: (
+    p: Record<string, never>,
+    ack: (r: WsAck<BoardVotingSummary[]>) => void,
+  ) => void;
+  [BOARD_WS_EVENTS.VOTING_RESULTS]: (
+    p: BoardVotingRefPayload,
+    ack: (r: WsAck<BoardVotingState>) => void,
+  ) => void;
 }
 
 export type PokerSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

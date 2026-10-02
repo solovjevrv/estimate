@@ -19,7 +19,8 @@ function snapshot(status: 'active' | 'closed'): BoardVotingSnapshot {
       votesPerParticipant: 3,
       maxPerItem: 2,
       itemIds: null,
-      resultsHidden: false,
+      withTimer: false,
+      number: 2,
       startedAt: new Date('2026-10-02T10:00:00.000Z'),
       closedAt: status === 'closed' ? new Date('2026-10-02T10:05:00.000Z') : null,
     },
@@ -39,6 +40,9 @@ describe('votingStateFor', () => {
     expect(state.myVotes).toEqual({ a: 2, b: 1 });
     expect(state.myRemaining).toBe(0);
     expect(state.votedCount).toBe(3);
+    // Все 3 точки потратила только Анна
+    expect(state.completedCount).toBe(1);
+    expect(state.number).toBe(2);
     expect(state.results).toBeNull();
     expect(JSON.stringify(state)).not.toContain('Иван');
   });

@@ -8,7 +8,9 @@ export interface BoardVotingRecord {
   votesPerParticipant: number;
   maxPerItem: number;
   itemIds: string[] | null;
-  resultsHidden: boolean;
+  withTimer: boolean;
+  /** Порядковый номер на доске — «Голосование 2» */
+  number: number;
   startedAt: Date;
   closedAt: Date | null;
 }
@@ -38,16 +40,21 @@ export function votingStateFor(
   const { voting, votes } = snapshot;
   const myVotes: Record<string, number> = {};
   let used = 0;
-  const voters = new Set<string>();
+  const usedBy = new Map<string, number>();
   for (const vote of votes) {
-    voters.add(vote.participantId);
+    usedBy.set(vote.participantId, (usedBy.get(vote.participantId) ?? 0) + vote.count);
     if (vote.participantId === participantId) {
       myVotes[vote.itemId] = vote.count;
       used += vote.count;
     }
   }
+  let completedCount = 0;
+  for (const total of usedBy.values()) {
+    if (total >= voting.votesPerParticipant) completedCount += 1;
+  }
   return {
     id: voting.id,
+    number: voting.number,
     status: voting.status,
     votesPerParticipant: voting.votesPerParticipant,
     maxPerItem: voting.maxPerItem,
@@ -56,7 +63,8 @@ export function votingStateFor(
     closedAt: voting.closedAt?.toISOString() ?? null,
     myVotes,
     myRemaining: Math.max(0, voting.votesPerParticipant - used),
-    votedCount: voters.size,
+    votedCount: usedBy.size,
+    completedCount,
     results: voting.status === 'closed' ? votingResults(votes) : null,
   };
 }
