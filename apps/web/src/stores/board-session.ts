@@ -14,9 +14,14 @@ import type {
   BoardAccessLevel,
   BoardAwarenessKind,
   BoardShareRole,
+  BoardTimerState,
   JoinBoardResult,
 } from '@estimate/shared';
-import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@estimate/shared';
+import {
+  BOARD_TIMER_DEFAULT_DURATION_SEC,
+  BOARD_WS_EVENTS,
+  BOARD_WS_SERVER_EVENTS,
+} from '@estimate/shared';
 import { defineStore } from 'pinia';
 import { computed, reactive, ref } from 'vue';
 
@@ -38,6 +43,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   /** Итоговый уровень доступа текущего участника к доске (14.4) */
   const access = ref<BoardAccessLevel>('view');
   const joined = ref(false);
+  /** Таймер доски (15.3): снимок из входа, дальше — рассылка `board:timer` */
+  const timer = ref<BoardTimerState>(idleTimer());
 
   let boardId: string | null = null;
   /** Имя гостя этого сеанса — self().name ниже, пока для него нет session.user */
@@ -47,6 +54,15 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const edges = computed(() => [...local.edges.values()]);
 
   const awareness = useBoardAwareness();
+
+  function idleTimer(): BoardTimerState {
+    return {
+      durationSec: BOARD_TIMER_DEFAULT_DURATION_SEC,
+      running: false,
+      endsAt: null,
+      remainingSec: BOARD_TIMER_DEFAULT_DURATION_SEC,
+    };
+  }
 
   function requireSocket(): PokerSocket {
     return connection.require('Доска не подключена');
@@ -86,6 +102,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     guestTokens.write(id, result.guestToken);
     participantId.value = result.participantId;
     access.value = result.access;
+    timer.value = result.timer;
 
     if (result.snapshot) {
       optimistic.applySnapshot(result.snapshot, result.revision);
@@ -101,6 +118,9 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     active.on(BOARD_WS_SERVER_EVENTS.OPS, optimistic.applyBatch);
     active.on(BOARD_WS_SERVER_EVENTS.PRESENCE, awareness.handlePresence);
     active.on(BOARD_WS_SERVER_EVENTS.AWARENESS, awareness.handleAwareness);
+    active.on(BOARD_WS_SERVER_EVENTS.TIMER, (state) => {
+      timer.value = state;
+    });
   }
 
   const connection = createRealtimeConnection({
@@ -120,6 +140,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       local.edges.clear();
       participantId.value = null;
       access.value = 'view';
+      timer.value = idleTimer();
       ownGuestName = null;
       optimistic.resetForNewSession();
       // Presence/курсоры/блокировка редактирования намеренно НЕ сбрасываются
@@ -144,6 +165,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     joined.value = false;
     participantId.value = null;
     access.value = 'view';
+    timer.value = idleTimer();
     local.items.clear();
     local.edges.clear();
     optimistic.resetForNewSession();
@@ -157,6 +179,27 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
    */
   function sendAwareness(kind: BoardAwarenessKind, data: Record<string, unknown>): void {
     connection.current()?.emit(BOARD_WS_EVENTS.AWARENESS, { kind, data });
+  }
+
+  /**
+   * Команды таймеру. Ответ (ack) намеренно не применяем: новое состояние
+   * приходит рассылкой `board:timer` раньше ack, а между ними может прийти
+   * рассылка чужой команды — ack тогда перезаписал бы её устаревшим снимком.
+   */
+  async function startTimer(): Promise<void> {
+    await emitWithAck(requireSocket(), BOARD_WS_EVENTS.TIMER_START, {});
+  }
+
+  async function pauseTimer(): Promise<void> {
+    await emitWithAck(requireSocket(), BOARD_WS_EVENTS.TIMER_PAUSE, {});
+  }
+
+  async function resetTimer(durationSec?: number): Promise<void> {
+    await emitWithAck(requireSocket(), BOARD_WS_EVENTS.TIMER_RESET, { durationSec });
+  }
+
+  async function extendTimer(): Promise<void> {
+    await emitWithAck(requireSocket(), BOARD_WS_EVENTS.TIMER_EXTEND, {});
   }
 
   async function setShare(role: BoardShareRole | null): Promise<Board> {
@@ -180,6 +223,11 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     joined,
     participantId,
     access,
+    timer,
+    startTimer,
+    pauseTimer,
+    resetTimer,
+    extendTimer,
     applyError: optimistic.applyError,
     join,
     leave,

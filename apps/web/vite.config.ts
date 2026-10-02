@@ -359,6 +359,14 @@ export default defineConfig({
             error: 'text-text-error',
           },
         },
+        // Поповеры — на surface-block с elevation/2, как тулбары доски, из которых они
+        // в основном открываются, без серой обводки ring-default Nuxt UI (лишняя рамка
+        // в меню тулбаров); радиус остаётся их собственный. shadow-(--…), а не
+        // shadow-elevation-2: twMerge не знает кастомную утилиту и оставил бы рядом
+        // shadow-lg Nuxt UI, который побеждает по порядку в CSS
+        popover: {
+          slots: { content: 'bg-surface-block shadow-(--shadow-elevation-2) ring-0' },
+        },
         // 14_Switch: трек surface-tertiary/surface-brand, бегунок icons-white в обеих
         // темах (у Nuxt UI — bg-default, в Dark тёмный), Disabled — прозрачность 45%
         switch: {

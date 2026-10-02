@@ -192,6 +192,17 @@ export class BoardsService {
   }
 
   /**
+   * Управлять таймером доски (15.3) может любой с доступом `edit`, как и
+   * правкой содержимого; у архивной доски — никто, она только для чтения.
+   */
+  async assertTimerControl(actorId: string | null, boardId: string): Promise<void> {
+    const board = await this.assertEditAccess(actorId, boardId);
+    if (board.status !== 'active') {
+      throw new ConflictError('Доска в архиве');
+    }
+  }
+
+  /**
    * Транзиционная проверка владения для legacy-fallback чтения картинок (21.5).
    * Легаси-каталог плоский (без boardId в пути) — без этой проверки
    * GET .../assets/:filename отдавал бы любой файл с валидным именем

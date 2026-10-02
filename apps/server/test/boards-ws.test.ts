@@ -13,6 +13,7 @@ import type {
   BoardItem,
   BoardOpsBatch,
   BoardPresenceEntry,
+  BoardTimerState,
   JoinBoardResult,
   WsAck,
 } from '@estimate/shared';
@@ -597,6 +598,132 @@ describeDb('WS-канал досок', () => {
       await joinBoard(guestClient, boardId);
 
       expect(received).toBe(false);
+    });
+  });
+
+  describe('таймер доски (15.3)', () => {
+    it('при входе приходит таймер по умолчанию: 5 минут, не запущен', async () => {
+      const owner = await newUser('timer-join');
+      const boardId = await newBoard(owner);
+
+      const result = await joinBoard(connect(owner), boardId);
+
+      expect(result.timer).toEqual({
+        durationSec: 300,
+        running: false,
+        endsAt: null,
+        remainingSec: 300,
+      });
+    });
+
+    it('старт рассылается всем на доске и возвращается в ack; новый вход видит запущенный', async () => {
+      const owner = await newUser('timer-owner');
+      const member = await newUser('timer-member');
+      const teamId = await newTeam(owner, [[member, 'member']]);
+      const boardId = await newBoard(owner, teamId);
+      const ownerClient = connect(owner);
+      const memberClient = connect(member);
+      await joinBoard(ownerClient, boardId);
+      await joinBoard(memberClient, boardId);
+
+      const broadcast = waitFor<BoardTimerState>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER);
+      const reset = await emit<BoardTimerState>(memberClient, BOARD_WS_EVENTS.TIMER_RESET, {
+        durationSec: 1800,
+      });
+      expect(reset.ok && reset.data.durationSec).toBe(1800);
+      expect((await broadcast).durationSec).toBe(1800);
+
+      const startedBroadcast = waitFor<BoardTimerState>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER);
+      const started = await emit<BoardTimerState>(memberClient, BOARD_WS_EVENTS.TIMER_START);
+      expect(started.ok && started.data.running).toBe(true);
+      expect((await startedBroadcast).endsAt).not.toBeNull();
+
+      const late = await joinBoard(connect(owner), boardId);
+      expect(late.timer.running).toBe(true);
+      expect(late.timer.durationSec).toBe(1800);
+    });
+
+    it('«+1 мин» добавляет минуту к остатку, пауза его фиксирует', async () => {
+      const owner = await newUser('timer-extend');
+      const boardId = await newBoard(owner);
+      const client = connect(owner);
+      await joinBoard(client, boardId);
+
+      await emit<BoardTimerState>(client, BOARD_WS_EVENTS.TIMER_START);
+      await emit<BoardTimerState>(client, BOARD_WS_EVENTS.TIMER_EXTEND);
+      const paused = await emit<BoardTimerState>(client, BOARD_WS_EVENTS.TIMER_PAUSE);
+
+      expect(paused.ok).toBe(true);
+      if (paused.ok) {
+        expect(paused.data.running).toBe(false);
+        // 5:00 + 1:00 минус доли секунды на обмен событиями
+        expect(paused.data.remainingSec).toBeGreaterThanOrEqual(359);
+        expect(paused.data.remainingSec).toBeLessThanOrEqual(360);
+        expect(paused.data.durationSec).toBe(300);
+      }
+    });
+
+    it('недопустимая длительность отклоняется без рассылки', async () => {
+      const owner = await newUser('timer-invalid');
+      const boardId = await newBoard(owner);
+      const client = connect(owner);
+      await joinBoard(client, boardId);
+
+      for (const durationSec of [0, 30, 90, 7260, '300']) {
+        const ack = await emit<BoardTimerState>(client, BOARD_WS_EVENTS.TIMER_RESET, {
+          durationSec,
+        });
+        expect(ack.ok).toBe(false);
+        if (!ack.ok) expect(ack.error).toBe('bad_request');
+      }
+    });
+
+    it('участник с доступом view управлять таймером не может', async () => {
+      const owner = await newUser('timer-view-owner');
+      const guest = await newUser('timer-view-guest');
+      const teamId = await newTeam(owner, [[guest, 'guest']]);
+      const boardId = await newBoard(owner, teamId);
+      const ownerClient = connect(owner);
+      const guestClient = connect(guest);
+      await joinBoard(ownerClient, boardId);
+      const joined = await joinBoard(guestClient, boardId);
+      expect(joined.access).toBe('view');
+
+      let broadcast = false;
+      ownerClient.once(BOARD_WS_SERVER_EVENTS.TIMER, () => {
+        broadcast = true;
+      });
+      const ack = await emit<BoardTimerState>(guestClient, BOARD_WS_EVENTS.TIMER_START);
+
+      expect(ack.ok).toBe(false);
+      if (!ack.ok) expect(ack.error).toBe('forbidden');
+      // Барьер: ack владельца приходит после возможной рассылки отказанного старта
+      await joinBoard(ownerClient, boardId);
+      expect(broadcast).toBe(false);
+    });
+
+    it('команда без входа на доску отклоняется', async () => {
+      const owner = await newUser('timer-no-seat');
+      const ack = await emit<BoardTimerState>(connect(owner), BOARD_WS_EVENTS.TIMER_START);
+
+      expect(ack.ok).toBe(false);
+      if (!ack.ok) expect(ack.error).toBe('forbidden');
+    });
+
+    it('опустевшая доска забывает таймер', async () => {
+      const owner = await newUser('timer-empty');
+      const boardId = await newBoard(owner);
+      const otherBoardId = await newBoard(owner);
+      const client = connect(owner);
+      await joinBoard(client, boardId);
+      await emit<BoardTimerState>(client, BOARD_WS_EVENTS.TIMER_START);
+
+      // Переход на другую доску — первая опустела
+      await joinBoard(client, otherBoardId);
+      const back = await joinBoard(client, boardId);
+
+      expect(back.timer.running).toBe(false);
+      expect(back.timer.remainingSec).toBe(300);
     });
   });
 });
