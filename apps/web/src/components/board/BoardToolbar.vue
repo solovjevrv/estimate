@@ -201,7 +201,8 @@ function isActive(value: BoardTool): boolean {
   padding: 8px;
   background: var(--brand-surface);
   border-radius: 16px;
-  box-shadow: var(--brand-shadow-card);
+  /* elevation/2 — как у остальных плавающих панелей холста (заголовок, участники, таймер) */
+  box-shadow: var(--shadow-elevation-2);
   transform: translateY(-50%);
 }
 

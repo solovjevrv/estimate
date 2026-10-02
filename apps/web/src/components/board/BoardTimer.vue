@@ -157,7 +157,7 @@ const control = computed(() => {
 </template>
 
 <style scoped>
-/* BoardTimer: высота 54, паддинг 10/12, шаг 8, r20, elevation/2 (как панель присутствия) */
+/* BoardTimer: высота 54, паддинг 10/12, шаг 12, r20, elevation/2 (как панель присутствия) */
 .board-timer {
   display: flex;
   align-items: center;
