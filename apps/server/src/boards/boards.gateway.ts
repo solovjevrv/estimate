@@ -1,21 +1,27 @@
 import {
   BOARD_RING_BUFFER_SIZE,
+  BOARD_TIMER_DEFAULT_DURATION_SEC,
+  BOARD_TIMER_EXTEND_SEC,
+  BOARD_TIMER_MAX_DURATION_SEC,
   BOARD_WS_EVENTS,
   BOARD_WS_SERVER_EVENTS,
   hasBoardAccess,
+  isValidBoardTimerDuration,
   type ApplyBoardOpsPayload,
   type ApplyBoardOpsResult,
   type BoardAwarenessPayload,
   type BoardOpsBatch,
   type BoardPresenceEntry,
+  type BoardTimerState,
   type JoinBoardPayload,
   type JoinBoardResult,
+  type ResetBoardTimerPayload,
   type WsAck,
 } from '@estimate/shared';
 import type { FastifyBaseLogger } from 'fastify';
 
 import { AppError, ForbiddenError, ValidationError } from '../errors';
-import { PresenceRegistry } from '../platform/realtime';
+import { CountdownTimer, PresenceRegistry } from '../platform/realtime';
 import type { PokerServer, PokerSocket } from '../socket';
 
 import type { BoardParticipantIdentity } from './presence';
@@ -46,6 +52,12 @@ export class BoardsGateway {
   constructor(
     private readonly service: BoardsService,
     private readonly presence = new PresenceRegistry<BoardParticipantIdentity>(),
+    /** Таймер доски (15.3) — сиюминутное состояние, как присутствие */
+    private readonly timer = new CountdownTimer({
+      defaultDurationSec: BOARD_TIMER_DEFAULT_DURATION_SEC,
+      isValidDuration: isValidBoardTimerDuration,
+      maxRemainingSec: BOARD_TIMER_MAX_DURATION_SEC,
+    }),
   ) {}
 
   register(io: PokerServer, log: FastifyBaseLogger): void {
@@ -104,12 +116,35 @@ export class BoardsGateway {
         });
       });
 
+      socket.on(BOARD_WS_EVENTS.TIMER_START, (...args: unknown[]) => {
+        const { ack } = this.readArgs(args);
+        this.runTimer(io, socket, log, ack, (boardId) => this.timer.start(boardId));
+      });
+
+      socket.on(BOARD_WS_EVENTS.TIMER_PAUSE, (...args: unknown[]) => {
+        const { ack } = this.readArgs(args);
+        this.runTimer(io, socket, log, ack, (boardId) => this.timer.pause(boardId));
+      });
+
+      socket.on(BOARD_WS_EVENTS.TIMER_RESET, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<ResetBoardTimerPayload>(args);
+        this.runTimer(io, socket, log, ack, (boardId) =>
+          this.timer.reset(boardId, payload?.durationSec),
+        );
+      });
+
+      socket.on(BOARD_WS_EVENTS.TIMER_EXTEND, (...args: unknown[]) => {
+        const { ack } = this.readArgs(args);
+        this.runTimer(io, socket, log, ack, (boardId) =>
+          this.timer.extend(boardId, BOARD_TIMER_EXTEND_SEC),
+        );
+      });
+
       socket.on('disconnect', () => {
         const boardId = this.presence.leave(socket.id);
         if (boardId) {
           if (this.presence.list(boardId).length === 0) {
-            // Доска опустела — кольцевому буферу дальше жить незачем
-            this.ringBuffers.delete(boardId);
+            this.forgetEmptyBoard(boardId);
           }
           this.broadcastPresence(io, boardId);
         }
@@ -144,7 +179,7 @@ export class BoardsGateway {
 
     if (previousBoard && previousBoard !== payload.boardId) {
       if (this.presence.list(previousBoard).length === 0) {
-        this.ringBuffers.delete(previousBoard);
+        this.forgetEmptyBoard(previousBoard);
       }
       this.broadcastPresence(io, previousBoard);
     }
@@ -161,6 +196,7 @@ export class BoardsGateway {
         access,
         participantId: identity.participantId,
         guestToken,
+        timer: this.timer.get(payload.boardId),
       };
     }
 
@@ -172,7 +208,35 @@ export class BoardsGateway {
       access,
       participantId: identity.participantId,
       guestToken,
+      timer: this.timer.get(payload.boardId),
     };
+  }
+
+  /**
+   * Команда таймеру: право проверяется по живому состоянию БД (как у `APPLY`,
+   * а не по доступу с момента `JOIN`) — ссылку на редактирование могли отозвать.
+   * Новое состояние уходит всем на доске, включая отправителя, и в ack.
+   */
+  private runTimer(
+    io: PokerServer,
+    socket: PokerSocket,
+    log: FastifyBaseLogger,
+    ack: Ack<unknown>,
+    command: (boardId: string) => BoardTimerState,
+  ): void {
+    this.run<BoardTimerState>(socket, log, ack, async () => {
+      const { boardId, identity } = this.requireSeat(socket);
+      await this.service.assertTimerControl(identity.userId, boardId);
+      const state = command(boardId);
+      io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.TIMER, state);
+      return state;
+    });
+  }
+
+  /** Доска опустела — кольцевому буферу и таймеру дальше жить незачем */
+  private forgetEmptyBoard(boardId: string): void {
+    this.ringBuffers.delete(boardId);
+    this.timer.clear(boardId);
   }
 
   /** Действовать может только тот, кто уже вошёл на доску */

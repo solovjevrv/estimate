@@ -6,10 +6,10 @@
  * карточке-подложке (surface-card), а иконка+счётчик внутри неё —
  * дополнительно на своей серой пилюле (вложенная подложка, как на
  * референсе), аватарки — прямо на белой карточке, без своей. Вынесена из
- * `BoardCanvas.vue` (17.1).
+ * `BoardCanvas.vue` (17.1). Сама в `Panel` не обёрнута: в правом верхнем углу
+ * холста она стоит в одном ряду с таймером доски (15.3).
  */
 import type { BoardPresenceEntry } from '@estimate/shared';
-import { Panel } from '@vue-flow/core';
 import { useI18n } from 'vue-i18n';
 
 import { teamAvatarColor } from '../../lib/team-roles';
@@ -37,58 +37,51 @@ function isFollowing(entry: BoardPresenceEntry): boolean {
 </script>
 
 <template>
-  <Panel position="top-right">
-    <div
-      data-testid="board-presence"
-      class="board-presence surface-card shadow-elevation-2 flex items-center"
-      :aria-label="t('board.presence')"
-    >
+  <div
+    data-testid="board-presence"
+    class="board-presence surface-card shadow-elevation-2 flex items-center"
+    :aria-label="t('board.presence')"
+  >
+    <div class="board-presence-count" :title="t('board.presenceCount', { count: presence.length })">
+      <UIcon name="i-lucide-users-2" class="size-4" />
+      <span>{{ presence.length }}</span>
+    </div>
+    <div class="board-presence-stack">
       <div
-        class="board-presence-count"
-        :title="t('board.presenceCount', { count: presence.length })"
+        v-for="(entry, index) in presence"
+        :key="entry.participantId"
+        data-testid="board-presence-avatar"
+        :data-participant-id="entry.participantId"
+        :data-self="isSelf(entry) ? 'true' : 'false'"
+        :data-following="isFollowing(entry) ? 'true' : 'false'"
+        role="button"
+        :tabindex="isSelf(entry) ? -1 : 0"
+        :aria-pressed="isFollowing(entry)"
+        :class="[
+          'board-presence-avatar',
+          teamAvatarColor(entry.participantId),
+          {
+            'board-presence-avatar--self': isSelf(entry),
+            'board-presence-avatar--following': isFollowing(entry),
+          },
+        ]"
+        :style="{ zIndex: presence.length - index }"
+        :title="isSelf(entry) ? t('board.you') : entry.name"
+        :aria-label="isSelf(entry) ? undefined : t('board.followAvatarLabel', { name: entry.name })"
+        @click="emit('avatarClick', entry)"
+        @keydown.enter="emit('avatarClick', entry)"
+        @keydown.space.prevent="emit('avatarClick', entry)"
       >
-        <UIcon name="i-lucide-users-2" class="size-4" />
-        <span>{{ presence.length }}</span>
-      </div>
-      <div class="board-presence-stack">
-        <div
-          v-for="(entry, index) in presence"
-          :key="entry.participantId"
-          data-testid="board-presence-avatar"
-          :data-participant-id="entry.participantId"
-          :data-self="isSelf(entry) ? 'true' : 'false'"
-          :data-following="isFollowing(entry) ? 'true' : 'false'"
-          role="button"
-          :tabindex="isSelf(entry) ? -1 : 0"
-          :aria-pressed="isFollowing(entry)"
-          :class="[
-            'board-presence-avatar',
-            teamAvatarColor(entry.participantId),
-            {
-              'board-presence-avatar--self': isSelf(entry),
-              'board-presence-avatar--following': isFollowing(entry),
-            },
-          ]"
-          :style="{ zIndex: presence.length - index }"
-          :title="isSelf(entry) ? t('board.you') : entry.name"
-          :aria-label="
-            isSelf(entry) ? undefined : t('board.followAvatarLabel', { name: entry.name })
-          "
-          @click="emit('avatarClick', entry)"
-          @keydown.enter="emit('avatarClick', entry)"
-          @keydown.space.prevent="emit('avatarClick', entry)"
-        >
-          <img
-            v-if="entry.avatarUrl"
-            :src="entry.avatarUrl"
-            :alt="entry.name"
-            class="board-presence-img"
-          />
-          <span v-else class="board-presence-initials">{{ initials(entry.name) }}</span>
-        </div>
+        <img
+          v-if="entry.avatarUrl"
+          :src="entry.avatarUrl"
+          :alt="entry.name"
+          class="board-presence-img"
+        />
+        <span v-else class="board-presence-initials">{{ initials(entry.name) }}</span>
       </div>
     </div>
-  </Panel>
+  </div>
 </template>
 
 <style scoped>

@@ -40,6 +40,7 @@ import { Background } from '@vue-flow/background';
 import { MiniMap } from '@vue-flow/minimap';
 import {
   ConnectionMode,
+  Panel,
   useNodesInitialized,
   useVueFlow,
   VueFlow,
@@ -80,6 +81,7 @@ import { selectionEscapedActiveEditor } from '../../features/boards/domain/board
 import type { BoardTextEditorHandle } from '../../features/boards/rich-text/board-rich-text';
 import { useBoardAutoFit } from '../../features/boards/composables/use-board-auto-fit';
 import { useBoardHotkeys } from '../../features/boards/composables/use-board-hotkeys';
+import type { BoardTimerCommands } from '../../features/boards/composables/use-board-timer';
 import type {
   BoardDragEvent,
   BoardDragNode,
@@ -111,6 +113,7 @@ import BoardFloatingEdge from './BoardFloatingEdge.vue';
 import BoardGiphyNode from './BoardGiphyNode.vue';
 import BoardImageNode from './BoardImageNode.vue';
 import BoardPresencePanel from './BoardPresencePanel.vue';
+import BoardTimer from './BoardTimer.vue';
 import BoardShapeNode from './BoardShapeNode.vue';
 import BoardGapGuides from './BoardGapGuides.vue';
 import BoardHotkeysModal from './BoardHotkeysModal.vue';
@@ -149,6 +152,14 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const toast = useToast();
 const boardSession = useBoardSessionStore();
+
+/** Команды таймера доски (15.3) — стор шлёт их по сокету, состояние приходит рассылкой */
+const timerCommands: BoardTimerCommands = {
+  start: () => boardSession.startTimer(),
+  pause: () => boardSession.pauseTimer(),
+  reset: (durationSec) => boardSession.resetTimer(durationSec),
+  extend: () => boardSession.extendTimer(),
+};
 
 // Мемоизирующие конвертеры (17.8) — по одному инстансу кэша на весь холст,
 // не на каждый вызов computed: инвалидация по id/ссылке/canEdit/теме внутри
@@ -1019,14 +1030,18 @@ useBoardHotkeys({
         :menu-items="menuItems"
       />
 
-      <BoardPresencePanel
-        v-if="boardSession.presence.length > 1"
-        :presence="boardSession.presence"
-        :participant-id="boardSession.participantId"
-        :followed-participant-id="boardSession.followedParticipantId"
-        :initials="initials"
-        @avatar-click="onPresenceAvatarClick"
-      />
+      <!-- Правый верхний угол: таймер доски (15.3) слева от панели присутствия -->
+      <Panel position="top-right" class="board-top-right">
+        <BoardTimer :timer="boardSession.timer" :can-control="canEdit" :commands="timerCommands" />
+        <BoardPresencePanel
+          v-if="boardSession.presence.length > 1"
+          :presence="boardSession.presence"
+          :participant-id="boardSession.participantId"
+          :followed-participant-id="boardSession.followedParticipantId"
+          :initials="initials"
+          @avatar-click="onPresenceAvatarClick"
+        />
+      </Panel>
 
       <BoardFollowingBanner
         v-if="followedName"
@@ -1075,6 +1090,13 @@ useBoardHotkeys({
   </div>
 </template>
 <style scoped>
+/* Таймер и панель присутствия — в один ряд с зазором 8, по верхнему краю */
+.board-top-right {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .board-canvas-root:fullscreen {
   width: 100vw;
   height: 100vh;
