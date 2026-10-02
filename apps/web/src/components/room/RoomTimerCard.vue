@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { RoomTimerState } from '@estimate/shared';
 import { TIMER_DURATION_PRESETS_SEC } from '@estimate/shared';
-import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
+
+import { useCountdown } from '../../composables/use-countdown';
 
 const props = defineProps<{
   timer: RoomTimerState;
@@ -13,48 +15,7 @@ const emit = defineEmits<{ start: []; pause: []; reset: [durationSec: number] }>
 
 const { t } = useI18n();
 
-/**
- * Сервер шлёт лишь моменты изменения (старт/пауза/сброс), а не тик каждую
- * секунду — остаток на бегущем таймере отсчитываем на клиенте сами, сверяясь
- * с абсолютным `endsAt`. `now` дёргаем раз в секунду только пока идёт отсчёт.
- */
-const now = ref(Date.now());
-let ticker: ReturnType<typeof setInterval> | null = null;
-
-watch(
-  () => props.timer.running,
-  (running) => {
-    if (running && !ticker) {
-      now.value = Date.now();
-      ticker = setInterval(() => {
-        now.value = Date.now();
-      }, 250);
-    } else if (!running && ticker) {
-      clearInterval(ticker);
-      ticker = null;
-    }
-  },
-  { immediate: true },
-);
-
-onBeforeUnmount(() => {
-  if (ticker) clearInterval(ticker);
-});
-
-const remainingSec = computed(() => {
-  if (!props.timer.running || !props.timer.endsAt) {
-    return props.timer.remainingSec;
-  }
-  const msLeft = Date.parse(props.timer.endsAt) - now.value;
-  return Math.max(0, Math.round(msLeft / 1000));
-});
-
-const timeLabel = computed(() => {
-  const total = remainingSec.value;
-  const minutes = Math.floor(total / 60);
-  const seconds = total % 60;
-  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
-});
+const { remainingSec, isExpired, timeLabel } = useCountdown(() => props.timer);
 
 /**
  * SVG-кольцо, а не conic-gradient: background-image (которым красился конус)
@@ -72,9 +33,6 @@ const progressFraction = computed(() => {
 
 const dashOffset = computed(() => RING_CIRCUMFERENCE * (1 - progressFraction.value));
 
-// Время истекло, но пока никто не поставил на паузу/не сбросил — держим на нуле
-// и меняем цвет кольца, а не выключаем сами: сброс/пауза — решение участника
-const isExpired = computed(() => props.timer.running && remainingSec.value === 0);
 /**
  * 53_Timer: дуга — surface-brand (тот же зелёный, что у кнопки «Старт», в Dark —
  * brand/on-dark), у истёкшего — border-error; время — text-brand / text-error
@@ -156,7 +114,7 @@ function onToggleClick(): void {
             class="rounded-r8 px-2.5 py-2 text-xs leading-[18px] font-bold whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-60"
             :class="
               props.timer.durationSec === preset
-                ? 'bg-surface-tertiary text-text-secondary'
+                ? 'bg-surface-brand-low text-text-brand'
                 : 'text-text-primary hover:bg-surface-hover cursor-pointer'
             "
             @click="emit('reset', preset)"

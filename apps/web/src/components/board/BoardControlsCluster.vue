@@ -88,7 +88,8 @@ const { t } = useI18n();
   padding: 6px;
   background: var(--brand-surface);
   border-radius: 14px;
-  box-shadow: var(--brand-shadow-card);
+  /* elevation/2 — как у остальных плавающих панелей холста (заголовок, участники, таймер) */
+  box-shadow: var(--shadow-elevation-2);
 }
 
 .board-controls :deep(.vue-flow__controls-button) {

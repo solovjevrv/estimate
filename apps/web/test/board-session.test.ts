@@ -116,6 +116,7 @@ function snapshotResult(
     access: 'manage',
     participantId,
     guestToken: null,
+    timer: { durationSec: 300, running: false, endsAt: null, remainingSec: 300 },
   };
 }
 
@@ -155,6 +156,7 @@ describe('стор сессии доски', () => {
       access: 'manage',
       participantId: 'actor1',
       guestToken: null,
+      timer: { durationSec: 300, running: false, endsAt: null, remainingSec: 300 },
     } satisfies JoinBoardResult;
 
     await store.join('board1');
@@ -540,6 +542,59 @@ describe('стор сессии доски', () => {
 
       expect(store.revision).toBe(5);
       expect(store.items).toHaveLength(0);
+    });
+  });
+
+  describe('таймер доски (15.3)', () => {
+    const running = {
+      durationSec: 600,
+      running: true,
+      endsAt: '2026-10-02T10:10:00.000Z',
+      remainingSec: 600,
+    };
+
+    it('берёт таймер из входа и обновляет его рассылкой board:timer', async () => {
+      const store = useBoardSessionStore();
+      socket.next = { ...snapshotResult(1), timer: running };
+      await store.join('board1');
+      expect(store.timer).toEqual(running);
+
+      const paused = { ...running, running: false, endsAt: null, remainingSec: 420 };
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.TIMER, paused);
+
+      expect(store.timer).toEqual(paused);
+    });
+
+    it('команды уходят своими событиями, ack не перезаписывает рассылку', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.TIMER, running);
+
+      // Ответ сервера несёт более старый снимок — состояние остаётся из рассылки
+      socket.next = { durationSec: 300, running: false, endsAt: null, remainingSec: 300 };
+      await store.startTimer();
+      await store.pauseTimer();
+      await store.resetTimer(1800);
+      await store.extendTimer();
+
+      expect(socket.sent.slice(-4)).toEqual([
+        { event: BOARD_WS_EVENTS.TIMER_START, payload: {} },
+        { event: BOARD_WS_EVENTS.TIMER_PAUSE, payload: {} },
+        { event: BOARD_WS_EVENTS.TIMER_RESET, payload: { durationSec: 1800 } },
+        { event: BOARD_WS_EVENTS.TIMER_EXTEND, payload: {} },
+      ]);
+      expect(store.timer).toEqual(running);
+    });
+
+    it('после выхода таймер возвращается к исходному', async () => {
+      const store = useBoardSessionStore();
+      socket.next = { ...snapshotResult(1), timer: running };
+      await store.join('board1');
+
+      store.leave();
+
+      expect(store.timer).toMatchObject({ running: false, durationSec: 300 });
     });
   });
 

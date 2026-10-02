@@ -3,6 +3,7 @@
 import type { BoardAccessLevel } from './permissions';
 import type { BoardEdge, BoardItem, BoardSnapshot } from './entities';
 import type { BoardOp } from './operations';
+import type { CountdownTimerState } from '../timer';
 
 /**
  * Реалтайм-канал доски (12.4). Клиент отправляет операции — сервер их
@@ -18,6 +19,11 @@ export const BOARD_WS_EVENTS = {
   JOIN: 'board:join',
   APPLY: 'board:apply',
   AWARENESS: 'board:awareness',
+  /** Таймер доски (15.3) — управляет любой с доступом `edit`, ответ — новое состояние */
+  TIMER_START: 'board:timer:start',
+  TIMER_PAUSE: 'board:timer:pause',
+  TIMER_RESET: 'board:timer:reset',
+  TIMER_EXTEND: 'board:timer:extend',
 } as const;
 
 export type BoardWsEvent = (typeof BOARD_WS_EVENTS)[keyof typeof BOARD_WS_EVENTS];
@@ -29,6 +35,8 @@ export const BOARD_WS_SERVER_EVENTS = {
   AWARENESS: 'board:awareness',
   /** Кто сейчас смотрит доску — на вход/выход участника */
   PRESENCE: 'board:presence',
+  /** Новое состояние таймера доски — всем на доске, включая того, кто его поменял */
+  TIMER: 'board:timer',
 } as const;
 
 export type BoardWsServerEvent =
@@ -76,6 +84,36 @@ export interface JoinBoardResult {
   participantId: string;
   /** Возвращается гостю: сохранить и прислать при переподключении */
   guestToken: string | null;
+  /** Таймер доски на момент входа — дальше обновляется рассылкой `board:timer` */
+  timer: BoardTimerState;
+}
+
+/** Таймер доски (15.3) — тот же общий таймер отсчёта, что у комнаты */
+export type BoardTimerState = CountdownTimerState;
+
+/** Пресеты в поповере таймера — короткие нужны для ретро («1 минута на стикеры») */
+export const BOARD_TIMER_PRESETS_SEC: readonly number[] = [60, 180, 300, 600, 900];
+export const BOARD_TIMER_DEFAULT_DURATION_SEC = 300;
+/** Своё время задаётся кнопками −/+ с шагом в минуту, в пределах 1–120 минут */
+export const BOARD_TIMER_STEP_SEC = 60;
+export const BOARD_TIMER_MIN_DURATION_SEC = 60;
+export const BOARD_TIMER_MAX_DURATION_SEC = 7200;
+/** «+1 мин» во время отсчёта */
+export const BOARD_TIMER_EXTEND_SEC = 60;
+
+/** Длительность, которую примет сервер: целые минуты в пределах 1–120 */
+export function isValidBoardTimerDuration(durationSec: number): boolean {
+  return (
+    Number.isInteger(durationSec) &&
+    durationSec >= BOARD_TIMER_MIN_DURATION_SEC &&
+    durationSec <= BOARD_TIMER_MAX_DURATION_SEC &&
+    durationSec % BOARD_TIMER_STEP_SEC === 0
+  );
+}
+
+export interface ResetBoardTimerPayload {
+  /** Новая длительность (см. `isValidBoardTimerDuration`); без поля — сброс на текущую */
+  durationSec?: number;
 }
 
 export interface ApplyBoardOpsPayload {

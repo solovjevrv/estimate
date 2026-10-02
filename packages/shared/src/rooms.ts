@@ -1,5 +1,6 @@
 /** Общие типы и контракты, используемые фронтендом и бэкендом. */
 import type { EmojiSequence } from './emoji';
+import type { CountdownTimerState } from './timer';
 
 /** События, которые клиент отправляет серверу */
 export const WS_EVENTS = {
@@ -173,20 +174,8 @@ export interface RoomStats {
   avgRoundDurationSec: number | null;
 }
 
-/**
- * Общий таймер обсуждения раунда. Живёт в памяти процесса на комнату (как
- * присутствие участников), а не в базе — это сиюминутное состояние стола.
- * Пока идёт отсчёт, `endsAt` — абсолютный момент истечения: клиент считает
- * оставшееся время сам, сверяясь с ним, а не ждёт тиков от сервера каждую секунду.
- */
-export interface RoomTimerState {
-  durationSec: number;
-  running: boolean;
-  /** ISO-момент, когда таймер дойдёт до нуля; null — когда на паузе или сброшен */
-  endsAt: string | null;
-  /** Остаток в секундах на момент паузы/сброса; во время отсчёта не обновляется — считается от endsAt */
-  remainingSec: number;
-}
+/** Таймер обсуждения раунда — общий таймер отсчёта (см. `timer.ts`) */
+export type RoomTimerState = CountdownTimerState;
 
 /** Пресеты длительности на выбор — свободный ввод не делаем, чтобы не проверять диапазон */
 export const TIMER_DURATION_PRESETS_SEC: readonly number[] = [300, 600, 900];

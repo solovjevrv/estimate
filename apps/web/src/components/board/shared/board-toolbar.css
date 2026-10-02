@@ -21,7 +21,8 @@
   white-space: nowrap;
   background: var(--brand-surface);
   border-radius: 12px;
-  box-shadow: var(--brand-shadow-card);
+  /* elevation/2 — как у остальных плавающих панелей холста */
+  box-shadow: var(--shadow-elevation-2);
   transform: translate(-50%, calc(-100% - 16px));
 }
 

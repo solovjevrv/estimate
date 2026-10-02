@@ -10,11 +10,13 @@ import type {
   BoardAwarenessPayload,
   BoardOpsBatch,
   BoardPresenceEntry,
+  BoardTimerState,
   JoinBoardPayload,
   JoinBoardResult,
   JoinRoomPayload,
   JoinRoomResult,
   KickParticipantPayload,
+  ResetBoardTimerPayload,
   ResetTimerPayload,
   RevealCardsPayload,
   RoomState,
@@ -59,6 +61,8 @@ interface ServerToClientEvents {
   [BOARD_WS_SERVER_EVENTS.AWARENESS]: (payload: BoardAwarenessBroadcast) => void;
   /** Кто сейчас смотрит доску */
   [BOARD_WS_SERVER_EVENTS.PRESENCE]: (entries: BoardPresenceEntry[]) => void;
+  /** Новое состояние таймера доски (15.3) — включая собственные команды */
+  [BOARD_WS_SERVER_EVENTS.TIMER]: (state: BoardTimerState) => void;
 }
 
 /**
@@ -91,6 +95,22 @@ interface ClientToServerEvents {
   ) => void;
   /** Без подтверждения — эфемерное событие, ответ не нужен и не ждётся */
   [BOARD_WS_EVENTS.AWARENESS]: (p: BoardAwarenessPayload) => void;
+  [BOARD_WS_EVENTS.TIMER_START]: (
+    p: Record<string, never>,
+    ack: (r: WsAck<BoardTimerState>) => void,
+  ) => void;
+  [BOARD_WS_EVENTS.TIMER_PAUSE]: (
+    p: Record<string, never>,
+    ack: (r: WsAck<BoardTimerState>) => void,
+  ) => void;
+  [BOARD_WS_EVENTS.TIMER_RESET]: (
+    p: ResetBoardTimerPayload,
+    ack: (r: WsAck<BoardTimerState>) => void,
+  ) => void;
+  [BOARD_WS_EVENTS.TIMER_EXTEND]: (
+    p: Record<string, never>,
+    ack: (r: WsAck<BoardTimerState>) => void,
+  ) => void;
 }
 
 export type PokerSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

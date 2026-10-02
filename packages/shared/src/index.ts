@@ -2,6 +2,7 @@
 
 export * from './auth';
 export * from './teams';
+export * from './timer';
 export * from './rooms';
 export * from './boards';
 export * from './validation';
