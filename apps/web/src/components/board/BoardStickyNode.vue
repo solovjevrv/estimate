@@ -16,6 +16,7 @@ import { useBoardNodeEditing } from '../../features/boards/composables/use-board
 import { useSessionStore } from '../../stores/session';
 import { useBoardSessionStore } from '../../stores/board-session';
 import BoardEditingBadge from './shared/BoardEditingBadge.vue';
+import BoardVoteBadge from './BoardVoteBadge.vue';
 import BoardRichText from './BoardRichText.vue';
 import EmojiPicker from '../EmojiPicker.vue';
 
@@ -150,6 +151,7 @@ watch(
     :data-selected="props.selected ? 'true' : 'false'"
   >
     <BoardEditingBadge v-if="lockedBy" :name="lockedBy.name" data-testid="board-editing-badge" />
+    <BoardVoteBadge :item="props.data" />
     <NodeResizer
       :is-visible="props.selected && !editing && canEdit && !lockedBy"
       :min-width="STICKY_MIN_WIDTH"
@@ -256,7 +258,7 @@ watch(
       v-if="receivedReactions.length > 0"
       tag="div"
       name="board-reaction-pop"
-      class="nodrag absolute bottom-[-10px] left-[-6px] flex max-w-[85%] flex-wrap gap-1"
+      class="nodrag absolute bottom-[-4px] left-[-8px] flex max-w-[85%] flex-wrap gap-1"
     >
       <button
         v-for="reaction in receivedReactions"
@@ -271,10 +273,8 @@ watch(
         :class="{ 'board-reaction-badge-mine': reaction.reactedByMe }"
         @click.stop="sendReaction(reaction.emoji)"
       >
-        {{ reaction.emoji }}
-        <span v-if="reaction.count > 1" class="text-xs leading-none font-bold opacity-70">
-          {{ reaction.count }}
-        </span>
+        <span class="board-reaction-emoji">{{ reaction.emoji }}</span>
+        <span v-if="reaction.count > 1" class="board-reaction-count">{{ reaction.count }}</span>
       </button>
     </TransitionGroup>
 
@@ -340,32 +340,37 @@ watch(
   opacity: 1;
 }
 
-/* Бейджи уже стоящих реакций — в отличие от кнопки-триггера видны всегда,
-   это персистентное содержимое карточки, а не служебный элемент управления.
-   height/min-width вместо симметричного padding — иначе rounded-full на
-   прямоугольнике уже своей высоты давал не круг, а таблетку; line-height:1
-   плотно прижимал цветной эмодзи-глиф к верхней границе вместо центра (оба —
-   по скриншоту пользователя). Со счётчиком бейдж всё равно шире min-width. */
+/* Бейджи уже стоящих реакций (кит 17_Badge — ReactionBadge): пилюля высотой
+   30, отступы 6/10, шаг 4; эмодзи 14 и счётчик 12 Bold text-secondary — только
+   от двух реакций (решение пользователя: «1» не пишем); обводка border-strong
+   1px внутри, elevation-1. В отличие от
+   кнопки-триггера видны всегда — это персистентное содержимое карточки */
 .board-reaction-badge {
-  display: flex;
+  display: inline-flex;
   align-items: center;
+  gap: 4px;
+  height: 30px;
+  min-width: 30px;
   justify-content: center;
-  gap: 2px;
-  height: 34px;
-  min-width: 34px;
-  padding: 0 5px;
+  padding: 0 8px;
   cursor: pointer;
   border-radius: 999px;
-  border: 1px solid color-mix(in srgb, var(--brand-ink2) 22%, transparent);
-  background: var(--brand-surface);
-  font-size: 1.21rem;
-  box-shadow: var(--brand-shadow-card);
+  background: var(--surface-block);
+  box-shadow:
+    inset 0 0 0 1px var(--border-strong),
+    var(--shadow-elevation-1);
 }
 
-/* В тёмной теме `--brand-shadow-card` сам несёт тонкое кольцо 0 0 0 1px —
-   наш же border поверх него удваивал обводку и читался жирно, убираем */
-.dark .board-reaction-badge {
-  border-color: transparent;
+.board-reaction-emoji {
+  font-size: 14px;
+  line-height: 18px;
+}
+
+.board-reaction-count {
+  color: var(--text-secondary);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 700;
 }
 
 /* Гостю/зрителю архивной доски бейджи видны, но не кликабельны — только canEdit ставит/снимает */
@@ -373,11 +378,11 @@ watch(
   cursor: default;
 }
 
-/* border-color рядом с тонким кольцом ниже создавал вторую полосу впритык к
-   первой — читалось как одна жирная обводка */
+/* Своя реакция (ReactionBadge Mine=On) — обводка border-brand 1.5px вместо border-strong */
 .board-reaction-badge-mine {
-  border-color: transparent;
-  box-shadow: inset 0 0 0 1px var(--ui-color-primary-500);
+  box-shadow:
+    inset 0 0 0 1.5px var(--border-brand),
+    var(--shadow-elevation-1);
 }
 
 .board-reaction-pop-enter-active,

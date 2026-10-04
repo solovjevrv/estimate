@@ -85,7 +85,8 @@ test('мягкая блокировка текстового редактиро�
   await expect(pageA.locator(contenteditableA)).toHaveText('Текст от A');
 
   // --- 4. A снимает выделение → блокировка снимается ---
-  await pageA.locator('[data-testid="board-pane"]').click({ position: { x: 950, y: 50 } });
+  // Пустое место холста — ниже правого верхнего ряда (таймер, голосование, участники)
+  await pageA.locator('[data-testid="board-pane"]').click({ position: { x: 950, y: 450 } });
   await expect(pageC.locator(badgeSelectorC)).toBeHidden();
 
   // --- 5. C теперь может редактировать ---

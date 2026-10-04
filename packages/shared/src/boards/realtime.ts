@@ -4,6 +4,7 @@ import type { BoardAccessLevel } from './permissions';
 import type { BoardEdge, BoardItem, BoardSnapshot } from './entities';
 import type { BoardOp } from './operations';
 import type { CountdownTimerState } from '../timer';
+import type { BoardVotingState } from './voting';
 
 /**
  * Реалтайм-канал доски (12.4). Клиент отправляет операции — сервер их
@@ -24,6 +25,15 @@ export const BOARD_WS_EVENTS = {
   TIMER_PAUSE: 'board:timer:pause',
   TIMER_RESET: 'board:timer:reset',
   TIMER_EXTEND: 'board:timer:extend',
+  /** Голосование точками (15.2): запуск/завершение/отмена — `edit`, голос и история — любой на доске */
+  VOTING_START: 'board:voting:start',
+  VOTING_VOTE: 'board:voting:vote',
+  VOTING_CLOSE: 'board:voting:close',
+  VOTING_CANCEL: 'board:voting:cancel',
+  /** Ответ — `BoardVotingSummary[]`, новые сверху */
+  VOTING_HISTORY: 'board:voting:history',
+  /** Ответ — итоги завершённого голосования (`BoardVotingState`) */
+  VOTING_RESULTS: 'board:voting:results',
 } as const;
 
 export type BoardWsEvent = (typeof BOARD_WS_EVENTS)[keyof typeof BOARD_WS_EVENTS];
@@ -37,6 +47,8 @@ export const BOARD_WS_SERVER_EVENTS = {
   PRESENCE: 'board:presence',
   /** Новое состояние таймера доски — всем на доске, включая того, кто его поменял */
   TIMER: 'board:timer',
+  /** Голосование глазами получателя (персонально каждому сокету) или null — голосования нет */
+  VOTING: 'board:voting',
 } as const;
 
 export type BoardWsServerEvent =
@@ -86,6 +98,8 @@ export interface JoinBoardResult {
   guestToken: string | null;
   /** Таймер доски на момент входа — дальше обновляется рассылкой `board:timer` */
   timer: BoardTimerState;
+  /** Голосование глазами вошедшего — дальше обновляется рассылкой `board:voting` */
+  voting: BoardVotingState | null;
 }
 
 /** Таймер доски (15.3) — тот же общий таймер отсчёта, что у комнаты */

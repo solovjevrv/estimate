@@ -367,6 +367,12 @@ export default defineConfig({
         popover: {
           slots: { content: 'bg-surface-block shadow-(--shadow-elevation-2) ring-0' },
         },
+        // 12_Checkbox: квадрат с радиусом 4 (Md — 20px). У Nuxt UI rounded-sm считается
+        // от общего --ui-radius темы — при нашем радиусе 16px-квадрат становился кругом
+        checkbox: {
+          slots: { base: 'rounded-[4px]' },
+          variants: { size: { sm: { base: 'size-4' }, md: { base: 'size-5' } } },
+        },
         // 14_Switch: трек surface-tertiary/surface-brand, бегунок icons-white в обеих
         // темах (у Nuxt UI — bg-default, в Dark тёмный), Disabled — прозрачность 45%
         switch: {

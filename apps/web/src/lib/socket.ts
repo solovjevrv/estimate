@@ -11,6 +11,10 @@ import type {
   BoardOpsBatch,
   BoardPresenceEntry,
   BoardTimerState,
+  BoardVotePayload,
+  BoardVotingRefPayload,
+  BoardVotingState,
+  BoardVotingSummary,
   JoinBoardPayload,
   JoinBoardResult,
   JoinRoomPayload,
@@ -24,6 +28,7 @@ import type {
   Round,
   RoundResult,
   SendReactionPayload,
+  StartBoardVotingPayload,
   StartRoundPayload,
   SubmitVotePayload,
   UpdateLinksPayload,
@@ -63,6 +68,8 @@ interface ServerToClientEvents {
   [BOARD_WS_SERVER_EVENTS.PRESENCE]: (entries: BoardPresenceEntry[]) => void;
   /** Новое состояние таймера доски (15.3) — включая собственные команды */
   [BOARD_WS_SERVER_EVENTS.TIMER]: (state: BoardTimerState) => void;
+  /** Голосование глазами этого участника (15.2); null — голосования нет */
+  [BOARD_WS_SERVER_EVENTS.VOTING]: (state: BoardVotingState | null) => void;
 }
 
 /**
@@ -110,6 +117,24 @@ interface ClientToServerEvents {
   [BOARD_WS_EVENTS.TIMER_EXTEND]: (
     p: Record<string, never>,
     ack: (r: WsAck<BoardTimerState>) => void,
+  ) => void;
+  [BOARD_WS_EVENTS.VOTING_START]: (
+    p: StartBoardVotingPayload,
+    ack: (r: WsAck<null>) => void,
+  ) => void;
+  [BOARD_WS_EVENTS.VOTING_VOTE]: (p: BoardVotePayload, ack: (r: WsAck<null>) => void) => void;
+  [BOARD_WS_EVENTS.VOTING_CLOSE]: (p: BoardVotingRefPayload, ack: (r: WsAck<null>) => void) => void;
+  [BOARD_WS_EVENTS.VOTING_CANCEL]: (
+    p: BoardVotingRefPayload,
+    ack: (r: WsAck<null>) => void,
+  ) => void;
+  [BOARD_WS_EVENTS.VOTING_HISTORY]: (
+    p: Record<string, never>,
+    ack: (r: WsAck<BoardVotingSummary[]>) => void,
+  ) => void;
+  [BOARD_WS_EVENTS.VOTING_RESULTS]: (
+    p: BoardVotingRefPayload,
+    ack: (r: WsAck<BoardVotingState>) => void,
   ) => void;
 }
 

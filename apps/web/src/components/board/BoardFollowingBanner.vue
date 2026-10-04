@@ -5,7 +5,6 @@
  * Родитель показывает её, только когда есть за кем следить (`followedName`).
  * Вынесена из `BoardCanvas.vue` (17.1).
  */
-import { Panel } from '@vue-flow/core';
 import { useI18n } from 'vue-i18n';
 
 defineProps<{
@@ -20,22 +19,20 @@ const { t } = useI18n();
 </script>
 
 <template>
-  <Panel position="top-center">
-    <div data-testid="board-following" class="board-following surface-card flex items-center">
-      <span class="board-following-label">
-        {{ t('board.followingPrefix') }}
-        <span class="board-following-name">{{ name }}</span>
-      </span>
-      <button
-        type="button"
-        class="board-following-stop"
-        :aria-label="t('board.stopFollowing')"
-        @click="emit('stop')"
-      >
-        <UIcon name="i-lucide-x" class="size-3.5" />
-      </button>
-    </div>
-  </Panel>
+  <div data-testid="board-following" class="board-following surface-card flex items-center">
+    <span class="board-following-label">
+      {{ t('board.followingPrefix') }}
+      <span class="board-following-name">{{ name }}</span>
+    </span>
+    <button
+      type="button"
+      class="board-following-stop"
+      :aria-label="t('board.stopFollowing')"
+      @click="emit('stop')"
+    >
+      <UIcon name="i-lucide-x" class="size-3.5" />
+    </button>
+  </div>
 </template>
 
 <style scoped>

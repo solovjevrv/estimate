@@ -15,4 +15,11 @@ export {
   type CreateBoardInput,
 } from './boards.service';
 export { BoardImagesService } from './board-images.service';
+export {
+  BoardVotingService,
+  type BoardVotingAccess,
+  type BoardVoter,
+} from './board-voting.service';
+export { BoardVotingRepository } from './board-voting.repository';
+export { votingResults, votingStateFor, type BoardVotingSnapshot } from './board-voting-state';
 export { BoardThumbnailsService, boardThumbnailKey } from './board-thumbnails.service';

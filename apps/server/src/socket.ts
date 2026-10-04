@@ -1,7 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { Server, type Socket } from 'socket.io';
 
-import { BoardsGateway, BoardsService } from './boards';
+import { BoardsGateway, BoardsService, type BoardVotingService } from './boards';
 import { RoomsGameService, RoomsGateway } from './rooms';
 
 /** Данные, которые сервер держит на каждом подключении */
@@ -38,6 +38,8 @@ declare module 'fastify' {
 export interface SocketGatewayOptions {
   /** Origin дев-фронта для CORS */
   corsOrigin: string;
+  /** Голосование точками на досках (15.2); не задано — его события отклоняются */
+  boardVoting?: BoardVotingService;
 }
 
 /**
@@ -79,7 +81,7 @@ export class SocketGateway {
     });
 
     new RoomsGateway(this.roomsService).register(io, app.log);
-    new BoardsGateway(this.boardsService).register(io, app.log);
+    new BoardsGateway(this.boardsService, this.options.boardVoting).register(io, app.log);
 
     io.on('connection', (socket) => {
       app.log.info({ socketId: socket.id, userId: socket.data.userId }, 'Socket.io: подключение');

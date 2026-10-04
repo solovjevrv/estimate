@@ -192,10 +192,11 @@ export class BoardsService {
   }
 
   /**
-   * Управлять таймером доски (15.3) может любой с доступом `edit`, как и
-   * правкой содержимого; у архивной доски — никто, она только для чтения.
+   * Действия фасилитатора — таймер доски (15.3), запуск и завершение
+   * голосования (15.2): любой с доступом `edit`, как и правка содержимого;
+   * у архивной доски — никто, она только для чтения.
    */
-  async assertTimerControl(actorId: string | null, boardId: string): Promise<void> {
+  async assertActiveEditAccess(actorId: string | null, boardId: string): Promise<void> {
     const board = await this.assertEditAccess(actorId, boardId);
     if (board.status !== 'active') {
       throw new ConflictError('Доска в архиве');
