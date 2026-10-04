@@ -126,3 +126,56 @@ test('голосование точками: старт, точки, сняти�
   await pageA.getByTestId('board-voting-new-from-results').click();
   await expect(pageA.getByTestId('board-voting-setup')).toBeVisible();
 });
+
+test('«Выделенные элементы»: выделить можно при открытой настройке, без выделения старт недоступен', async ({
+  browser,
+  createUser,
+  loginAs,
+  newContext,
+}) => {
+  test.slow();
+
+  const owner = await createUser('board-voting-scope');
+  const context = await newContext(browser);
+  await loginAs(context, owner);
+  const page = await context.newPage();
+  await page.setViewportSize({ width: 1280, height: 760 });
+  await page.goto('/boards');
+  await page.getByRole('button', { name: 'Новая доска', exact: true }).click();
+  await page
+    .getByPlaceholder('Например, Ретро спринта 24')
+    .fill(`${E2E_ROOM_PREFIX}Voting scope ${randomUUID().slice(0, 8)}`);
+  await page.locator('form').getByRole('button', { name: 'Создать доску' }).click();
+  await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
+  const board = boardLocators(page);
+  await expect(board.pane).toBeVisible();
+  await addTwoStickies(page);
+
+  // Клик по холсту настройку не закрывает, а Escape — закрывает
+  await page.getByTestId('board-voting-button').click();
+  const setup = page.getByTestId('board-voting-setup');
+  await expect(setup).toBeVisible();
+  await setup.getByTestId('board-voting-start').focus();
+  await page.keyboard.press('Escape');
+  await expect(setup).toHaveCount(0);
+
+  // Ничего не выделено — открываем настройку и выбираем «Выделенные элементы»
+  await page.getByTestId('board-voting-button').click();
+  await expect(setup).toBeVisible();
+  await setup.getByTestId('board-voting-scope').click();
+  await page.getByRole('option', { name: 'Выделенные элементы' }).click();
+  await expect(setup).toContainText('Выделите элементы на доске');
+  await expect(setup.getByTestId('board-voting-start')).toBeDisabled();
+
+  // Клик по стикеру на холсте выделяет его — настройка остаётся открытой
+  const first = board.stickyNodes.first();
+  await first.click();
+  await expect(setup).toBeVisible();
+  await expect(setup.getByTestId('board-voting-scope')).toContainText('Выделенные: 1');
+  await expect(setup.getByTestId('board-voting-start')).toBeEnabled();
+
+  await setup.getByTestId('board-voting-start').click();
+  await expect(page.getByTestId('board-voting-bar')).toBeVisible();
+  // Второй стикер вне голосования — приглушён
+  await expect(page.locator('.vue-flow__node.board-node-voting-muted')).toHaveCount(1);
+});

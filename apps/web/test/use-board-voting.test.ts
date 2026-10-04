@@ -156,17 +156,18 @@ describe('useBoardVoting (15.2)', () => {
     expect(commands.vote).toHaveBeenCalledOnce();
   });
 
-  it('«Где голосуем»: «Выделенные» видно всегда, без выделения — неактивно', () => {
+  it('«Где голосуем»: «Выделенные» доступно всегда, число выделенных — на лету', () => {
     const { voting, selected } = setup(null);
     expect(voting.scopeOptions.value[1]).toEqual({
       value: 'selected',
       label: 'Выделенные элементы',
-      disabled: true,
     });
+    expect(voting.selectedCount.value).toBe(0);
     expect(voting.defaultScope.value).toBe('board');
 
     selected.value = ['a'];
     expect(voting.scopeOptions.value[1]).toEqual({ value: 'selected', label: 'Выделенные: 1' });
+    expect(voting.selectedCount.value).toBe(1);
     expect(voting.defaultScope.value).toBe('selected');
   });
 

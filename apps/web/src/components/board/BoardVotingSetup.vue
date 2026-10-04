@@ -22,10 +22,12 @@ import type {
 const props = defineProps<{
   scopeOptions: BoardVotingScopeOption[];
   defaultScope: BoardVotingScopeChoice;
+  /** Сколько элементов выделено сейчас — меняется на лету, пока настройка открыта */
+  selectedCount: number;
   pending: boolean;
 }>();
 
-const emit = defineEmits<{ start: [setup: BoardVotingSetup] }>();
+const emit = defineEmits<{ start: [setup: BoardVotingSetup]; close: [] }>();
 
 const { t } = useI18n();
 
@@ -39,10 +41,8 @@ const form = reactive({
   startTimer: true,
 });
 
-/** Без выделения «Выделенные элементы» неактивно — подсказка, как ими воспользоваться */
-const selectionEmpty = computed(() =>
-  props.scopeOptions.some((option) => option.value === 'selected' && option.disabled),
-);
+/** «Выделенные» без выделения: подсказка, как выделить, и старт недоступен */
+const waitingForSelection = computed(() => form.scope === 'selected' && props.selectedCount === 0);
 
 function submit(): void {
   const setup: BoardVotingSetup = {
@@ -58,7 +58,7 @@ function submit(): void {
 </script>
 
 <template>
-  <div data-testid="board-voting-setup" class="board-voting-setup">
+  <div data-testid="board-voting-setup" class="board-voting-setup" @keydown.esc="emit('close')">
     <div class="text-text-secondary flex items-center gap-1.5 text-xs leading-[18px] font-bold">
       <UIcon name="i-lucide-vote" class="size-4" />
       {{ t('board.voting.setupTitle') }}
@@ -111,7 +111,7 @@ function submit(): void {
 
     <UFormField
       :label="t('board.voting.scope')"
-      :help="selectionEmpty ? t('board.voting.scopeHint') : undefined"
+      :help="waitingForSelection ? t('board.voting.scopeHint') : undefined"
     >
       <USelect
         v-model="form.scope"
@@ -129,6 +129,7 @@ function submit(): void {
       block
       size="sm"
       :loading="pending"
+      :disabled="waitingForSelection"
       @click="submit"
     >
       {{ t('board.voting.start') }}

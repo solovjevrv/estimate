@@ -570,7 +570,7 @@ export default {
       hint: 'Click a sticky note to vote',
       itemLimit: 'No more votes for this item',
       scopeSelectedEmpty: 'Selected items',
-      scopeHint: 'Select items on the board to vote only on them',
+      scopeHint: 'Select items on the board — Shift+click or drag a frame',
       finishTitle: 'Finish voting?',
       finishDescription:
         '{completed} of {total} participants used all their votes. Nobody can vote after it ends.',

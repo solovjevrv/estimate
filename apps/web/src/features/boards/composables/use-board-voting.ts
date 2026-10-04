@@ -53,8 +53,6 @@ export interface BoardVotingResultRow {
 export interface BoardVotingScopeOption {
   value: BoardVotingScopeChoice;
   label: string;
-  /** «Выделенные элементы» без выделения — видно, но выбрать нельзя */
-  disabled?: boolean;
 }
 
 /** Узел холста, достаточный для приглушения — `class` дописывается, остальное не трогаем */
@@ -247,12 +245,16 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
     const result: BoardVotingScopeOption[] = [
       { value: 'board', label: t('board.voting.scopeBoard') },
     ];
+    // Доступно всегда: выбрать можно и до выделения — настройка остаётся открытой,
+    // пока выделяешь элементы на холсте, а число обновляется на лету
     const selected = options.selectedIds().length;
-    result.push(
-      selected > 0
-        ? { value: 'selected', label: t('board.voting.scopeSelected', { count: selected }) }
-        : { value: 'selected', label: t('board.voting.scopeSelectedEmpty'), disabled: true },
-    );
+    result.push({
+      value: 'selected',
+      label:
+        selected > 0
+          ? t('board.voting.scopeSelected', { count: selected })
+          : t('board.voting.scopeSelectedEmpty'),
+    });
     for (const item of options.items()) {
       if (item.content.type !== 'frame') continue;
       result.push({
@@ -262,6 +264,8 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
     }
     return result;
   });
+
+  const selectedCount = computed(() => options.selectedIds().length);
 
   /** Скоуп по умолчанию: есть выделение — «Выделенные», иначе вся доска */
   const defaultScope = computed<BoardVotingScopeChoice>(() =>
@@ -389,6 +393,7 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
     removeVote,
     scopeOptions,
     defaultScope,
+    selectedCount,
     start,
     finish,
     confirmFinish,

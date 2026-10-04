@@ -86,9 +86,12 @@ async function onOpenResults(votingId: string): Promise<void> {
       </span>
     </div>
 
+    <!-- Настройка не закрывается от кликов по холсту: пока она открыта, можно
+         выделять элементы для «Выделенных» — закрыть кнопкой, Escape или стартом -->
     <UPopover
       v-else
       :open="open"
+      :dismissible="view !== 'setup'"
       :content="{ side: 'bottom', align: 'end', sideOffset: 8 }"
       :ui="{ content: 'rounded-r16' }"
       @update:open="onOpenChange"
@@ -121,8 +124,10 @@ async function onOpenResults(votingId: string): Promise<void> {
           v-else
           :scope-options="voting.scopeOptions.value"
           :default-scope="voting.defaultScope.value"
+          :selected-count="voting.selectedCount.value"
           :pending="voting.pending.value"
           @start="onStart"
+          @close="open = false"
         />
       </template>
     </UPopover>
