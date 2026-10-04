@@ -36,7 +36,8 @@ const form = reactive({
   maxPerItem: BOARD_VOTING_DEFAULT_MAX_PER_ITEM,
   /** «Без ограничения» — не оба сразу: вторая галочка блокируется */
   votesUnlimited: false,
-  perItemUnlimited: false,
+  // По умолчанию на один элемент — без ограничения: упрёшься только в свои 3 точки
+  perItemUnlimited: true,
   scope: props.defaultScope,
   startTimer: true,
 });

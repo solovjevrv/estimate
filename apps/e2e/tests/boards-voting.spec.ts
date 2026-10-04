@@ -68,9 +68,16 @@ test('голосование точками: старт, точки, сняти�
   await pageA.getByTestId('board-voting-button').click();
   await expect(pageA.getByTestId('board-voting-setup')).toBeVisible();
   // data-testid у UInputNumber может оказаться и на обёртке, и на самом input
-  await pageA
-    .locator('input[data-testid="board-voting-votes"], [data-testid="board-voting-votes"] input')
-    .fill('2');
+  const votesInput = pageA.locator(
+    'input[data-testid="board-voting-votes"], [data-testid="board-voting-votes"] input',
+  );
+  // По умолчанию: 3 точки на человека, на один элемент — без ограничения
+  await expect(votesInput).toHaveValue('3');
+  await expect(pageA.getByTestId('board-voting-per-item-unlimited')).toHaveAttribute(
+    'data-state',
+    'checked',
+  );
+  await votesInput.fill('2');
   await pageA.getByTestId('board-voting-start').click();
 
   await expect(pageA.getByTestId('board-voting-bar')).toContainText('Осталось 2 из 2');

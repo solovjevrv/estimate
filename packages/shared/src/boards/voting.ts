@@ -52,7 +52,9 @@ export interface BoardVotingState {
   results: BoardVotingResult[] | null;
 }
 
-export const BOARD_VOTING_DEFAULT_VOTES = 5;
+/** По умолчанию: 3 точки на человека, на один элемент — без ограничения */
+export const BOARD_VOTING_DEFAULT_VOTES = 3;
+/** Значение в поле «на один элемент», если снять галочку «Без ограничения» */
 export const BOARD_VOTING_DEFAULT_MAX_PER_ITEM = 2;
 export const BOARD_VOTING_MAX_VOTES = 20;
 /** Список элементов скоупа не может быть длиннее самой доски — потолок на размер payload */
