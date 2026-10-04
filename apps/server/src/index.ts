@@ -1,5 +1,5 @@
 import { buildApp } from './app';
-import { BoardImagesService, BoardsService } from './boards';
+import { BoardImagesService, BoardsService, BoardVotingService } from './boards';
 import { loadConfig } from './config';
 import { createDb } from './db';
 import { attachSentryErrorHandler, initSentry } from './monitoring';
@@ -46,7 +46,10 @@ async function main(): Promise<void> {
     boardImagesService,
     app.log,
   );
-  new SocketGateway(roomsService, boardsService, { corsOrigin: config.webOrigin }).attach(app);
+  new SocketGateway(roomsService, boardsService, {
+    corsOrigin: config.webOrigin,
+    boardVoting: new BoardVotingService(db, boardsService),
+  }).attach(app);
 
   // Одна неудачная операция не должна уносить процесс вместе со всеми комнатами
   process.on('unhandledRejection', (reason) => {

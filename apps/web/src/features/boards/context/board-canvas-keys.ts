@@ -6,6 +6,7 @@
  */
 import type { InjectionKey, Ref } from 'vue';
 
+import type { BoardVotingNodeContext } from '../composables/use-board-voting';
 import type { BoardTextEditorHandle } from '../rich-text/board-rich-text';
 import type { ResizeAxisFlags, SnapRect } from '../domain/board-snap';
 
@@ -69,3 +70,9 @@ export interface BoardResizeSnapContext {
 
 export const BOARD_RESIZE_SNAP_KEY: InjectionKey<BoardResizeSnapContext> =
   Symbol('boardResizeSnap');
+
+/**
+ * Голосование точками (15.2) для бейджа голосов внутри узла — состояние и
+ * снятие своей точки. Не задано (экспорт PNG, тесты узлов) — бейджей нет.
+ */
+export const BOARD_VOTING_KEY: InjectionKey<BoardVotingNodeContext> = Symbol('boardVoting');

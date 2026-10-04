@@ -15,7 +15,10 @@ import type {
   BoardAwarenessKind,
   BoardShareRole,
   BoardTimerState,
+  BoardVotingState,
+  BoardVotingSummary,
   JoinBoardResult,
+  StartBoardVotingPayload,
 } from '@estimate/shared';
 import {
   BOARD_TIMER_DEFAULT_DURATION_SEC,
@@ -45,6 +48,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const joined = ref(false);
   /** Таймер доски (15.3): снимок из входа, дальше — рассылка `board:timer` */
   const timer = ref<BoardTimerState>(idleTimer());
+  /** Голосование точками (15.2) глазами этого участника; null — голосования нет */
+  const voting = ref<BoardVotingState | null>(null);
 
   let boardId: string | null = null;
   /** Имя гостя этого сеанса — self().name ниже, пока для него нет session.user */
@@ -103,6 +108,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     participantId.value = result.participantId;
     access.value = result.access;
     timer.value = result.timer;
+    voting.value = result.voting;
 
     if (result.snapshot) {
       optimistic.applySnapshot(result.snapshot, result.revision);
@@ -120,6 +126,9 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     active.on(BOARD_WS_SERVER_EVENTS.AWARENESS, awareness.handleAwareness);
     active.on(BOARD_WS_SERVER_EVENTS.TIMER, (state) => {
       timer.value = state;
+    });
+    active.on(BOARD_WS_SERVER_EVENTS.VOTING, (state) => {
+      voting.value = state;
     });
   }
 
@@ -141,6 +150,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       participantId.value = null;
       access.value = 'view';
       timer.value = idleTimer();
+      voting.value = null;
       ownGuestName = null;
       optimistic.resetForNewSession();
       // Presence/курсоры/блокировка редактирования намеренно НЕ сбрасываются
@@ -166,6 +176,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     participantId.value = null;
     access.value = 'view';
     timer.value = idleTimer();
+    voting.value = null;
     local.items.clear();
     local.edges.clear();
     optimistic.resetForNewSession();
@@ -202,6 +213,39 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     await emitWithAck(requireSocket(), BOARD_WS_EVENTS.TIMER_EXTEND, {});
   }
 
+  /**
+   * Команды голосования (15.2). Ответ пустой: новое состояние у каждого своё
+   * (чужие голоса до завершения скрыты) и приходит рассылкой `board:voting`.
+   */
+  async function startVoting(payload: StartBoardVotingPayload): Promise<void> {
+    await emitWithAck(requireSocket(), BOARD_WS_EVENTS.VOTING_START, payload);
+  }
+
+  async function vote(itemId: string, delta: 1 | -1): Promise<void> {
+    const votingId = voting.value?.id;
+    if (!votingId) return;
+    await emitWithAck(requireSocket(), BOARD_WS_EVENTS.VOTING_VOTE, { votingId, itemId, delta });
+  }
+
+  /** Завершить/отменить — у текущего голосования */
+  async function votingCommand(
+    event: typeof BOARD_WS_EVENTS.VOTING_CLOSE | typeof BOARD_WS_EVENTS.VOTING_CANCEL,
+  ): Promise<void> {
+    const votingId = voting.value?.id;
+    if (!votingId) return;
+    await emitWithAck(requireSocket(), event, { votingId });
+  }
+
+  /** История завершённых голосований доски — новые сверху */
+  async function fetchVotingHistory(): Promise<BoardVotingSummary[]> {
+    return emitWithAck(requireSocket(), BOARD_WS_EVENTS.VOTING_HISTORY, {});
+  }
+
+  /** Итоги завершённого голосования из истории */
+  async function fetchVotingResults(votingId: string): Promise<BoardVotingState> {
+    return emitWithAck(requireSocket(), BOARD_WS_EVENTS.VOTING_RESULTS, { votingId });
+  }
+
   async function setShare(role: BoardShareRole | null): Promise<Board> {
     if (!boardId) throw new Error('Нельзя изменить доступ к доске вне активной сессии');
     return setBoardShare(boardId, role);
@@ -228,6 +272,13 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     pauseTimer,
     resetTimer,
     extendTimer,
+    voting,
+    startVoting,
+    vote,
+    closeVoting: () => votingCommand(BOARD_WS_EVENTS.VOTING_CLOSE),
+    cancelVoting: () => votingCommand(BOARD_WS_EVENTS.VOTING_CANCEL),
+    fetchVotingHistory,
+    fetchVotingResults,
     applyError: optimistic.applyError,
     join,
     leave,

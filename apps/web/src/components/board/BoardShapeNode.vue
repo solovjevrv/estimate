@@ -14,6 +14,7 @@ import {
 } from '../../features/boards/config/board-item-defaults';
 import { useBoardNodeEditing } from '../../features/boards/composables/use-board-node-editing';
 import BoardEditingBadge from './shared/BoardEditingBadge.vue';
+import BoardVoteBadge from './BoardVoteBadge.vue';
 import BoardRichText from './BoardRichText.vue';
 
 const props = defineProps<NodeProps<BoardItem>>();
@@ -98,6 +99,7 @@ const DIAMOND_CLIP_PATH = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
     :data-selected="props.selected ? 'true' : 'false'"
   >
     <BoardEditingBadge v-if="lockedBy" :name="lockedBy.name" data-testid="board-editing-badge" />
+    <BoardVoteBadge :item="props.data" />
     <NodeResizer
       :is-visible="props.selected && !editing && canEdit && !lockedBy"
       :min-width="SHAPE_MIN_WIDTH"

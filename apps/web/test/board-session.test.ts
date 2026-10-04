@@ -117,6 +117,7 @@ function snapshotResult(
     participantId,
     guestToken: null,
     timer: { durationSec: 300, running: false, endsAt: null, remainingSec: 300 },
+    voting: null,
   };
 }
 
@@ -157,6 +158,7 @@ describe('стор сессии доски', () => {
       participantId: 'actor1',
       guestToken: null,
       timer: { durationSec: 300, running: false, endsAt: null, remainingSec: 300 },
+      voting: null,
     } satisfies JoinBoardResult;
 
     await store.join('board1');
@@ -542,6 +544,78 @@ describe('стор сессии доски', () => {
 
       expect(store.revision).toBe(5);
       expect(store.items).toHaveLength(0);
+    });
+  });
+
+  describe('голосование точками (15.2)', () => {
+    const active = {
+      id: 'v1',
+      number: 1,
+      status: 'active' as const,
+      votesPerParticipant: 3,
+      maxPerItem: 3,
+      itemIds: null,
+      startedAt: '2026-10-02T10:00:00.000Z',
+      closedAt: null,
+      myVotes: {},
+      myRemaining: 3,
+      votedCount: 0,
+      completedCount: 0,
+      results: null,
+    };
+
+    it('берёт голосование из входа и обновляет рассылкой board:voting', async () => {
+      const store = useBoardSessionStore();
+      socket.next = { ...snapshotResult(1), voting: active };
+      await store.join('board1');
+      expect(store.voting?.id).toBe('v1');
+
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.VOTING, null);
+      expect(store.voting).toBeNull();
+    });
+
+    it('команды уходят с id текущего голосования; без голосования — не уходят', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      await store.vote('i1', 1);
+      await store.closeVoting();
+      expect(socket.sent.filter((e) => e.event.startsWith('board:voting'))).toEqual([]);
+
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.VOTING, active);
+      socket.next = null;
+      await store.startVoting({ votesPerParticipant: 2, maxPerItem: 1, itemIds: null });
+      await store.vote('i1', -1);
+      await store.closeVoting();
+      await store.cancelVoting();
+      await store.fetchVotingHistory();
+      await store.fetchVotingResults('v0');
+
+      expect(socket.sent.slice(-6)).toEqual([
+        {
+          event: BOARD_WS_EVENTS.VOTING_START,
+          payload: { votesPerParticipant: 2, maxPerItem: 1, itemIds: null },
+        },
+        {
+          event: BOARD_WS_EVENTS.VOTING_VOTE,
+          payload: { votingId: 'v1', itemId: 'i1', delta: -1 },
+        },
+        { event: BOARD_WS_EVENTS.VOTING_CLOSE, payload: { votingId: 'v1' } },
+        { event: BOARD_WS_EVENTS.VOTING_CANCEL, payload: { votingId: 'v1' } },
+        { event: BOARD_WS_EVENTS.VOTING_HISTORY, payload: {} },
+        { event: BOARD_WS_EVENTS.VOTING_RESULTS, payload: { votingId: 'v0' } },
+      ]);
+    });
+
+    it('после выхода голосование забывается', async () => {
+      const store = useBoardSessionStore();
+      socket.next = { ...snapshotResult(1), voting: active };
+      await store.join('board1');
+
+      store.leave();
+
+      expect(store.voting).toBeNull();
     });
   });
 

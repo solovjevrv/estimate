@@ -13,17 +13,24 @@ import {
   type BoardOpsBatch,
   type BoardPresenceEntry,
   type BoardTimerState,
+  type BoardVotePayload,
+  type BoardVotingRefPayload,
+  type BoardVotingState,
+  type BoardVotingSummary,
   type JoinBoardPayload,
   type JoinBoardResult,
   type ResetBoardTimerPayload,
+  type StartBoardVotingPayload,
   type WsAck,
 } from '@estimate/shared';
 import type { FastifyBaseLogger } from 'fastify';
 
-import { AppError, ForbiddenError, ValidationError } from '../errors';
+import { AppError, ConflictError, ForbiddenError, ValidationError } from '../errors';
 import { CountdownTimer, PresenceRegistry } from '../platform/realtime';
 import type { PokerServer, PokerSocket } from '../socket';
 
+import { votingStateFor } from './board-voting-state';
+import type { BoardVotingService } from './board-voting.service';
 import type { BoardParticipantIdentity } from './presence';
 import type { BoardsService } from './boards.service';
 
@@ -51,6 +58,8 @@ export class BoardsGateway {
 
   constructor(
     private readonly service: BoardsService,
+    /** Голосование точками (15.2); не задано — события голосования отклоняются */
+    private readonly voting?: BoardVotingService,
     private readonly presence = new PresenceRegistry<BoardParticipantIdentity>(),
     /** Таймер доски (15.3) — сиюминутное состояние, как присутствие */
     private readonly timer = new CountdownTimer({
@@ -81,6 +90,13 @@ export class BoardsGateway {
           // Рассылаем всем, включая отправителя — своя же операция отбрасывается
           // на клиенте по `clientOpId`, а не особым обхождением на сервере
           io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.OPS, batch);
+          // Удалённый элемент уносит свои голоса (FK cascade) — они возвращаются
+          // голосовавшим, поэтому снимок голосования у всех устарел
+          if (committed.some((op) => op.type === 'item.delete')) {
+            void this.broadcastVoting(io, boardId).catch((err: unknown) => {
+              log.warn({ err, boardId }, 'Не удалось разослать голосование после удаления');
+            });
+          }
           return { revision };
         });
       });
@@ -140,6 +156,57 @@ export class BoardsGateway {
         );
       });
 
+      socket.on(BOARD_WS_EVENTS.VOTING_START, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<StartBoardVotingPayload>(args);
+        this.runVoting(io, socket, log, ack, async (voting, identity, boardId) => {
+          await voting.start(identity, boardId, payload);
+          // Таймер вместе с голосованием — всегда заново, в т.ч. после истёкшего
+          if (payload?.startTimer === true) {
+            this.timer.reset(boardId);
+            this.emitTimer(io, boardId, this.timer.start(boardId));
+          }
+        });
+      });
+
+      socket.on(BOARD_WS_EVENTS.VOTING_VOTE, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<BoardVotePayload>(args);
+        this.runVoting(io, socket, log, ack, (voting, identity, boardId) =>
+          voting.vote(identity, boardId, payload),
+        );
+      });
+
+      socket.on(BOARD_WS_EVENTS.VOTING_CLOSE, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<BoardVotingRefPayload>(args);
+        this.runVoting(io, socket, log, ack, async (voting, identity, boardId) => {
+          const { withTimer } = await voting.close(identity, boardId, payload?.votingId);
+          if (withTimer) this.emitTimer(io, boardId, this.timer.reset(boardId));
+        });
+      });
+
+      socket.on(BOARD_WS_EVENTS.VOTING_CANCEL, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<BoardVotingRefPayload>(args);
+        this.runVoting(io, socket, log, ack, async (voting, identity, boardId) => {
+          const { withTimer } = await voting.cancel(identity, boardId, payload?.votingId);
+          if (withTimer) this.emitTimer(io, boardId, this.timer.reset(boardId));
+        });
+      });
+
+      socket.on(BOARD_WS_EVENTS.VOTING_HISTORY, (...args: unknown[]) => {
+        const { ack } = this.readArgs(args);
+        this.run<BoardVotingSummary[]>(socket, log, ack, async () => {
+          const { boardId, identity } = this.requireSeat(socket);
+          return this.requireVoting().history(identity, boardId);
+        });
+      });
+
+      socket.on(BOARD_WS_EVENTS.VOTING_RESULTS, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<BoardVotingRefPayload>(args);
+        this.run<BoardVotingState>(socket, log, ack, async () => {
+          const { boardId, identity } = this.requireSeat(socket);
+          return this.requireVoting().results(identity, boardId, payload?.votingId);
+        });
+      });
+
       socket.on('disconnect', () => {
         const boardId = this.presence.leave(socket.id);
         if (boardId) {
@@ -185,6 +252,9 @@ export class BoardsGateway {
     }
     this.broadcastPresence(io, payload.boardId);
 
+    const votingSnapshot = await this.voting?.loadSnapshot(payload.boardId);
+    const voting = votingSnapshot ? votingStateFor(votingSnapshot, identity.participantId) : null;
+
     const sinceRevision = payload.sinceRevision;
     const buffered =
       sinceRevision != null ? this.catchupSince(payload.boardId, sinceRevision) : null;
@@ -197,6 +267,7 @@ export class BoardsGateway {
         participantId: identity.participantId,
         guestToken,
         timer: this.timer.get(payload.boardId),
+        voting,
       };
     }
 
@@ -209,7 +280,53 @@ export class BoardsGateway {
       participantId: identity.participantId,
       guestToken,
       timer: this.timer.get(payload.boardId),
+      voting,
     };
+  }
+
+  /**
+   * Действие с голосованием. Подтверждение — без данных: новое состояние у
+   * каждого своё (до завершения чужие голоса скрыты), поэтому оно приходит
+   * персональной рассылкой `board:voting` всем на доске, включая отправителя.
+   */
+  private runVoting(
+    io: PokerServer,
+    socket: PokerSocket,
+    log: FastifyBaseLogger,
+    ack: Ack<unknown>,
+    action: (
+      voting: BoardVotingService,
+      identity: BoardParticipantIdentity,
+      boardId: string,
+    ) => Promise<void>,
+  ): void {
+    this.run<null>(socket, log, ack, async () => {
+      const { boardId, identity } = this.requireSeat(socket);
+      await action(this.requireVoting(), identity, boardId);
+      await this.broadcastVoting(io, boardId);
+      return null;
+    });
+  }
+
+  private requireVoting(): BoardVotingService {
+    if (!this.voting) throw new ConflictError('Голосование недоступно');
+    return this.voting;
+  }
+
+  private emitTimer(io: PokerServer, boardId: string, state: BoardTimerState): void {
+    io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.TIMER, state);
+  }
+
+  /** Каждому участнику доски — его собственный снимок голосования */
+  private async broadcastVoting(io: PokerServer, boardId: string): Promise<void> {
+    if (!this.voting) return;
+    const snapshot = await this.voting.loadSnapshot(boardId);
+    for (const { participantId } of this.presence.list(boardId)) {
+      const state = snapshot ? votingStateFor(snapshot, participantId) : null;
+      for (const socketId of this.presence.socketIdsOf(boardId, participantId)) {
+        io.to(socketId).emit(BOARD_WS_SERVER_EVENTS.VOTING, state);
+      }
+    }
   }
 
   /**
@@ -226,9 +343,9 @@ export class BoardsGateway {
   ): void {
     this.run<BoardTimerState>(socket, log, ack, async () => {
       const { boardId, identity } = this.requireSeat(socket);
-      await this.service.assertTimerControl(identity.userId, boardId);
+      await this.service.assertActiveEditAccess(identity.userId, boardId);
       const state = command(boardId);
-      io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.TIMER, state);
+      this.emitTimer(io, boardId, state);
       return state;
     });
   }
