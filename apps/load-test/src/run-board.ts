@@ -9,7 +9,7 @@ import { createAuthMinter } from './auth';
 import { loadBoardConfig } from './config';
 import { LatencyRecorder } from './metrics';
 import { ResourceSampler } from './resource-sampler';
-import { runBoardScenario } from './board-scenario';
+import { runBoardScenario, type VotingLatencies } from './board-scenario';
 
 /** Метка в названии доски и почте — по ней прогон чистит за собой данные (как в run.ts) */
 const BOARD_PREFIX = 'LOADTEST ';
@@ -117,11 +117,19 @@ async function main(): Promise<void> {
   const joinLatency = new LatencyRecorder();
   const applyLatency = new LatencyRecorder();
   const broadcastLatency = new LatencyRecorder();
+  const voting: VotingLatencies = {
+    start: new LatencyRecorder(),
+    voteAck: new LatencyRecorder(),
+    settle: new LatencyRecorder(),
+    close: new LatencyRecorder(),
+    messagesPerParticipant: [],
+  };
 
   console.log(
     `Нагрузка (доски, 21.10): 1 доска × ${config.boardParticipants} участников, ` +
       `${config.boardItemCount} элементов на доске (в т.ч. ${config.boardAnimatedStickerCount} ` +
-      `анимированных стикеров), ${config.boardWaves} волн правок (сервер: ${config.serverOrigin})`,
+      `анимированных стикеров), ${config.boardWaves} волн правок, ${config.boardVotingRounds} ` +
+      `раундов голосования по ${config.boardVotesPerParticipant} точки (сервер: ${config.serverOrigin})`,
   );
 
   sampler.start();
@@ -172,6 +180,9 @@ async function main(): Promise<void> {
       joinLatency,
       applyLatency,
       broadcastLatency,
+      votingRounds: config.boardVotingRounds,
+      votesPerParticipant: config.boardVotesPerParticipant,
+      voting,
     });
     errors = result.errors;
   } finally {
@@ -188,6 +199,16 @@ async function main(): Promise<void> {
     console.log('Вход на доску (JOIN → снимок дошёл):', joinLatency.summary());
     console.log('Правка → ack:', applyLatency.summary());
     console.log('Правка → рассылка дошла до всех участников:', broadcastLatency.summary());
+    if (config.boardVotingRounds > 0) {
+      console.log('Голосование: старт → снимок у всех:', voting.start.summary());
+      console.log('Голосование: точка → ack:', voting.voteAck.summary());
+      console.log('Голосование: раунд → все проголосовали у всех:', voting.settle.summary());
+      console.log('Голосование: завершение → итоги у всех:', voting.close.summary());
+      console.log(
+        'Голосование: снимков board:voting на участника за раунд:',
+        voting.messagesPerParticipant,
+      );
+    }
     console.log('Ресурсы сервера/БД:', sampler.summary());
 
     if (boardId) {

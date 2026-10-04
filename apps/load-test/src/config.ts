@@ -22,6 +22,9 @@ export interface BoardLoadTestConfig {
   /** Из boardItemCount — доля стикеров с format: 'animated' (21.10, по мотивам 21.7/21.8) */
   boardAnimatedStickerCount: number;
   boardWaves: number;
+  /** Раундов голосования точками после волн правок (15.2) */
+  boardVotingRounds: number;
+  boardVotesPerParticipant: number;
   editJitterMs: number;
   sampleIntervalMs: number;
 }
@@ -32,6 +35,17 @@ function envInt(name: string, fallback: number): number {
   const value = Number(raw);
   if (!Number.isFinite(value) || value <= 0) {
     throw new Error(`${name} должен быть положительным числом`);
+  }
+  return value;
+}
+
+/** Как envInt, но 0 допустим — им отключают необязательную часть сценария */
+function envNonNegativeInt(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 0) {
+    throw new Error(`${name} должен быть целым числом ≥ 0`);
   }
   return value;
 }
@@ -68,6 +82,8 @@ export function loadBoardConfig(): BoardLoadTestConfig {
     boardItemCount: envInt('LOADTEST_BOARD_ITEM_COUNT', 1000),
     boardAnimatedStickerCount: envInt('LOADTEST_BOARD_ANIMATED_STICKER_COUNT', 100),
     boardWaves: envInt('LOADTEST_BOARD_WAVES', 5),
+    boardVotingRounds: envNonNegativeInt('LOADTEST_BOARD_VOTING_ROUNDS', 3),
+    boardVotesPerParticipant: envInt('LOADTEST_BOARD_VOTES_PER_PARTICIPANT', 3),
     editJitterMs: envInt('LOADTEST_EDIT_JITTER_MS', 300),
     sampleIntervalMs: envInt('LOADTEST_SAMPLE_INTERVAL_MS', 500),
   };

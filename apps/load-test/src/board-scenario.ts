@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import type { BoardOpsBatch, JoinBoardResult, WsAck } from '@estimate/shared';
-import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@estimate/shared';
+import type { BoardOpsBatch, BoardVotingState, JoinBoardResult, WsAck } from '@estimate/shared';
+import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, isVotableContent } from '@estimate/shared';
 import { type Socket, io } from 'socket.io-client';
 
 import type { LatencyRecorder } from './metrics';
@@ -22,6 +22,24 @@ export interface BoardScenarioOptions {
   joinLatency: LatencyRecorder;
   applyLatency: LatencyRecorder;
   broadcastLatency: LatencyRecorder;
+  /** Раундов голосования точками (15.2) после волн правок; 0 — без голосования */
+  votingRounds: number;
+  votesPerParticipant: number;
+  voting: VotingLatencies;
+}
+
+/** Замеры голосования точками (15.2) — рассылка `board:voting` персональная, на каждого своя */
+export interface VotingLatencies {
+  /** Старт → снимок активного голосования дошёл до всех */
+  start: LatencyRecorder;
+  /** Точка → ack (ack уходит после персональной рассылки всем на доске) */
+  voteAck: LatencyRecorder;
+  /** Начало раунда → у всех `votedCount` равен числу участников */
+  settle: LatencyRecorder;
+  /** Завершение → итоги дошли до всех */
+  close: LatencyRecorder;
+  /** Сколько снимков `board:voting` получил один участник за раунд (среднее по всем) */
+  messagesPerParticipant: number[];
 }
 
 export interface BoardScenarioResult {
@@ -82,6 +100,112 @@ function waitForOpsBatch(socket: Socket, clientOpId: string): Promise<void> {
   });
 }
 
+/** Ждёт на ЭТОМ сокете снимок голосования, удовлетворяющий условию */
+function waitForVoting(
+  socket: Socket,
+  match: (state: BoardVotingState | null) => boolean,
+): Promise<BoardVotingState | null> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      socket.off(BOARD_WS_SERVER_EVENTS.VOTING, handler);
+      reject(new Error('снимок голосования не дошёл вовремя'));
+    }, BROADCAST_TIMEOUT_MS);
+    function handler(state: BoardVotingState | null): void {
+      if (match(state)) {
+        clearTimeout(timer);
+        socket.off(BOARD_WS_SERVER_EVENTS.VOTING, handler);
+        resolve(state);
+      }
+    }
+    socket.on(BOARD_WS_SERVER_EVENTS.VOTING, handler);
+  });
+}
+
+/**
+ * Раунд голосования точками: владелец запускает (вся доска, N точек на
+ * человека, на элемент без ограничения), все участники почти одновременно
+ * ставят по N точек с джиттером между кликами, владелец завершает. Каждая
+ * точка — транзакция с блокировкой строки голосования и персональная рассылка
+ * всем на доске: N участников × N точек × N получателей.
+ */
+async function runVotingRound(
+  all: Socket[],
+  votableIds: string[],
+  round: number,
+  opts: BoardScenarioOptions,
+  errors: string[],
+): Promise<void> {
+  const owner = all[0]!;
+  const received = all.map(() => 0);
+  const counters = all.map((socket, i) => {
+    const handler = (): void => {
+      received[i] = (received[i] ?? 0) + 1;
+    };
+    socket.on(BOARD_WS_SERVER_EVENTS.VOTING, handler);
+    return () => socket.off(BOARD_WS_SERVER_EVENTS.VOTING, handler);
+  });
+
+  try {
+    const started = Promise.all(all.map((s) => waitForVoting(s, (v) => v?.status === 'active')));
+    const startAt = performance.now();
+    const startAck = await emit(owner, BOARD_WS_EVENTS.VOTING_START, {
+      votesPerParticipant: opts.votesPerParticipant,
+      maxPerItem: null,
+      itemIds: null,
+    });
+    if (!startAck.ok) {
+      errors.push(`голосование ${round}, старт: ${startAck.message}`);
+      return;
+    }
+    const [ownerState] = await started;
+    opts.voting.start.record(performance.now() - startAt);
+    const votingId = ownerState?.id ?? '';
+
+    const settled = Promise.all(
+      all.map((s) =>
+        waitForVoting(s, (v) => v?.status === 'active' && v.votedCount === all.length),
+      ),
+    );
+    const roundAt = performance.now();
+    await Promise.all(
+      all.map(async (socket, i) => {
+        for (let k = 0; k < opts.votesPerParticipant; k += 1) {
+          await sleep(Math.random() * opts.jitterMs);
+          const itemId = votableIds[(round * 7 + i * 3 + k) % votableIds.length]!;
+          const startedAt = performance.now();
+          const ack = await emit(socket, BOARD_WS_EVENTS.VOTING_VOTE, {
+            votingId,
+            itemId,
+            delta: 1,
+          });
+          opts.voting.voteAck.record(performance.now() - startedAt);
+          if (!ack.ok) errors.push(`голосование ${round}, участник ${i}: ${ack.message}`);
+        }
+      }),
+    );
+    await settled;
+    opts.voting.settle.record(performance.now() - roundAt);
+
+    const closed = Promise.all(
+      all.map((s) => waitForVoting(s, (v) => v?.status === 'closed' && v.results !== null)),
+    );
+    const closeAt = performance.now();
+    const closeAck = await emit(owner, BOARD_WS_EVENTS.VOTING_CLOSE, {
+      votingId,
+    });
+    if (!closeAck.ok) {
+      errors.push(`голосование ${round}, завершение: ${closeAck.message}`);
+      return;
+    }
+    await closed;
+    opts.voting.close.record(performance.now() - closeAt);
+  } finally {
+    for (const off of counters) off();
+    const avg = received.reduce((a, b) => a + b, 0) / received.length;
+    opts.voting.messagesPerParticipant.push(Math.round(avg));
+  }
+}
+
 /**
  * Полный цикл жизни N параллельных участников одной (уже наполненной элементами)
  * доски: вход всех (снимок вплоть до тысяч элементов — сама по себе нагрузка на
@@ -99,6 +223,7 @@ export async function runBoardScenario(opts: BoardScenarioOptions): Promise<Boar
     await Promise.all(all.map(onceConnected));
 
     let itemIds: string[] = [];
+    let votableItemIds: string[] = [];
     await Promise.all(
       all.map(async (socket, i) => {
         const startedAt = performance.now();
@@ -113,6 +238,9 @@ export async function runBoardScenario(opts: BoardScenarioOptions): Promise<Boar
         }
         if (ack.data.snapshot && itemIds.length === 0) {
           itemIds = ack.data.snapshot.items.map((item) => item.id);
+          votableItemIds = ack.data.snapshot.items
+            .filter((item) => isVotableContent(item.content))
+            .map((item) => item.id);
         }
       }),
     );
@@ -157,6 +285,10 @@ export async function runBoardScenario(opts: BoardScenarioOptions): Promise<Boar
 
       await broadcastWaiters;
       opts.broadcastLatency.record(performance.now() - ownerStartedAt);
+    }
+
+    for (let round = 0; round < opts.votingRounds; round += 1) {
+      await runVotingRound(all, votableItemIds, round, opts, errors);
     }
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));
