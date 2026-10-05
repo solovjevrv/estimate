@@ -262,6 +262,11 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     return emitWithAck(requireSocket(), BOARD_WS_EVENTS.VOTING_RESULTS, { votingId });
   }
 
+  /** Удалить завершённое голосование из истории (новый снимок — рассылкой `board:voting`) */
+  async function deleteVoting(votingId: string): Promise<void> {
+    await emitWithAck(requireSocket(), BOARD_WS_EVENTS.VOTING_DELETE, { votingId });
+  }
+
   async function setShare(role: BoardShareRole | null): Promise<Board> {
     if (!boardId) throw new Error('Нельзя изменить доступ к доске вне активной сессии');
     return setBoardShare(boardId, role);
@@ -296,6 +301,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     cancelVoting: () => votingCommand(BOARD_WS_EVENTS.VOTING_CANCEL),
     fetchVotingHistory,
     fetchVotingResults,
+    deleteVoting,
     applyError: optimistic.applyError,
     join,
     leave,

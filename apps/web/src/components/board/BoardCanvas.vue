@@ -192,6 +192,7 @@ const voting = useBoardVoting({
     cancel: () => boardSession.cancelVoting(),
     fetchHistory: () => boardSession.fetchVotingHistory(),
     fetchResults: (votingId) => boardSession.fetchVotingResults(votingId),
+    remove: (votingId) => boardSession.deleteVoting(votingId),
   },
 });
 provide(BOARD_VOTING_KEY, voting);
@@ -1140,6 +1141,14 @@ useBoardHotkeys({
             @avatar-click="onPresenceAvatarClick"
           />
         </div>
+        <!-- Идущее голосование — карточкой под кнопкой (на узких экранах плашка по
+             центру наезжала на шапку доски и таймер) -->
+        <BoardVotingBar
+          v-if="voting.isActive.value && voting.barOpen.value"
+          :voting="voting"
+          :can-edit="canEdit"
+          :participant-count="boardSession.presence.length"
+        />
         <BoardVotingResults
           v-if="voting.hasResults.value && voting.resultsOpen.value"
           :voting="voting"
@@ -1150,14 +1159,7 @@ useBoardHotkeys({
         />
       </Panel>
 
-      <!-- Сверху по центру: плашка голосования и баннер слежения — в одну колонку -->
       <Panel position="top-center" class="board-top-center">
-        <BoardVotingBar
-          v-if="voting.isActive.value"
-          :voting="voting"
-          :can-edit="canEdit"
-          :participant-count="boardSession.presence.length"
-        />
         <BoardFollowingBanner
           v-if="followedName"
           :name="followedName"
@@ -1226,14 +1228,6 @@ useBoardHotkeys({
   flex-direction: column;
   align-items: center;
   gap: 8px;
-}
-
-/* Уже 1600px плашка голосования по центру наезжает на правый верхний ряд
-   (таймер, голосование, участники) — опускаем её под ряд: отступ 16 + 54 + зазор 8 */
-@media (max-width: 1599px) {
-  .board-top-center {
-    margin-top: 78px;
-  }
 }
 
 /* Голосование идёт — всё, за что голосовать нельзя, приглушено; за что можно —

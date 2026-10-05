@@ -3,7 +3,8 @@
  * Панель итогов голосования (15.2, кит — BoardVotingResults) под кнопкой
  * голосования: какое голосование открыто, элементы по убыванию голосов, клик
  * по строке — камера к элементу. Крестик закрывает панель только у себя;
- * «Новое голосование» — у тех, кто может править доску.
+ * «Новое голосование» и удаление голосования (корзина, с подтверждением) — у
+ * тех, кто может править доску.
  */
 import { computed } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -12,6 +13,7 @@ import {
   formatVotingDate,
   type BoardVoting,
 } from '../../features/boards/composables/use-board-voting';
+import ConfirmModal from '../ConfirmModal.vue';
 
 const props = defineProps<{
   voting: BoardVoting;
@@ -45,6 +47,18 @@ const meta = computed(() =>
       <span class="text-text-primary flex-1 text-sm leading-5 font-bold">
         {{ t('board.voting.votingNumber', { number: shown?.number ?? 1 }) }}
       </span>
+      <UButton
+        v-if="canEdit && !voting.isActive.value"
+        data-testid="board-voting-delete"
+        color="neutral"
+        variant="ghost"
+        size="sm"
+        square
+        icon="i-lucide-trash-2"
+        :aria-label="t('board.voting.deleteVoting')"
+        :title="t('board.voting.deleteVoting')"
+        @click="voting.requestDelete()"
+      />
       <UButton
         color="neutral"
         variant="ghost"
@@ -103,6 +117,17 @@ const meta = computed(() =>
       </div>
     </template>
   </div>
+  <ConfirmModal
+    :open="voting.confirmDeleteOpen.value"
+    :title="t('board.voting.deleteTitle', { number: shown?.number ?? 1 })"
+    :description="t('board.voting.deleteDescription')"
+    :confirm-label="t('board.voting.deleteConfirm')"
+    :cancel-label="t('board.voting.deleteCancel')"
+    confirm-color="error"
+    :loading="voting.pending.value"
+    @update:open="voting.setConfirmDeleteOpen"
+    @confirm="voting.confirmDelete()"
+  />
 </template>
 
 <style scoped>

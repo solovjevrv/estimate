@@ -138,6 +138,16 @@ test('голосование точками: старт, точки, сняти�
   // «Новое голосование» из итогов — настройка в кнопке верхнего ряда
   await pageA.getByTestId('board-voting-new-from-results').click();
   await expect(pageA.getByTestId('board-voting-setup')).toBeVisible();
+  await pageA.keyboard.press('Escape');
+
+  // Удаление голосования из итогов (панель осталась открытой) — с подтверждением,
+  // у всех пропадает
+  await expect(pageA.getByTestId('board-voting-results')).toContainText('Голосование 1');
+  await pageA.getByTestId('board-voting-delete').click();
+  await pageA.getByRole('dialog').getByRole('button', { name: 'Удалить' }).click();
+  await expect(pageA.getByTestId('board-voting-results')).toHaveCount(0);
+  await expect(pageA.getByTestId('board-voting-button')).toHaveAttribute('data-phase', 'idle');
+  await expect(pageB.getByTestId('board-voting-button')).toHaveAttribute('data-phase', 'idle');
 });
 
 test('«Выделенные элементы»: выделить можно при открытой настройке, без выделения старт недоступен', async ({

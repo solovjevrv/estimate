@@ -76,6 +76,7 @@ function setup(initial: BoardVotingState | null = activeState()) {
       ...activeState({ id: votingId, number: 1, status: 'closed' }),
       results: [{ itemId: 'a', total: 2, authors: [] }],
     })),
+    remove: vi.fn(async () => {}),
   } satisfies BoardVotingCommands;
   const participants = ref(2);
   let voting!: BoardVoting;
@@ -320,5 +321,31 @@ describe('useBoardVoting (15.2)', () => {
     await Promise.resolve();
 
     expect(toastAdd).toHaveBeenCalledWith(expect.objectContaining({ color: 'error' }));
+  });
+
+  it('карточку можно свернуть; новое голосование открывает её снова', async () => {
+    const { voting, state } = setup();
+
+    expect(voting.barOpen.value).toBe(true);
+    voting.toggleBar();
+    expect(voting.barOpen.value).toBe(false);
+    state.value = activeState({ id: 'v2' });
+    await nextTick();
+    expect(voting.barOpen.value).toBe(true);
+  });
+
+  it('удаление голосования из итогов — после подтверждения, итоги закрываются', async () => {
+    const { voting, state, commands } = setup(activeState());
+    state.value = { ...activeState(), status: 'closed', results: [] };
+    await nextTick();
+    expect(voting.resultsOpen.value).toBe(true);
+
+    voting.requestDelete();
+    expect(voting.confirmDeleteOpen.value).toBe(true);
+    await voting.confirmDelete();
+
+    expect(commands.remove).toHaveBeenCalledWith('v1');
+    expect(voting.confirmDeleteOpen.value).toBe(false);
+    expect(voting.resultsOpen.value).toBe(false);
   });
 });
