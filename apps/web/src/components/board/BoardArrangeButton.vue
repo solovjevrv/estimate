@@ -10,7 +10,7 @@ import { useI18n } from 'vue-i18n';
 import type { BoardArrangeMode } from '../../features/boards/domain/board-arrange';
 import BoardArrangeMenu from './BoardArrangeMenu.vue';
 
-defineProps<{ canByVotes: boolean }>();
+defineProps<{ modes: { votes: boolean; grouped: boolean } }>();
 
 const emit = defineEmits<{ pick: [mode: BoardArrangeMode] }>();
 
@@ -38,7 +38,7 @@ function pick(mode: BoardArrangeMode): void {
       <UIcon name="i-lucide-layout-grid" class="size-3.5" />
     </button>
     <template #content>
-      <BoardArrangeMenu :can-by-votes="canByVotes" @pick="pick" />
+      <BoardArrangeMenu :modes="modes" @pick="pick" />
     </template>
   </UPopover>
 </template>

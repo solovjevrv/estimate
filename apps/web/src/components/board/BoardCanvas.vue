@@ -106,6 +106,7 @@ import { useBoardExport } from '../../features/boards/composables/use-board-expo
 import { useBoardSelection } from '../../features/boards/composables/use-board-selection';
 import { useBoardViewport } from '../../features/boards/composables/use-board-viewport';
 import BoardSelectionToolbar from './BoardSelectionToolbar.vue';
+import BoardArrangeButton from './BoardArrangeButton.vue';
 import BoardContextMenu from './BoardContextMenu.vue';
 import BoardControlsCluster from './BoardControlsCluster.vue';
 import BoardCursor from './BoardCursor.vue';
@@ -1017,8 +1018,6 @@ useBoardHotkeys({
         :editing-text="!!activeTextEditor"
         :active-marks="activeTextEditor ? activeTextEditor.activeMarks.value : selectedActiveMarks"
         :has-text-selection="activeTextEditor?.hasTextSelection.value ?? false"
-        :can-arrange="arrange.canArrangeSelection.value"
-        :can-arrange-by-votes="arrange.canArrangeSelectionByVotes.value"
         @color="setSelectedColor"
         @color-preview="previewSelectedColor"
         @color-cancel="cancelSelectedColorPreview"
@@ -1043,8 +1042,18 @@ useBoardHotkeys({
         @sticker="setSelectedSticker"
         @giphy="setSelectedGiphy"
         @frame-size="setSelectedFrameSize"
-        @arrange="arrange.arrangeSelection"
-      />
+      >
+        <template #actions>
+          <BoardArrangeButton
+            v-if="arrange.canArrangeSelection.value"
+            :modes="{
+              votes: arrange.canArrangeSelectionByVotes.value,
+              grouped: arrange.canArrangeSelectionGrouped.value,
+            }"
+            @pick="arrange.arrangeSelection"
+          />
+        </template>
+      </BoardSelectionToolbar>
 
       <BoardEdgeToolbar
         v-if="edgeToolbarPosition"

@@ -545,6 +545,7 @@ export default {
       votes: 'By votes',
       color: 'By color',
       author: 'By author',
+      groupedUnavailable: 'Some sticky notes are already in frames and can’t be arranged again',
       votesUnavailable: 'Open the results of a voting these items were part of',
       byVotes: 'Sort by votes',
       done: {

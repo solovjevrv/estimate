@@ -90,8 +90,8 @@ export function useBoardArrange(options: UseBoardArrangeOptions) {
   /**
    * Что раскладывается из выделения: текстовые элементы — те же, за которые
    * голосуют; выделенный фрейм — значит его текстовые элементы (рамкой легко
-   * зацепить фрейм-кучку, а Ctrl+A после раскладки выделяет и их — повторная
-   * раскладка тогда работает как ожидается). null — в выделении есть что-то
+   * зацепить фрейм-кучку, а Ctrl+A выделяет и фреймы — «По голосам» тогда
+   * сортирует внутри них). null — в выделении есть что-то
    * другое (картинка, эмодзи, группа) или участник группы: группа жёсткий
    * пучок, вынимать из неё по одному нельзя (как и при перетаскивании).
    */
@@ -119,6 +119,19 @@ export function useBoardArrange(options: UseBoardArrangeOptions) {
       !options.voting.isActive.value &&
       (selectionItems.value?.length ?? 0) >= 2,
   );
+
+  /**
+   * «По цвету» / «По автору» — только для элементов вне фреймов: раскладка
+   * поверх уже собранных кучек делала кашу из стикеров и фреймов. Заново —
+   * удалить фреймы (стикеры останутся) и разложить. «По голосам» доступно:
+   * внутри фрейма сортирует на месте.
+   */
+  const canArrangeSelectionGrouped = computed(() => {
+    const byId = new Map(options.items().map((item) => [item.id, item]));
+    return (selectionItems.value ?? []).every(
+      (item) => !item.parentId || byId.get(item.parentId)?.content.type !== 'frame',
+    );
+  });
 
   /** «По голосам» в меню — только когда открыты итоги и в выделении есть элементы с точками */
   const canArrangeSelectionByVotes = computed(
@@ -203,6 +216,7 @@ export function useBoardArrange(options: UseBoardArrangeOptions) {
   function arrangeSelection(mode: BoardArrangeMode): void {
     if (!canArrangeSelection.value) return;
     if (mode === 'votes' && !canArrangeSelectionByVotes.value) return;
+    if (mode !== 'votes' && !canArrangeSelectionGrouped.value) return;
     const selected = selectionItems.value ?? [];
     const bounds = boundsOf(selected);
     const origin = { x: bounds.x, y: bounds.y };
@@ -223,7 +237,6 @@ export function useBoardArrange(options: UseBoardArrangeOptions) {
       clusterPlan({
         groups,
         origin,
-        boardItems: options.items(),
         frameZIndex: minZIndex(options.items()) - 1,
         // По цвету — фрейм в тон своей кучки (заливка фрейма — 14% от цвета)
         frameColor: (group) =>
@@ -238,6 +251,7 @@ export function useBoardArrange(options: UseBoardArrangeOptions) {
   return {
     canArrangeSelection,
     canArrangeSelectionByVotes,
+    canArrangeSelectionGrouped,
     canArrangeResults,
     arrangeSelection,
     arrangeResults,

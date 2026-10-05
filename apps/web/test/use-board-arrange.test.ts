@@ -145,7 +145,7 @@ describe('useBoardArrange (15.4)', () => {
     expect(ctx.arrange.canArrangeSelection.value).toBe(false);
   });
 
-  it('выделенный фрейм — значит его текстовые элементы (повторная раскладка)', () => {
+  it('стикеры во фреймах — «По цвету»/«По автору» недоступны, «Разложить» есть', () => {
     const ctx = setup();
     ctx.items.value = [
       ...ctx.items.value,
@@ -153,19 +153,19 @@ describe('useBoardArrange (15.4)', () => {
       item('k1', { parentId: 'frame', x: 24, y: 924 }),
       item('k2', { parentId: 'frame', x: 228, y: 924, createdBy: 'anna' }),
     ];
+
+    // Выделенный фрейм — значит его стикеры
     ctx.selected.value = ['frame'];
-
     expect(ctx.arrange.canArrangeSelection.value).toBe(true);
+    expect(ctx.arrange.canArrangeSelectionGrouped.value).toBe(false);
     ctx.arrange.arrangeSelection('author');
+    expect(ctx.applyOps).not.toHaveBeenCalled();
 
-    const ops = ctx.applyOps.mock.calls[0]![0];
-    // Старый фрейм опустел — удаляется первым, стикеры разложены по авторам
-    expect(ops[0]).toMatchObject({ type: 'item.delete', id: 'frame' });
-    expect(
-      patchesOf(ops)
-        .map((op) => op.id)
-        .sort(),
-    ).toEqual(['k1', 'k2']);
+    // Хоть один стикер во фрейме — тоже нельзя; все вне фреймов — можно
+    ctx.selected.value = ['a', 'k1'];
+    expect(ctx.arrange.canArrangeSelectionGrouped.value).toBe(false);
+    ctx.selected.value = ['a', 'b'];
+    expect(ctx.arrange.canArrangeSelectionGrouped.value).toBe(true);
   });
 
   it('«По голосам» в меню — только при открытых итогах с точками у выделенного', () => {

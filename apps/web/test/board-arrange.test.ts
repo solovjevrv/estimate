@@ -195,7 +195,6 @@ describe('clusterPlan', () => {
       origin: { x: 10, y: 20 },
       frameZIndex: -5,
       frameColor: (group) => (group.key === 'y' ? '#FCEB96' : '#69DFCD'),
-      boardItems: [],
     });
 
     const [yellow, mint] = creates(plan.ops);
@@ -228,104 +227,6 @@ describe('clusterPlan', () => {
     expect(byId.get('e')?.parentId).toBe(mint?.item.id);
     // Фреймы создаются раньше, чем на них ссылаются дети — сервер применяет батч по порядку
     expect(plan.ops[0]?.type).toBe('item.create');
-  });
-});
-
-describe('clusterPlan: повторная раскладка', () => {
-  const frame = (id: string, x: number): BoardItem =>
-    item(id, { x, width: 228, height: 228, content: { type: 'frame', title: `${id} · 1` } });
-  const deletes = (ops: unknown[]) =>
-    (ops as { type: string; id?: string }[]).filter((op) => op.type === 'item.delete');
-
-  it('та же кучка в своём фрейме — фрейм переиспользуется, дубликатов нет', () => {
-    const f1 = frame('f1', 0);
-    const f2 = frame('f2', 300);
-    const a = item('a', { parentId: 'f1', x: 24, y: 24 });
-    const b = item('b', { parentId: 'f2', x: 324, y: 24 });
-
-    const plan = clusterPlan({
-      groups: [
-        { key: 'y', title: 'Жёлтые', items: [a] },
-        { key: 'p', title: 'Персиковые', items: [b] },
-      ],
-      origin: { x: 0, y: 0 },
-      frameZIndex: 0,
-      frameColor: () => '#FCEB96',
-      boardItems: [f1, f2, a, b],
-    });
-
-    expect(creates(plan.ops)).toHaveLength(0);
-    expect(deletes(plan.ops)).toHaveLength(0);
-    expect(plan.frameIds).toEqual(['f1', 'f2']);
-    const byId = new Map(patches(plan.ops).map((op) => [op.id, op.patch]));
-    expect(byId.get('f1')).toMatchObject({ content: { type: 'frame', title: 'Жёлтые · 1' } });
-    expect(byId.get('a')).toEqual({ x: 24, y: 24, parentId: 'f1' });
-  });
-
-  it('другая раскладка — опустевшие фреймы удаляются, удаления первыми в батче', () => {
-    const f1 = frame('f1', 0);
-    const f2 = frame('f2', 300);
-    const a = item('a', { parentId: 'f1', x: 24, y: 24, createdBy: 'anna' });
-    const b = item('b', { parentId: 'f2', x: 324, y: 24, createdBy: 'anna' });
-
-    const plan = clusterPlan({
-      groups: [{ key: 'anna', title: 'Анна', items: [a, b] }],
-      origin: { x: 0, y: 0 },
-      frameZIndex: 0,
-      frameColor: () => '#FCEB96',
-      boardItems: [f1, f2, a, b],
-    });
-
-    expect(plan.ops.slice(0, 2)).toEqual([
-      expect.objectContaining({ type: 'item.delete', id: 'f1' }),
-      expect.objectContaining({ type: 'item.delete', id: 'f2' }),
-    ]);
-    expect(creates(plan.ops)).toHaveLength(1);
-  });
-
-  it('смешанная повторная раскладка — фреймы в ряд заново, без наложений', () => {
-    // Было: «Жёлтые · 1» (a) и «Персиковые · 1» (b); c — ещё один жёлтый, свободный
-    const f1 = frame('f1', 0);
-    const f2 = frame('f2', 300);
-    const a = item('a', { parentId: 'f1', x: 24, y: 24 });
-    const b = item('b', { parentId: 'f2', x: 324, y: 24, style: { color: '#FCB97D' } });
-    const c = item('c', { x: 700, y: 24 });
-
-    const plan = clusterPlan({
-      groups: [
-        { key: 'y', title: 'Жёлтые', items: [a, c] },
-        { key: 'p', title: 'Персиковые', items: [b] },
-      ],
-      origin: { x: 0, y: 0 },
-      frameZIndex: 0,
-      frameColor: () => '#FCEB96',
-      boardItems: [f1, f2, a, b, c],
-    });
-
-    expect(deletes(plan.ops).map((op) => op.id)).toEqual(['f1']);
-    const yellow = creates(plan.ops)[0]!.item;
-    const peach = patches(plan.ops).find((op) => op.id === 'f2')!.patch;
-    expect(yellow).toMatchObject({ x: 0, y: 0 });
-    // Персиковый фрейм переехал правее жёлтого, а не остался поперёк ряда
-    expect(peach.x).toBe(yellow.width + ARRANGE_FRAME_GAP);
-    expect(peach.content).toEqual({ type: 'frame', title: 'Персиковые · 1' });
-  });
-
-  it('фрейм с чужими элементами не удаляется', () => {
-    const f1 = frame('f1', 0);
-    const a = item('a', { parentId: 'f1', x: 24, y: 24 });
-    const other = item('other', { parentId: 'f1', x: 100, y: 100 });
-
-    const plan = clusterPlan({
-      groups: [{ key: 'y', title: 'Жёлтые', items: [a] }],
-      origin: { x: 0, y: 0 },
-      frameZIndex: 0,
-      frameColor: () => '#FCEB96',
-      boardItems: [f1, a, other],
-    });
-
-    expect(deletes(plan.ops)).toHaveLength(0);
-    expect(creates(plan.ops)).toHaveLength(1);
   });
 });
 
