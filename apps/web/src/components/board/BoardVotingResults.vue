@@ -16,9 +16,11 @@ import {
 const props = defineProps<{
   voting: BoardVoting;
   canEdit: boolean;
+  /** «Выстроить по голосам» (15.4) — есть что выстраивать и можно править доску */
+  canArrange: boolean;
 }>();
 
-const emit = defineEmits<{ focus: [itemId: string] }>();
+const emit = defineEmits<{ focus: [itemId: string]; arrange: [] }>();
 
 const { t, locale } = useI18n();
 
@@ -76,17 +78,29 @@ const meta = computed(() =>
 
     <template v-if="canEdit && !voting.isActive.value">
       <div class="border-border-light border-t" />
-      <UButton
-        data-testid="board-voting-new-from-results"
-        color="neutral"
-        variant="ghost"
-        size="sm"
-        icon="i-lucide-plus"
-        class="self-start"
-        @click="voting.requestNewVoting()"
-      >
-        {{ t('board.voting.newVoting') }}
-      </UButton>
+      <div class="flex flex-col items-start gap-1">
+        <UButton
+          v-if="canArrange"
+          data-testid="board-voting-arrange"
+          color="neutral"
+          variant="ghost"
+          size="sm"
+          icon="i-lucide-arrow-down-wide-narrow"
+          @click="emit('arrange')"
+        >
+          {{ t('board.arrange.byVotes') }}
+        </UButton>
+        <UButton
+          data-testid="board-voting-new-from-results"
+          color="neutral"
+          variant="ghost"
+          size="sm"
+          icon="i-lucide-plus"
+          @click="voting.requestNewVoting()"
+        >
+          {{ t('board.voting.newVoting') }}
+        </UButton>
+      </div>
     </template>
   </div>
 </template>

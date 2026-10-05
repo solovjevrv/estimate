@@ -129,6 +129,12 @@ test('голосование точками: старт, точки, сняти�
   await pageA.getByTestId('board-voting-history-item').click();
   await expect(pageA.getByTestId('board-voting-results')).toContainText('Голосование 1');
 
+  // «Выстроить по голосам» (15.4) — стикеры встают сеткой, тост с «Отменить»
+  await pageA.getByTestId('board-voting-arrange').click();
+  await expect(
+    pageA.locator('[data-slot="title"]', { hasText: 'Выстроено по голосам' }),
+  ).toBeVisible();
+
   // «Новое голосование» из итогов — настройка в кнопке верхнего ряда
   await pageA.getByTestId('board-voting-new-from-results').click();
   await expect(pageA.getByTestId('board-voting-setup')).toBeVisible();

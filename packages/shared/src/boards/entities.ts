@@ -534,4 +534,10 @@ export interface BoardSnapshot {
   edges: BoardEdge[];
   /** Доступ ЭТОГО вызывающего к доске — источник для canManage/canEdit на клиенте */
   access: BoardAccessLevel;
+  /**
+   * Имена авторов элементов (`createdBy` → имя) — для раскладки «по автору»
+   * (15.4): автор мог давно уйти с доски, в присутствии его нет. У гостей
+   * `createdBy` пуст, их элементы в справочник не попадают.
+   */
+  authors: Record<string, string>;
 }

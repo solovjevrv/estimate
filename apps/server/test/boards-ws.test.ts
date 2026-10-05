@@ -306,6 +306,20 @@ describeDb('WS-канал досок', () => {
       }
     });
 
+    it('снимок несёт имена авторов элементов — для раскладки «по автору» (15.4)', async () => {
+      const owner = await newUser('authors-owner');
+      const boardId = await newBoard(owner);
+      const author = connect(owner);
+      await joinBoard(author, boardId);
+      await emit<ApplyBoardOpsResult>(author, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: 'c1', item: stickyItem() }],
+      });
+
+      const later = await joinBoard(connect(owner), boardId);
+
+      expect(later.snapshot?.authors).toEqual({ [owner.id]: 'Пользователь authors-owner' });
+    });
+
     it('гость команды не может править содержимое доски', async () => {
       const owner = await newUser('edit-owner');
       const guest = await newUser('edit-guest');

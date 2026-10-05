@@ -111,7 +111,7 @@ function snapshotResult(
 ): JoinBoardResult {
   return {
     revision,
-    snapshot: { board: { shareRole: null } as Board, items, edges, access: 'manage' },
+    snapshot: { board: { shareRole: null } as Board, items, edges, access: 'manage', authors: {} },
     catchup: null,
     access: 'manage',
     participantId,
@@ -683,6 +683,28 @@ describe('стор сессии доски', () => {
     socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, entries);
 
     expect(store.presence).toEqual(entries);
+  });
+
+  it('имена авторов (15.4): из снимка и все, кто сейчас на доске; гости без userId — нет', async () => {
+    const store = useBoardSessionStore();
+    const result = snapshotResult(1);
+    result.snapshot!.authors = { u1: 'Анна (давно ушла)', u2: 'Иван' };
+    socket.next = result;
+    await store.join('board1');
+
+    socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, [
+      { participantId: 'p2', userId: 'u2', name: 'Иван Петров', avatarUrl: null, isGuest: false },
+      { participantId: 'p3', userId: 'u3', name: 'Мария', avatarUrl: null, isGuest: false },
+      { participantId: 'g1', userId: null, name: 'Гость', avatarUrl: null, isGuest: true },
+    ]);
+
+    expect([...store.authorNames]).toEqual([
+      ['u1', 'Анна (давно ушла)'],
+      ['u2', 'Иван Петров'],
+      ['u3', 'Мария'],
+    ]);
+    store.leave();
+    expect(store.authorNames.size).toBe(0);
   });
 
   it('принимает и хранит эфемерные курсоры участников по participantId', async () => {

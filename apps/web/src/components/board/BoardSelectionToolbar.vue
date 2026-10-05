@@ -88,6 +88,7 @@ import { computed, nextTick, ref, useTemplateRef, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import type { FrameSizePresetKey } from '../../features/boards/config/board-constants';
+import type { BoardArrangeMode } from '../../features/boards/domain/board-arrange';
 import { HIGHLIGHT_CSS } from '../../features/boards/rich-text/board-rich-text';
 import type { FormatMarkKey } from '../../features/boards/composables/use-rich-text-editing';
 import type { ItemFormKind } from '../../features/boards/board-item-form';
@@ -97,6 +98,7 @@ import EmojiPicker from '../EmojiPicker.vue';
 import BoardColorPickerMenu from './BoardColorPickerMenu.vue';
 import BoardFormatButtons from './BoardFormatButtons.vue';
 import BoardFrameSizeMenu from './BoardFrameSizeMenu.vue';
+import BoardArrangeButton from './BoardArrangeButton.vue';
 
 export type { ItemFormKind };
 
@@ -158,6 +160,9 @@ const props = withDefaults(
     activeMarks: BoardTextMark | null;
     /** Только фактическое непустое DOM-выделение (18.7) — ссылка требует явного выбора фрагмента */
     hasTextSelection: boolean;
+    /** «Разложить» (15.4, перед «Дублировать») и «По голосам» в его меню — useBoardArrange */
+    canArrange?: boolean;
+    canArrangeByVotes?: boolean;
   }>(),
   // Явный default: undefined — без него Vue кастит отсутствующий boolean-проп в false
   // (а не оставляет undefined), из-за чего фолбэк `?? currentFontSize <= MIN` ниже по
@@ -194,6 +199,7 @@ const emit = defineEmits<{
   sticker: [pack: string, id: string, format?: PersonalStickerFormat];
   giphy: [gif: GiphyGifSummary];
   frameSize: [preset: FrameSizePresetKey];
+  arrange: [mode: BoardArrangeMode];
 }>();
 
 const { t } = useI18n();
@@ -771,6 +777,11 @@ function cancelTextColor(hex: BoardColorHex): void {
     <!-- Группа — единственная форма без единого регулятора выше (14.3): без этого
          условия перед Дублировать висел бы "осиротевший" разделитель, перед которым
          пусто -->
+    <BoardArrangeButton
+      v-if="props.canArrange"
+      :can-by-votes="!!props.canArrangeByVotes"
+      @pick="emit('arrange', $event)"
+    />
     <div v-if="!isGroupOnly" class="board-selection-divider" />
     <button
       type="button"

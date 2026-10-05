@@ -84,6 +84,7 @@ import { useBoardAutoFit } from '../../features/boards/composables/use-board-aut
 import { useBoardHotkeys } from '../../features/boards/composables/use-board-hotkeys';
 import type { BoardTimerCommands } from '../../features/boards/composables/use-board-timer';
 import { useBoardVoting } from '../../features/boards/composables/use-board-voting';
+import { useBoardArrange } from '../../features/boards/composables/use-board-arrange';
 import type {
   BoardDragEvent,
   BoardDragNode,
@@ -311,6 +312,45 @@ function selectedNodeIdsForVoting(): string[] {
 // Голосование началось — выделение снимаем: во время него оно не работает
 watch(voting.isActive, (active) => {
   if (active) removeSelectedNodes(getSelectedNodes.value);
+});
+
+/**
+ * Раскладка (15.4): «Разложить ▾» в тулбаре выделения и «Выстроить по
+ * голосам» в итогах. Элементы — из `props.items` по id выделения: данные узлов
+ * Vue Flow декорированы голосованием, а раскладке нужен сам домен.
+ */
+const arrange = useBoardArrange({
+  items: () => props.items,
+  selectedItems: () => {
+    const ids = new Set(getSelectedNodes.value.map((node) => node.id));
+    return props.items.filter((item) => ids.has(item.id));
+  },
+  voting,
+  authorNames: () => boardSession.authorNames,
+  canEdit: () => props.canEdit,
+  canApplyOpsCount,
+  history: {
+    applyOps: (ops) => boardSession.applyOps(ops),
+    peekUndo: () => boardSession.peekUndo(),
+    undo: () => boardSession.undo(),
+  },
+  selectItems: (ids) => {
+    removeSelectedNodes(getSelectedNodes.value);
+    addSelectedNodes(ids.map((id) => ({ id }) as GraphNode<BoardItem>));
+  },
+  clearSelection: () => removeSelectedNodes(getSelectedNodes.value),
+  // Камера к результату: отдаляем, только если он не помещается, — не приближаем
+  // (две раскладки рядом иначе раздувались бы на весь экран)
+  reveal: (rect) => {
+    boardSession.stopFollowing();
+    const box = rootEl.value?.getBoundingClientRect();
+    if (!box) return;
+    const fitZoom = Math.min(box.width / (rect.width * 1.3), box.height / (rect.height * 1.3));
+    void setCenter(rect.x + rect.width / 2, rect.y + rect.height / 2, {
+      zoom: Math.min(viewport.value.zoom, fitZoom),
+      duration: 400,
+    });
+  },
 });
 
 /** Строка итогов голосования — камера к элементу, масштаб не меняем */
@@ -976,6 +1016,8 @@ useBoardHotkeys({
         :editing-text="!!activeTextEditor"
         :active-marks="activeTextEditor ? activeTextEditor.activeMarks.value : selectedActiveMarks"
         :has-text-selection="activeTextEditor?.hasTextSelection.value ?? false"
+        :can-arrange="arrange.canArrangeSelection.value"
+        :can-arrange-by-votes="arrange.canArrangeSelectionByVotes.value"
         @color="setSelectedColor"
         @color-preview="previewSelectedColor"
         @color-cancel="cancelSelectedColorPreview"
@@ -1000,6 +1042,7 @@ useBoardHotkeys({
         @sticker="setSelectedSticker"
         @giphy="setSelectedGiphy"
         @frame-size="setSelectedFrameSize"
+        @arrange="arrange.arrangeSelection"
       />
 
       <BoardEdgeToolbar
@@ -1101,7 +1144,9 @@ useBoardHotkeys({
           v-if="voting.hasResults.value && voting.resultsOpen.value"
           :voting="voting"
           :can-edit="canEdit"
+          :can-arrange="arrange.canArrangeResults.value"
           @focus="focusVotingItem"
+          @arrange="arrange.arrangeResults()"
         />
       </Panel>
 

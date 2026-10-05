@@ -57,6 +57,7 @@ describe('BoardsService.getSnapshot', () => {
     const findBoard = vi.spyOn(BoardsRepository.prototype, 'findBoard').mockResolvedValue(BOARD);
     vi.spyOn(BoardsRepository.prototype, 'listItems').mockResolvedValue([]);
     vi.spyOn(BoardsRepository.prototype, 'listEdges').mockResolvedValue([]);
+    vi.spyOn(BoardsRepository.prototype, 'listItemAuthors').mockResolvedValue({ u1: 'Анна' });
     const membership = vi
       .spyOn(TeamsRepository.prototype, 'findMembership')
       .mockResolvedValue({ teamId: 'team-1', userId: 'member', role: 'member' });
@@ -64,7 +65,13 @@ describe('BoardsService.getSnapshot', () => {
     const { service, transaction } = serviceWith();
     const snapshot = await service.getSnapshot('member', BOARD.id);
 
-    expect(snapshot).toMatchObject({ board: BOARD, access: 'edit', items: [], edges: [] });
+    expect(snapshot).toMatchObject({
+      board: BOARD,
+      access: 'edit',
+      items: [],
+      edges: [],
+      authors: { u1: 'Анна' },
+    });
     expect(findBoard).toHaveBeenCalledTimes(1);
     expect(membership).toHaveBeenCalledTimes(1);
     expect(transaction).toHaveBeenCalledWith(expect.any(Function), {
