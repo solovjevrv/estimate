@@ -59,6 +59,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
 
   const items = computed(() => [...local.items.values()]);
   const edges = computed(() => [...local.edges.values()]);
+
+  const awareness = useBoardAwareness();
   /**
    * Имена авторов: из снимка — и все, кто сейчас на доске (их элементы могли
    * появиться уже после входа, в снимке их нет). У гостей userId нет.
@@ -70,8 +72,6 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     }
     return names;
   });
-
-  const awareness = useBoardAwareness();
 
   function idleTimer(): BoardTimerState {
     return {

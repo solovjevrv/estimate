@@ -117,10 +117,40 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
         resultsOpen.value = true;
       }
       if (status === 'active') resultsOpen.value = false;
+      // Завершённое голосование удалили (текущим стало прошлое или никакое):
+      // открытые итоги не должны молча подмениться другим голосованием
+      if (prevStatus === 'closed' && id !== prevId && status !== 'active' && !viewedResults.value) {
+        resultsOpen.value = false;
+      }
+    },
+  );
+  // Итоги открыты из истории, а на доске новая рассылка завершённого — её шлют
+  // удаление голосования и правки элементов с голосами: вдруг удалили именно эти
+  watch(
+    () => state.value,
+    (next, prev) => {
+      if (viewedResults.value && prev && next?.status !== 'active') void dropDeletedViewed();
     },
   );
 
   const history = ref<BoardVotingSummary[]>([]);
+
+  /** Открыты итоги из истории — закрыть, если именно это голосование удалили */
+  async function dropDeletedViewed(): Promise<void> {
+    const viewedId = viewedResults.value?.id;
+    if (!viewedId) return;
+    try {
+      history.value = await options.commands.fetchHistory();
+    } catch {
+      return;
+    }
+    if (
+      viewedResults.value?.id === viewedId &&
+      !history.value.some((summary) => summary.id === viewedId)
+    ) {
+      closeResults();
+    }
+  }
   const historyLoading = ref(false);
 
   async function loadHistory(): Promise<void> {

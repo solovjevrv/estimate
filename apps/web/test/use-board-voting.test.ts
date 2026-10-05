@@ -1,5 +1,5 @@
 import type { BoardItem, BoardVotingState, BoardVotingSummary } from '@estimate/shared';
-import { mount } from '@vue/test-utils';
+import { flushPromises, mount } from '@vue/test-utils';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick, ref } from 'vue';
 
@@ -351,6 +351,49 @@ describe('useBoardVoting (15.2)', () => {
 
     expect(commands.remove).toHaveBeenCalledWith('v1');
     expect(voting.confirmDeleteOpen.value).toBe(false);
+    expect(voting.resultsOpen.value).toBe(false);
+  });
+
+  it('голосование удалил другой участник — итоги не подменяются прошлым голосованием', async () => {
+    const v1 = activeState({ id: 'v1', number: 1, status: 'closed', results: [] });
+    const v2 = activeState({ id: 'v2', number: 2, status: 'closed', results: [] });
+    const { voting, state } = setup(activeState({ id: 'v2', number: 2 }));
+    state.value = v2;
+    await nextTick();
+    expect(voting.resultsOpen.value).toBe(true);
+
+    // Удалили v2 — текущим стало v1: панель с итогами v2 закрывается, а не показывает v1
+    state.value = v1;
+    await nextTick();
+    expect(voting.resultsOpen.value).toBe(false);
+  });
+
+  it('открытые из истории итоги закрываются, только если удалили именно их', async () => {
+    const v2 = activeState({ id: 'v2', number: 2, status: 'closed', results: [] });
+    const v3 = activeState({ id: 'v3', number: 3, status: 'closed', results: [] });
+    const summary = (id: string, number: number): BoardVotingSummary => ({
+      id,
+      number,
+      startedAt: '2026-10-02T10:00:00.000Z',
+      closedAt: '2026-10-02T10:05:00.000Z',
+      totalVotes: 0,
+      voterCount: 0,
+    });
+    const { voting, state, commands } = setup(v3);
+    await voting.openResults('v1');
+    expect(voting.shownResults.value?.id).toBe('v1');
+
+    // Удалили v3 — v1 жив: итоги остаются
+    commands.fetchHistory.mockResolvedValueOnce([summary('v2', 2), summary('v1', 1)]);
+    state.value = v2;
+    await flushPromises();
+    expect(voting.shownResults.value?.id).toBe('v1');
+    expect(voting.resultsOpen.value).toBe(true);
+
+    // Удалили v1 — текущее v2 то же, но рассылка новая: истории без v1 — итоги закрыты
+    commands.fetchHistory.mockResolvedValueOnce([summary('v2', 2)]);
+    state.value = { ...v2 };
+    await flushPromises();
     expect(voting.resultsOpen.value).toBe(false);
   });
 });
