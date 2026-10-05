@@ -145,6 +145,29 @@ describe('useBoardArrange (15.4)', () => {
     expect(ctx.arrange.canArrangeSelection.value).toBe(false);
   });
 
+  it('выделенный фрейм — значит его текстовые элементы (повторная раскладка)', () => {
+    const ctx = setup();
+    ctx.items.value = [
+      ...ctx.items.value,
+      item('frame', { x: 0, y: 900, content: { type: 'frame', title: 'Жёлтые · 2' } }),
+      item('k1', { parentId: 'frame', x: 24, y: 924 }),
+      item('k2', { parentId: 'frame', x: 228, y: 924, createdBy: 'anna' }),
+    ];
+    ctx.selected.value = ['frame'];
+
+    expect(ctx.arrange.canArrangeSelection.value).toBe(true);
+    ctx.arrange.arrangeSelection('author');
+
+    const ops = ctx.applyOps.mock.calls[0]![0];
+    // Старый фрейм опустел — удаляется первым, стикеры разложены по авторам
+    expect(ops[0]).toMatchObject({ type: 'item.delete', id: 'frame' });
+    expect(
+      patchesOf(ops)
+        .map((op) => op.id)
+        .sort(),
+    ).toEqual(['k1', 'k2']);
+  });
+
   it('«По голосам» в меню — только при открытых итогах с точками у выделенного', () => {
     const ctx = setup();
     ctx.selected.value = ['a', 'c'];

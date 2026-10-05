@@ -62,4 +62,32 @@ test('раскладка по цвету во фрейм и отмена из т
     .click();
   await expect(board.frameNodes).toHaveCount(0);
   await expect(board.stickyNodes).toHaveCount(2);
+
+  const frameTitle = board.frameNodes.first().getByRole('textbox', { name: 'Заголовок фрейма' });
+  const arrangeBy = async (mode: 'color' | 'author'): Promise<void> => {
+    await page.keyboard.press('Escape');
+    // Ctrl+A выделяет и фреймы-кучки — раскладываются их стикеры
+    await page.keyboard.press('ControlOrMeta+a');
+    await page.getByTestId('board-arrange-button').click();
+    await page.getByTestId(`board-arrange-${mode}`).click();
+  };
+
+  // Повторная раскладка тем же способом — тот же фрейм, без дубликатов
+  await arrangeBy('color');
+  await expect(board.frameNodes).toHaveCount(1);
+  await arrangeBy('color');
+  await expect(board.frameNodes).toHaveCount(1);
+  await expect(frameTitle).toHaveValue('Жёлтые · 2');
+
+  // Другим способом — старый фрейм удаляется, «Отменить» возвращает его
+  await arrangeBy('author');
+  await expect(board.frameNodes).toHaveCount(1);
+  await expect(frameTitle).toHaveValue('E2E board-arrange · 2');
+  await page
+    .getByRole('region', { name: /Notifications/ })
+    .getByRole('button', { name: 'Отменить' })
+    .last()
+    .click();
+  await expect(board.frameNodes).toHaveCount(1);
+  await expect(frameTitle).toHaveValue('Жёлтые · 2');
 });

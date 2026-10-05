@@ -88,23 +88,43 @@ export function useBoardArrange(options: UseBoardArrangeOptions) {
   }
 
   /**
-   * Раскладываются только текстовые элементы — те же, за которые голосуют.
-   * Участник группы — нет: группа жёсткий пучок, вынимать из неё по одному
-   * нельзя (как и при перетаскивании).
+   * Что раскладывается из выделения: текстовые элементы — те же, за которые
+   * голосуют; выделенный фрейм — значит его текстовые элементы (рамкой легко
+   * зацепить фрейм-кучку, а Ctrl+A после раскладки выделяет и их — повторная
+   * раскладка тогда работает как ожидается). null — в выделении есть что-то
+   * другое (картинка, эмодзи, группа) или участник группы: группа жёсткий
+   * пучок, вынимать из неё по одному нельзя (как и при перетаскивании).
    */
-  const canArrangeSelection = computed(() => {
-    if (!options.canEdit() || options.voting.isActive.value) return false;
-    const selected = options.selectedItems();
-    if (selected.length < 2) return false;
+  const selectionItems = computed<BoardItem[] | null>(() => {
     const byId = new Map(options.items().map((item) => [item.id, item]));
-    return selected.every((item) => isVotableContent(item.content) && !inGroup(item, byId));
+    const result = new Map<string, BoardItem>();
+    for (const item of options.selectedItems()) {
+      const members =
+        item.content.type === 'frame'
+          ? options
+              .items()
+              .filter((child) => child.parentId === item.id && isVotableContent(child.content))
+          : [item];
+      for (const member of members) {
+        if (!isVotableContent(member.content) || inGroup(member, byId)) return null;
+        result.set(member.id, member);
+      }
+    }
+    return [...result.values()];
   });
+
+  const canArrangeSelection = computed(
+    () =>
+      options.canEdit() &&
+      !options.voting.isActive.value &&
+      (selectionItems.value?.length ?? 0) >= 2,
+  );
 
   /** «По голосам» в меню — только когда открыты итоги и в выделении есть элементы с точками */
   const canArrangeSelectionByVotes = computed(
     () =>
       options.voting.hasResults.value &&
-      options.selectedItems().some((item) => (totals.value.get(item.id) ?? 0) > 0),
+      (selectionItems.value ?? []).some((item) => (totals.value.get(item.id) ?? 0) > 0),
   );
 
   /**
@@ -183,7 +203,7 @@ export function useBoardArrange(options: UseBoardArrangeOptions) {
   function arrangeSelection(mode: BoardArrangeMode): void {
     if (!canArrangeSelection.value) return;
     if (mode === 'votes' && !canArrangeSelectionByVotes.value) return;
-    const selected = [...options.selectedItems()];
+    const selected = selectionItems.value ?? [];
     const bounds = boundsOf(selected);
     const origin = { x: bounds.x, y: bounds.y };
     if (mode === 'votes') {
@@ -203,6 +223,7 @@ export function useBoardArrange(options: UseBoardArrangeOptions) {
       clusterPlan({
         groups,
         origin,
+        boardItems: options.items(),
         frameZIndex: minZIndex(options.items()) - 1,
         // По цвету — фрейм в тон своей кучки (заливка фрейма — 14% от цвета)
         frameColor: (group) =>

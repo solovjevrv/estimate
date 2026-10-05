@@ -222,45 +222,112 @@ export function votesPlan(input: {
 /**
  * Кучки во фреймах: фреймы в ряд от `origin`, внутри — сетка в порядке
  * чтения. Фреймы встают позади элементов (`zIndex`), как и созданные вручную.
+ *
+ * Повторная раскладка не плодит фреймы: кучка, в точности совпадающая с
+ * содержимым существующего фрейма, перекладывается в нём же (заголовок и
+ * размер обновляются), а фрейм, из которого раскладка унесла все элементы,
+ * удаляется. Удаления — первыми в батче: инверсия для undo идёт в том же
+ * порядке, и старый фрейм воссоздаётся раньше, чем к нему вернутся дети.
  */
 export function clusterPlan(input: {
   groups: readonly ArrangeGroup[];
   origin: { x: number; y: number };
   frameZIndex: number;
   frameColor: (group: ArrangeGroup) => BoardColorHex;
+  /** Все элементы доски — найти фреймы, которые переиспользовать или убрать */
+  boardItems: readonly BoardItem[];
 }): ArrangePlan {
-  const ops: BoardOp[] = [];
+  const byId = new Map(input.boardItems.map((item) => [item.id, item]));
+  const childrenOf = (frameId: string): BoardItem[] =>
+    input.boardItems.filter((item) => item.parentId === frameId);
+
+  /** Существующий фрейм, содержимое которого — ровно эта кучка */
+  function reusableFrame(group: ArrangeGroup): BoardItem | undefined {
+    const parentId = group.items[0]?.parentId;
+    const frame = parentId ? byId.get(parentId) : undefined;
+    if (frame?.content.type !== 'frame') return undefined;
+    if (!group.items.every((item) => item.parentId === frame.id)) return undefined;
+    return childrenOf(frame.id).length === group.items.length ? frame : undefined;
+  }
+
+  const reused = new Map(
+    input.groups.flatMap((group) => {
+      const frame = reusableFrame(group);
+      return frame ? [[group.key, frame] as const] : [];
+    }),
+  );
+  const moving = new Set(input.groups.flatMap((group) => group.items.map((item) => item.id)));
+  const keptFrames = new Set([...reused.values()].map((frame) => frame.id));
+  const emptied = new Set(
+    input.groups
+      .flatMap((group) => group.items.map((item) => item.parentId))
+      .filter(
+        (id): id is string =>
+          !!id &&
+          !keptFrames.has(id) &&
+          byId.get(id)?.content.type === 'frame' &&
+          childrenOf(id).every((child) => moving.has(child.id)),
+      ),
+  );
+
+  const ops: BoardOp[] = [...emptied].map((id): BoardOp => ({
+    type: 'item.delete',
+    clientOpId: uuid(),
+    id,
+  }));
   const frameIds: string[] = [];
-  let cursor = input.origin.x;
-  let maxHeight = 0;
+  const rects: ArrangeRect[] = [];
+  // Повторная раскладка выстраивает ряд заново от левого верхнего угла всего
+  // задействованного (кучки, их прежние фреймы) — как первая раскладка, только
+  // совпавшие фреймы переезжают, а не создаются заново. Иначе переиспользованный
+  // фрейм стоял бы на старом месте поперёк нового ряда.
+  const previousFrames = [...reused.values(), ...[...emptied].map((id) => byId.get(id)!)];
+  const start = previousFrames.length
+    ? boundsOf([...previousFrames, ...input.groups.flatMap((group) => group.items)])
+    : input.origin;
+  let cursor = start.x;
+  const top = start.y;
 
   for (const group of input.groups) {
     const items = readingOrder(group.items);
     const columns = clusterColumns(items.length);
     const cell = cellOf(items);
     const grid = gridSize(items.length, columns, cell);
-    const frame = {
-      x: cursor,
-      y: input.origin.y,
+    const size = {
       width: grid.width + ARRANGE_FRAME_PADDING * 2,
       height: grid.height + ARRANGE_FRAME_PADDING * 2,
     };
-    const frameId = uuid();
-    frameIds.push(frameId);
-    ops.push({
-      type: 'item.create',
-      clientOpId: uuid(),
-      item: {
-        id: frameId,
-        parentId: null,
-        ...frame,
-        rotation: 0,
-        zIndex: input.frameZIndex,
-        content: { type: 'frame', title: `${group.title} · ${items.length}` },
-        style: { color: input.frameColor(group) },
-        reactions: [],
-      },
-    });
+    const title = `${group.title} · ${items.length}`;
+    const existing = reused.get(group.key);
+    const frame = { id: existing?.id ?? uuid(), x: cursor, y: top, ...size };
+    cursor += size.width + ARRANGE_FRAME_GAP;
+    if (existing) {
+      ops.push({
+        type: 'item.patch',
+        clientOpId: uuid(),
+        id: existing.id,
+        patch: { x: frame.x, y: frame.y, ...size, content: { type: 'frame', title } },
+      });
+    } else {
+      ops.push({
+        type: 'item.create',
+        clientOpId: uuid(),
+        item: {
+          id: frame.id,
+          parentId: null,
+          x: frame.x,
+          y: frame.y,
+          ...size,
+          rotation: 0,
+          zIndex: input.frameZIndex,
+          content: { type: 'frame', title },
+          style: { color: input.frameColor(group) },
+          reactions: [],
+        },
+      });
+    }
+    frameIds.push(frame.id);
+    rects.push(frame);
     const inner = { x: frame.x + ARRANGE_FRAME_PADDING, y: frame.y + ARRANGE_FRAME_PADDING };
     items.forEach((item, index) => {
       const { x, y } = cellPosition(index, columns, cell, inner);
@@ -268,22 +335,12 @@ export function clusterPlan(input: {
         type: 'item.patch',
         clientOpId: uuid(),
         id: item.id,
-        patch: { x, y, parentId: frameId },
+        patch: { x, y, parentId: frame.id },
       });
     });
-    cursor += frame.width + ARRANGE_FRAME_GAP;
-    maxHeight = Math.max(maxHeight, frame.height);
   }
 
-  return {
-    ops,
-    bounds: {
-      ...input.origin,
-      width: cursor - ARRANGE_FRAME_GAP - input.origin.x,
-      height: maxHeight,
-    },
-    frameIds,
-  };
+  return { ops, bounds: boundsOf(rects), frameIds };
 }
 
 function paletteIndex(hex: string): number {
