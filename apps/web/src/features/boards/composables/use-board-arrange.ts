@@ -11,8 +11,7 @@ import {
   clusterPlan,
   groupByAuthor,
   groupByColor,
-  orderByVotes,
-  sortPlan,
+  votesPlan,
   type ArrangePlan,
   type ArrangeRect,
   type BoardArrangeMode,
@@ -167,14 +166,15 @@ export function useBoardArrange(options: UseBoardArrangeOptions) {
     if (!canArrangeResults.value) return;
     const { items, wholeBoard } = resultItems();
     const board = boundsOf(options.items());
-    const origin = wholeBoard
-      ? { x: board.x + board.width + ARRANGE_OUTSIDE_OFFSET, y: board.y }
-      : boundsOf(items);
     run(
-      sortPlan({
-        ordered: orderByVotes(items, totals.value),
-        origin: { x: origin.x, y: origin.y },
+      votesPlan({
+        items,
+        totals: totals.value,
         boardItems: options.items(),
+        // По всей доске — свободные элементы встают правее всего содержимого
+        looseOrigin: wholeBoard
+          ? { x: board.x + board.width + ARRANGE_OUTSIDE_OFFSET, y: board.y }
+          : undefined,
       }),
       'votes',
     );
@@ -187,14 +187,7 @@ export function useBoardArrange(options: UseBoardArrangeOptions) {
     const bounds = boundsOf(selected);
     const origin = { x: bounds.x, y: bounds.y };
     if (mode === 'votes') {
-      run(
-        sortPlan({
-          ordered: orderByVotes(selected, totals.value),
-          origin,
-          boardItems: options.items(),
-        }),
-        mode,
-      );
+      run(votesPlan({ items: selected, totals: totals.value, boardItems: options.items() }), mode);
       return;
     }
     const groups =

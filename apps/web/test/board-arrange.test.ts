@@ -13,6 +13,7 @@ import {
   orderByVotes,
   readingOrder,
   sortPlan,
+  votesPlan,
 } from '../src/features/boards/domain/board-arrange';
 
 function item(id: string, over: Partial<BoardItem> = {}): BoardItem {
@@ -117,6 +118,66 @@ describe('sortPlan', () => {
       ['outside', 'frame'],
       ['far', null],
     ]);
+  });
+});
+
+describe('votesPlan', () => {
+  const frameAt = (id: string, x: number): BoardItem =>
+    item(id, { x, y: 0, width: 228, height: 228, content: { type: 'frame', title: id } });
+
+  it('после раскладки по цвету — каждый стикер остаётся в своём фрейме', () => {
+    // Четыре фрейма по одному стикеру (как «Жёлтые · 1», «Персиковые · 1»…)
+    const frames = ['f1', 'f2', 'f3', 'f4'].map((id, i) => frameAt(id, i * 300));
+    const stickies = frames.map((frame, i) =>
+      item(`s${i}`, { parentId: frame.id, x: frame.x + 24, y: 24 }),
+    );
+    const plan = votesPlan({
+      items: stickies,
+      totals: new Map([
+        ['s0', 1],
+        ['s2', 1],
+      ]),
+      boardItems: [...frames, ...stickies],
+    });
+
+    const byId = new Map(patches(plan.ops).map((op) => [op.id, op.patch]));
+    stickies.forEach((sticky) => {
+      // Позиция внутри своего фрейма, родитель не трогается
+      expect(byId.get(sticky.id)).toEqual({ x: sticky.x, y: 24 });
+    });
+    // Фреймы на месте и того же размера — патчей на них нет
+    frames.forEach((frame) => expect(byId.has(frame.id)).toBe(false));
+  });
+
+  it('внутри фрейма — по убыванию точек сеткой кучки; тесный фрейм расширяется', () => {
+    const frame = frameAt('f', 0);
+    const kids = ['a', 'b', 'c'].map((id, i) => item(id, { parentId: 'f', x: 24 + i, y: 24 }));
+    const plan = votesPlan({
+      items: [kids[0]!],
+      totals: new Map([['c', 5]]),
+      boardItems: [frame, ...kids],
+    });
+
+    const ordered = patches(plan.ops).filter((op) => op.id !== 'f');
+    expect(ordered.map((op) => op.id)).toEqual(['c', 'a', 'b']);
+    expect(ordered[0]?.patch).toEqual({ x: 24, y: 24 });
+    const grow = patches(plan.ops).find((op) => op.id === 'f');
+    const side = 2 * 180 + ARRANGE_GAP + 2 * ARRANGE_FRAME_PADDING;
+    expect(grow?.patch).toEqual({ width: side, height: side });
+  });
+
+  it('свободные, чья сетка легла бы на фрейм, встают правее задействованного', () => {
+    const frame = frameAt('f', 300);
+    const inFrame = item('in', { parentId: 'f', x: 324, y: 24 });
+    const loose = [item('l1', { x: 0, y: 0 }), item('l2', { x: 0, y: 300 })];
+    const plan = votesPlan({
+      items: [inFrame, ...loose],
+      totals: new Map(),
+      boardItems: [frame, inFrame, ...loose],
+    });
+
+    const first = patches(plan.ops).find((op) => op.id === 'l1');
+    expect(first?.patch).toEqual({ x: 300 + 228 + ARRANGE_FRAME_GAP, y: 0, parentId: null });
   });
 });
 

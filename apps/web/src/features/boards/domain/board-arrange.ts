@@ -147,6 +147,78 @@ export function clusterColumns(count: number): number {
   return Math.max(1, Math.ceil(Math.sqrt(count)));
 }
 
+function intersects(a: ArrangeRect, b: ArrangeRect): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+/**
+ * «По голосам» с учётом фреймов: элемент во фрейме (например, после раскладки
+ * по цвету) сортируется внутри своего фрейма — весь фрейм перекладывается
+ * сеткой кучки по убыванию точек, фрейм остаётся на месте и при нужде
+ * расширяется; иначе элементы уезжали бы из своих фреймов, оставляя их
+ * пустыми с устаревшим числом в заголовке. Остальные — сеткой, как
+ * `sortPlan`: от `looseOrigin` или на месте; если такая сетка легла бы на
+ * фрейм — правее всего задействованного.
+ */
+export function votesPlan(input: {
+  items: readonly BoardItem[];
+  totals: ReadonlyMap<string, number>;
+  boardItems: readonly BoardItem[];
+  looseOrigin?: { x: number; y: number };
+}): ArrangePlan {
+  const byId = new Map(input.boardItems.map((item) => [item.id, item]));
+  const frames = new Map<string, BoardItem>();
+  const loose: BoardItem[] = [];
+  for (const item of input.items) {
+    const parent = item.parentId ? byId.get(item.parentId) : undefined;
+    if (parent?.content.type === 'frame') frames.set(parent.id, parent);
+    else loose.push(item);
+  }
+
+  const ops: BoardOp[] = [];
+  const rects: ArrangeRect[] = [];
+  for (const frame of frames.values()) {
+    const ordered = orderByVotes(
+      input.boardItems.filter((child) => child.parentId === frame.id),
+      input.totals,
+    );
+    const columns = clusterColumns(ordered.length);
+    const cell = cellOf(ordered);
+    const grid = gridSize(ordered.length, columns, cell);
+    const inner = { x: frame.x + ARRANGE_FRAME_PADDING, y: frame.y + ARRANGE_FRAME_PADDING };
+    ordered.forEach((item, index) => {
+      const { x, y } = cellPosition(index, columns, cell, inner);
+      ops.push({ type: 'item.patch', clientOpId: uuid(), id: item.id, patch: { x, y } });
+    });
+    const width = Math.max(frame.width, grid.width + ARRANGE_FRAME_PADDING * 2);
+    const height = Math.max(frame.height, grid.height + ARRANGE_FRAME_PADDING * 2);
+    if (width !== frame.width || height !== frame.height) {
+      ops.push({ type: 'item.patch', clientOpId: uuid(), id: frame.id, patch: { width, height } });
+    }
+    rects.push({ x: frame.x, y: frame.y, width, height });
+  }
+
+  if (loose.length) {
+    const ordered = orderByVotes(loose, input.totals);
+    let origin = input.looseOrigin ?? boundsOf(loose);
+    const size = gridSize(ordered.length, ARRANGE_SORT_COLUMNS, cellOf(ordered));
+    const boardFrames = input.boardItems.filter((item) => item.content.type === 'frame');
+    if (boardFrames.some((frame) => intersects({ ...origin, ...size }, frame))) {
+      const taken = boundsOf([...rects, ...loose]);
+      origin = { x: taken.x + taken.width + ARRANGE_FRAME_GAP, y: taken.y };
+    }
+    const plan = sortPlan({
+      ordered,
+      origin: { x: origin.x, y: origin.y },
+      boardItems: input.boardItems,
+    });
+    ops.push(...plan.ops);
+    rects.push(plan.bounds);
+  }
+
+  return { ops, bounds: boundsOf(rects), frameIds: [] };
+}
+
 /**
  * Кучки во фреймах: фреймы в ряд от `origin`, внутри — сетка в порядке
  * чтения. Фреймы встают позади элементов (`zIndex`), как и созданные вручную.
