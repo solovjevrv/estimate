@@ -387,8 +387,24 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
    */
   let decorated = new WeakMap<object, VotingDecoratableNode>();
   let decoratedFor: string | null = null;
+  /**
+   * Вне голосования — узлы с явным `class` (без классов голосования). Холст
+   * передаёт узлы в Vue Flow через `setNodes`, а тот сливает их с прежними:
+   * узел совсем без поля `class` оставил бы приглушение от закончившегося
+   * голосования до перезагрузки страницы. `selectable` адаптер ставит сам.
+   */
+  const plain = new WeakMap<object, VotingDecoratableNode>();
+  function plainNode<T extends VotingDecoratableNode>(node: T): T {
+    if ('class' in node) return node;
+    const cached = plain.get(node);
+    if (cached) return cached as T;
+    const next = { ...node, class: undefined } as T;
+    plain.set(node, next);
+    return next;
+  }
+
   function decorateNodes<T extends VotingDecoratableNode>(nodes: T[]): T[] {
-    if (!isActive.value) return nodes;
+    if (!isActive.value) return nodes.map(plainNode);
     const votingId = state.value?.id ?? null;
     if (votingId !== decoratedFor) {
       decorated = new WeakMap();

@@ -224,8 +224,13 @@ describe('useBoardVoting (15.2)', () => {
     state.value = activeState({ id: 'v2', itemIds: ['b'] });
     expect(voting.decorateNodes(nodes)[0]?.class).toEqual([undefined, 'board-node-voting-muted']);
 
-    state.value = null;
-    expect(voting.decorateNodes(nodes)).toBe(nodes);
+    // Без голосования — явный `class: undefined`: Vue Flow сливает узлы с прежними
+    // (Object.assign), и узел без поля оставил бы приглушение до перезагрузки
+    state.value = { ...activeState({ id: 'v2' }), status: 'closed', results: [] };
+    const plain = voting.decorateNodes(nodes);
+    expect(plain.map((n) => 'class' in n && n.class === undefined)).toEqual([true, true]);
+    expect(plain.map((n) => n.selectable)).toEqual([undefined, undefined]);
+    expect(voting.decorateNodes(nodes)[0]).toBe(plain[0]);
   });
 
   it('завершение на глазах открывает итоги; вход на доску с прошлыми итогами — нет', async () => {

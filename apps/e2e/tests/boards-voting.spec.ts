@@ -200,5 +200,14 @@ test('«Выделенные элементы»: выделить можно п�
   await setup.getByTestId('board-voting-start').click();
   await expect(page.getByTestId('board-voting-bar')).toBeVisible();
   // Второй стикер вне голосования — приглушён
-  await expect(page.locator('.vue-flow__node.board-node-voting-muted')).toHaveCount(1);
+  const muted = page.locator('.vue-flow__node.board-node-voting-muted');
+  await expect(muted).toHaveCount(1);
+
+  // После завершения приглушение снимается (Vue Flow сливает узлы — класс
+  // голосования оставался до перезагрузки страницы)
+  await page.getByTestId('board-voting-finish').click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Завершить' }).click();
+  await expect(page.getByTestId('board-voting-results')).toBeVisible();
+  await expect(muted).toHaveCount(0);
+  await expect(page.locator('.vue-flow__node.board-node-voting-target')).toHaveCount(0);
 });
