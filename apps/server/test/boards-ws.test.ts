@@ -605,9 +605,12 @@ describeDb('WS-канал досок', () => {
       await joinBoard(viewerClient, boardId);
 
       const editing: unknown[] = [];
-      viewerClient.on(BOARD_WS_SERVER_EVENTS.AWARENESS, (payload: { kind: string; data: unknown }) => {
-        if (payload.kind === 'editing') editing.push(payload.data);
-      });
+      viewerClient.on(
+        BOARD_WS_SERVER_EVENTS.AWARENESS,
+        (payload: { kind: string; data: unknown }) => {
+          if (payload.kind === 'editing') editing.push(payload.data);
+        },
+      );
       const itemId = randomUUID();
       // Поток курсоров забивает канал до получателя — volatile-события в нём теряются
       for (let i = 0; i < 300; i += 1) {
