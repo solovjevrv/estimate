@@ -127,8 +127,12 @@ export class BoardsGateway {
           return;
         }
         // socket.to() (в отличие от io.to()) не шлёт самому отправителю — курсор
-        // не нужно эхом возвращать себе же
-        socket.volatile.to(boardId).emit(BOARD_WS_SERVER_EVENTS.AWARENESS, {
+        // не нужно эхом возвращать себе же. Курсор и камера — volatile: потерю
+        // перекроет следующий кадр. Блокировка редактирования (14.2) — нет: она
+        // шлётся один раз на вход/выход, потерянное «закончил» вешало «печатает…»
+        // и блокировку элемента до переподключения
+        const target = payload.kind === 'editing' ? socket : socket.volatile;
+        target.to(boardId).emit(BOARD_WS_SERVER_EVENTS.AWARENESS, {
           participantId: identity.participantId,
           userId: identity.userId,
           name: identity.name,
