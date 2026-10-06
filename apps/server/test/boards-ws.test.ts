@@ -23,7 +23,7 @@ import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@estimate/shared';
 import { inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { type Socket, io as createClient } from 'socket.io-client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app';
 import { ACCESS_COOKIE, TokenService, UsersRepository } from '../src/auth';
@@ -594,6 +594,45 @@ describeDb('WS-канал досок', () => {
       // для цвета курсора (14.1)
       expect(received.userId).toBe(owner.id);
       expect(received.avatarUrl).toBe('https://example.com/avatar.png');
+    });
+
+    it('блокировка редактирования доходит и посреди потока курсоров (не volatile)', async () => {
+      const owner = await newUser('awareness-editing');
+      const boardId = await newBoard(owner);
+      const senderClient = connect(owner);
+      const viewerClient = connect(owner);
+      await joinBoard(senderClient, boardId);
+      await joinBoard(viewerClient, boardId);
+
+      const editing: unknown[] = [];
+      viewerClient.on(
+        BOARD_WS_SERVER_EVENTS.AWARENESS,
+        (payload: { kind: string; data: unknown }) => {
+          if (payload.kind === 'editing') editing.push(payload.data);
+        },
+      );
+      const itemId = randomUUID();
+      // Поток курсоров забивает канал до получателя — volatile-события в нём теряются
+      for (let i = 0; i < 300; i += 1) {
+        senderClient.emit(BOARD_WS_EVENTS.AWARENESS, { kind: 'cursor', data: { x: i, y: i } });
+        if (i === 100) {
+          senderClient.emit(BOARD_WS_EVENTS.AWARENESS, {
+            kind: 'editing',
+            data: { itemId, active: true },
+          });
+        }
+      }
+      senderClient.emit(BOARD_WS_EVENTS.AWARENESS, {
+        kind: 'editing',
+        data: { itemId, active: false },
+      });
+
+      await vi.waitFor(() =>
+        expect(editing).toEqual([
+          { itemId, active: true },
+          { itemId, active: false },
+        ]),
+      );
     });
 
     it('участник без права редактирования не может транслировать курсор (14.7)', async () => {
