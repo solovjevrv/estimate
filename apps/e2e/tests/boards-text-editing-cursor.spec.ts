@@ -36,6 +36,9 @@ for (const scenario of [
     const board = boardLocators(page);
     const pane = board.pane;
     await expect(pane).toBeVisible();
+    // Холст виден раньше, чем доска подключена: созданный до снимка элемент
+    // не входил в редактирование (нестабильно в CI)
+    await expect(board.joined).toBeVisible();
 
     if (scenario.tool) {
       await board.toolbarButton(scenario.tool).click();

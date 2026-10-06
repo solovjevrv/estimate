@@ -31,6 +31,7 @@ test('мягкая блокировка текстового редактиро�
   // Доска внутри команды
   await createTeamBoard(pageA, 'TextLock');
   const boardA = boardLocators(pageA);
+  await expect(boardA.joined).toBeVisible();
   const boardUrl = pageA.url();
 
   // Второй уникальный участник — приглашённый в команду
@@ -44,6 +45,9 @@ test('мягкая блокировка текстового редактиро�
   await pageC.goto(boardUrl);
   const boardC = boardLocators(pageC);
   await expect(boardC.pane).toBeVisible();
+  // C должен быть в комнате доски до того, как A начнёт редактировать: блокировка
+  // рассылается один раз, при входе в редактирование
+  await expect(boardC.joined).toBeVisible();
 
   // --- Создаём стикер на доске через A ---
   await boardA.pane.dblclick({ position: { x: 300, y: 300 } });
