@@ -34,6 +34,8 @@ export const BOARD_WS_EVENTS = {
   VOTING_HISTORY: 'board:voting:history',
   /** Ответ — итоги завершённого голосования (`BoardVotingState`) */
   VOTING_RESULTS: 'board:voting:results',
+  /** Удалить завершённое голосование из истории (ack пустой, снимок — рассылкой `board:voting`) */
+  VOTING_DELETE: 'board:voting:delete',
 } as const;
 
 export type BoardWsEvent = (typeof BOARD_WS_EVENTS)[keyof typeof BOARD_WS_EVENTS];

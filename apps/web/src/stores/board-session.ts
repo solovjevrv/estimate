@@ -50,6 +50,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const timer = ref<BoardTimerState>(idleTimer());
   /** Голосование точками (15.2) глазами этого участника; null — голосования нет */
   const voting = ref<BoardVotingState | null>(null);
+  /** Авторы элементов из снимка (15.4): userId → имя, для раскладки «по автору» */
+  const snapshotAuthors = ref<Record<string, string>>({});
 
   let boardId: string | null = null;
   /** Имя гостя этого сеанса — self().name ниже, пока для него нет session.user */
@@ -59,6 +61,17 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const edges = computed(() => [...local.edges.values()]);
 
   const awareness = useBoardAwareness();
+  /**
+   * Имена авторов: из снимка — и все, кто сейчас на доске (их элементы могли
+   * появиться уже после входа, в снимке их нет). У гостей userId нет.
+   */
+  const authorNames = computed(() => {
+    const names = new Map(Object.entries(snapshotAuthors.value));
+    for (const entry of awareness.presence.value) {
+      if (entry.userId) names.set(entry.userId, entry.name);
+    }
+    return names;
+  });
 
   function idleTimer(): BoardTimerState {
     return {
@@ -112,6 +125,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
 
     if (result.snapshot) {
       optimistic.applySnapshot(result.snapshot, result.revision);
+      snapshotAuthors.value = result.snapshot.authors;
     } else if (result.catchup) {
       for (const batch of result.catchup) optimistic.applyBatch(batch);
       optimistic.revision.value = result.revision;
@@ -151,6 +165,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       access.value = 'view';
       timer.value = idleTimer();
       voting.value = null;
+      snapshotAuthors.value = {};
       ownGuestName = null;
       optimistic.resetForNewSession();
       // Presence/курсоры/блокировка редактирования намеренно НЕ сбрасываются
@@ -177,6 +192,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     access.value = 'view';
     timer.value = idleTimer();
     voting.value = null;
+    snapshotAuthors.value = {};
     local.items.clear();
     local.edges.clear();
     optimistic.resetForNewSession();
@@ -246,6 +262,11 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     return emitWithAck(requireSocket(), BOARD_WS_EVENTS.VOTING_RESULTS, { votingId });
   }
 
+  /** Удалить завершённое голосование из истории (новый снимок — рассылкой `board:voting`) */
+  async function deleteVoting(votingId: string): Promise<void> {
+    await emitWithAck(requireSocket(), BOARD_WS_EVENTS.VOTING_DELETE, { votingId });
+  }
+
   async function setShare(role: BoardShareRole | null): Promise<Board> {
     if (!boardId) throw new Error('Нельзя изменить доступ к доске вне активной сессии');
     return setBoardShare(boardId, role);
@@ -256,6 +277,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     edges,
     revision: optimistic.revision,
     presence: awareness.presence,
+    authorNames,
     awareness: awareness.awareness,
     editingByItem: awareness.editingByItem,
     cameraByParticipant: awareness.cameraByParticipant,
@@ -279,6 +301,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     cancelVoting: () => votingCommand(BOARD_WS_EVENTS.VOTING_CANCEL),
     fetchVotingHistory,
     fetchVotingResults,
+    deleteVoting,
     applyError: optimistic.applyError,
     join,
     leave,
@@ -288,6 +311,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     canRedo: optimistic.canRedo,
     undo: optimistic.undo,
     redo: optimistic.redo,
+    peekUndo: optimistic.peekUndo,
     setShare,
   };
 });

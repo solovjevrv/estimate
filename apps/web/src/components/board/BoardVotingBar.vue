@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * Плашка «идёт голосование» сверху по центру (15.2, кит — BoardVotingBar):
- * подсказка, свой остаток точек и сколько участников уже проголосовали. У
+ * Карточка «идёт голосование» под кнопкой в правом верхнем ряду (15.2, кит —
+ * BoardVotingBar, 320 — как панель итогов): подсказка, свой остаток точек и
+ * сколько участников уже проголосовали; крестик сворачивает её у себя. У
  * тех, кто может править доску, — «Отменить» и «Завершить»; если не все
  * потратили свои точки, «Завершить» сначала спрашивает подтверждение.
  */
@@ -31,9 +32,26 @@ const total = computed(() => Math.max(props.participantCount, state.value?.voted
     data-testid="board-voting-bar"
     class="board-voting-bar surface-card shadow-elevation-2"
   >
-    <div class="flex min-w-0 items-center gap-2 text-xs leading-[18px] whitespace-nowrap">
-      <UIcon name="i-lucide-vote" class="text-icons-brand size-4 shrink-0" />
-      <span class="text-text-brand font-bold">{{ t('board.voting.hint') }}</span>
+    <div class="flex items-center gap-2">
+      <UIcon name="i-lucide-vote" class="text-icons-brand size-[18px] shrink-0" />
+      <span class="text-text-primary flex-1 text-sm leading-5 font-bold">
+        {{ t('board.voting.barTitle') }}
+      </span>
+      <UButton
+        data-testid="board-voting-bar-collapse"
+        color="neutral"
+        variant="ghost"
+        size="sm"
+        square
+        icon="i-lucide-x"
+        :aria-label="t('board.voting.collapseBar')"
+        @click="voting.toggleBar()"
+      />
+    </div>
+    <div class="text-text-secondary text-xs leading-[18px] font-medium">
+      {{ t('board.voting.hint') }}
+    </div>
+    <div class="flex flex-wrap gap-x-1 text-xs leading-[18px]">
       <span
         v-if="state.myRemaining !== null"
         data-testid="board-voting-bar-remaining"
@@ -50,12 +68,14 @@ const total = computed(() => Math.max(props.participantCount, state.value?.voted
         {{ t('board.voting.progress', { voted: state.votedCount, total }) }}
       </span>
     </div>
-    <template v-if="canEdit">
+    <div v-if="canEdit" class="flex gap-2">
       <UButton
         data-testid="board-voting-cancel"
         color="neutral"
         variant="outline"
         size="sm"
+        block
+        class="flex-1"
         :disabled="voting.pending.value"
         @click="voting.cancel()"
       >
@@ -65,12 +85,14 @@ const total = computed(() => Math.max(props.participantCount, state.value?.voted
         data-testid="board-voting-finish"
         icon="i-lucide-circle-check"
         size="sm"
+        block
+        class="flex-1"
         :disabled="voting.pending.value"
         @click="voting.finish()"
       >
         {{ t('board.voting.finish') }}
       </UButton>
-    </template>
+    </div>
   </div>
   <ConfirmModal
     :open="voting.confirmFinishOpen.value"
@@ -86,17 +108,13 @@ const total = computed(() => Math.max(props.participantCount, state.value?.voted
 </template>
 
 <style scoped>
-/* BoardVotingBar: высота 48, паддинг 8/8/8/16 (без кнопок — 16 справа), шаг 12, r16 */
+/* BoardVotingBar: карточка 320, паддинг 16, шаг 12, r16 — как BoardVotingResults */
 .board-voting-bar {
   display: flex;
-  align-items: center;
+  flex-direction: column;
   gap: 12px;
-  min-height: 48px;
-  padding: 8px 16px;
+  width: 320px;
+  padding: 16px;
   border-radius: 16px;
-}
-
-.board-voting-bar:has(button) {
-  padding-right: 8px;
 }
 </style>

@@ -129,9 +129,25 @@ test('голосование точками: старт, точки, сняти�
   await pageA.getByTestId('board-voting-history-item').click();
   await expect(pageA.getByTestId('board-voting-results')).toContainText('Голосование 1');
 
+  // «Выстроить по голосам» (15.4) — стикеры встают сеткой, тост с «Отменить»
+  await pageA.getByTestId('board-voting-arrange').click();
+  await expect(
+    pageA.locator('[data-slot="title"]', { hasText: 'Выстроено по голосам' }),
+  ).toBeVisible();
+
   // «Новое голосование» из итогов — настройка в кнопке верхнего ряда
   await pageA.getByTestId('board-voting-new-from-results').click();
   await expect(pageA.getByTestId('board-voting-setup')).toBeVisible();
+  await pageA.keyboard.press('Escape');
+
+  // Удаление голосования из итогов (панель осталась открытой) — с подтверждением,
+  // у всех пропадает
+  await expect(pageA.getByTestId('board-voting-results')).toContainText('Голосование 1');
+  await pageA.getByTestId('board-voting-delete').click();
+  await pageA.getByRole('dialog').getByRole('button', { name: 'Удалить' }).click();
+  await expect(pageA.getByTestId('board-voting-results')).toHaveCount(0);
+  await expect(pageA.getByTestId('board-voting-button')).toHaveAttribute('data-phase', 'idle');
+  await expect(pageB.getByTestId('board-voting-button')).toHaveAttribute('data-phase', 'idle');
 });
 
 test('«Выделенные элементы»: выделить можно при открытой настройке, без выделения старт недоступен', async ({
@@ -184,5 +200,14 @@ test('«Выделенные элементы»: выделить можно п�
   await setup.getByTestId('board-voting-start').click();
   await expect(page.getByTestId('board-voting-bar')).toBeVisible();
   // Второй стикер вне голосования — приглушён
-  await expect(page.locator('.vue-flow__node.board-node-voting-muted')).toHaveCount(1);
+  const muted = page.locator('.vue-flow__node.board-node-voting-muted');
+  await expect(muted).toHaveCount(1);
+
+  // После завершения приглушение снимается (Vue Flow сливает узлы — класс
+  // голосования оставался до перезагрузки страницы)
+  await page.getByTestId('board-voting-finish').click();
+  await page.getByRole('dialog').getByRole('button', { name: 'Завершить' }).click();
+  await expect(page.getByTestId('board-voting-results')).toBeVisible();
+  await expect(muted).toHaveCount(0);
+  await expect(page.locator('.vue-flow__node.board-node-voting-target')).toHaveCount(0);
 });

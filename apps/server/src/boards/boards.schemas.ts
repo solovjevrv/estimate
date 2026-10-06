@@ -113,5 +113,6 @@ export const boardSnapshotResponse = {
     items: { type: 'array', items: boardItemResponse },
     edges: { type: 'array', items: boardEdgeResponse },
     access: { type: 'string' },
+    authors: { type: 'object', additionalProperties: { type: 'string' } },
   },
 } as const;

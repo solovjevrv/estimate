@@ -90,12 +90,19 @@ export class BoardsGateway {
           // Рассылаем всем, включая отправителя — своя же операция отбрасывается
           // на клиенте по `clientOpId`, а не особым обхождением на сервере
           io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.OPS, batch);
-          // Удалённый элемент уносит свои голоса (FK cascade) — они возвращаются
-          // голосовавшим, поэтому снимок голосования у всех устарел
-          if (committed.some((op) => op.type === 'item.delete')) {
-            void this.broadcastVoting(io, boardId).catch((err: unknown) => {
-              log.warn({ err, boardId }, 'Не удалось разослать голосование после удаления');
-            });
+          // Удалённый элемент уносит свои голоса из итогов, восстановленный
+          // (undo) — возвращает: снимок голосования у всех устарел
+          const touched = committed.flatMap((op) =>
+            op.type === 'item.delete' ? [op.id] : op.type === 'item.create' ? [op.item.id] : [],
+          );
+          if (touched.length > 0 && this.voting) {
+            const voting = this.voting;
+            void voting
+              .affectsVotes(boardId, touched)
+              .then((affected) => (affected ? this.broadcastVoting(io, boardId) : undefined))
+              .catch((err: unknown) => {
+                log.warn({ err, boardId }, 'Не удалось разослать голосование после правки');
+              });
           }
           return { revision };
         });
@@ -189,6 +196,13 @@ export class BoardsGateway {
           const { withTimer } = await voting.cancel(identity, boardId, payload?.votingId);
           if (withTimer) this.emitTimer(io, boardId, this.timer.reset(boardId));
         });
+      });
+
+      socket.on(BOARD_WS_EVENTS.VOTING_DELETE, (...args: unknown[]) => {
+        const { payload, ack } = this.readArgs<BoardVotingRefPayload>(args);
+        this.runVoting(io, socket, log, ack, (voting, identity, boardId) =>
+          voting.delete(identity, boardId, payload?.votingId),
+        );
       });
 
       socket.on(BOARD_WS_EVENTS.VOTING_HISTORY, (...args: unknown[]) => {

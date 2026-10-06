@@ -306,6 +306,20 @@ describeDb('WS-канал досок', () => {
       }
     });
 
+    it('снимок несёт имена авторов элементов — для раскладки «по автору» (15.4)', async () => {
+      const owner = await newUser('authors-owner');
+      const boardId = await newBoard(owner);
+      const author = connect(owner);
+      await joinBoard(author, boardId);
+      await emit<ApplyBoardOpsResult>(author, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: 'c1', item: stickyItem() }],
+      });
+
+      const later = await joinBoard(connect(owner), boardId);
+
+      expect(later.snapshot?.authors).toEqual({ [owner.id]: 'Пользователь authors-owner' });
+    });
+
     it('гость команды не может править содержимое доски', async () => {
       const owner = await newUser('edit-owner');
       const guest = await newUser('edit-guest');
@@ -1070,6 +1084,78 @@ describeDb('WS-канал досок', () => {
 
       expect(after?.myVotes).toEqual({});
       expect(after?.myRemaining).toBe(3);
+
+      // Ctrl+Z восстанавливает элемент с тем же id — голоса возвращаются
+      const restored = waitFor<BoardVotingState | null>(ownerClient, BOARD_WS_SERVER_EVENTS.VOTING);
+      await emit<ApplyBoardOpsResult>(ownerClient, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: 'undo', item: a }],
+      });
+      expect((await restored)?.myVotes).toEqual({ [a.id]: 1 });
+    });
+
+    it('итоги и история не считают голоса удалённых элементов', async () => {
+      const { ownerClient, a, b } = await teamBoard('vote-deleted-results');
+      const { state } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 3,
+        maxPerItem: null,
+      });
+      for (const itemId of [a.id, b.id]) {
+        await act(ownerClient, BOARD_WS_EVENTS.VOTING_VOTE, {
+          votingId: state!.id,
+          itemId,
+          delta: 1,
+        });
+      }
+      await act(ownerClient, BOARD_WS_EVENTS.VOTING_CLOSE, { votingId: state!.id });
+      await emit<ApplyBoardOpsResult>(ownerClient, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.delete', clientOpId: 'del', id: a.id }],
+      });
+
+      const results = await emit<BoardVotingState>(ownerClient, BOARD_WS_EVENTS.VOTING_RESULTS, {
+        votingId: state!.id,
+      });
+      const history = await emit<BoardVotingSummary[]>(ownerClient, BOARD_WS_EVENTS.VOTING_HISTORY);
+
+      expect(results.ok && results.data.results?.map((row) => row.itemId)).toEqual([b.id]);
+      expect(history.ok && history.data[0]?.totalVotes).toBe(1);
+    });
+
+    it('завершённое голосование удаляет только тот, кто правит доску', async () => {
+      const { ownerClient, viewerClient, a } = await teamBoard('vote-remove');
+      const { state } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
+        votesPerParticipant: 3,
+        maxPerItem: null,
+      });
+      await act(ownerClient, BOARD_WS_EVENTS.VOTING_VOTE, {
+        votingId: state!.id,
+        itemId: a.id,
+        delta: 1,
+      });
+      // Идущее не удаляется — для него есть «Отменить»
+      const active = await act(ownerClient, BOARD_WS_EVENTS.VOTING_DELETE, {
+        votingId: state!.id,
+      });
+      expect(active.ack.ok).toBe(false);
+      await act(ownerClient, BOARD_WS_EVENTS.VOTING_CLOSE, { votingId: state!.id });
+
+      const denied = await act(viewerClient, BOARD_WS_EVENTS.VOTING_DELETE, {
+        votingId: state!.id,
+      });
+      expect(denied.ack.ok).toBe(false);
+      if (!denied.ack.ok) expect(denied.ack.error).toBe('forbidden');
+
+      const { ack, state: after } = await act(
+        ownerClient,
+        BOARD_WS_EVENTS.VOTING_DELETE,
+        { votingId: state!.id },
+        viewerClient,
+        (next) => next === null,
+      );
+      const history = await emit<BoardVotingSummary[]>(ownerClient, BOARD_WS_EVENTS.VOTING_HISTORY);
+
+      expect(ack.ok).toBe(true);
+      expect(after).toBeNull();
+      expect(history.ok && history.data).toEqual([]);
     });
   });
 });

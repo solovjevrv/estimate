@@ -151,6 +151,23 @@ export class BoardVotingService {
     return this.mutate(actor, boardId, votingId, (repo, id) => repo.cancel(boardId, id));
   }
 
+  /** Удалить завершённое голосование из истории — тот, кто может править доску */
+  async delete(actor: BoardVoter, boardId: string, votingId: unknown): Promise<void> {
+    await this.access.assertActiveEditAccess(actor.userId, boardId);
+    if (!isUuid(votingId)) throw new ValidationError('Не указано голосование');
+    const deleted = await this.createRepository(this.db).deleteClosed(boardId, votingId);
+    if (!deleted) throw new NotFoundError('Голосование не найдено');
+  }
+
+  /**
+   * Касается ли правка голосований: удалённый элемент уносит свои голоса из
+   * итогов, восстановленный (undo) — возвращает. Иначе снимок голосования
+   * рассылать незачем — это персональная рассылка каждому на доске.
+   */
+  async affectsVotes(boardId: string, itemIds: readonly string[]): Promise<boolean> {
+    return this.createRepository(this.db).hasVotesFor(boardId, itemIds);
+  }
+
   /** История завершённых голосований доски — любой, кто видит доску */
   async history(viewer: BoardVoter, boardId: string): Promise<BoardVotingSummary[]> {
     await this.access.assertViewAccess(viewer.userId, boardId);

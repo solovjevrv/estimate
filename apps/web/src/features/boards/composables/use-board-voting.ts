@@ -28,6 +28,7 @@ export interface BoardVotingCommands {
   cancel: () => Promise<void>;
   fetchHistory: () => Promise<BoardVotingSummary[]>;
   fetchResults: (votingId: string) => Promise<BoardVotingState>;
+  remove: (votingId: string) => Promise<void>;
 }
 
 /** Где голосуем: вся доска, выделенные элементы или фрейм (по его id) */
@@ -116,10 +117,40 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
         resultsOpen.value = true;
       }
       if (status === 'active') resultsOpen.value = false;
+      // Завершённое голосование удалили (текущим стало прошлое или никакое):
+      // открытые итоги не должны молча подмениться другим голосованием
+      if (prevStatus === 'closed' && id !== prevId && status !== 'active' && !viewedResults.value) {
+        resultsOpen.value = false;
+      }
+    },
+  );
+  // Итоги открыты из истории, а на доске новая рассылка завершённого — её шлют
+  // удаление голосования и правки элементов с голосами: вдруг удалили именно эти
+  watch(
+    () => state.value,
+    (next, prev) => {
+      if (viewedResults.value && prev && next?.status !== 'active') void dropDeletedViewed();
     },
   );
 
   const history = ref<BoardVotingSummary[]>([]);
+
+  /** Открыты итоги из истории — закрыть, если именно это голосование удалили */
+  async function dropDeletedViewed(): Promise<void> {
+    const viewedId = viewedResults.value?.id;
+    if (!viewedId) return;
+    try {
+      history.value = await options.commands.fetchHistory();
+    } catch {
+      return;
+    }
+    if (
+      viewedResults.value?.id === viewedId &&
+      !history.value.some((summary) => summary.id === viewedId)
+    ) {
+      closeResults();
+    }
+  }
   const historyLoading = ref(false);
 
   async function loadHistory(): Promise<void> {
@@ -316,6 +347,42 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
   const close = () => execute(options.commands.close);
   const cancel = () => execute(options.commands.cancel);
 
+  /**
+   * Карточка идущего голосования под кнопкой (кит — BoardVotingBar). Крестик
+   * сворачивает её у себя — остаток точек и так виден на кнопке, клик по
+   * кнопке разворачивает обратно. Новое голосование открывает её снова.
+   */
+  const barOpen = ref(true);
+  watch(
+    () => state.value?.id,
+    (id, prev) => {
+      if (id !== prev) barOpen.value = true;
+    },
+  );
+  function toggleBar(): void {
+    barOpen.value = !barOpen.value;
+  }
+
+  /** Удаление завершённого голосования из итогов — с подтверждением */
+  const confirmDeleteOpen = ref(false);
+  function requestDelete(): void {
+    confirmDeleteOpen.value = true;
+  }
+  function setConfirmDeleteOpen(open: boolean): void {
+    confirmDeleteOpen.value = open;
+  }
+  async function confirmDelete(): Promise<void> {
+    const votingId = shownResults.value?.id;
+    confirmDeleteOpen.value = false;
+    if (!votingId) return;
+    await execute(async () => {
+      await options.commands.remove(votingId);
+      history.value = history.value.filter((summary) => summary.id !== votingId);
+      viewedResults.value = null;
+      resultsOpen.value = false;
+    });
+  }
+
   const resultRows = computed<BoardVotingResultRow[]>(() =>
     (shownResults.value?.results ?? []).map((result, index) => {
       const item = itemsById.value.get(result.itemId);
@@ -350,8 +417,24 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
    */
   let decorated = new WeakMap<object, VotingDecoratableNode>();
   let decoratedFor: string | null = null;
+  /**
+   * Вне голосования — узлы с явным `class` (без классов голосования). Холст
+   * передаёт узлы в Vue Flow через `setNodes`, а тот сливает их с прежними:
+   * узел совсем без поля `class` оставил бы приглушение от закончившегося
+   * голосования до перезагрузки страницы. `selectable` адаптер ставит сам.
+   */
+  const plain = new WeakMap<object, VotingDecoratableNode>();
+  function plainNode<T extends VotingDecoratableNode>(node: T): T {
+    if ('class' in node) return node;
+    const cached = plain.get(node);
+    if (cached) return cached as T;
+    const next = { ...node, class: undefined } as T;
+    plain.set(node, next);
+    return next;
+  }
+
   function decorateNodes<T extends VotingDecoratableNode>(nodes: T[]): T[] {
-    if (!isActive.value) return nodes;
+    if (!isActive.value) return nodes.map(plainNode);
     const votingId = state.value?.id ?? null;
     if (votingId !== decoratedFor) {
       decorated = new WeakMap();
@@ -401,6 +484,12 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
     setConfirmFinishOpen,
     finishStats,
     cancel,
+    barOpen,
+    toggleBar,
+    confirmDeleteOpen,
+    requestDelete,
+    setConfirmDeleteOpen,
+    confirmDelete,
     resultRows,
     summary,
     decorateNodes,

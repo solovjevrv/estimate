@@ -167,11 +167,12 @@ export class BoardsService {
         // Проверяем право по тому же repeatable-read снимку, что и содержимое
         // доски: нет предварительных чтений и нет access! из-за разрыва типов.
         const access = await this.assertAccess(board, actorId, 'view', this.createTeamAccess(tx));
-        const [items, edges] = await Promise.all([
+        const [items, edges, authors] = await Promise.all([
           repo.listItems(boardId),
           repo.listEdges(boardId),
+          repo.listItemAuthors(boardId),
         ]);
-        return { board, items, edges, access };
+        return { board, items, edges, access, authors };
       },
       { isolationLevel: 'repeatable read', accessMode: 'read only' },
     );

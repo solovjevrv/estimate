@@ -129,6 +129,16 @@ export class BoardsRepository {
     return rows.map((row) => this.toItem(row));
   }
 
+  /** Имена авторов элементов доски — справочник для раскладки «по автору» (15.4) */
+  async listItemAuthors(boardId: string): Promise<Record<string, string>> {
+    const rows = await this.db
+      .selectDistinct({ id: schema.users.id, name: schema.users.name })
+      .from(schema.boardItems)
+      .innerJoin(schema.users, eq(schema.users.id, schema.boardItems.createdBy))
+      .where(eq(schema.boardItems.boardId, boardId));
+    return Object.fromEntries(rows.map((row) => [row.id, row.name]));
+  }
+
   async listEdges(boardId: string): Promise<BoardEdge[]> {
     const rows = await this.db
       .select()

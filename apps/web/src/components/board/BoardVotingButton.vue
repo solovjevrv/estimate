@@ -64,11 +64,16 @@ async function onOpenResults(votingId: string): Promise<void> {
 
 <template>
   <template v-if="visible">
-    <div
+    <!-- Идёт голосование — кнопка сворачивает и разворачивает карточку под собой -->
+    <button
       v-if="phase === 'active'"
+      type="button"
       data-testid="board-voting-button"
       data-phase="active"
       class="board-voting-button surface-card shadow-elevation-2"
+      :aria-expanded="voting.barOpen.value"
+      :title="voting.barOpen.value ? t('board.voting.collapseBar') : t('board.voting.expandBar')"
+      @click="voting.toggleBar()"
     >
       <UIcon name="i-lucide-vote" class="text-icons-brand size-5" />
       <span class="text-text-brand">{{ t('board.voting.button') }}</span>
@@ -84,7 +89,7 @@ async function onOpenResults(votingId: string): Promise<void> {
           })
         }}
       </span>
-    </div>
+    </button>
 
     <!-- Настройка не закрывается от кликов по холсту: пока она открыта, можно
          выделять элементы для «Выделенных» — закрыть кнопкой, Escape или стартом -->
