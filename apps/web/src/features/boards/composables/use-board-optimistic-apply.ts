@@ -281,6 +281,14 @@ export function useBoardOptimisticApply({
     await applyOps(regenerateClientOpIds(forward), { record: false });
   }
 
+  /**
+   * Последняя запись истории — кнопка «Отменить» в тосте (15.4) сверяет её со
+   * своей, чтобы не откатить чужое действие, сделанное уже после раскладки.
+   */
+  function peekUndo(): BoardHistoryEntry | undefined {
+    return undoStack.value.at(-1);
+  }
+
   /** Смена доски или выход — прошлые ревизия, ошибка и история отмены не имеют смысла на новой/пустой сессии */
   function resetForNewSession(): void {
     revision.value = 0;
@@ -300,6 +308,7 @@ export function useBoardOptimisticApply({
     applyOps,
     undo,
     redo,
+    peekUndo,
     resetForNewSession,
   };
 }

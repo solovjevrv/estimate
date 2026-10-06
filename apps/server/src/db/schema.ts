@@ -324,9 +324,11 @@ export const boardVotes = pgTable(
     votingId: uuid('voting_id')
       .notNull()
       .references(() => boardVotings.id, { onDelete: 'cascade' }),
-    itemId: uuid('item_id')
-      .notNull()
-      .references(() => boardItems.id, { onDelete: 'cascade' }),
+    // Без FK на board_items: голоса переживают удаление элемента — Ctrl+Z
+    // восстанавливает его с тем же id, и голоса возвращаются. Итоги и лимиты
+    // считаются только по существующим элементам (board-voting.repository.ts);
+    // строки уходят каскадом от голосования/доски.
+    itemId: uuid('item_id').notNull(),
     participantId: text('participant_id').notNull(),
     participantName: text('participant_name').notNull(),
     count: integer('count').notNull(),

@@ -84,7 +84,13 @@ vi.mock('../src/lib/socket', async () => {
 function snapshotResult(revision: number, items: BoardItem[] = []): JoinBoardResult {
   return {
     revision,
-    snapshot: { board: { shareRole: null } as Board, items, edges: [], access: 'manage' },
+    snapshot: {
+      board: { shareRole: null } as Board,
+      items,
+      edges: [],
+      access: 'manage',
+      authors: {},
+    },
     catchup: null,
     access: 'manage',
     participantId: 'actor1',

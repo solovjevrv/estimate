@@ -37,6 +37,7 @@ describe('контракт realtime-доски', () => {
       'board:voting:cancel',
       'board:voting:history',
       'board:voting:results',
+      'board:voting:delete',
     ]);
     expect(Object.values(BOARD_WS_SERVER_EVENTS)).toEqual([
       'board:ops',

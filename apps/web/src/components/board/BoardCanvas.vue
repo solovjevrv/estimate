@@ -84,6 +84,7 @@ import { useBoardAutoFit } from '../../features/boards/composables/use-board-aut
 import { useBoardHotkeys } from '../../features/boards/composables/use-board-hotkeys';
 import type { BoardTimerCommands } from '../../features/boards/composables/use-board-timer';
 import { useBoardVoting } from '../../features/boards/composables/use-board-voting';
+import { useBoardArrange } from '../../features/boards/composables/use-board-arrange';
 import type {
   BoardDragEvent,
   BoardDragNode,
@@ -105,6 +106,7 @@ import { useBoardExport } from '../../features/boards/composables/use-board-expo
 import { useBoardSelection } from '../../features/boards/composables/use-board-selection';
 import { useBoardViewport } from '../../features/boards/composables/use-board-viewport';
 import BoardSelectionToolbar from './BoardSelectionToolbar.vue';
+import BoardArrangeButton from './BoardArrangeButton.vue';
 import BoardContextMenu from './BoardContextMenu.vue';
 import BoardControlsCluster from './BoardControlsCluster.vue';
 import BoardCursor from './BoardCursor.vue';
@@ -191,6 +193,7 @@ const voting = useBoardVoting({
     cancel: () => boardSession.cancelVoting(),
     fetchHistory: () => boardSession.fetchVotingHistory(),
     fetchResults: (votingId) => boardSession.fetchVotingResults(votingId),
+    remove: (votingId) => boardSession.deleteVoting(votingId),
   },
 });
 provide(BOARD_VOTING_KEY, voting);
@@ -311,6 +314,45 @@ function selectedNodeIdsForVoting(): string[] {
 // Голосование началось — выделение снимаем: во время него оно не работает
 watch(voting.isActive, (active) => {
   if (active) removeSelectedNodes(getSelectedNodes.value);
+});
+
+/**
+ * Раскладка (15.4): «Разложить ▾» в тулбаре выделения и «Выстроить по
+ * голосам» в итогах. Элементы — из `props.items` по id выделения: данные узлов
+ * Vue Flow декорированы голосованием, а раскладке нужен сам домен.
+ */
+const arrange = useBoardArrange({
+  items: () => props.items,
+  selectedItems: () => {
+    const ids = new Set(getSelectedNodes.value.map((node) => node.id));
+    return props.items.filter((item) => ids.has(item.id));
+  },
+  voting,
+  authorNames: () => boardSession.authorNames,
+  canEdit: () => props.canEdit,
+  canApplyOpsCount,
+  history: {
+    applyOps: (ops) => boardSession.applyOps(ops),
+    peekUndo: () => boardSession.peekUndo(),
+    undo: () => boardSession.undo(),
+  },
+  selectItems: (ids) => {
+    removeSelectedNodes(getSelectedNodes.value);
+    addSelectedNodes(ids.map((id) => ({ id }) as GraphNode<BoardItem>));
+  },
+  clearSelection: () => removeSelectedNodes(getSelectedNodes.value),
+  // Камера к результату: отдаляем, только если он не помещается, — не приближаем
+  // (две раскладки рядом иначе раздувались бы на весь экран)
+  reveal: (rect) => {
+    boardSession.stopFollowing();
+    const box = rootEl.value?.getBoundingClientRect();
+    if (!box) return;
+    const fitZoom = Math.min(box.width / (rect.width * 1.3), box.height / (rect.height * 1.3));
+    void setCenter(rect.x + rect.width / 2, rect.y + rect.height / 2, {
+      zoom: Math.min(viewport.value.zoom, fitZoom),
+      duration: 400,
+    });
+  },
 });
 
 /** Строка итогов голосования — камера к элементу, масштаб не меняем */
@@ -1000,7 +1042,18 @@ useBoardHotkeys({
         @sticker="setSelectedSticker"
         @giphy="setSelectedGiphy"
         @frame-size="setSelectedFrameSize"
-      />
+      >
+        <template #actions>
+          <BoardArrangeButton
+            v-if="arrange.canArrangeSelection.value"
+            :modes="{
+              votes: arrange.canArrangeSelectionByVotes.value,
+              grouped: arrange.canArrangeSelectionGrouped.value,
+            }"
+            @pick="arrange.arrangeSelection"
+          />
+        </template>
+      </BoardSelectionToolbar>
 
       <BoardEdgeToolbar
         v-if="edgeToolbarPosition"
@@ -1097,22 +1150,25 @@ useBoardHotkeys({
             @avatar-click="onPresenceAvatarClick"
           />
         </div>
-        <BoardVotingResults
-          v-if="voting.hasResults.value && voting.resultsOpen.value"
-          :voting="voting"
-          :can-edit="canEdit"
-          @focus="focusVotingItem"
-        />
-      </Panel>
-
-      <!-- Сверху по центру: плашка голосования и баннер слежения — в одну колонку -->
-      <Panel position="top-center" class="board-top-center">
+        <!-- Идущее голосование — карточкой под кнопкой (на узких экранах плашка по
+             центру наезжала на шапку доски и таймер) -->
         <BoardVotingBar
-          v-if="voting.isActive.value"
+          v-if="voting.isActive.value && voting.barOpen.value"
           :voting="voting"
           :can-edit="canEdit"
           :participant-count="boardSession.presence.length"
         />
+        <BoardVotingResults
+          v-if="voting.hasResults.value && voting.resultsOpen.value"
+          :voting="voting"
+          :can-edit="canEdit"
+          :can-arrange="arrange.canArrangeResults.value"
+          @focus="focusVotingItem"
+          @arrange="arrange.arrangeResults()"
+        />
+      </Panel>
+
+      <Panel position="top-center" class="board-top-center">
         <BoardFollowingBanner
           v-if="followedName"
           :name="followedName"
@@ -1181,14 +1237,6 @@ useBoardHotkeys({
   flex-direction: column;
   align-items: center;
   gap: 8px;
-}
-
-/* Уже 1600px плашка голосования по центру наезжает на правый верхний ряд
-   (таймер, голосование, участники) — опускаем её под ряд: отступ 16 + 54 + зазор 8 */
-@media (max-width: 1599px) {
-  .board-top-center {
-    margin-top: 78px;
-  }
 }
 
 /* Голосование идёт — всё, за что голосовать нельзя, приглушено; за что можно —

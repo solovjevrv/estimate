@@ -136,6 +136,10 @@ interface ClientToServerEvents {
     p: BoardVotingRefPayload,
     ack: (r: WsAck<BoardVotingState>) => void,
   ) => void;
+  [BOARD_WS_EVENTS.VOTING_DELETE]: (
+    p: BoardVotingRefPayload,
+    ack: (r: WsAck<null>) => void,
+  ) => void;
 }
 
 export type PokerSocket = Socket<ServerToClientEvents, ClientToServerEvents>;

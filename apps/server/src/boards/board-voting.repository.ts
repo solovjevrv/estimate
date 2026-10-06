@@ -50,7 +50,14 @@ export class BoardVotingRepository {
         voterCount: sql<number>`count(distinct ${v.participantId})::int`,
       })
       .from(t)
-      .leftJoin(v, eq(v.votingId, t.id))
+      // Голоса удалённых элементов не считаются (FK на элемент нет — см. schema.ts)
+      .leftJoin(
+        v,
+        and(
+          eq(v.votingId, t.id),
+          sql`exists (select 1 from board_items where board_items.id = ${v.itemId})`,
+        ),
+      )
       .where(and(eq(t.boardId, boardId), eq(t.status, 'closed')))
       .groupBy(t.id)
       .orderBy(desc(t.startedAt));
@@ -127,6 +134,7 @@ export class BoardVotingRepository {
         count: v.count,
       })
       .from(v)
+      .innerJoin(schema.boardItems, eq(schema.boardItems.id, v.itemId))
       .where(eq(v.votingId, votingId));
   }
 
@@ -140,7 +148,32 @@ export class BoardVotingRepository {
         count: v.count,
       })
       .from(v)
+      .innerJoin(schema.boardItems, eq(schema.boardItems.id, v.itemId))
       .where(and(eq(v.votingId, votingId), eq(v.participantId, participantId)));
+  }
+
+  /** Удалить завершённое голосование (его голоса — каскадом). false — такого нет */
+  async deleteClosed(boardId: string, votingId: string): Promise<boolean> {
+    const t = schema.boardVotings;
+    const rows = await this.db
+      .delete(t)
+      .where(and(eq(t.id, votingId), eq(t.boardId, boardId), eq(t.status, 'closed')))
+      .returning({ id: t.id });
+    return rows.length > 0;
+  }
+
+  /** Есть ли голоса у этих элементов в голосованиях доски — восстановленный undo элемент вернул их */
+  async hasVotesFor(boardId: string, itemIds: readonly string[]): Promise<boolean> {
+    if (itemIds.length === 0) return false;
+    const t = schema.boardVotings;
+    const v = schema.boardVotes;
+    const [row] = await this.db
+      .select({ itemId: v.itemId })
+      .from(v)
+      .innerJoin(t, eq(t.id, v.votingId))
+      .where(and(eq(t.boardId, boardId), inArray(v.itemId, [...itemIds])))
+      .limit(1);
+    return !!row;
   }
 
   /** Новое число точек участника на элементе; 0 — убрать запись */
