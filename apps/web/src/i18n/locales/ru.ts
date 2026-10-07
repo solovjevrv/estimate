@@ -189,6 +189,7 @@ export default {
     toRooms: 'К комнатам',
     teamRoomSubtitle: 'Командная комната',
     personalRoomSubtitle: 'Личная комната',
+    fromBoard: 'Из доски',
     /** Плашка личной комнаты в общем списке «Комнаты» — в пару к имени команды у командных */
     personalTag: 'Личная',
     participantsTitle: 'Участники',
@@ -539,6 +540,17 @@ export default {
     },
     edgeDashLabel: 'Стиль обводки',
     edgeDashes: { solid: 'Сплошная', dashed: 'Штриховая', dotted: 'Пунктирная' },
+    estimate: {
+      button: 'Оценить в покере',
+      openRoom: 'Открыть комнату',
+      created:
+        'Создана комната оценки | Созданы комнаты оценки: {count} | Созданы комнаты оценки: {count}',
+      alreadyExist: 'Комнаты оценки уже есть',
+      openHint: 'Открыть комнату — клик по бейджу на стикере',
+      pendingHint: 'Комната оценки — карты ещё не вскрыты',
+      forbidden: 'Нет права заводить комнаты с этой доски',
+      error: 'Не удалось завести комнату оценки',
+    },
     arrange: {
       button: 'Разложить',
       menuTitle: 'Разложить',

@@ -33,14 +33,25 @@ export class RoomsRepository {
     return this.toRoom(row);
   }
 
-  /** Комната вместе с названием её команды (null — личная) */
+  /** Комната вместе с названием её команды (null — личная) и доской, с которой её завели (15.6) */
   async findRoomDetails(roomId: string): Promise<RoomDetails | null> {
     const [row] = await this.db
-      .select({ room: schema.rooms, teamName: schema.teams.name })
+      .select({
+        room: schema.rooms,
+        teamName: schema.teams.name,
+        boardId: schema.boards.id,
+        boardName: schema.boards.title,
+      })
       .from(schema.rooms)
       .leftJoin(schema.teams, eq(schema.teams.id, schema.rooms.teamId))
+      .leftJoin(schema.boards, eq(schema.boards.id, schema.rooms.boardId))
       .where(eq(schema.rooms.id, roomId));
-    return row ? { room: this.toRoom(row.room), teamName: row.teamName } : null;
+    if (!row) return null;
+    return {
+      room: this.toRoom(row.room),
+      teamName: row.teamName,
+      board: row.boardId && row.boardName ? { id: row.boardId, name: row.boardName } : null,
+    };
   }
 
   async findRoom(roomId: string): Promise<Room | null> {

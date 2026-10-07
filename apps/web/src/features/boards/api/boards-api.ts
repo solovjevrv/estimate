@@ -1,5 +1,13 @@
 /** REST-слой досок: единственное место, знающее URL `/api/boards`, FormData и коды ответов. */
-import type { Board, BoardShareRole, BoardSnapshot, BoardSummary } from '@estimate/shared';
+import type {
+  Board,
+  BoardShareRole,
+  BoardSnapshot,
+  BoardSummary,
+  CreateEstimateRoomsPayload,
+  CreateEstimateRoomsResult,
+  EstimateRoomLink,
+} from '@estimate/shared';
 import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_IMAGE_MAX_BYTES } from '@estimate/shared';
 import { ApiError, api } from '../../../lib/api';
 
@@ -114,4 +122,19 @@ export async function uploadBoardAsset(
     }
     return { ok: false, reason: 'failed' };
   }
+}
+
+/**
+ * Отправить элементы в покер (15.6): по комнате на каждый, у кого её ещё нет;
+ * существующие возвращаются с `created: false`.
+ */
+export function createEstimateRooms(
+  boardId: string,
+  itemIds: string[],
+): Promise<EstimateRoomLink[]> {
+  return api
+    .post<CreateEstimateRoomsResult>(`/api/boards/${encodeURIComponent(boardId)}/estimate-rooms`, {
+      itemIds,
+    } satisfies CreateEstimateRoomsPayload)
+    .then((res) => res.rooms);
 }

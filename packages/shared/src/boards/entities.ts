@@ -541,3 +541,32 @@ export interface BoardSnapshot {
    */
   authors: Record<string, string>;
 }
+
+/**
+ * Оценка элемента из покер-комнаты (15.6). Производная, в элемент не пишется:
+ * сервер считает её из последнего вскрытого раунда связанной комнаты.
+ */
+export interface BoardItemEstimate {
+  roomId: string;
+  /** Подпись карты («5», «M»); null — комната есть, карты ещё не вскрывали */
+  value: string | null;
+}
+
+/** Сколько элементов можно отправить в покер за раз — по комнате на каждый */
+export const BOARD_ESTIMATE_MAX_ITEMS = 50;
+
+/** POST /api/boards/:id/estimate-rooms */
+export interface CreateEstimateRoomsPayload {
+  itemIds: string[];
+}
+
+export interface EstimateRoomLink {
+  itemId: string;
+  roomId: string;
+  /** false — комната для элемента уже была, повторно не создавалась */
+  created: boolean;
+}
+
+export interface CreateEstimateRoomsResult {
+  rooms: EstimateRoomLink[];
+}

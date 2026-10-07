@@ -60,8 +60,17 @@ export const BOARD_VOTING_MAX_VOTES = 20;
 /** Список элементов скоупа не может быть длиннее самой доски — потолок на размер payload */
 export const BOARD_VOTING_MAX_SCOPE_ITEMS = 500;
 
-/** За что можно голосовать: текстовые элементы — стикер, фигура, текст */
+/**
+ * За что можно голосовать точками (15.2) и что отправлять в покер (15.6) —
+ * только стикеры: это карточки задач и идей. Фигуры, текст, картинки и
+ * стикеры Telegram — оформление доски (решение пользователя 07.10.2026).
+ */
 export function isVotableContent(content: BoardItemContent): boolean {
+  return content.type === 'sticky';
+}
+
+/** Что раскладывается по цвету и автору (15.4) — текстовые элементы: стикер, фигура, текст */
+export function isArrangeableContent(content: BoardItemContent): boolean {
   return content.type === 'sticky' || content.type === 'shape' || content.type === 'text';
 }
 

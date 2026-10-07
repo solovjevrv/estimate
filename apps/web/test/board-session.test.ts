@@ -118,6 +118,7 @@ function snapshotResult(
     guestToken: null,
     timer: { durationSec: 300, running: false, endsAt: null, remainingSec: 300 },
     voting: null,
+    estimates: {},
   };
 }
 
@@ -159,6 +160,7 @@ describe('стор сессии доски', () => {
       guestToken: null,
       timer: { durationSec: 300, running: false, endsAt: null, remainingSec: 300 },
       voting: null,
+      estimates: {},
     } satisfies JoinBoardResult;
 
     await store.join('board1');
@@ -616,6 +618,31 @@ describe('стор сессии доски', () => {
       store.leave();
 
       expect(store.voting).toBeNull();
+    });
+  });
+
+  describe('оценки из покер-комнат (15.6)', () => {
+    it('берёт оценки из входа, обновляет рассылкой board:estimate, забывает при выходе', async () => {
+      const store = useBoardSessionStore();
+      socket.next = { ...snapshotResult(1), estimates: { i1: { roomId: 'r1', value: null } } };
+      await store.join('board1');
+      expect(store.estimates).toEqual({ i1: { roomId: 'r1', value: null } });
+
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.ESTIMATE, {
+        itemId: 'i1',
+        estimate: { roomId: 'r1', value: '8' },
+      });
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.ESTIMATE, {
+        itemId: 'i2',
+        estimate: { roomId: 'r2', value: null },
+      });
+      expect(store.estimates).toEqual({
+        i1: { roomId: 'r1', value: '8' },
+        i2: { roomId: 'r2', value: null },
+      });
+
+      store.leave();
+      expect(store.estimates).toEqual({});
     });
   });
 

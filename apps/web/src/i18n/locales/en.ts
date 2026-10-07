@@ -188,6 +188,7 @@ export default {
     toRooms: 'To rooms',
     teamRoomSubtitle: 'Team room',
     personalRoomSubtitle: 'Personal room',
+    fromBoard: 'From board',
     /** Плашка личной комнаты в общем списке «Комнаты» — в пару к имени команды у командных */
     personalTag: 'Personal',
     participantsTitle: 'Participants',
@@ -539,6 +540,16 @@ export default {
     },
     edgeDashLabel: 'Stroke style',
     edgeDashes: { solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted' },
+    estimate: {
+      button: 'Estimate in poker',
+      openRoom: 'Open room',
+      created: 'Estimation room created | Estimation rooms created: {count}',
+      alreadyExist: 'Estimation rooms already exist',
+      openHint: 'Open a room by clicking the badge on the sticky',
+      pendingHint: 'Estimation room — cards not revealed yet',
+      forbidden: 'You cannot create rooms from this board',
+      error: 'Could not create an estimation room',
+    },
     arrange: {
       button: 'Arrange',
       menuTitle: 'Arrange',
