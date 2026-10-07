@@ -91,6 +91,16 @@ export class RoomsRepository {
     return row ? this.toRoom(row) : null;
   }
 
+  /** Перенос комнаты (10.24): личная (null) ↔ командная */
+  async updateRoomTeam(roomId: string, teamId: string | null): Promise<Room | null> {
+    const [row] = await this.db
+      .update(schema.rooms)
+      .set({ teamId, revision: sql`${schema.rooms.revision} + 1` })
+      .where(eq(schema.rooms.id, roomId))
+      .returning();
+    return row ? this.toRoom(row) : null;
+  }
+
   /** Настоящее удаление: возможно только для уже заархивированной комнаты. Раунды и голоса уходят каскадом */
   async deleteArchivedRoom(roomId: string): Promise<boolean> {
     const rows = await this.db

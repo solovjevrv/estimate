@@ -7,6 +7,7 @@ import {
   hasBoardAccess,
   trimText,
   type Board,
+  type Room,
 } from '@estimate/shared';
 import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -14,6 +15,9 @@ import { useRouter } from 'vue-router';
 
 import BoardCanvas from '../components/board/BoardCanvas.vue';
 import BoardShareModal from '../components/board/BoardShareModal.vue';
+import MoveEntityModal from '../components/MoveEntityModal.vue';
+import { boardMoveRequest, type MoveEntityKind, type MoveRequest } from '../lib/move-entity';
+import { useMoveAvailability } from '../composables/use-move-availability';
 import ConfirmModal from '../components/ConfirmModal.vue';
 import EntityTextModal from '../components/EntityTextModal.vue';
 import { ApiError } from '../lib/api';
@@ -143,6 +147,8 @@ async function load(): Promise<void> {
     }
   } catch (err) {
     if (err instanceof ApiError && err.status === 404) {
+      // Повторная загрузка после переноса (10.24): доступ пропал — прежнюю доску убираем
+      board.value = null;
       notFound.value = true;
     } else {
       loadFailed.value = true;
@@ -185,6 +191,15 @@ async function onGuestNameSubmit(event: FormSubmitEvent<{ name: string }>): Prom
 // immediate: true запускает load() синхронно прямо здесь — она читает состояние
 // формы гостя выше (needsGuestName и т.п.), поэтому watch объявлен уже после него
 watch(() => props.id, load, { immediate: true });
+// Доску перенесли (10.24) — сервер вывел всех из канала: входим заново с проверкой
+// доступа; у кого его больше нет — «Доска не найдена»
+watch(
+  () => boardSession.accessChanges,
+  () => {
+    boardSession.leave();
+    void load();
+  },
+);
 
 // REST-снимок уже загружен через `boards.get` выше — WS-вход (12.4) даёт только
 // реалтайм-синхронизацию поверх него, поэтому его результат ожидать не нужно
@@ -194,6 +209,20 @@ onBeforeUnmount(() => {
 
 // --- Переименование ---
 const shareOpen = ref(false);
+
+/** Перенос доски (10.24): личная ↔ командная, комнаты оценки едут вместе с ней */
+const moveRequest = ref<MoveRequest | null>(null);
+const { canMove } = useMoveAvailability();
+async function onBoardMoved(_kind: MoveEntityKind, moved: Board | Room): Promise<void> {
+  if (!('title' in moved)) return;
+  // Админ сделал чужую доску личной у владельца — доступа у него больше нет
+  if (!moved.teamId && moved.ownerId !== session.user?.id) {
+    await router.push({ name: 'boards' });
+    return;
+  }
+  board.value = moved;
+  if (moved.teamId) await teams.loadTeam(moved.teamId).catch(() => undefined);
+}
 const renameModal = useEntityModal();
 
 const { pending: renaming, execute: renameBoard } = useAsyncAction({
@@ -361,10 +390,12 @@ async function confirmDelete(): Promise<void> {
         :board="board"
         :team-name="board.teamId ? (teams.current?.team.name ?? null) : null"
         :can-manage="canManage"
+        :can-move="canMove('board', board.teamId, board.ownerId)"
         :can-edit="canEdit"
         :items="boardSession.items"
         :edges="boardSession.edges"
         @rename="renameModal.show"
+        @move="moveRequest = boardMoveRequest(board)"
         @archive="archiveOpen = true"
         @unarchive="unarchive"
         @share="shareOpen = true"
@@ -407,4 +438,5 @@ async function confirmDelete(): Promise<void> {
   />
 
   <BoardShareModal v-if="board" v-model="shareOpen" :board="board" />
+  <MoveEntityModal v-model:request="moveRequest" @moved="onBoardMoved" />
 </template>

@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui';
 import type { BoardSummary } from '@estimate/shared';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import type { ArchiveTab } from '../../composables/use-archive-tab';
 import type { PagedList } from '../../composables/use-paged-list';
 import BoardCard from './BoardCard.vue';
 import ListPagination from '../ListPagination.vue';
+import MoveEntityModal from '../MoveEntityModal.vue';
+import { useMoveAvailability } from '../../composables/use-move-availability';
+import { boardMoveRequest, type MoveRequest } from '../../lib/move-entity';
 
 defineProps<{
   boardsFailed: boolean;
@@ -33,6 +36,8 @@ defineProps<{
 const emit = defineEmits<{
   selectTab: [tab: 'active' | 'archive'];
   rename: [board: BoardSummary];
+  /** Перенесена (10.24) — список нужно перечитать */
+  moved: [];
   archive: [board: BoardSummary];
   unarchive: [board: BoardSummary];
   delete: [board: BoardSummary];
@@ -40,6 +45,9 @@ const emit = defineEmits<{
 }>();
 
 const { t } = useI18n();
+/** Перенос из меню строки (10.24) — окно открыто, пока запрос не null */
+const moveRequest = ref<MoveRequest | null>(null);
+const { canMove } = useMoveAvailability();
 
 const boardTabs = computed(() => [
   { key: 'active' as const, label: t('team.boardsActive') },
@@ -47,8 +55,19 @@ const boardTabs = computed(() => [
 ]);
 
 function activeMenuItems(board: BoardSummary): DropdownMenuItem[][] {
+  const first: DropdownMenuItem[] = [
+    { label: t('board.rename'), icon: 'i-lucide-pencil', onSelect: () => emit('rename', board) },
+  ];
+  // «Перенести…» (10.24) — только если есть куда
+  if (canMove('board', board.teamId, board.ownerId)) {
+    first.push({
+      label: t('move.menu'),
+      icon: 'i-lucide-folder-input',
+      onSelect: () => (moveRequest.value = boardMoveRequest(board)),
+    });
+  }
   return [
-    [{ label: t('board.rename'), icon: 'i-lucide-pencil', onSelect: () => emit('rename', board) }],
+    first,
     [
       {
         label: t('board.archive'),
@@ -173,5 +192,6 @@ function archivedMenuItems(board: BoardSummary): DropdownMenuItem[][] {
         <ListPagination class="mt-6" :paging="archiveBoardsPaging" />
       </template>
     </template>
+    <MoveEntityModal v-model:request="moveRequest" @moved="emit('moved')" />
   </div>
 </template>
