@@ -75,7 +75,7 @@ function setup() {
 describe('useBoardEstimate (15.6)', () => {
   beforeEach(() => toastAdd.mockClear());
 
-  it('действие: текстовые элементы — «создать», один с комнатой — «открыть», остальное — ничего', () => {
+  it('действие: стикеры — «создать», один с комнатой — «открыть», остальное — ничего', () => {
     const { estimate, selected, estimates, canCreate, voting } = setup();
     expect(estimate.action.value).toBeNull();
 
@@ -86,8 +86,14 @@ describe('useBoardEstimate (15.6)', () => {
     expect(estimate.action.value).toBe('open');
 
     // Несколько — «создать»: у кого уже есть комната, тот её и получит
-    selected.value = [item('a'), item('b', { content: { type: 'text', text: 'b' } })];
+    selected.value = [item('a'), item('b')];
     expect(estimate.action.value).toBe('create');
+
+    // Только стикеры: фигура и текст — оформление доски
+    selected.value = [item('a'), item('t', { content: { type: 'text', text: 't' } })];
+    expect(estimate.action.value).toBeNull();
+    selected.value = [item('s', { content: { type: 'shape', shape: 'rectangle', text: 's' } })];
+    expect(estimate.action.value).toBeNull();
 
     selected.value = [item('a'), item('e', { content: { type: 'emoji', emoji: '👍' } })];
     expect(estimate.action.value).toBeNull();

@@ -11,6 +11,7 @@ import {
   isValidBoardTimerDuration,
   effectiveMaxPerItem,
   isValidVotingLimits,
+  isArrangeableContent,
   isVotableContent,
   type ApplyBoardOpsPayload,
   type ApplyBoardOpsResult,
@@ -81,8 +82,12 @@ describe('контракт realtime-доски', () => {
       expect(isValidVotingLimits(votes, perItem)).toBe(false);
     }
     expect(isVotableContent({ type: 'sticky', text: '' })).toBe(true);
-    expect(isVotableContent({ type: 'shape', shape: 'rectangle', text: '' })).toBe(true);
-    expect(isVotableContent({ type: 'text', text: '' })).toBe(true);
+    // Только стикеры (решение 07.10.2026): фигуры и текст — оформление
+    expect(isVotableContent({ type: 'shape', shape: 'rectangle', text: '' })).toBe(false);
+    expect(isVotableContent({ type: 'text', text: '' })).toBe(false);
+    expect(isArrangeableContent({ type: 'shape', shape: 'rectangle', text: '' })).toBe(true);
+    expect(isArrangeableContent({ type: 'text', text: '' })).toBe(true);
+    expect(isArrangeableContent({ type: 'emoji', emoji: '👍' })).toBe(false);
     expect(isVotableContent({ type: 'emoji', emoji: '👍' })).toBe(false);
     expect(isVotableContent({ type: 'frame', title: '' })).toBe(false);
   });

@@ -76,7 +76,7 @@ export class BoardEstimatesService {
         .where(and(eq(schema.boardItems.boardId, boardId), inArray(schema.boardItems.id, itemIds)));
       const estimable = items.filter((item) => isVotableContent(item.content));
       if (estimable.length === 0) {
-        throw new ValidationError('Оценить можно стикер, фигуру или текст');
+        throw new ValidationError('Оценить в покере можно только стикеры');
       }
 
       const linkedBefore = await this.linkedRooms(
@@ -113,13 +113,13 @@ export class BoardEstimatesService {
 
       const rooms: EstimateRoomLink[] = [];
       const updates: BoardEstimateUpdate[] = [];
-      for (const item of estimable) {
-        const link = linked.get(item.id);
+      // В порядке запроса — БД отдаёт элементы в произвольном
+      for (const itemId of itemIds) {
+        const link = linked.get(itemId);
         if (!link) continue;
         const created = createdIds.has(link.roomId);
-        rooms.push({ itemId: item.id, roomId: link.roomId, created });
-        if (created)
-          updates.push({ itemId: item.id, estimate: { roomId: link.roomId, value: null } });
+        rooms.push({ itemId, roomId: link.roomId, created });
+        if (created) updates.push({ itemId, estimate: { roomId: link.roomId, value: null } });
       }
       return { rooms, updates };
     });

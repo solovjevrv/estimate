@@ -38,7 +38,7 @@ export function useBoardEstimate(options: UseBoardEstimateOptions) {
   const pending = ref(false);
   const openTab = options.openTab ?? (() => window.open('', '_blank'));
 
-  /** Что отправлять в покер: только текстовые элементы — иначе null */
+  /** Что отправлять в покер: только стикеры — иначе null */
   const targets = computed<BoardItem[] | null>(() => {
     const selected = options.selectedItems();
     if (selected.length === 0 || selected.length > BOARD_ESTIMATE_MAX_ITEMS) return null;

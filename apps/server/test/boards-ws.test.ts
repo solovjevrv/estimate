@@ -1291,6 +1291,12 @@ describeDb('WS-канал досок', () => {
 
       expect((await estimateRooms(guest, boardId, [sticky])).status).toBe(403);
       expect((await estimateRooms(owner, boardId, [randomUUID()])).status).toBe(400);
+      // Фигура — не стикер: оценивать нечего
+      const shape = stickyItem({ content: { type: 'shape', shape: 'rectangle', text: 'Фигура' } });
+      await emit<ApplyBoardOpsResult>(author, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: randomUUID(), item: shape }],
+      });
+      expect((await estimateRooms(owner, boardId, [shape.id])).status).toBe(400);
       expect((await estimateRooms(owner, boardId, [])).status).toBe(400);
     });
 

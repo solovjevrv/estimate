@@ -1,5 +1,5 @@
 import type { BoardItem, BoardOp, BoardVotingState } from '@estimate/shared';
-import { isVotableContent } from '@estimate/shared';
+import { isArrangeableContent } from '@estimate/shared';
 import { useToast } from '@nuxt/ui/composables';
 import { computed, nextTick, type Ref } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -103,10 +103,10 @@ export function useBoardArrange(options: UseBoardArrangeOptions) {
         item.content.type === 'frame'
           ? options
               .items()
-              .filter((child) => child.parentId === item.id && isVotableContent(child.content))
+              .filter((child) => child.parentId === item.id && isArrangeableContent(child.content))
           : [item];
       for (const member of members) {
-        if (!isVotableContent(member.content) || inGroup(member, byId)) return null;
+        if (!isArrangeableContent(member.content) || inGroup(member, byId)) return null;
         result.set(member.id, member);
       }
     }
@@ -152,7 +152,7 @@ export function useBoardArrange(options: UseBoardArrangeOptions) {
       .map((id) => byId.get(id))
       .filter(
         (item): item is BoardItem =>
-          !!item && isVotableContent(item.content) && !inGroup(item, byId),
+          !!item && isArrangeableContent(item.content) && !inGroup(item, byId),
       );
     return { items, wholeBoard: !state?.itemIds };
   }
