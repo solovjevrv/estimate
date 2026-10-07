@@ -13,6 +13,7 @@ import type {
   Board,
   BoardAccessLevel,
   BoardAwarenessKind,
+  BoardItemEstimate,
   BoardShareRole,
   BoardTimerState,
   BoardVotingState,
@@ -50,6 +51,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const timer = ref<BoardTimerState>(idleTimer());
   /** Голосование точками (15.2) глазами этого участника; null — голосования нет */
   const voting = ref<BoardVotingState | null>(null);
+  /** Оценки элементов из покер-комнат (15.6): itemId → комната и подпись карты */
+  const estimates = ref<Record<string, BoardItemEstimate>>({});
   /** Авторы элементов из снимка (15.4): userId → имя, для раскладки «по автору» */
   const snapshotAuthors = ref<Record<string, string>>({});
 
@@ -122,6 +125,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     access.value = result.access;
     timer.value = result.timer;
     voting.value = result.voting;
+    estimates.value = result.estimates;
 
     if (result.snapshot) {
       optimistic.applySnapshot(result.snapshot, result.revision);
@@ -144,6 +148,9 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     active.on(BOARD_WS_SERVER_EVENTS.VOTING, (state) => {
       voting.value = state;
     });
+    active.on(BOARD_WS_SERVER_EVENTS.ESTIMATE, ({ itemId, estimate }) => {
+      estimates.value = { ...estimates.value, [itemId]: estimate };
+    });
   }
 
   const connection = createRealtimeConnection({
@@ -165,6 +172,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       access.value = 'view';
       timer.value = idleTimer();
       voting.value = null;
+      estimates.value = {};
       snapshotAuthors.value = {};
       ownGuestName = null;
       optimistic.resetForNewSession();
@@ -192,6 +200,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     access.value = 'view';
     timer.value = idleTimer();
     voting.value = null;
+    estimates.value = {};
     snapshotAuthors.value = {};
     local.items.clear();
     local.edges.clear();
@@ -278,6 +287,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     revision: optimistic.revision,
     presence: awareness.presence,
     authorNames,
+    estimates,
     awareness: awareness.awareness,
     editingByItem: awareness.editingByItem,
     cameraByParticipant: awareness.cameraByParticipant,

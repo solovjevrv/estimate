@@ -1,3 +1,4 @@
+import { BOARD_ESTIMATE_MAX_ITEMS, BOARD_WS_SERVER_EVENTS } from '@estimate/shared';
 import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
@@ -6,6 +7,7 @@ import { DOCS_TAGS, errorResponse } from '../http/openapi';
 import { archivedQuerySchema, idParamsSchema } from '../http/schemas';
 import type { ObjectStorage } from '../platform/storage';
 
+import { BoardEstimatesService } from './board-estimates.service';
 import { BoardImagesService } from './board-images.service';
 import {
   boardResponse,
@@ -19,6 +21,7 @@ import type {
   ArchivedQuery,
   BoardIdParams,
   CreateBoardBody,
+  EstimateRoomsBody,
   ShareBody,
   TeamIdParams,
   TitleBody,
@@ -43,8 +46,72 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
   const images = opts.objectStorage
     ? BoardImagesService.create(opts.objectStorage, opts.legacyAssetsDir)
     : undefined;
+  const boards = BoardsService.forDatabase(app.db, opts.auth.guestSecret, images, app.log);
   const controller = new BoardsController(
-    BoardsService.forDatabase(app.db, opts.auth.guestSecret, images, app.log),
+    boards,
+    new BoardEstimatesService(app.db, boards),
+    (boardId, updates) => {
+      // Socket.io подключается после сборки приложения; в тестах REST его может не быть
+      if (!app.hasDecorator('io')) return;
+      for (const update of updates)
+        app.io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.ESTIMATE, update);
+    },
+  );
+
+  app.post<{ Params: BoardIdParams; Body: EstimateRoomsBody }>(
+    '/api/boards/:id/estimate-rooms',
+    {
+      preHandler: authenticate,
+      schema: {
+        tags: [DOCS_TAGS.boards],
+        summary: 'Отправить элементы доски в покер',
+        description:
+          'По комнате оценки на каждый элемент (стикер, фигура, текст), название — текст ' +
+          'элемента (15.6). Для элемента, у которого комната уже есть, отдаётся она ' +
+          '(`created: false`) — повторы и двойные клики не плодят дублей. Нужен доступ ' +
+          'на правку активной доски; комната командная, если доска командная.',
+        security: [{ session: [] }],
+        params: idParamsSchema,
+        body: {
+          type: 'object',
+          required: ['itemIds'],
+          additionalProperties: false,
+          properties: {
+            itemIds: {
+              type: 'array',
+              minItems: 1,
+              maxItems: BOARD_ESTIMATE_MAX_ITEMS,
+              items: { type: 'string', format: 'uuid' },
+            },
+          },
+        },
+        response: {
+          200: {
+            description: 'Комнаты элементов',
+            type: 'object',
+            properties: {
+              rooms: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  properties: {
+                    itemId: { type: 'string' },
+                    roomId: { type: 'string' },
+                    created: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
+          400: { description: 'Нет подходящих элементов', ...errorResponse },
+          401: { description: 'Требуется вход', ...errorResponse },
+          403: { description: 'Нет права правки доски', ...errorResponse },
+          404: { description: 'Доска не найдена', ...errorResponse },
+          409: { description: 'Доска в архиве', ...errorResponse },
+        },
+      },
+    },
+    controller.estimateRooms,
   );
 
   app.post<{ Body: CreateBoardBody }>(

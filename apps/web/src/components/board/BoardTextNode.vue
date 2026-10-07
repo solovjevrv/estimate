@@ -36,6 +36,7 @@ import {
 import { useRichTextEditing } from '../../features/boards/composables/use-rich-text-editing';
 import { useBoardSessionStore } from '../../stores/board-session';
 import BoardEditingBadge from './shared/BoardEditingBadge.vue';
+import BoardEstimateBadge from './BoardEstimateBadge.vue';
 import BoardVoteBadge from './BoardVoteBadge.vue';
 import BoardRichText from './BoardRichText.vue';
 
@@ -224,6 +225,7 @@ function onResizeEnd({ params: { x, y, width, height } }: OnResizeEnd): void {
   >
     <BoardEditingBadge v-if="lockedBy" :name="lockedBy.name" data-testid="board-editing-badge" />
     <BoardVoteBadge :item="props.data" />
+    <BoardEstimateBadge :item="props.data" />
     <NodeResizer
       :is-visible="props.selected && !editing && canEdit && !lockedBy"
       :min-width="TEXT_MIN_WIDTH"

@@ -197,11 +197,12 @@ export class BoardsService {
    * голосования (15.2): любой с доступом `edit`, как и правка содержимого;
    * у архивной доски — никто, она только для чтения.
    */
-  async assertActiveEditAccess(actorId: string | null, boardId: string): Promise<void> {
+  async assertActiveEditAccess(actorId: string | null, boardId: string): Promise<Board> {
     const board = await this.assertEditAccess(actorId, boardId);
     if (board.status !== 'active') {
       throw new ConflictError('Доска в архиве');
     }
+    return board;
   }
 
   /**

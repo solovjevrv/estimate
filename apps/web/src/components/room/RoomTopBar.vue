@@ -9,6 +9,8 @@ const props = defineProps<{
   teamId: string | null;
   /** Название команды для подзаголовка «Команда «…»» (07_Room); null — не известно */
   teamName: string | null;
+  /** Доска, с которой комнату завели для оценки элемента (15.6) — ссылка «Из доски «…»» */
+  board?: { id: string; name: string } | null;
   archived: boolean;
   connected: boolean;
   canArchive: boolean;
@@ -19,6 +21,10 @@ const emit = defineEmits<{ archive: []; rename: [] }>();
 
 const { t } = useI18n();
 const toast = useToast();
+
+const boardPath = computed(() =>
+  props.board ? `/boards/${encodeURIComponent(props.board.id)}` : '',
+);
 
 const subtitle = computed(() => {
   if (!props.teamId) return t('room.personalRoomSubtitle');
@@ -81,7 +87,16 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
         </span>
       </div>
       <p class="text-text-secondary mt-1 text-sm">
-        {{ subtitle }}
+        {{ subtitle
+        }}<template v-if="props.board">
+          · {{ t('room.fromBoard') }}
+          <RouterLink
+            data-testid="room-from-board"
+            :to="boardPath"
+            class="text-[var(--text-link)] hover:underline"
+            >«{{ props.board.name }}»</RouterLink
+          >
+        </template>
       </p>
     </div>
     <UDropdownMenu :items="menuItems">

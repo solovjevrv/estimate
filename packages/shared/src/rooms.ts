@@ -102,6 +102,8 @@ export interface RoomDetails {
   room: Room;
   /** null — личная комната (или команда удалена и комната стала личной) */
   teamName: string | null;
+  /** Доска, с которой комнату завели для оценки элемента (15.6); null — обычная комната */
+  board: { id: string; name: string } | null;
 }
 
 export interface Round {

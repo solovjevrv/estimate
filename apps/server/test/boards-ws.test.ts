@@ -10,24 +10,26 @@ import { fileURLToPath } from 'node:url';
 import type {
   ApplyBoardOpsResult,
   AuthUser,
+  BoardEstimateUpdate,
   BoardItem,
   BoardOpsBatch,
   BoardPresenceEntry,
   BoardTimerState,
   BoardVotingState,
   BoardVotingSummary,
+  EstimateRoomLink,
   JoinBoardResult,
   WsAck,
 } from '@estimate/shared';
-import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@estimate/shared';
-import { inArray } from 'drizzle-orm';
+import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, WS_EVENTS } from '@estimate/shared';
+import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { type Socket, io as createClient } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app';
 import { ACCESS_COOKIE, TokenService, UsersRepository } from '../src/auth';
-import { BoardsService, BoardVotingService } from '../src/boards';
+import { BoardEstimatesService, BoardsService, BoardVotingService } from '../src/boards';
 import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
 import { RoomsGameService } from '../src/rooms';
@@ -83,6 +85,7 @@ describeDb('WS-канал досок', () => {
   const userIds: string[] = [];
   const teamIds: string[] = [];
   const boardIds: string[] = [];
+  const roomIds: string[] = [];
   const clients: Socket[] = [];
 
   function as(user: AuthUser): { cookie: string } {
@@ -190,6 +193,7 @@ describeDb('WS-канал досок', () => {
     new SocketGateway(roomsService, boardsService, {
       corsOrigin: '*',
       boardVoting: new BoardVotingService(db, boardsService),
+      boardEstimates: new BoardEstimatesService(db, boardsService),
     }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
     port = (app.server.address() as AddressInfo).port;
@@ -201,6 +205,9 @@ describeDb('WS-канал досок', () => {
         client.close();
       }
       await app?.close();
+      if (roomIds.length > 0) {
+        await db.delete(schema.rooms).where(inArray(schema.rooms.id, roomIds));
+      }
       if (boardIds.length > 0) {
         await db.delete(schema.boards).where(inArray(schema.boards.id, boardIds));
       }
@@ -1195,6 +1202,132 @@ describeDb('WS-канал досок', () => {
       expect(ack.ok).toBe(true);
       expect(after).toBeNull();
       expect(history.ok && history.data).toEqual([]);
+    });
+  });
+  describe('оценка в покере (15.6)', () => {
+    async function addSticky(client: Socket, text: string): Promise<string> {
+      const item = stickyItem({ content: { type: 'sticky', text } });
+      const ack = await emit<ApplyBoardOpsResult>(client, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: randomUUID(), item }],
+      });
+      if (!ack.ok) throw new Error(ack.message);
+      return item.id;
+    }
+
+    async function estimateRooms(
+      user: AuthUser,
+      boardId: string,
+      itemIds: string[],
+    ): Promise<{ status: number; rooms: EstimateRoomLink[] }> {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/boards/${boardId}/estimate-rooms`,
+        headers: as(user),
+        payload: { itemIds },
+      });
+      const rooms =
+        res.statusCode === 200 ? (res.json() as { rooms: EstimateRoomLink[] }).rooms : [];
+      roomIds.push(...rooms.map((room) => room.roomId));
+      return { status: res.statusCode, rooms };
+    }
+
+    it('участник с правом правки заводит командные комнаты; повтор — те же, без дублей', async () => {
+      const owner = await newUser('estimate-owner');
+      const member = await newUser('estimate-member');
+      const teamId = await newTeam(owner, [[member, 'member']]);
+      const boardId = await newBoard(owner, teamId);
+      const author = connect(owner);
+      await joinBoard(author, boardId);
+      const first = await addSticky(author, 'Экспорт\nдоски в PDF');
+      const second = await addSticky(author, 'Вход через Google');
+      const badge = waitFor<BoardEstimateUpdate>(author, BOARD_WS_SERVER_EVENTS.ESTIMATE);
+
+      const created = await estimateRooms(member, boardId, [first, second, first]);
+
+      expect(created.status).toBe(200);
+      expect(created.rooms.map((room) => [room.itemId, room.created])).toEqual([
+        [first, true],
+        [second, true],
+      ]);
+      // Бейдж «♠ —» появляется у всех на доске сразу
+      expect((await badge).estimate.value).toBeNull();
+      const rooms = await db
+        .select()
+        .from(schema.rooms)
+        .where(
+          inArray(
+            schema.rooms.id,
+            created.rooms.map((room) => room.roomId),
+          ),
+        );
+      expect(
+        rooms.map((room) => [room.name, room.teamId, room.creatorId, room.boardId]).sort(),
+      ).toEqual([
+        ['Вход через Google', teamId, member.id, boardId],
+        ['Экспорт доски в PDF', teamId, member.id, boardId],
+      ]);
+
+      const again = await estimateRooms(member, boardId, [first]);
+      expect(again.rooms).toEqual([
+        { itemId: first, roomId: created.rooms[0]!.roomId, created: false },
+      ]);
+
+      // Шапка комнаты знает доску, с которой её завели
+      const details = await app.inject({
+        method: 'GET',
+        url: `/api/rooms/${created.rooms[0]!.roomId}`,
+      });
+      expect(details.json()).toMatchObject({ board: { id: boardId, name: 'Доска для теста' } });
+    });
+
+    it('без права правки — 403; чужие и пустые id — 400', async () => {
+      const owner = await newUser('estimate-owner-2');
+      const guest = await newUser('estimate-guest');
+      const teamId = await newTeam(owner, [[guest, 'guest']]);
+      const boardId = await newBoard(owner, teamId);
+      const author = connect(owner);
+      await joinBoard(author, boardId);
+      const sticky = await addSticky(author, 'Задача');
+
+      expect((await estimateRooms(guest, boardId, [sticky])).status).toBe(403);
+      expect((await estimateRooms(owner, boardId, [randomUUID()])).status).toBe(400);
+      expect((await estimateRooms(owner, boardId, [])).status).toBe(400);
+    });
+
+    it('вскрытие карт в комнате приходит оценкой на доску и отдаётся при входе', async () => {
+      const owner = await newUser('estimate-reveal');
+      const boardId = await newBoard(owner);
+      const board = connect(owner);
+      await joinBoard(board, boardId);
+      const itemId = await addSticky(board, 'История раундов');
+      const [link] = (await estimateRooms(owner, boardId, [itemId])).rooms;
+      // Личная доска — личная комната
+      const [personal] = await db
+        .select({ teamId: schema.rooms.teamId })
+        .from(schema.rooms)
+        .where(eq(schema.rooms.id, link!.roomId));
+      expect(personal?.teamId).toBeNull();
+
+      const room = connect(owner);
+      expect((await emit(room, WS_EVENTS.JOIN_ROOM, { roomId: link!.roomId })).ok).toBe(true);
+      expect((await emit(room, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' })).ok).toBe(
+        true,
+      );
+      expect((await emit(room, WS_EVENTS.SUBMIT_VOTE, { value: 8 })).ok).toBe(true);
+      // Голос до вскрытия тоже будит рассылку (значение null) — ждём именно оценку
+      const estimate = new Promise<BoardEstimateUpdate>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('оценка не пришла')), ANSWER_TIMEOUT_MS);
+        board.on(BOARD_WS_SERVER_EVENTS.ESTIMATE, (update: BoardEstimateUpdate) => {
+          if (update.estimate.value === null) return;
+          clearTimeout(timer);
+          resolve(update);
+        });
+      });
+      expect((await emit(room, WS_EVENTS.REVEAL_CARDS, {})).ok).toBe(true);
+
+      expect(await estimate).toEqual({ itemId, estimate: { roomId: link!.roomId, value: '8' } });
+      const later = await joinBoard(connect(owner), boardId);
+      expect(later.estimates).toEqual({ [itemId]: { roomId: link!.roomId, value: '8' } });
     });
   });
 });

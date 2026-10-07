@@ -13,6 +13,7 @@ import type {
   BoardTimerState,
   BoardVotePayload,
   BoardVotingRefPayload,
+  BoardEstimateUpdate,
   BoardVotingState,
   BoardVotingSummary,
   JoinBoardPayload,
@@ -70,6 +71,8 @@ interface ServerToClientEvents {
   [BOARD_WS_SERVER_EVENTS.TIMER]: (state: BoardTimerState) => void;
   /** Голосование глазами этого участника (15.2); null — голосования нет */
   [BOARD_WS_SERVER_EVENTS.VOTING]: (state: BoardVotingState | null) => void;
+  /** Оценка элемента из покер-комнаты изменилась (15.6) */
+  [BOARD_WS_SERVER_EVENTS.ESTIMATE]: (update: BoardEstimateUpdate) => void;
 }
 
 /**

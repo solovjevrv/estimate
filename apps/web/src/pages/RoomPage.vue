@@ -135,6 +135,8 @@ const phase = ref<Phase>('loading');
 const roomInfo = ref<Room | null>(null);
 /** Название команды для шапки — приходит вместе с комнатой, переименование его не меняет */
 const roomTeamName = ref<string | null>(null);
+/** Доска, с которой комнату завели для оценки (15.6) — ссылка в шапке */
+const roomBoard = ref<RoomDetails['board']>(null);
 const guestIdentity = useGuestIdentity('room');
 const guestState = reactive({ name: guestIdentity.name.value });
 
@@ -169,6 +171,7 @@ async function load(): Promise<void> {
   if (token !== currentToken) return;
   roomInfo.value = loaded.room;
   roomTeamName.value = loaded.teamName;
+  roomBoard.value = loaded.board;
   resetHistory();
 
   if (session.isAuthenticated) {
@@ -387,6 +390,7 @@ function retry(): void {
           :name="roomInfo.name"
           :team-id="roomInfo.teamId"
           :team-name="roomTeamName"
+          :board="roomBoard"
           :archived="isArchived"
           :connected="room.connected"
           :can-archive="room.isScrumMaster && !isArchived"

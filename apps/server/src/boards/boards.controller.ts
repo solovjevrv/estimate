@@ -1,7 +1,8 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
 
-import type { BoardShareRole } from '@estimate/shared';
+import type { BoardEstimateUpdate, BoardShareRole } from '@estimate/shared';
 
+import type { BoardEstimatesService } from './board-estimates.service';
 import type { BoardsService } from './boards.service';
 
 export interface BoardIdParams {
@@ -25,13 +26,34 @@ export interface ShareBody {
   role: BoardShareRole | null;
 }
 
+export interface EstimateRoomsBody {
+  itemIds: string[];
+}
+
+/** Разослать новые оценки на доску (15.6) — канал доски живёт в Socket.io */
+export type BoardEstimatesNotifier = (boardId: string, updates: BoardEstimateUpdate[]) => void;
+
 export interface ArchivedQuery {
   archived?: 'true' | 'false';
 }
 
 /** Тонкий слой между HTTP и правилами досок */
 export class BoardsController {
-  constructor(private readonly service: BoardsService) {}
+  constructor(
+    private readonly service: BoardsService,
+    private readonly estimates?: BoardEstimatesService,
+    private readonly notifyEstimates: BoardEstimatesNotifier = () => undefined,
+  ) {}
+
+  /** Отправить элементы в покер (15.6): по комнате на элемент, существующие — как есть */
+  readonly estimateRooms = async (
+    req: FastifyRequest<{ Params: BoardIdParams; Body: EstimateRoomsBody }>,
+  ): Promise<unknown> => {
+    if (!this.estimates) throw new Error('Оценка в покере не подключена');
+    const result = await this.estimates.createRooms(req.user.sub, req.params.id, req.body.itemIds);
+    if (result.updates.length) this.notifyEstimates(req.params.id, result.updates);
+    return { rooms: result.rooms };
+  };
 
   readonly create = async (
     req: FastifyRequest<{ Body: CreateBoardBody }>,

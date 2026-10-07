@@ -13,7 +13,7 @@ export function createRoom(name: string, teamId?: string): Promise<Room> {
 export function getRoom(roomId: string): Promise<RoomDetails> {
   return api
     .get<RoomDetails>(`/api/rooms/${encodeURIComponent(roomId)}`)
-    .then((res) => ({ room: res.room, teamName: res.teamName ?? null }));
+    .then((res) => ({ room: res.room, teamName: res.teamName ?? null, board: res.board ?? null }));
 }
 
 /** История вскрытых раундов с итогами — для страницы комнаты */
