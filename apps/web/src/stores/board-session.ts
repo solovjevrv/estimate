@@ -53,6 +53,11 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const voting = ref<BoardVotingState | null>(null);
   /** Оценки элементов из покер-комнат (15.6): itemId → комната и подпись карты */
   const estimates = ref<Record<string, BoardItemEstimate>>({});
+  /**
+   * Сколько раз сервер сообщил «доступ к доске изменился» (перенос 10.24): он
+   * уже вывел сокет из канала доски — страница перезагружает доску и входит заново
+   */
+  const accessChanges = ref(0);
   /** Авторы элементов из снимка (15.4): userId → имя, для раскладки «по автору» */
   const snapshotAuthors = ref<Record<string, string>>({});
 
@@ -147,6 +152,9 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     });
     active.on(BOARD_WS_SERVER_EVENTS.VOTING, (state) => {
       voting.value = state;
+    });
+    active.on(BOARD_WS_SERVER_EVENTS.ACCESS, () => {
+      accessChanges.value += 1;
     });
     active.on(BOARD_WS_SERVER_EVENTS.ESTIMATE, ({ itemId, estimate }) => {
       estimates.value = { ...estimates.value, [itemId]: estimate };
@@ -288,6 +296,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     presence: awareness.presence,
     authorNames,
     estimates,
+    accessChanges,
     awareness: awareness.awareness,
     editingByItem: awareness.editingByItem,
     cameraByParticipant: awareness.cameraByParticipant,

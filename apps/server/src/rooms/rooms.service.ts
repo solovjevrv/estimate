@@ -6,7 +6,7 @@ import {
   type RoundHistoryEntry,
 } from '@estimate/shared';
 
-import { TeamAccess } from '../access';
+import { parseTargetTeamId, TeamAccess } from '../access';
 import type { Db } from '../db';
 import { ConflictError, ForbiddenError, NotFoundError } from '../errors';
 
@@ -142,6 +142,37 @@ export class RoomsService {
         throw new ConflictError('Комната уже в архиве');
       }
       return archived;
+    });
+  }
+
+  /**
+   * Перенос (10.24): личная ↔ командная, между командами. Переносит
+   * скрам-мастер (создатель или админ текущей команды); в команду — по
+   * правилу создания: командную комнату заводит её администратор. Личной
+   * комната становится у создателя — удалён аккаунт создателя, отдать некому.
+   */
+  async moveRoom(actorId: string, roomId: string, rawTeamId: unknown): Promise<Room> {
+    const teamId = parseTargetTeamId(rawTeamId);
+    return this.transactions.withLockedRoom(roomId, async (repo, room, teams) => {
+      if ((await this.transactions.resolveRole(room, actorId, teams)) !== 'scrum_master') {
+        throw new ForbiddenError('Перенести комнату может только скрам-мастер');
+      }
+      if (room.teamId === teamId) {
+        throw new ConflictError(teamId ? 'Комната уже в этой команде' : 'Комната уже личная');
+      }
+      if (teamId) {
+        await teams.require(
+          teamId,
+          actorId,
+          'admin',
+          'Перенести комнату в команду может её администратор',
+        );
+      } else if (!room.creatorId) {
+        throw new ConflictError('Аккаунт создателя удалён — сделать комнату личной нельзя');
+      }
+      const moved = await repo.updateRoomTeam(roomId, teamId);
+      if (!moved) throw new NotFoundError('Комната не найдена');
+      return moved;
     });
   }
 

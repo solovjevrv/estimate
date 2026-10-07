@@ -73,6 +73,8 @@ interface ServerToClientEvents {
   [BOARD_WS_SERVER_EVENTS.VOTING]: (state: BoardVotingState | null) => void;
   /** Оценка элемента из покер-комнаты изменилась (15.6) */
   [BOARD_WS_SERVER_EVENTS.ESTIMATE]: (update: BoardEstimateUpdate) => void;
+  /** Доступ к доске изменился (10.24) — сокет уже вне канала доски, нужно войти заново */
+  [BOARD_WS_SERVER_EVENTS.ACCESS]: (payload: Record<string, never>) => void;
 }
 
 /**
