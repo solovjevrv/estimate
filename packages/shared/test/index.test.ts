@@ -18,12 +18,7 @@ import {
 describe('контракты WS-событий', () => {
   it('содержат все события из скоупа Epic 2', () => {
     expect(Object.values(WS_EVENTS)).toEqual(
-      expect.arrayContaining([
-        'join_room',
-        'submit_vote',
-        'reveal_cards',
-        'start_new_round',
-      ]),
+      expect.arrayContaining(['join_room', 'submit_vote', 'reveal_cards', 'start_new_round']),
     );
   });
 });
