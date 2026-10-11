@@ -18,8 +18,14 @@ export interface BoardBatchIntakeOptions {
  *   отбросил бы свои батчи как «уже виденные».
  * - Дыра в ревизиях (рассылка потерялась, например, при сбое Redis) —
  *   перезаход за догоном. Иначе пропущенная операция не вернулась бы никогда.
+ *
+ * Отложенное принадлежит одной доске: смена доски или выход (`reset`)
+ * начинает новую эпоху — входы, начатые до неё, своё отложенное уже не
+ * проиграют, даже если завершатся позже входа на новую доску. Батчи чужой
+ * доски сюда вообще не попадают — их отсекает стор по `boardId`.
  */
 export function useBoardBatchIntake(options: BoardBatchIntakeOptions) {
+  let epoch = 0;
   let joinsInFlight = 0;
   let deferred: BoardOpsBatch[] = [];
   let resyncing = false;
@@ -45,12 +51,16 @@ export function useBoardBatchIntake(options: BoardBatchIntakeOptions) {
     if (options.apply(batch) === 'gap') requestResync();
   }
 
-  function joinStarted(): void {
+  /** Возвращает метку входа — её передают в `joinFinished` */
+  function joinStarted(): number {
     joinsInFlight += 1;
+    return epoch;
   }
 
   /** `applied` — вход дошёл до снимка/догона; иначе отложенное относится к чужому состоянию */
-  function joinFinished(applied: boolean): void {
+  function joinFinished(startedIn: number, applied: boolean): void {
+    // Вход прежней доски (или до выхода) — к текущему отложенному отношения не имеет
+    if (startedIn !== epoch) return;
     joinsInFlight = Math.max(0, joinsInFlight - 1);
     if (joinsInFlight > 0) return;
     const batches = deferred.sort((a, b) => a.revision - b.revision);
@@ -64,8 +74,10 @@ export function useBoardBatchIntake(options: BoardBatchIntakeOptions) {
     }
   }
 
-  /** Выход с доски: отложенное больше не нужно */
+  /** Смена доски или выход: новая эпоха, всё отложенное и висящие входы — в прошлом */
   function reset(): void {
+    epoch += 1;
+    joinsInFlight = 0;
     deferred = [];
   }
 

@@ -13,7 +13,8 @@ export interface RealtimeStore {
   /**
    * Атомарное чтение-изменение-запись: `update` получает текущее значение и
    * возвращает новое. Значение сменилось между чтением и записью (команда с
-   * другого экземпляра) — `update` вызывается заново поверх свежего
+   * другого экземпляра) — `update` вызывается заново поверх свежего.
+   * Вернула тот же объект, что получила, — правки нет, запись пропускается
    */
   updateJson<T>(key: string, update: (current: T | null) => T): Promise<T>;
   delete(...keys: string[]): Promise<void>;
@@ -79,8 +80,9 @@ export class MemoryRealtimeStore implements RealtimeStore {
     // Чтение и запись без await между ними — иначе одновременные правки
     // вклинивались бы друг между другом и терялись
     const entry = this.read(key, 'json');
-    const next = update(entry ? (JSON.parse(entry.value) as T) : null);
-    this.write(key, { kind: 'json', value: JSON.stringify(next) });
+    const current = entry ? (JSON.parse(entry.value) as T) : null;
+    const next = update(current);
+    if (next !== current) this.write(key, { kind: 'json', value: JSON.stringify(next) });
     return next;
   }
 

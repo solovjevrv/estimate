@@ -4,6 +4,18 @@ import { ValidationError } from '../../errors';
 
 import { MemoryRealtimeStore, type RealtimeStore } from './realtime-store';
 
+/**
+ * Состояние с версией (10.18): версия растёт с каждым изменением атомарно
+ * вместе с ним — по ней клиенты отбрасывают рассылки, пришедшие не по порядку
+ */
+export type VersionedTimerState = CountdownTimerState & { version: number };
+
+/** Без версии — для мест, где таймер едет внутри снимка со своим номером (комната) */
+export function withoutVersion(versioned: VersionedTimerState): CountdownTimerState {
+  const { durationSec, running, endsAt, remainingSec } = versioned;
+  return { durationSec, running, endsAt, remainingSec };
+}
+
 export interface CountdownTimerOptions {
   defaultDurationSec: number;
   /** Какие длительности принимает `reset` — у комнаты пресеты, у доски диапазон */
@@ -27,14 +39,16 @@ export class CountdownTimer {
   ) {}
 
   /** Снимок таймера; дефолтный, если по ключу его ещё не было */
-  async get(key: string): Promise<CountdownTimerState> {
+  async get(key: string): Promise<VersionedTimerState> {
     return (
-      (await this.store.getJson<CountdownTimerState>(this.storeKey(key))) ??
-      this.idle(this.options.defaultDurationSec)
+      (await this.store.getJson<VersionedTimerState>(this.storeKey(key))) ?? {
+        ...this.idle(this.options.defaultDurationSec),
+        version: 0,
+      }
     );
   }
 
-  async start(key: string): Promise<CountdownTimerState> {
+  async start(key: string): Promise<VersionedTimerState> {
     return this.update(key, (current) => {
       if (current.running) {
         return current;
@@ -50,7 +64,7 @@ export class CountdownTimer {
     });
   }
 
-  async pause(key: string): Promise<CountdownTimerState> {
+  async pause(key: string): Promise<VersionedTimerState> {
     return this.update(key, (current) => {
       if (!current.running || !current.endsAt) {
         return current;
@@ -64,7 +78,7 @@ export class CountdownTimer {
     });
   }
 
-  async reset(key: string, durationSec?: number): Promise<CountdownTimerState> {
+  async reset(key: string, durationSec?: number): Promise<VersionedTimerState> {
     return this.update(key, (current) => {
       const duration = durationSec ?? current.durationSec;
       if (!this.options.isValidDuration(duration)) {
@@ -78,7 +92,7 @@ export class CountdownTimer {
    * Добавляет время к остатку, не меняя длительность (сброс вернёт исходную).
    * У истёкшего бегущего таймера отсчёт возобновляется от текущего момента.
    */
-  async extend(key: string, addSec: number): Promise<CountdownTimerState> {
+  async extend(key: string, addSec: number): Promise<VersionedTimerState> {
     return this.update(key, (current) => {
       const now = Date.now();
       const cap = this.options.maxRemainingSec ?? Number.POSITIVE_INFINITY;
@@ -107,10 +121,15 @@ export class CountdownTimer {
   private update(
     key: string,
     command: (current: CountdownTimerState) => CountdownTimerState,
-  ): Promise<CountdownTimerState> {
-    return this.store.updateJson<CountdownTimerState>(this.storeKey(key), (stored) =>
-      command(stored ?? this.idle(this.options.defaultDurationSec)),
-    );
+  ): Promise<VersionedTimerState> {
+    return this.store.updateJson<VersionedTimerState>(this.storeKey(key), (stored) => {
+      const current = stored ?? { ...this.idle(this.options.defaultDurationSec), version: 0 };
+      const next = command(current);
+      // Команда ничего не поменяла (старт уже идущего) — версия та же, записи нет
+      if (next === current) return stored ?? current;
+      // Не меньше времени: после очистки опустевшей доски версия не откатится
+      return { ...next, version: Math.max(current.version + 1, Date.now()) };
+    });
   }
 
   /** Ключ в хранилище — для атомарной очистки опустевшей комнаты/доски */

@@ -29,7 +29,9 @@ import {
   ClusterPresence,
   CountdownTimer,
   MemoryRealtimeStore,
+  withoutVersion,
   type RealtimeStore,
+  type VersionedTimerState,
 } from '../platform/realtime';
 import type { PokerServer, PokerSocket, SocketData } from '../socket';
 
@@ -128,7 +130,7 @@ export class BoardsGateway {
           });
           // Рассылаем всем, включая отправителя — своя же операция отбрасывается
           // на клиенте по `clientOpId`, а не особым обхождением на сервере
-          io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.OPS, batch);
+          io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.OPS, { ...batch, boardId });
           // Удалённый элемент уносит свои голоса из итогов, восстановленный
           // (undo) — возвращает: снимок голосования у всех устарел
           const touched = committed.flatMap((op) =>
@@ -307,10 +309,14 @@ export class BoardsGateway {
     }
     await this.broadcastPresence(io, payload.boardId);
 
+    // Номер — до чтения снимка, как у рассылки голосования (см. broadcastVoting)
+    const votingSeq = await this.store.nextSeq(this.votingSeqKey(payload.boardId));
     const votingSnapshot = await this.voting?.loadSnapshot(payload.boardId);
     const voting = votingSnapshot ? votingStateFor(votingSnapshot, identity.participantId) : null;
     const estimates = (await this.estimates?.listForBoard(payload.boardId)) ?? {};
-    const timer = await this.timer.get(payload.boardId);
+    const versionedTimer = await this.timer.get(payload.boardId);
+    const timer = withoutVersion(versionedTimer);
+    const timerSeq = versionedTimer.version;
 
     const sinceRevision = payload.sinceRevision;
     if (sinceRevision != null) {
@@ -327,7 +333,9 @@ export class BoardsGateway {
           participantId: identity.participantId,
           guestToken,
           timer,
+          timerSeq,
           voting,
+          votingSeq,
           estimates,
         };
       }
@@ -342,7 +350,9 @@ export class BoardsGateway {
       participantId: identity.participantId,
       guestToken,
       timer,
+      timerSeq,
       voting,
+      votingSeq,
       estimates,
     };
   }
@@ -376,13 +386,26 @@ export class BoardsGateway {
     return this.voting;
   }
 
-  private emitTimer(io: PokerServer, boardId: string, state: BoardTimerState): void {
-    io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.TIMER, state);
+  /** Номер рассылки — версия состояния, она растёт атомарно вместе с ним (10.18) */
+  private emitTimer(io: PokerServer, boardId: string, versioned: VersionedTimerState): void {
+    io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.TIMER, {
+      boardId,
+      seq: versioned.version,
+      timer: withoutVersion(versioned),
+    });
+  }
+
+  private votingSeqKey(boardId: string): string {
+    return `board-voting-seq:${boardId}`;
   }
 
   /** Каждому участнику доски — его собственный снимок голосования, на любом экземпляре */
   private async broadcastVoting(io: PokerServer, boardId: string): Promise<void> {
     if (!this.voting) return;
+    // Номер — ДО чтения снимка (10.18): у рассылки с большим номером снимок не
+    // старее, клиент отбрасывает меньший — иначе запоздавший «идёт» с другого
+    // экземпляра вернул бы уже завершённое голосование
+    const seq = await this.store.nextSeq(this.votingSeqKey(boardId));
     const [snapshot, members] = await Promise.all([
       this.voting.loadSnapshot(boardId),
       this.presence.members(io, boardId),
@@ -395,7 +418,7 @@ export class BoardsGateway {
     }
     for (const [participantId, socketIds] of socketsByParticipant) {
       const state = snapshot ? votingStateFor(snapshot, participantId) : null;
-      io.to(socketIds).emit(BOARD_WS_SERVER_EVENTS.VOTING, state);
+      io.to(socketIds).emit(BOARD_WS_SERVER_EVENTS.VOTING, { boardId, seq, voting: state });
     }
   }
 
@@ -409,14 +432,14 @@ export class BoardsGateway {
     socket: PokerSocket,
     log: FastifyBaseLogger,
     ack: Ack<unknown>,
-    command: (boardId: string) => Promise<BoardTimerState>,
+    command: (boardId: string) => Promise<VersionedTimerState>,
   ): void {
     this.run<BoardTimerState>(socket, log, ack, async () => {
       const { boardId, identity } = this.requireSeat(socket);
       await this.service.assertActiveEditAccess(identity.userId, boardId);
       const state = await command(boardId);
       this.emitTimer(io, boardId, state);
-      return state;
+      return withoutVersion(state);
     });
   }
 
@@ -471,7 +494,7 @@ export class BoardsGateway {
         isGuest,
       }),
     );
-    io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.PRESENCE, { seq, entries });
+    io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.PRESENCE, { boardId, seq, entries });
   }
 
   /** Подтверждение и полезная нагрузка могут прийти в любом сочетании — разбираем аккуратно */

@@ -72,7 +72,10 @@ export class RedisRealtimeStore implements RealtimeStore {
     const full = this.key(key);
     for (let attempt = 0; attempt < UPDATE_ATTEMPTS; attempt++) {
       const raw = await this.redis.get(full);
-      const next = update(raw === null ? null : (JSON.parse(raw) as T));
+      const current = raw === null ? null : (JSON.parse(raw) as T);
+      const next = update(current);
+      // Правки нет — и писать нечего (прочитанное и так актуально)
+      if (next === current) return next;
       const written = await this.redis.eval(
         COMPARE_AND_SET_SCRIPT,
         1,

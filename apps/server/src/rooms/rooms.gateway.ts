@@ -19,7 +19,12 @@ import { isValidEmojiSequence } from '@estimate/shared/emoji/validate';
 import type { FastifyBaseLogger } from 'fastify';
 
 import { AppError, ForbiddenError, ValidationError } from '../errors';
-import { ClusterPresence, MemoryRealtimeStore, type RealtimeStore } from '../platform/realtime';
+import {
+  ClusterPresence,
+  MemoryRealtimeStore,
+  withoutVersion,
+  type RealtimeStore,
+} from '../platform/realtime';
 import type { PokerServer, PokerSocket, SocketData } from '../socket';
 
 import type { ParticipantIdentity } from './presence';
@@ -135,7 +140,7 @@ export class RoomsGateway {
         this.run<RoomTimerState>(socket, log, ack, async () => {
           const { roomId } = this.requireSeat(socket);
           await this.service.assertRoomOpen(roomId);
-          const state = await this.timer.start(roomId);
+          const state = withoutVersion(await this.timer.start(roomId));
           await this.broadcastState(io, roomId);
           return state;
         });
@@ -146,7 +151,7 @@ export class RoomsGateway {
         this.run<RoomTimerState>(socket, log, ack, async () => {
           const { roomId } = this.requireSeat(socket);
           await this.service.assertRoomOpen(roomId);
-          const state = await this.timer.pause(roomId);
+          const state = withoutVersion(await this.timer.pause(roomId));
           await this.broadcastState(io, roomId);
           return state;
         });
@@ -157,7 +162,7 @@ export class RoomsGateway {
         this.run<RoomTimerState>(socket, log, ack, async () => {
           const { roomId } = this.requireSeat(socket);
           await this.service.assertRoomOpen(roomId);
-          const state = await this.timer.reset(roomId, payload?.durationSec);
+          const state = withoutVersion(await this.timer.reset(roomId, payload?.durationSec));
           await this.broadcastState(io, roomId);
           return state;
         });
@@ -313,7 +318,7 @@ export class RoomsGateway {
     const seq = await this.store.nextSeq(this.seqKey(roomId));
     const [participants, timer, reactions] = await Promise.all([
       this.presence.list(io, roomId),
-      this.timer.get(roomId),
+      this.timer.get(roomId).then(withoutVersion),
       this.reactions.list(roomId),
     ]);
     const state = await this.service.getState(roomId, participants, timer, reactions, seq);

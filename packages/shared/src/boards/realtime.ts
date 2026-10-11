@@ -41,15 +41,24 @@ export const BOARD_WS_EVENTS = {
 export type BoardWsEvent = (typeof BOARD_WS_EVENTS)[keyof typeof BOARD_WS_EVENTS];
 
 export const BOARD_WS_SERVER_EVENTS = {
-  /** Подтверждённые операции — рассылается всем в комнате доски, включая отправителя */
+  /**
+   * Подтверждённые операции (`BoardOpsBroadcast`) — рассылается всем в комнате
+   * доски, включая отправителя
+   */
   OPS: 'board:ops',
   /** Курсоры/перетаскивание — не персистится, ретранслируется всем, кроме отправителя */
   AWARENESS: 'board:awareness',
   /** Кто сейчас смотрит доску (`BoardPresenceUpdate`) — на вход/выход участника */
   PRESENCE: 'board:presence',
-  /** Новое состояние таймера доски — всем на доске, включая того, кто его поменял */
+  /**
+   * Новое состояние таймера доски (`BoardTimerUpdate`) — всем на доске, включая
+   * того, кто его поменял
+   */
   TIMER: 'board:timer',
-  /** Голосование глазами получателя (персонально каждому сокету) или null — голосования нет */
+  /**
+   * Голосование глазами получателя (`BoardVotingUpdate`, персонально каждому
+   * сокету); `voting: null` — голосования нет
+   */
   VOTING: 'board:voting',
   /** Оценка элемента из покер-комнаты изменилась (15.6) — `BoardEstimateUpdate` всем на доске */
   ESTIMATE: 'board:estimate',
@@ -108,10 +117,39 @@ export interface JoinBoardResult {
   guestToken: string | null;
   /** Таймер доски на момент входа — дальше обновляется рассылкой `board:timer` */
   timer: BoardTimerState;
+  /** Номер состояния таймера — как `seq` у `BoardTimerUpdate` */
+  timerSeq: number;
   /** Голосование глазами вошедшего — дальше обновляется рассылкой `board:voting` */
   voting: BoardVotingState | null;
+  /** Номер снимка голосования — как `seq` у `BoardVotingUpdate` */
+  votingSeq: number;
   /** Оценки элементов из покер-комнат (15.6) — дальше обновляются рассылкой `board:estimate` */
   estimates: Record<string, BoardItemEstimate>;
+}
+
+/*
+ * Рассылки доски (10.18) несут `boardId` — пока сервер обрабатывает вход на
+ * другую доску, сокет ещё в канале прежней, и её рассылка не должна попасть в
+ * новую. Таймер и голосование несут ещё и `seq`: рассылки с разных экземпляров
+ * сервера могут прийти не по порядку — клиент отбрасывает меньший номер.
+ */
+
+export interface BoardOpsBroadcast extends BoardOpsBatch {
+  boardId: string;
+}
+
+export interface BoardTimerUpdate {
+  boardId: string;
+  /** Растёт с каждым изменением таймера — атомарно вместе с самим изменением */
+  seq: number;
+  timer: BoardTimerState;
+}
+
+export interface BoardVotingUpdate {
+  boardId: string;
+  /** Берётся до чтения снимка из БД: у большего номера снимок не старее */
+  seq: number;
+  voting: BoardVotingState | null;
 }
 
 export interface BoardEstimateUpdate {
@@ -201,6 +239,7 @@ export interface BoardPresenceEntry {
  * ушедшего участника.
  */
 export interface BoardPresenceUpdate {
+  boardId: string;
   seq: number;
   entries: BoardPresenceEntry[];
 }

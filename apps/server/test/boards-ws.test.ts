@@ -15,7 +15,9 @@ import type {
   BoardOpsBatch,
   BoardPresenceUpdate,
   BoardTimerState,
+  BoardTimerUpdate,
   BoardVotingState,
+  BoardVotingUpdate,
   BoardVotingSummary,
   EstimateRoomLink,
   JoinBoardResult,
@@ -693,14 +695,19 @@ describeDb('WS-канал досок', () => {
       await joinBoard(ownerClient, boardId);
       await joinBoard(memberClient, boardId);
 
-      const broadcast = waitFor<BoardTimerState>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER);
+      const broadcast = waitFor<BoardTimerUpdate>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER).then(
+        (u) => u.timer,
+      );
       const reset = await emit<BoardTimerState>(memberClient, BOARD_WS_EVENTS.TIMER_RESET, {
         durationSec: 1800,
       });
       expect(reset.ok && reset.data.durationSec).toBe(1800);
       expect((await broadcast).durationSec).toBe(1800);
 
-      const startedBroadcast = waitFor<BoardTimerState>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER);
+      const startedBroadcast = waitFor<BoardTimerUpdate>(
+        ownerClient,
+        BOARD_WS_SERVER_EVENTS.TIMER,
+      ).then((u) => u.timer);
       const started = await emit<BoardTimerState>(memberClient, BOARD_WS_EVENTS.TIMER_START);
       expect(started.ok && started.data.running).toBe(true);
       expect((await startedBroadcast).endsAt).not.toBeNull();
@@ -821,8 +828,8 @@ describeDb('WS-канал досок', () => {
     ): Promise<{ ack: WsAck<null>; state: BoardVotingState | null }> {
       const received: Array<BoardVotingState | null> = [];
       let notify: (() => void) | null = null;
-      const onState = (state: BoardVotingState | null): void => {
-        received.push(state);
+      const onState = (update: BoardVotingUpdate): void => {
+        received.push(update.voting);
         notify?.();
       };
       listener.on(BOARD_WS_SERVER_EVENTS.VOTING, onState);
@@ -1046,7 +1053,9 @@ describeDb('WS-канал досок', () => {
       const { ownerClient } = await teamBoard('vote-timer');
       await emit<BoardTimerState>(ownerClient, BOARD_WS_EVENTS.TIMER_RESET, { durationSec: 60 });
 
-      const started = waitFor<BoardTimerState>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER);
+      const started = waitFor<BoardTimerUpdate>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER).then(
+        (u) => u.timer,
+      );
       const { state } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
         votesPerParticipant: 3,
         maxPerItem: 3,
@@ -1054,7 +1063,9 @@ describeDb('WS-канал досок', () => {
       });
       expect((await started).running).toBe(true);
 
-      const reset = waitFor<BoardTimerState>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER);
+      const reset = waitFor<BoardTimerUpdate>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER).then(
+        (u) => u.timer,
+      );
       await act(ownerClient, BOARD_WS_EVENTS.VOTING_CLOSE, { votingId: state!.id });
       expect(await reset).toMatchObject({ running: false, remainingSec: 60 });
     });
@@ -1124,7 +1135,9 @@ describeDb('WS-канал досок', () => {
         delta: 1,
       });
 
-      const next = waitFor<BoardVotingState | null>(ownerClient, BOARD_WS_SERVER_EVENTS.VOTING);
+      const next = waitFor<BoardVotingUpdate>(ownerClient, BOARD_WS_SERVER_EVENTS.VOTING).then(
+        (u) => u.voting,
+      );
       await emit<ApplyBoardOpsResult>(ownerClient, BOARD_WS_EVENTS.APPLY, {
         ops: [{ type: 'item.delete', clientOpId: 'del', id: a.id }],
       });
@@ -1134,7 +1147,9 @@ describeDb('WS-канал досок', () => {
       expect(after?.myRemaining).toBe(3);
 
       // Ctrl+Z восстанавливает элемент с тем же id — голоса возвращаются
-      const restored = waitFor<BoardVotingState | null>(ownerClient, BOARD_WS_SERVER_EVENTS.VOTING);
+      const restored = waitFor<BoardVotingUpdate>(ownerClient, BOARD_WS_SERVER_EVENTS.VOTING).then(
+        (u) => u.voting,
+      );
       await emit<ApplyBoardOpsResult>(ownerClient, BOARD_WS_EVENTS.APPLY, {
         ops: [{ type: 'item.create', clientOpId: 'undo', item: a }],
       });

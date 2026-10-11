@@ -8,9 +8,11 @@ import type {
   ApplyBoardOpsResult,
   BoardAwarenessBroadcast,
   BoardAwarenessPayload,
-  BoardOpsBatch,
   BoardPresenceUpdate,
   BoardTimerState,
+  BoardTimerUpdate,
+  BoardVotingUpdate,
+  BoardOpsBroadcast,
   BoardVotePayload,
   BoardVotingRefPayload,
   BoardEstimateUpdate,
@@ -61,15 +63,15 @@ interface ServerToClientEvents {
   /** Адресное событие только исключённому — приходит перед разрывом соединения */
   [WS_SERVER_EVENTS.KICKED]: (payload: Record<string, never>) => void;
   /** Подтверждённые операции доски — включая эхо своих же (отбрасывается по `clientOpId`) */
-  [BOARD_WS_SERVER_EVENTS.OPS]: (batch: BoardOpsBatch) => void;
+  [BOARD_WS_SERVER_EVENTS.OPS]: (batch: BoardOpsBroadcast) => void;
   /** Курсоры/перетаскивание — не персистится, приходит от всех, кроме себя самого */
   [BOARD_WS_SERVER_EVENTS.AWARENESS]: (payload: BoardAwarenessBroadcast) => void;
   /** Кто сейчас смотрит доску */
   [BOARD_WS_SERVER_EVENTS.PRESENCE]: (update: BoardPresenceUpdate) => void;
   /** Новое состояние таймера доски (15.3) — включая собственные команды */
-  [BOARD_WS_SERVER_EVENTS.TIMER]: (state: BoardTimerState) => void;
+  [BOARD_WS_SERVER_EVENTS.TIMER]: (update: BoardTimerUpdate) => void;
   /** Голосование глазами этого участника (15.2); null — голосования нет */
-  [BOARD_WS_SERVER_EVENTS.VOTING]: (state: BoardVotingState | null) => void;
+  [BOARD_WS_SERVER_EVENTS.VOTING]: (update: BoardVotingUpdate) => void;
   /** Оценка элемента из покер-комнаты изменилась (15.6) */
   [BOARD_WS_SERVER_EVENTS.ESTIMATE]: (update: BoardEstimateUpdate) => void;
   /** Доступ к доске изменился (10.24) — сокет уже вне канала доски, нужно войти заново */

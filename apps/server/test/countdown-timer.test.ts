@@ -80,11 +80,32 @@ describe('CountdownTimer', () => {
     await timer.start(KEY);
     await timer.extend(KEY, 60);
 
-    expect(await timer.reset(KEY)).toEqual({
+    expect(await timer.reset(KEY)).toMatchObject({
       durationSec: 300,
       running: false,
       endsAt: null,
       remainingSec: 300,
     });
+  });
+
+  it('версия растёт с каждым изменением, команда без изменений её не двигает (10.18)', async () => {
+    const timer = boardLikeTimer();
+    expect((await timer.get(KEY)).version).toBe(0);
+
+    const started = await timer.start(KEY);
+    const again = await timer.start(KEY);
+    const paused = await timer.pause(KEY);
+
+    expect(started.version).toBeGreaterThan(0);
+    expect(again.version).toBe(started.version);
+    expect(paused.version).toBeGreaterThan(started.version);
+  });
+
+  it('после очистки версия не откатывается назад — клиенты не отбросят новое состояние', async () => {
+    const timer = boardLikeTimer();
+    const before = await timer.start(KEY);
+    await timer.clear(KEY);
+
+    expect((await timer.reset(KEY, 600)).version).toBeGreaterThanOrEqual(before.version);
   });
 });
