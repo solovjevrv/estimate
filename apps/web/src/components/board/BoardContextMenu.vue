@@ -28,6 +28,8 @@ const props = defineProps<{
   canGroup?: boolean;
   /** Разгруппировка возможна: хотя бы один выделенный элемент сейчас внутри контейнера (14.3) */
   canUngroup?: boolean;
+  /** Оценка в покере (15.6): завести комнату или открыть уже заведённую; нет — пункта нет */
+  estimate?: 'create' | 'open' | null;
 }>();
 
 const emit = defineEmits<{
@@ -37,6 +39,7 @@ const emit = defineEmits<{
   group: [];
   ungroup: [];
   addText: [];
+  estimate: [];
   delete: [];
   close: [];
 }>();
@@ -113,6 +116,25 @@ function act(fn: () => void): void {
         <UIcon name="i-lucide-ungroup" class="size-4" />
         {{ t('board.ungroupSelection') }}
       </button>
+      <template v-if="props.estimate">
+        <div class="board-context-menu-divider" />
+        <button
+          type="button"
+          data-testid="board-context-estimate"
+          class="board-context-menu-item"
+          @click="act(() => emit('estimate'))"
+        >
+          <UIcon
+            :name="
+              props.estimate === 'open' ? 'i-lucide-square-arrow-out-up-right' : 'i-lucide-spade'
+            "
+            class="size-4"
+          />
+          {{
+            props.estimate === 'open' ? t('board.estimate.openRoom') : t('board.estimate.button')
+          }}
+        </button>
+      </template>
       <div class="board-context-menu-divider" />
     </template>
     <template v-else>

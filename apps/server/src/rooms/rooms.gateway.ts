@@ -42,9 +42,25 @@ const NO_OP_ACK: Ack<unknown> = () => {};
  * Игровые события комнаты. Права проверяются на каждом событии: клиент
  * присылает только намерение, роль и состояние берутся с сервера.
  */
+/** Итог раунда мог измениться (вскрытие, переголосование) — для оценки на доске (15.6) */
+export type RoomResultListener = (io: PokerServer, roomId: string) => Promise<void>;
+
 export class RoomsGateway {
   /** Незавершённые рассылки по комнатам: по одной очереди на комнату */
   private readonly broadcasts = new Map<string, Promise<void>>();
+  private resultListener: RoomResultListener | undefined;
+
+  onRoundResult(listener: RoomResultListener | undefined): this {
+    this.resultListener = listener;
+    return this;
+  }
+
+  /** Не блокирует ответ комнате: доска узнает об оценке чуть позже, ошибка — только в лог */
+  private notifyResult(io: PokerServer, roomId: string, log: FastifyBaseLogger): void {
+    void this.resultListener?.(io, roomId).catch((err: unknown) => {
+      log.warn({ err, roomId }, 'Не удалось разослать оценку на доску');
+    });
+  }
 
   constructor(
     private readonly service: RoomsGameService,
@@ -66,6 +82,7 @@ export class RoomsGateway {
           const { roomId, identity } = this.requireSeat(socket);
           await this.service.submitVote(roomId, identity, payload ?? ({} as SubmitVotePayload));
           await this.broadcastState(io, roomId);
+          this.notifyResult(io, roomId, log);
           return null;
         });
       });
@@ -76,6 +93,7 @@ export class RoomsGateway {
           const { roomId, identity } = this.requireSeat(socket);
           const result = await this.service.revealCards(roomId, identity, payload ?? {});
           await this.broadcastState(io, roomId);
+          this.notifyResult(io, roomId, log);
           return result;
         });
       });

@@ -6,6 +6,7 @@
  */
 import type { InjectionKey, Ref } from 'vue';
 
+import type { BoardEstimate } from '../composables/use-board-estimate';
 import type { BoardVotingNodeContext } from '../composables/use-board-voting';
 import type { BoardTextEditorHandle } from '../rich-text/board-rich-text';
 import type { ResizeAxisFlags, SnapRect } from '../domain/board-snap';
@@ -76,3 +77,10 @@ export const BOARD_RESIZE_SNAP_KEY: InjectionKey<BoardResizeSnapContext> =
  * снятие своей точки. Не задано (экспорт PNG, тесты узлов) — бейджей нет.
  */
 export const BOARD_VOTING_KEY: InjectionKey<BoardVotingNodeContext> = Symbol('boardVoting');
+
+/**
+ * Оценка из покер-комнаты (15.6) для бейджа внутри узла. Не задано (экспорт
+ * PNG, тесты узлов) — бейджей оценки нет.
+ */
+export const BOARD_ESTIMATE_KEY: InjectionKey<Pick<BoardEstimate, 'estimateFor'>> =
+  Symbol('boardEstimate');

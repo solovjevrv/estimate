@@ -23,3 +23,4 @@ export {
 export { BoardVotingRepository } from './board-voting.repository';
 export { votingResults, votingStateFor, type BoardVotingSnapshot } from './board-voting-state';
 export { BoardThumbnailsService, boardThumbnailKey } from './board-thumbnails.service';
+export { BoardEstimatesService, type BoardEstimatesAccess } from './board-estimates.service';

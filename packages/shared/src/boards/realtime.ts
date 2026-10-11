@@ -1,7 +1,7 @@
 /** Общие типы и контракты, используемые фронтендом и бэкендом. */
 
 import type { BoardAccessLevel } from './permissions';
-import type { BoardEdge, BoardItem, BoardSnapshot } from './entities';
+import type { BoardEdge, BoardItem, BoardItemEstimate, BoardSnapshot } from './entities';
 import type { BoardOp } from './operations';
 import type { CountdownTimerState } from '../timer';
 import type { BoardVotingState } from './voting';
@@ -51,6 +51,14 @@ export const BOARD_WS_SERVER_EVENTS = {
   TIMER: 'board:timer',
   /** Голосование глазами получателя (персонально каждому сокету) или null — голосования нет */
   VOTING: 'board:voting',
+  /** Оценка элемента из покер-комнаты изменилась (15.6) — `BoardEstimateUpdate` всем на доске */
+  ESTIMATE: 'board:estimate',
+  /**
+   * Доступ к доске изменился (перенос 10.24): сервер уже вывел все сокеты из
+   * канала доски — клиент заново грузит доску и входит, у кого доступа нет,
+   * получает «не найдена». Без данных.
+   */
+  ACCESS: 'board:access',
 } as const;
 
 export type BoardWsServerEvent =
@@ -102,6 +110,13 @@ export interface JoinBoardResult {
   timer: BoardTimerState;
   /** Голосование глазами вошедшего — дальше обновляется рассылкой `board:voting` */
   voting: BoardVotingState | null;
+  /** Оценки элементов из покер-комнат (15.6) — дальше обновляются рассылкой `board:estimate` */
+  estimates: Record<string, BoardItemEstimate>;
+}
+
+export interface BoardEstimateUpdate {
+  itemId: string;
+  estimate: BoardItemEstimate;
 }
 
 /** Таймер доски (15.3) — тот же общий таймер отсчёта, что у комнаты */

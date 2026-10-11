@@ -3,11 +3,12 @@ import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
-import { archivedQuerySchema, idParamsSchema } from '../http/schemas';
+import { archivedQuerySchema, idParamsSchema, moveTeamBodySchema } from '../http/schemas';
 
 import type {
   ArchivedQuery,
   CreateRoomBody,
+  MoveBody,
   NameBody,
   RoomIdParams,
   TeamIdParams,
@@ -102,13 +103,21 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
           summary: 'Комната по ссылке',
           description:
             'Открыта без входа: по прямой ссылке в комнату может зайти и гость. `teamName` — ' +
-            'название команды для шапки комнаты, null у личной.',
+            'название команды для шапки комнаты, null у личной. `board` — доска, с которой ' +
+            'комнату завели для оценки элемента (15.6), иначе null.',
           params: idParamsSchema,
           response: {
             200: {
               description: 'Комната',
               type: 'object',
-              properties: { room: roomResponse, teamName: { type: ['string', 'null'] } },
+              properties: {
+                room: roomResponse,
+                teamName: { type: ['string', 'null'] },
+                board: {
+                  type: ['object', 'null'],
+                  properties: { id: { type: 'string' }, name: { type: 'string' } },
+                },
+              },
             },
             404: { description: 'Комната не найдена', ...errorResponse },
           },
@@ -264,6 +273,37 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
         },
       },
       controller.rename,
+    );
+
+    rooms.patch<{ Params: RoomIdParams; Body: MoveBody }>(
+      '/api/rooms/:id/team',
+      {
+        preHandler: authenticate,
+        schema: {
+          tags: [DOCS_TAGS.rooms],
+          summary: 'Перенести комнату',
+          description:
+            'Личная ↔ командная или в другую команду (10.24). Переносит скрам-мастер; в ' +
+            'команду — только её администратор (как при создании). `teamId: null` — личная ' +
+            'у создателя.',
+          security: [{ session: [] }],
+          params: idParamsSchema,
+          body: moveTeamBodySchema,
+          response: {
+            200: {
+              description: 'Комната перенесена',
+              type: 'object',
+              properties: { room: roomResponse },
+            },
+            400: { description: 'Некорректная команда', ...errorResponse },
+            401: { description: 'Требуется вход', ...errorResponse },
+            403: { description: 'Нет прав на перенос', ...errorResponse },
+            404: { description: 'Комната или команда не найдена', ...errorResponse },
+            409: { description: 'Уже там или некому отдать', ...errorResponse },
+          },
+        },
+      },
+      controller.move,
     );
 
     rooms.delete<{ Params: RoomIdParams }>(

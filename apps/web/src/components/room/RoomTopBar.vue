@@ -9,16 +9,24 @@ const props = defineProps<{
   teamId: string | null;
   /** Название команды для подзаголовка «Команда «…»» (07_Room); null — не известно */
   teamName: string | null;
+  /** Доска, с которой комнату завели для оценки элемента (15.6) — ссылка «Из доски «…»» */
+  board?: { id: string; name: string } | null;
   archived: boolean;
   connected: boolean;
   canArchive: boolean;
   canRename: boolean;
+  /** Есть куда перенести (10.24) — иначе пункта «Перенести…» нет */
+  canMove?: boolean;
 }>();
 
-const emit = defineEmits<{ archive: []; rename: [] }>();
+const emit = defineEmits<{ archive: []; rename: []; move: [] }>();
 
 const { t } = useI18n();
 const toast = useToast();
+
+const boardPath = computed(() =>
+  props.board ? `/boards/${encodeURIComponent(props.board.id)}` : '',
+);
 
 const subtitle = computed(() => {
   if (!props.teamId) return t('room.personalRoomSubtitle');
@@ -37,9 +45,17 @@ async function copyLink(): Promise<void> {
 const menuItems = computed<DropdownMenuItem[][]>(() => {
   const groups: DropdownMenuItem[][] = [];
   if (props.canRename) {
-    groups.push([
+    const group: DropdownMenuItem[] = [
       { label: t('room.rename'), icon: 'i-lucide-pencil', onSelect: () => emit('rename') },
-    ]);
+    ];
+    // Перенос (10.24) — тому же скрам-мастеру, что архивирует; архивную не переносим
+    if (props.canArchive && props.canMove)
+      group.push({
+        label: t('move.menu'),
+        icon: 'i-lucide-folder-input',
+        onSelect: () => emit('move'),
+      });
+    groups.push(group);
   }
   groups.push([
     { label: t('room.copyLink'), icon: 'i-lucide-link', onSelect: () => void copyLink() },
@@ -81,7 +97,16 @@ const menuItems = computed<DropdownMenuItem[][]>(() => {
         </span>
       </div>
       <p class="text-text-secondary mt-1 text-sm">
-        {{ subtitle }}
+        {{ subtitle
+        }}<template v-if="props.board">
+          · {{ t('room.fromBoard') }}
+          <RouterLink
+            data-testid="room-from-board"
+            :to="boardPath"
+            class="text-[var(--text-link)] hover:underline"
+            >«{{ props.board.name }}»</RouterLink
+          >
+        </template>
       </p>
     </div>
     <UDropdownMenu :items="menuItems">

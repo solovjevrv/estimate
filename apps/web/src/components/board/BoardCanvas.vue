@@ -69,6 +69,7 @@ import {
 import {
   BOARD_ACTIVE_TEXT_EDITOR_KEY,
   BOARD_CAN_EDIT_KEY,
+  BOARD_ESTIMATE_KEY,
   BOARD_VOTING_KEY,
   BOARD_LOCAL_DRAGGING_KEY,
   BOARD_EFFECTIVE_FONT_SIZE_REGISTRY_KEY,
@@ -85,6 +86,8 @@ import { useBoardHotkeys } from '../../features/boards/composables/use-board-hot
 import type { BoardTimerCommands } from '../../features/boards/composables/use-board-timer';
 import { useBoardVoting } from '../../features/boards/composables/use-board-voting';
 import { useBoardArrange } from '../../features/boards/composables/use-board-arrange';
+import { useBoardEstimate } from '../../features/boards/composables/use-board-estimate';
+import { createEstimateRooms } from '../../features/boards/api/boards-api';
 import type {
   BoardDragEvent,
   BoardDragNode,
@@ -98,6 +101,7 @@ import {
   createFlowNodesConverter,
 } from '../../features/boards/adapters/vue-flow-adapter';
 import { useBoardSessionStore } from '../../stores/board-session';
+import { useSessionStore } from '../../stores/session';
 import { useBoardClipboard } from '../../features/boards/composables/use-board-clipboard';
 import { useBoardCreation } from '../../features/boards/composables/use-board-creation';
 import { useBoardDragAndSnap } from '../../features/boards/composables/use-board-drag-and-snap';
@@ -107,6 +111,7 @@ import { useBoardSelection } from '../../features/boards/composables/use-board-s
 import { useBoardViewport } from '../../features/boards/composables/use-board-viewport';
 import BoardSelectionToolbar from './BoardSelectionToolbar.vue';
 import BoardArrangeButton from './BoardArrangeButton.vue';
+import BoardEstimateButton from './BoardEstimateButton.vue';
 import BoardContextMenu from './BoardContextMenu.vue';
 import BoardControlsCluster from './BoardControlsCluster.vue';
 import BoardCursor from './BoardCursor.vue';
@@ -142,6 +147,8 @@ const props = defineProps<{
   /** Название команды — только для командной доски, для подписи "Командная доска · Team" */
   teamName?: string | null;
   canManage: boolean;
+  /** Есть куда перенести доску (10.24) — иначе пункта «Перенести…» нет */
+  canMove?: boolean;
   /** Может редактировать содержимое (уровень доступа `edit` из 12.4) — участник/админ команды, не гость */
   canEdit: boolean;
   items: BoardItem[];
@@ -150,6 +157,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   rename: [];
+  move: [];
   archive: [];
   unarchive: [];
   delete: [];
@@ -159,6 +167,7 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const toast = useToast();
 const boardSession = useBoardSessionStore();
+const sessionStore = useSessionStore();
 
 /** Команды таймера доски (15.3) — стор шлёт их по сокету, состояние приходит рассылкой */
 const timerCommands: BoardTimerCommands = {
@@ -254,7 +263,18 @@ const menuItems = computed<DropdownMenuItem[][]>(() =>
         ],
       ]
     : [
-        [{ label: t('board.rename'), icon: 'i-lucide-pencil', onSelect: () => emit('rename') }],
+        [
+          { label: t('board.rename'), icon: 'i-lucide-pencil', onSelect: () => emit('rename') },
+          ...(props.canMove
+            ? [
+                {
+                  label: t('move.menu'),
+                  icon: 'i-lucide-folder-input',
+                  onSelect: () => emit('move'),
+                },
+              ]
+            : []),
+        ],
         [
           {
             label: t('board.share'),
@@ -321,12 +341,14 @@ watch(voting.isActive, (active) => {
  * голосам» в итогах. Элементы — из `props.items` по id выделения: данные узлов
  * Vue Flow декорированы голосованием, а раскладке нужен сам домен.
  */
+function selectedDomainItems(): BoardItem[] {
+  const ids = new Set(getSelectedNodes.value.map((node) => node.id));
+  return props.items.filter((item) => ids.has(item.id));
+}
+
 const arrange = useBoardArrange({
   items: () => props.items,
-  selectedItems: () => {
-    const ids = new Set(getSelectedNodes.value.map((node) => node.id));
-    return props.items.filter((item) => ids.has(item.id));
-  },
+  selectedItems: selectedDomainItems,
   voting,
   authorNames: () => boardSession.authorNames,
   canEdit: () => props.canEdit,
@@ -354,6 +376,21 @@ const arrange = useBoardArrange({
     });
   },
 });
+
+/**
+ * Оценка в покере (15.6): «Оценить в покере» в тулбаре и контекстном меню,
+ * бейдж оценки в узлах. Комнату заводит только вошедший в аккаунт с правом
+ * правки — гостю доски её не на кого записать.
+ */
+const estimate = useBoardEstimate({
+  boardId: () => props.board.id,
+  selectedItems: selectedDomainItems,
+  estimates: () => boardSession.estimates,
+  canCreate: () => props.canEdit && sessionStore.isAuthenticated,
+  voting,
+  createRooms: createEstimateRooms,
+});
+provide(BOARD_ESTIMATE_KEY, estimate);
 
 /** Строка итогов голосования — камера к элементу, масштаб не меняем */
 function focusVotingItem(itemId: string): void {
@@ -1052,6 +1089,12 @@ useBoardHotkeys({
             }"
             @pick="arrange.arrangeSelection"
           />
+          <BoardEstimateButton
+            v-if="estimate.action.value"
+            :action="estimate.action.value"
+            :pending="estimate.pending.value"
+            @run="estimate.run()"
+          />
         </template>
       </BoardSelectionToolbar>
 
@@ -1096,12 +1139,14 @@ useBoardHotkeys({
         :target="contextMenu.target"
         :can-group="canGroupSelection"
         :can-ungroup="canUngroupSelection"
+        :estimate="contextMenu.target === 'item' ? estimate.action.value : null"
         @bring-to-front="bringSelectedToFront"
         @send-to-back="sendSelectedToBack"
         @duplicate="duplicateSelected"
         @group="groupSelection"
         @ungroup="ungroupSelection"
         @add-text="edges.addTextToSelectedEdge"
+        @estimate="estimate.run()"
         @delete="contextMenu.target === 'item' ? deleteSelected() : edges.deleteSelectedEdges()"
         @close="closeContextMenu"
       />

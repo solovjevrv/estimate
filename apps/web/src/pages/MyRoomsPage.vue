@@ -355,6 +355,7 @@ async function confirmDelete(): Promise<void> {
         :delete-label="t('myRooms.deleteRoom')"
         @select-tab="selectRoomsTab"
         @rename="askRenameRoom"
+        @moved="reloadRoomsAfterMutation"
         @archive="askArchiveRoom"
         @delete="askDelete"
         @retry="load"

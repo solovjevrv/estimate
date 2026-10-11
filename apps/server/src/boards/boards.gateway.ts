@@ -30,6 +30,7 @@ import { CountdownTimer, PresenceRegistry } from '../platform/realtime';
 import type { PokerServer, PokerSocket } from '../socket';
 
 import { votingStateFor } from './board-voting-state';
+import type { BoardEstimatesService } from './board-estimates.service';
 import type { BoardVotingService } from './board-voting.service';
 import type { BoardParticipantIdentity } from './presence';
 import type { BoardsService } from './boards.service';
@@ -68,6 +69,14 @@ export class BoardsGateway {
       maxRemainingSec: BOARD_TIMER_MAX_DURATION_SEC,
     }),
   ) {}
+
+  private estimates: BoardEstimatesService | undefined;
+
+  /** Оценки из покер-комнат (15.6) — отдаются при входе; не подключены — пусто */
+  withEstimates(estimates: BoardEstimatesService | undefined): this {
+    this.estimates = estimates;
+    return this;
+  }
 
   register(io: PokerServer, log: FastifyBaseLogger): void {
     io.on('connection', (socket) => {
@@ -272,6 +281,7 @@ export class BoardsGateway {
 
     const votingSnapshot = await this.voting?.loadSnapshot(payload.boardId);
     const voting = votingSnapshot ? votingStateFor(votingSnapshot, identity.participantId) : null;
+    const estimates = (await this.estimates?.listForBoard(payload.boardId)) ?? {};
 
     const sinceRevision = payload.sinceRevision;
     const buffered =
@@ -286,6 +296,7 @@ export class BoardsGateway {
         guestToken,
         timer: this.timer.get(payload.boardId),
         voting,
+        estimates,
       };
     }
 
@@ -299,6 +310,7 @@ export class BoardsGateway {
       guestToken,
       timer: this.timer.get(payload.boardId),
       voting,
+      estimates,
     };
   }
 

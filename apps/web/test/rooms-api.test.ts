@@ -78,7 +78,7 @@ describe('API создания комнат', () => {
   it('getRoom возвращает комнату с названием команды по id (id кодируется)', async () => {
     fetchMock.mockResolvedValue(json(200, { room, teamName: 'Платформа' }));
     const result = await getRoom('a/b');
-    expect(result).toEqual({ room, teamName: 'Платформа' });
+    expect(result).toEqual({ room, teamName: 'Платформа', board: null });
     expect(fetchMock.mock.calls[0]?.[0]).toBe('/api/rooms/a%2Fb');
   });
 

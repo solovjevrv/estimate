@@ -13,7 +13,7 @@ export function createRoom(name: string, teamId?: string): Promise<Room> {
 export function getRoom(roomId: string): Promise<RoomDetails> {
   return api
     .get<RoomDetails>(`/api/rooms/${encodeURIComponent(roomId)}`)
-    .then((res) => ({ room: res.room, teamName: res.teamName ?? null }));
+    .then((res) => ({ room: res.room, teamName: res.teamName ?? null, board: res.board ?? null }));
 }
 
 /** История вскрытых раундов с итогами — для страницы комнаты */
@@ -50,4 +50,11 @@ export function renameRoom(roomId: string, name: string): Promise<Room> {
 /** Раундов сыграно, задач оценено и среднее время раунда — по всем своим комнатам */
 export function getMyRoomStats(): Promise<RoomStats> {
   return api.get<{ stats: RoomStats }>('/api/rooms/stats').then((res) => res.stats);
+}
+
+/** Перенести комнату (10.24): в команду по id или null — сделать личной у создателя */
+export function moveRoom(roomId: string, teamId: string | null): Promise<Room> {
+  return api
+    .patch<{ room: Room }>(`/api/rooms/${encodeURIComponent(roomId)}/team`, { teamId })
+    .then((res) => res.room);
 }

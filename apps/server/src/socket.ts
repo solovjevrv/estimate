@@ -1,7 +1,14 @@
 import type { FastifyInstance } from 'fastify';
 import { Server, type Socket } from 'socket.io';
 
-import { BoardsGateway, BoardsService, type BoardVotingService } from './boards';
+import { BOARD_WS_SERVER_EVENTS } from '@estimate/shared';
+
+import {
+  BoardsGateway,
+  BoardsService,
+  type BoardEstimatesService,
+  type BoardVotingService,
+} from './boards';
 import { RoomsGameService, RoomsGateway } from './rooms';
 
 /** Данные, которые сервер держит на каждом подключении */
@@ -40,6 +47,8 @@ export interface SocketGatewayOptions {
   corsOrigin: string;
   /** Голосование точками на досках (15.2); не задано — его события отклоняются */
   boardVoting?: BoardVotingService;
+  /** Оценки элементов доски из покер-комнат (15.6); не задано — оценок нет */
+  boardEstimates?: BoardEstimatesService;
 }
 
 /**
@@ -80,8 +89,20 @@ export class SocketGateway {
       next();
     });
 
-    new RoomsGateway(this.roomsService).register(io, app.log);
-    new BoardsGateway(this.boardsService, this.options.boardVoting).register(io, app.log);
+    const estimates = this.options.boardEstimates;
+    new RoomsGateway(this.roomsService)
+      .onRoundResult(
+        estimates &&
+          (async (server, roomId) => {
+            const linked = await estimates.forRoom(roomId);
+            if (linked)
+              server.to(linked.boardId).emit(BOARD_WS_SERVER_EVENTS.ESTIMATE, linked.update);
+          }),
+      )
+      .register(io, app.log);
+    new BoardsGateway(this.boardsService, this.options.boardVoting)
+      .withEstimates(estimates)
+      .register(io, app.log);
 
     io.on('connection', (socket) => {
       app.log.info({ socketId: socket.id, userId: socket.data.userId }, 'Socket.io: подключение');

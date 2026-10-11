@@ -255,7 +255,7 @@ export function useBoardVoting(options: UseBoardVotingOptions) {
     if (scope === 'board') return null;
     const items = options.items();
     if (scope === 'selected') {
-      // Выделенная группа голосует своими участниками; сервер отбросит нетекстовое сам
+      // Выделенная группа голосует своими участниками; сервер отбросит всё, кроме стикеров, сам
       const selected = new Set(options.selectedIds());
       return items
         .filter((item) => selected.has(item.id) || (item.parentId && selected.has(item.parentId)))

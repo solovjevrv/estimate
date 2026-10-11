@@ -128,9 +128,21 @@ export const rooms = pgTable(
     confluenceUrl: text('confluence_url'),
     /** Версия ссылок для оптимистичной блокировки: растёт с каждой правкой */
     linksVersion: integer('links_version').notNull().default(1),
+    /**
+     * Комната оценки, заведённая с доски (15.6): доска и элемент, оценку
+     * которого она даёт. Доска удалена — ссылка обнуляется, комната остаётся.
+     * На элемент FK нет: его удаляют и возвращают Ctrl+Z с тем же id — связь
+     * должна это пережить. Один элемент — одна комната (уникальный индекс).
+     */
+    boardId: uuid('board_id').references(() => boards.id, { onDelete: 'set null' }),
+    boardItemId: uuid('board_item_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index('rooms_team_id_idx').on(t.teamId)],
+  (t) => [
+    index('rooms_team_id_idx').on(t.teamId),
+    index('rooms_board_id_idx').on(t.boardId),
+    uniqueIndex('rooms_board_item_id_idx').on(t.boardItemId),
+  ],
 );
 
 export const rounds = pgTable(

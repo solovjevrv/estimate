@@ -492,6 +492,27 @@ describe('подзаголовок «Команда «…»/Личная ком�
     expect(wrapper.text()).not.toContain('Командная комната');
   });
 
+  it('комната с доски — ссылка «Из доски «…»» назад на доску (15.6)', async () => {
+    const teamRoom: Room = { ...room1, teamId: 't1' };
+    socket.next = { state: roomState({ room: teamRoom }), guestToken: null, participantId: 'u1' };
+
+    const { wrapper } = await mountApp(
+      '/rooms/r1',
+      makeFetch(true, {
+        'GET /api/rooms/r1': () =>
+          json(200, {
+            room: teamRoom,
+            teamName: 'Платформа',
+            board: { id: 'b1', name: 'Груминг спринта 25' },
+          }),
+      }),
+    );
+
+    await vi.waitFor(() => expect(wrapper.text()).toContain('Участники'));
+    expect(wrapper.text()).toContain('Команда «Платформа» · Из доски «Груминг спринта 25»');
+    expect(wrapper.get('[data-testid="room-from-board"]').attributes('href')).toBe('/boards/b1');
+  });
+
   it('без названия команды в ответе показывает «Командная комната»', async () => {
     const teamRoom: Room = { ...room1, teamId: 't1' };
     socket.next = { state: roomState({ room: teamRoom }), guestToken: null, participantId: 'u1' };

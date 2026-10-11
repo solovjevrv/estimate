@@ -15,3 +15,11 @@ export const archivedQuerySchema = {
   type: 'object',
   properties: { archived: { type: 'string', enum: ['true', 'false'] } },
 } as const;
+
+/** Тело переноса комнаты/доски (10.24): id команды или null — сделать личной */
+export const moveTeamBodySchema = {
+  type: 'object',
+  required: ['teamId'],
+  additionalProperties: false,
+  properties: { teamId: { type: ['string', 'null'], format: 'uuid' } },
+} as const;

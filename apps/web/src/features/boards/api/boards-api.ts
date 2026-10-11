@@ -1,5 +1,14 @@
 /** REST-слой досок: единственное место, знающее URL `/api/boards`, FormData и коды ответов. */
-import type { Board, BoardShareRole, BoardSnapshot, BoardSummary } from '@estimate/shared';
+import type {
+  Board,
+  BoardShareRole,
+  BoardSnapshot,
+  BoardSummary,
+  CreateEstimateRoomsPayload,
+  CreateEstimateRoomsResult,
+  EstimateRoomLink,
+  MoveBoardResult,
+} from '@estimate/shared';
 import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_IMAGE_MAX_BYTES } from '@estimate/shared';
 import { ApiError, api } from '../../../lib/api';
 
@@ -114,4 +123,31 @@ export async function uploadBoardAsset(
     }
     return { ok: false, reason: 'failed' };
   }
+}
+
+/**
+ * Отправить элементы в покер (15.6): по комнате на каждый, у кого её ещё нет;
+ * существующие возвращаются с `created: false`.
+ */
+export function createEstimateRooms(
+  boardId: string,
+  itemIds: string[],
+): Promise<EstimateRoomLink[]> {
+  return api
+    .post<CreateEstimateRoomsResult>(`/api/boards/${encodeURIComponent(boardId)}/estimate-rooms`, {
+      itemIds,
+    } satisfies CreateEstimateRoomsPayload)
+    .then((res) => res.rooms);
+}
+
+/** Перенести доску (10.24) вместе с её комнатами оценки; null — сделать личной у владельца */
+export function moveBoard(boardId: string, teamId: string | null): Promise<MoveBoardResult> {
+  return api.patch<MoveBoardResult>(`/api/boards/${encodeURIComponent(boardId)}/team`, { teamId });
+}
+
+/** Сколько комнат оценки уедет вместе с доской при переносе (10.24) */
+export function countEstimateRooms(boardId: string): Promise<number> {
+  return api
+    .get<{ count: number }>(`/api/boards/${encodeURIComponent(boardId)}/estimate-rooms`)
+    .then((res) => res.count);
 }

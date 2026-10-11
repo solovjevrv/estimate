@@ -21,7 +21,7 @@ import type { DbExecutor } from '../common/db-executor';
 /** Живые проверки доступа — их делает `BoardsService`, голосование их только вызывает */
 export interface BoardVotingAccess {
   /** `edit` и доска не в архиве — запуск/завершение/отмена/скрытие итогов */
-  assertActiveEditAccess(actorId: string | null, boardId: string): Promise<void>;
+  assertActiveEditAccess(actorId: string | null, boardId: string): Promise<unknown>;
   /** Хотя бы `view` — голосовать может любой на доске (решение 02.10.2026) */
   assertViewAccess(actorId: string | null, boardId: string): Promise<Board>;
 }

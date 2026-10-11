@@ -188,6 +188,7 @@ export default {
     toRooms: 'To rooms',
     teamRoomSubtitle: 'Team room',
     personalRoomSubtitle: 'Personal room',
+    fromBoard: 'From board',
     /** Плашка личной комнаты в общем списке «Комнаты» — в пару к имени команды у командных */
     personalTag: 'Personal',
     participantsTitle: 'Participants',
@@ -539,6 +540,16 @@ export default {
     },
     edgeDashLabel: 'Stroke style',
     edgeDashes: { solid: 'Solid', dashed: 'Dashed', dotted: 'Dotted' },
+    estimate: {
+      button: 'Estimate in poker',
+      openRoom: 'Open room',
+      created: 'Estimation room created | Estimation rooms created: {count}',
+      alreadyExist: 'Estimation rooms already exist',
+      openHint: 'Open a room by clicking the badge on the sticky',
+      pendingHint: 'Estimation room — cards not revealed yet',
+      forbidden: 'You cannot create rooms from this board',
+      error: 'Could not create an estimation room',
+    },
     arrange: {
       button: 'Arrange',
       menuTitle: 'Arrange',
@@ -661,6 +672,37 @@ export default {
     exportPreparing: 'Preparing PNG',
     exportPreparingItemCount: 'Collecting elements: {count}',
     exportError: 'Could not prepare the file. Try again.',
+  },
+  move: {
+    titleRoom: 'Move room',
+    titleBoard: 'Move board',
+    destination: 'Move to',
+    personal: 'Personal',
+    submit: 'Move',
+    menu: 'Move…',
+    nowPersonal: 'now personal',
+    nowInTeam: 'now in team “{team}”',
+    nowTeam: 'now a team one',
+    toTeamRoom: 'Members of “{team}” will see the room; team admins will manage it.',
+    toTeamBoard:
+      'All members of “{team}” will see the board and everyone but guests can edit it; team admins will manage it. The share link keeps working.',
+    toMineRoom:
+      'The room becomes your personal one. It leaves the team list but stays open by link.',
+    toCreatorRoom:
+      'The room becomes personal to its creator. It leaves the team list but stays open by link.',
+    toMineBoard:
+      'The board becomes your personal one: team members lose access, the share link keeps working.',
+    toOwnerBoard:
+      'The board becomes personal to its owner: team members lose access, the share link keeps working.',
+    nowhereRoom: 'Nowhere to move: team rooms are created by team admins.',
+    nowhereBoard: 'Nowhere to move: you are not in other teams.',
+    linkedRooms:
+      '{count} estimation room moves with the board. | {count} estimation rooms move with the board.',
+    linkedRoomsPersonal:
+      '{count} estimation room becomes personal to whoever created it; links keep working. | {count} estimation rooms become personal to whoever created them; links keep working.',
+    movedToTeam: 'Moved to team “{team}”',
+    movedToPersonal: 'Now personal',
+    error: 'Could not move',
   },
   boards: {
     title: 'Boards',

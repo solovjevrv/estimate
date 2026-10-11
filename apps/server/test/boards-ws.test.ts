@@ -10,24 +10,26 @@ import { fileURLToPath } from 'node:url';
 import type {
   ApplyBoardOpsResult,
   AuthUser,
+  BoardEstimateUpdate,
   BoardItem,
   BoardOpsBatch,
   BoardPresenceEntry,
   BoardTimerState,
   BoardVotingState,
   BoardVotingSummary,
+  EstimateRoomLink,
   JoinBoardResult,
   WsAck,
 } from '@estimate/shared';
-import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS } from '@estimate/shared';
-import { inArray } from 'drizzle-orm';
+import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, WS_EVENTS } from '@estimate/shared';
+import { eq, inArray } from 'drizzle-orm';
 import type { FastifyInstance } from 'fastify';
 import { type Socket, io as createClient } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { buildApp } from '../src/app';
 import { ACCESS_COOKIE, TokenService, UsersRepository } from '../src/auth';
-import { BoardsService, BoardVotingService } from '../src/boards';
+import { BoardEstimatesService, BoardsService, BoardVotingService } from '../src/boards';
 import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
 import { RoomsGameService } from '../src/rooms';
@@ -83,6 +85,7 @@ describeDb('WS-канал досок', () => {
   const userIds: string[] = [];
   const teamIds: string[] = [];
   const boardIds: string[] = [];
+  const roomIds: string[] = [];
   const clients: Socket[] = [];
 
   function as(user: AuthUser): { cookie: string } {
@@ -190,6 +193,7 @@ describeDb('WS-канал досок', () => {
     new SocketGateway(roomsService, boardsService, {
       corsOrigin: '*',
       boardVoting: new BoardVotingService(db, boardsService),
+      boardEstimates: new BoardEstimatesService(db, boardsService),
     }).attach(app);
     await app.listen({ port: 0, host: '127.0.0.1' });
     port = (app.server.address() as AddressInfo).port;
@@ -201,6 +205,9 @@ describeDb('WS-канал досок', () => {
         client.close();
       }
       await app?.close();
+      if (roomIds.length > 0) {
+        await db.delete(schema.rooms).where(inArray(schema.rooms.id, roomIds));
+      }
       if (boardIds.length > 0) {
         await db.delete(schema.boards).where(inArray(schema.boards.id, boardIds));
       }
@@ -1195,6 +1202,272 @@ describeDb('WS-канал досок', () => {
       expect(ack.ok).toBe(true);
       expect(after).toBeNull();
       expect(history.ok && history.data).toEqual([]);
+    });
+  });
+  describe('оценка в покере (15.6)', () => {
+    async function addSticky(client: Socket, text: string): Promise<string> {
+      const item = stickyItem({ content: { type: 'sticky', text } });
+      const ack = await emit<ApplyBoardOpsResult>(client, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: randomUUID(), item }],
+      });
+      if (!ack.ok) throw new Error(ack.message);
+      return item.id;
+    }
+
+    async function estimateRooms(
+      user: AuthUser,
+      boardId: string,
+      itemIds: string[],
+    ): Promise<{ status: number; rooms: EstimateRoomLink[] }> {
+      const res = await app.inject({
+        method: 'POST',
+        url: `/api/boards/${boardId}/estimate-rooms`,
+        headers: as(user),
+        payload: { itemIds },
+      });
+      const rooms =
+        res.statusCode === 200 ? (res.json() as { rooms: EstimateRoomLink[] }).rooms : [];
+      roomIds.push(...rooms.map((room) => room.roomId));
+      return { status: res.statusCode, rooms };
+    }
+
+    it('участник с правом правки заводит командные комнаты; повтор — те же, без дублей', async () => {
+      const owner = await newUser('estimate-owner');
+      const member = await newUser('estimate-member');
+      const teamId = await newTeam(owner, [[member, 'member']]);
+      const boardId = await newBoard(owner, teamId);
+      const author = connect(owner);
+      await joinBoard(author, boardId);
+      const first = await addSticky(author, 'Экспорт\nдоски в PDF');
+      const second = await addSticky(author, 'Вход через Google');
+      const badge = waitFor<BoardEstimateUpdate>(author, BOARD_WS_SERVER_EVENTS.ESTIMATE);
+
+      const created = await estimateRooms(member, boardId, [first, second, first]);
+
+      expect(created.status).toBe(200);
+      expect(created.rooms.map((room) => [room.itemId, room.created])).toEqual([
+        [first, true],
+        [second, true],
+      ]);
+      // Бейдж «♠ —» появляется у всех на доске сразу
+      expect((await badge).estimate.value).toBeNull();
+      const rooms = await db
+        .select()
+        .from(schema.rooms)
+        .where(
+          inArray(
+            schema.rooms.id,
+            created.rooms.map((room) => room.roomId),
+          ),
+        );
+      expect(
+        rooms.map((room) => [room.name, room.teamId, room.creatorId, room.boardId]).sort(),
+      ).toEqual([
+        ['Вход через Google', teamId, member.id, boardId],
+        ['Экспорт доски в PDF', teamId, member.id, boardId],
+      ]);
+
+      const again = await estimateRooms(member, boardId, [first]);
+      expect(again.rooms).toEqual([
+        { itemId: first, roomId: created.rooms[0]!.roomId, created: false },
+      ]);
+
+      // Шапка комнаты знает доску, с которой её завели
+      const details = await app.inject({
+        method: 'GET',
+        url: `/api/rooms/${created.rooms[0]!.roomId}`,
+      });
+      expect(details.json()).toMatchObject({ board: { id: boardId, name: 'Доска для теста' } });
+    });
+
+    it('без права правки — 403; чужие и пустые id — 400', async () => {
+      const owner = await newUser('estimate-owner-2');
+      const guest = await newUser('estimate-guest');
+      const teamId = await newTeam(owner, [[guest, 'guest']]);
+      const boardId = await newBoard(owner, teamId);
+      const author = connect(owner);
+      await joinBoard(author, boardId);
+      const sticky = await addSticky(author, 'Задача');
+
+      expect((await estimateRooms(guest, boardId, [sticky])).status).toBe(403);
+      expect((await estimateRooms(owner, boardId, [randomUUID()])).status).toBe(400);
+      // Фигура — не стикер: оценивать нечего
+      const shape = stickyItem({ content: { type: 'shape', shape: 'rectangle', text: 'Фигура' } });
+      await emit<ApplyBoardOpsResult>(author, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: randomUUID(), item: shape }],
+      });
+      expect((await estimateRooms(owner, boardId, [shape.id])).status).toBe(400);
+      expect((await estimateRooms(owner, boardId, [])).status).toBe(400);
+    });
+
+    it('вскрытие карт в комнате приходит оценкой на доску и отдаётся при входе', async () => {
+      const owner = await newUser('estimate-reveal');
+      const boardId = await newBoard(owner);
+      const board = connect(owner);
+      await joinBoard(board, boardId);
+      const itemId = await addSticky(board, 'История раундов');
+      const [link] = (await estimateRooms(owner, boardId, [itemId])).rooms;
+      // Личная доска — личная комната
+      const [personal] = await db
+        .select({ teamId: schema.rooms.teamId })
+        .from(schema.rooms)
+        .where(eq(schema.rooms.id, link!.roomId));
+      expect(personal?.teamId).toBeNull();
+
+      const room = connect(owner);
+      expect((await emit(room, WS_EVENTS.JOIN_ROOM, { roomId: link!.roomId })).ok).toBe(true);
+      expect((await emit(room, WS_EVENTS.START_NEW_ROUND, { deckType: 'fibonacci' })).ok).toBe(
+        true,
+      );
+      expect((await emit(room, WS_EVENTS.SUBMIT_VOTE, { value: 8 })).ok).toBe(true);
+      // Голос до вскрытия тоже будит рассылку (значение null) — ждём именно оценку
+      const estimate = new Promise<BoardEstimateUpdate>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('оценка не пришла')), ANSWER_TIMEOUT_MS);
+        board.on(BOARD_WS_SERVER_EVENTS.ESTIMATE, (update: BoardEstimateUpdate) => {
+          if (update.estimate.value === null) return;
+          clearTimeout(timer);
+          resolve(update);
+        });
+      });
+      expect((await emit(room, WS_EVENTS.REVEAL_CARDS, {})).ok).toBe(true);
+
+      expect(await estimate).toEqual({ itemId, estimate: { roomId: link!.roomId, value: '8' } });
+      const later = await joinBoard(connect(owner), boardId);
+      expect(later.estimates).toEqual({ [itemId]: { roomId: link!.roomId, value: '8' } });
+    });
+  });
+  describe('перенос комнат и досок (10.24)', () => {
+    async function newRoom(user: AuthUser, teamId: string | null = null): Promise<string> {
+      const res = await app.inject({
+        method: 'POST',
+        url: '/api/rooms',
+        headers: as(user),
+        payload: { name: 'Комната для переноса', teamId },
+      });
+      const { room } = res.json() as { room: { id: string } };
+      roomIds.push(room.id);
+      return room.id;
+    }
+
+    async function move(
+      user: AuthUser,
+      kind: 'rooms' | 'boards',
+      id: string,
+      teamId: string | null,
+    ): Promise<{ status: number; body: Record<string, unknown> }> {
+      const res = await app.inject({
+        method: 'PATCH',
+        url: `/api/${kind}/${id}/team`,
+        headers: as(user),
+        payload: { teamId },
+      });
+      return { status: res.statusCode, body: res.json() as Record<string, unknown> };
+    }
+
+    it('комната: создатель переносит в команду, где он админ; участнику-не-админу — 403', async () => {
+      const owner = await newUser('move-room-owner');
+      const admin = await newUser('move-room-admin');
+      const adminTeam = await newTeam(owner);
+      const memberTeam = await newTeam(admin, [[owner, 'member']]);
+      const roomId = await newRoom(owner);
+
+      expect((await move(owner, 'rooms', roomId, memberTeam)).status).toBe(403);
+      const moved = await move(owner, 'rooms', roomId, adminTeam);
+      expect(moved.status).toBe(200);
+      expect(moved.body).toMatchObject({ room: { id: roomId, teamId: adminTeam } });
+      // Уже там — 409; не uuid — 400
+      expect((await move(owner, 'rooms', roomId, adminTeam)).status).toBe(409);
+      expect((await move(owner, 'rooms', roomId, 'не-команда' as never)).status).toBe(400);
+    });
+
+    it('комната: админ команды делает чужую командную комнату личной — у создателя', async () => {
+      const creator = await newUser('move-room-creator');
+      const admin = await newUser('move-room-team-admin');
+      const stranger = await newUser('move-room-stranger');
+      const teamId = await newTeam(admin, [[creator, 'admin']]);
+      const roomId = await newRoom(creator, teamId);
+
+      expect((await move(stranger, 'rooms', roomId, null)).status).toBe(403);
+      const moved = await move(admin, 'rooms', roomId, null);
+      expect(moved.status).toBe(200);
+      expect(moved.body).toMatchObject({ room: { teamId: null, creatorId: creator.id } });
+      // Личную комнату админ бывшей команды больше не трогает
+      expect((await move(admin, 'rooms', roomId, teamId)).status).toBe(403);
+    });
+
+    it('доска стала личной — сидящие на ней теряют рассылки и не могут войти снова', async () => {
+      const owner = await newUser('move-live-owner');
+      const member = await newUser('move-live-member');
+      const teamId = await newTeam(owner, [[member, 'member']]);
+      const boardId = await newBoard(owner, teamId);
+      const ownerClient = connect(owner);
+      const memberClient = connect(member);
+      await joinBoard(ownerClient, boardId);
+      await joinBoard(memberClient, boardId);
+
+      const access = waitFor<unknown>(memberClient, BOARD_WS_SERVER_EVENTS.ACCESS);
+      expect((await move(owner, 'boards', boardId, null)).status).toBe(200);
+      await access;
+
+      // Канал доски покинули все: правка владельца до участника не доходит
+      let leaked = false;
+      memberClient.on(BOARD_WS_SERVER_EVENTS.OPS, () => {
+        leaked = true;
+      });
+      await joinBoard(ownerClient, boardId);
+      await emit<ApplyBoardOpsResult>(ownerClient, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: randomUUID(), item: stickyItem() }],
+      });
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      expect(leaked).toBe(false);
+      const again = await emit<JoinBoardResult>(memberClient, BOARD_WS_EVENTS.JOIN, { boardId });
+      expect(again.ok).toBe(false);
+    });
+
+    it('доска: участник переносит в команду вместе с комнатами оценки; гостю — 403', async () => {
+      const owner = await newUser('move-board-owner');
+      const lead = await newUser('move-board-lead');
+      const teamId = await newTeam(lead, [[owner, 'member']]);
+      const guestTeam = await newTeam(lead, [[owner, 'guest']]);
+      const boardId = await newBoard(owner);
+      const client = connect(owner);
+      await joinBoard(client, boardId);
+      const item = stickyItem({ content: { type: 'sticky', text: 'Задача' } });
+      await emit<ApplyBoardOpsResult>(client, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: randomUUID(), item }],
+      });
+      const created = await app.inject({
+        method: 'POST',
+        url: `/api/boards/${boardId}/estimate-rooms`,
+        headers: as(owner),
+        payload: { itemIds: [item.id] },
+      });
+      const [link] = (created.json() as { rooms: EstimateRoomLink[] }).rooms;
+      roomIds.push(link!.roomId);
+
+      const count = await app.inject({
+        method: 'GET',
+        url: `/api/boards/${boardId}/estimate-rooms`,
+        headers: as(owner),
+      });
+      expect(count.json()).toEqual({ count: 1 });
+
+      expect((await move(owner, 'boards', boardId, guestTeam)).status).toBe(403);
+      const moved = await move(owner, 'boards', boardId, teamId);
+      expect(moved.status).toBe(200);
+      expect(moved.body).toMatchObject({ board: { id: boardId, teamId }, movedRooms: 1 });
+      const [room] = await db
+        .select({ teamId: schema.rooms.teamId })
+        .from(schema.rooms)
+        .where(eq(schema.rooms.id, link!.roomId));
+      expect(room?.teamId).toBe(teamId);
+
+      // Админ команды делает доску личной — у владельца, комнаты оценки тоже личные
+      const back = await move(lead, 'boards', boardId, null);
+      expect(back.body).toMatchObject({
+        board: { teamId: null, ownerId: owner.id },
+        movedRooms: 1,
+      });
     });
   });
 });
