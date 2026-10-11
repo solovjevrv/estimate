@@ -69,6 +69,7 @@ test.describe('Доски: копирование/вставка', () => {
       await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
       const board = boardLocators(page);
       await expect(board.pane).toBeVisible();
+      await expect(board.joined).toBeVisible();
       await board.pane.click(); // фокус на холст перед хоткеем
       await page.keyboard.press('ControlOrMeta+0');
       // `[data-testid="board-pane"]` появляется сразу, а WS-`join()` доски
@@ -209,6 +210,7 @@ test.describe('Доски: копирование/вставка', () => {
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     const board = boardLocators(page);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
     await board.pane.click(); // фокус на холст перед хоткеем
     await page.keyboard.press('ControlOrMeta+0');
     await expect(board.zoom).toHaveText('100%');

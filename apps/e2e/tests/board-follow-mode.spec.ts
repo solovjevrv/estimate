@@ -38,6 +38,7 @@ test.describe('follow-mode камеры (14.5)', () => {
     const boardA = boardLocators(pageA);
     const boardUrl = pageA.url();
     await expect(boardA.pane).toBeVisible();
+    await expect(boardA.joined).toBeVisible();
     await expect(boardA.viewport).toBeVisible();
 
     // Второй пользователь входит в команду по приглашению
@@ -50,6 +51,7 @@ test.describe('follow-mode камеры (14.5)', () => {
     await pageB.goto(boardUrl);
     const boardB = boardLocators(pageB);
     await expect(boardB.pane).toBeVisible();
+    await expect(boardB.joined).toBeVisible();
     await expect(boardB.viewport).toBeVisible();
 
     // Presence: оба участника на доске
@@ -122,6 +124,7 @@ test('ручной пан/зум участника B во время слеже
   const boardA = boardLocators(pageA);
   const boardUrl = pageA.url();
   await expect(boardA.pane).toBeVisible();
+  await expect(boardA.joined).toBeVisible();
 
   const ctxB = await newContext(browser);
   await loginAs(ctxB, second);
@@ -132,6 +135,7 @@ test('ручной пан/зум участника B во время слеже
   await pageB.goto(boardUrl);
   const boardB = boardLocators(pageB);
   await expect(boardB.pane).toBeVisible();
+  await expect(boardB.joined).toBeVisible();
 
   await expect(boardB.presenceAvatars).toHaveCount(2);
 
@@ -180,6 +184,7 @@ test('уход A с доски снимает слежение у B', async ({
   const boardA = boardLocators(pageA);
   const boardUrl = pageA.url();
   await expect(boardA.pane).toBeVisible();
+  await expect(boardA.joined).toBeVisible();
 
   const ctxB = await newContext(browser);
   await loginAs(ctxB, second);
@@ -190,6 +195,7 @@ test('уход A с доски снимает слежение у B', async ({
   await pageB.goto(boardUrl);
   const boardB = boardLocators(pageB);
   await expect(boardB.pane).toBeVisible();
+  await expect(boardB.joined).toBeVisible();
 
   await expect(boardB.presenceAvatars).toHaveCount(2);
 

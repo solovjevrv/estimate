@@ -31,6 +31,7 @@ test.describe('Доски: картинка', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     const image = await sharp({
       create: { width: 600, height: 400, channels: 3, background: { r: 40, g: 160, b: 90 } },

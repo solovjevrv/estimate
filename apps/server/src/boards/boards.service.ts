@@ -455,7 +455,7 @@ export class BoardsService {
 
   /** Настоящее удаление — необратимо, доступно только для уже заархивированной доски */
   async remove(actorId: string, boardId: string): Promise<void> {
-    const orphanedImageUrls = await this.db.transaction(async (tx) => {
+    const orphaned = await this.db.transaction(async (tx) => {
       const repo = this.createBoardsRepository(tx);
       const board = await repo.lockBoard(boardId);
       if (!board) {
@@ -475,9 +475,13 @@ export class BoardsService {
         }
       }
       await repo.deleteBoard(boardId);
-      return imageUrls;
+      return { imageUrls, thumbnailUrl: board.thumbnailUrl };
     });
-    await this.cleanupImages(boardId, orphanedImageUrls);
+    await this.cleanupImages(boardId, orphaned.imageUrls);
+    // Превью — тоже объект в storage, каскад БД его не трогает (20.19)
+    await this.images?.deleteThumbnail(boardId, orphaned.thumbnailUrl).catch((err: unknown) => {
+      this.log.warn({ err, boardId }, 'Не удалось удалить превью доски');
+    });
   }
 
   private async requireBoard(boardId: string): Promise<Board> {

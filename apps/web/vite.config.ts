@@ -518,6 +518,8 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     setupFiles: ['./test/setup.ts'],
+    // Под vi.waitFor с таймаутом 4 с (test/setup.ts) — несколько ожиданий в одном тесте
+    testTimeout: 15_000,
     // Сценарии Playwright запускает свой раннер
     exclude: ['**/node_modules/**', '**/dist/**', 'e2e/**'],
   },

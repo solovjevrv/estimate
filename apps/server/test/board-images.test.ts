@@ -429,6 +429,22 @@ describeDb('картинки досок', () => {
       expect(keys[0]).not.toBe(oldKey);
     });
 
+    it('удаление доски удаляет и её превью из storage (20.19)', async () => {
+      const owner = await newUser('thumbnail-remove-owner');
+      const boardId = await newBoard(owner);
+      await publishThumbnail(boardId, 0, await thumbnailSource(), as(owner));
+      expect(thumbnailKeys(boardId)).toHaveLength(1);
+
+      await app.inject({
+        method: 'POST',
+        url: `/api/boards/${boardId}/archive`,
+        headers: as(owner),
+      });
+      await boardsService().remove(owner.id, boardId);
+
+      expect(thumbnailKeys(boardId)).toEqual([]);
+    });
+
     it('принимает PNG (Safari не кодирует canvas в WebP) и хранит его как WebP', async () => {
       const owner = await newUser('thumbnail-png');
       const boardId = await newBoard(owner);

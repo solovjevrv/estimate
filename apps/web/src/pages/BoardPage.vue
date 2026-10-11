@@ -56,8 +56,14 @@ const board = ref<Board | null>(null);
  * отдельно, страница команды её уже не отдаёт вместе со списком досок.
  */
 const canManage = computed(() => hasBoardAccess(boardSession.access, 'manage'));
+/**
+ * Править — только после WS-входа (20.21): access известен уже из REST-снимка,
+ * но правка до ответа на join уходит на сервер раньше входа («Сначала войдите
+ * на доску»), а пришедший снимок стирает оптимистичный элемент вместе с
+ * набранным текстом. То же на время реконнекта.
+ */
 const canEdit = computed(() => {
-  if (board.value?.status === 'archived') return false;
+  if (board.value?.status === 'archived' || !boardSession.joined) return false;
   return hasBoardAccess(boardSession.access, 'edit');
 });
 

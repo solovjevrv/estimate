@@ -52,6 +52,10 @@ watch(
   },
 );
 
+function onInteractOutside(event: Event): void {
+  if (view.value === 'setup') event.preventDefault();
+}
+
 async function onStart(setup: BoardVotingSetupValue): Promise<void> {
   if (await props.voting.start(setup)) open.value = false;
 }
@@ -92,12 +96,14 @@ async function onOpenResults(votingId: string): Promise<void> {
     </button>
 
     <!-- Настройка не закрывается от кликов по холсту: пока она открыта, можно
-         выделять элементы для «Выделенных» — закрыть кнопкой, Escape или стартом -->
+         выделять элементы для «Выделенных» — закрыть кнопкой, Escape или стартом.
+         Не через dismissible=false: тот гасит и Escape, а наш обработчик на
+         настройке ловит его только при фокусе внутри — после «Нового голосования»
+         из итогов фокуса там нет, и настройка не закрывалась -->
     <UPopover
       v-else
       :open="open"
-      :dismissible="view !== 'setup'"
-      :content="{ side: 'bottom', align: 'end', sideOffset: 8 }"
+      :content="{ side: 'bottom', align: 'end', sideOffset: 8, onInteractOutside }"
       :ui="{ content: 'rounded-r16' }"
       @update:open="onOpenChange"
     >

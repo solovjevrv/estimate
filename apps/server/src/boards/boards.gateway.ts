@@ -470,7 +470,10 @@ export class BoardsGateway {
       (data) => this.reply(log, ack, { ok: true, data }),
       (err: unknown) => {
         if (err instanceof AppError) {
-          log.info({ socketId: socket.id, err: err.message }, 'Событие доски отклонено');
+          log.info(
+            { socketId: socket.id, err: err.message, cause: err.cause },
+            'Событие доски отклонено',
+          );
           this.reply(log, ack, { ok: false, error: err.code, message: err.message });
           return;
         }

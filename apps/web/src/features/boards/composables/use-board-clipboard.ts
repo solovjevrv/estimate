@@ -1,5 +1,6 @@
 import {
   isBoardContainer,
+  isBoardItemContentType,
   type BoardEdge,
   type BoardItem,
   type BoardItemContent,
@@ -161,6 +162,9 @@ export function useBoardClipboard(options: UseBoardClipboardOptions) {
       let width = item.width;
       let height = item.height;
 
+      // Буфер — чужой текст: тип, которого сервер не знает, отклонил бы весь
+      // батч вставки (12.27) — такой элемент пропускаем
+      if (!isBoardItemContentType(item.content?.type)) continue;
       if (item.content.type === 'image') {
         const file = base64ToFile(item.content.base64, item.content.mimeType, `${uuid()}.webp`);
         const result = await options.uploadImage(file);

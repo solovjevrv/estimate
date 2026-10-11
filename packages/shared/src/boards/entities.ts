@@ -127,10 +127,7 @@ export const BOARD_HIGHLIGHT_COLORS: readonly BoardHighlightColor[] = [
 ];
 
 /**
- * Ссылка внутри текста (12.13) — только http(s), тот же принцип, что и у
- * ссылок Jira/Confluence комнаты (5.6, `rooms.service.ts#normalizeLink`), но
- * это НЕ общий источник правды — там независимый regex-литерал с тем же
- * смыслом, не импорт отсюда (разные домены: комната и доска не делят код).
+ * Ссылка внутри текста (12.13) — только http(s).
  */
 export const BOARD_TEXT_LINK_MAX_LENGTH = 500;
 export const BOARD_TEXT_LINK_PATTERN = /^https?:\/\//i;
@@ -256,6 +253,23 @@ export type BoardItemContent =
   | BoardGiphyContent
   | BoardFrameContent
   | BoardGroupContent;
+
+/** Все типы содержимого — сервер и вставка из буфера отсекают остальное (12.27) */
+export const BOARD_ITEM_CONTENT_TYPES = [
+  'sticky',
+  'shape',
+  'text',
+  'image',
+  'emoji',
+  'sticker',
+  'giphy',
+  'frame',
+  'group',
+] as const satisfies readonly BoardItemContent['type'][];
+
+export function isBoardItemContentType(value: unknown): value is BoardItemContent['type'] {
+  return (BOARD_ITEM_CONTENT_TYPES as readonly unknown[]).includes(value);
+}
 
 /**
  * Фрейм и группа (14.3) — единственные типы, которые могут быть родителями

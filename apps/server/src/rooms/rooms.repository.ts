@@ -1,6 +1,5 @@
 import type { DeckType, Room, RoomDetails, RoomStats, Round } from '@estimate/shared';
 import { and, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
-import type { PgUpdateSetSource } from 'drizzle-orm/pg-core';
 
 import { schema } from '../db';
 import type { DbExecutor } from '../common/db-executor';
@@ -152,30 +151,6 @@ export class RoomsRepository {
       throw new Error('Не удалось создать раунд');
     }
     return this.toRound(row);
-  }
-
-  /**
-   * Правит ссылки комнаты и поднимает их версию. Если передана ожидаемая версия,
-   * запись пройдёт только пока ссылки никто не менял — иначе вернётся null.
-   */
-  async updateRoomLinks(
-    roomId: string,
-    links: { jiraUrl?: string | null; confluenceUrl?: string | null },
-    expectedVersion?: number,
-  ): Promise<Room | null> {
-    const patch: PgUpdateSetSource<typeof schema.rooms> = {
-      linksVersion: sql`${schema.rooms.linksVersion} + 1`,
-    };
-    if (links.jiraUrl !== undefined) patch.jiraUrl = links.jiraUrl;
-    if (links.confluenceUrl !== undefined) patch.confluenceUrl = links.confluenceUrl;
-
-    const condition =
-      expectedVersion === undefined
-        ? eq(schema.rooms.id, roomId)
-        : and(eq(schema.rooms.id, roomId), eq(schema.rooms.linksVersion, expectedVersion));
-
-    const [row] = await this.db.update(schema.rooms).set(patch).where(condition).returning();
-    return row ? this.toRoom(row) : null;
   }
 
   /**
@@ -373,9 +348,6 @@ export class RoomsRepository {
       revision: row.revision,
       createdAt: row.createdAt.toISOString(),
       archivedAt: row.archivedAt?.toISOString() ?? null,
-      jiraUrl: row.jiraUrl,
-      confluenceUrl: row.confluenceUrl,
-      linksVersion: row.linksVersion,
     };
   }
 

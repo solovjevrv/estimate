@@ -2,7 +2,7 @@
  * Флаг документации — единственное, что отделяет карту эндпоинтов от прода,
  * поэтому его разбор проверяется отдельно от роутов.
  */
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { loadConfig } from '../src/config';
 
@@ -25,8 +25,16 @@ function stubBaseEnv(): void {
   vi.stubEnv('MINIO_BUCKET', undefined);
 }
 
+// loadConfig сам подхватывает .env из корня — локальный файл разработчика
+// (MINIO_ENDPOINT=localhost и т.п.) перебивал бы дефолты, которые здесь
+// проверяются; stubEnv(…, undefined) его не останавливает (20.15)
+beforeEach(() => {
+  vi.spyOn(process, 'loadEnvFile').mockImplementation(() => {});
+});
+
 afterEach(() => {
   vi.unstubAllEnvs();
+  vi.restoreAllMocks();
 });
 
 describe('loadConfig: документация', () => {

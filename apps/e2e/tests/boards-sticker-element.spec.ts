@@ -38,6 +38,7 @@ test.describe('Доски: стикер-паки', () => {
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     const board = boardLocators(page);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     function stickerInPack(root: Page | Locator, packLabel: string): Locator {
       return root

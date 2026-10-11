@@ -31,9 +31,6 @@ const ROOM: Room = {
   revision: 0,
   createdAt: new Date().toISOString(),
   archivedAt: null,
-  jiraUrl: null,
-  confluenceUrl: null,
-  linksVersion: 1,
 };
 
 const ROUND: Round = {
@@ -369,98 +366,6 @@ describe('RoomsGameService: вход за стол', () => {
 
     await expect(service.prepareJoin({ roomId: ROOM.id, userId: 'ghost' })).rejects.toBeInstanceOf(
       ForbiddenError,
-    );
-  });
-});
-
-describe('RoomsGameService: ссылки на задачу', () => {
-  const repo: Partial<RoomsRepository> = {
-    findRoom: async () => ROOM,
-    lockRoom: async () => ROOM,
-    updateRoomLinks: async (_id, links) => ({ ...ROOM, ...links }),
-  };
-
-  it('ссылка без схемы отклоняется', async () => {
-    const service = serviceWith(repo);
-
-    await expect(
-      service.updateLinks(ROOM.id, { jiraUrl: 'jira.example.com/TASK-1' }),
-    ).rejects.toBeInstanceOf(ValidationError);
-  });
-
-  it('пустая строка убирает ссылку', async () => {
-    const updateRoomLinks = vi.fn(async (_id: string, links: object) => ({ ...ROOM, ...links }));
-    const service = serviceWith({ ...repo, updateRoomLinks });
-
-    await service.updateLinks(ROOM.id, { jiraUrl: '  ' });
-
-    expect(updateRoomLinks).toHaveBeenCalledWith(ROOM.id, { jiraUrl: null }, undefined);
-  });
-
-  it('корректная ссылка сохраняется', async () => {
-    const service = serviceWith(repo);
-
-    const room = await service.updateLinks(ROOM.id, {
-      confluenceUrl: 'https://confluence.example.com/page',
-    });
-
-    expect(room.confluenceUrl).toBe('https://confluence.example.com/page');
-  });
-
-  it('правка поверх чужой отклоняется: версия ссылок устарела', async () => {
-    const updateRoomLinks = vi.fn(async () => ROOM);
-    const service = serviceWith({
-      ...repo,
-      // Пока участник печатал, ссылки уже поменяли
-      lockRoom: async () => ({ ...ROOM, linksVersion: 5 }),
-      updateRoomLinks,
-    });
-
-    await expect(
-      service.updateLinks(ROOM.id, { jiraUrl: 'https://jira.example.com/TASK-9', version: 4 }),
-    ).rejects.toBeInstanceOf(ConflictError);
-    expect(updateRoomLinks).not.toHaveBeenCalled();
-  });
-
-  it('версия null означает «версию не проверять», а не вечный конфликт', async () => {
-    const updateRoomLinks = vi.fn(async (_id: string, links: object) => ({ ...ROOM, ...links }));
-    const service = serviceWith({ ...repo, updateRoomLinks });
-
-    await service.updateLinks(ROOM.id, {
-      jiraUrl: 'https://jira.example.com/TASK-1',
-      version: null,
-    });
-
-    expect(updateRoomLinks).toHaveBeenCalledWith(
-      ROOM.id,
-      { jiraUrl: 'https://jira.example.com/TASK-1' },
-      undefined,
-    );
-  });
-
-  it('пустая правка не поднимает версию: чужие правки не должны отбиваться', async () => {
-    const updateRoomLinks = vi.fn(async () => ROOM);
-    const service = serviceWith({ ...repo, updateRoomLinks });
-
-    const room = await service.updateLinks(ROOM.id, {});
-
-    expect(room.linksVersion).toBe(ROOM.linksVersion);
-    expect(updateRoomLinks).not.toHaveBeenCalled();
-  });
-
-  it('правка с актуальной версией доходит до базы вместе с ней', async () => {
-    const updateRoomLinks = vi.fn(async (_id: string, links: object) => ({ ...ROOM, ...links }));
-    const service = serviceWith({ ...repo, updateRoomLinks });
-
-    await service.updateLinks(ROOM.id, {
-      jiraUrl: 'https://jira.example.com/TASK-9',
-      version: ROOM.linksVersion,
-    });
-
-    expect(updateRoomLinks).toHaveBeenCalledWith(
-      ROOM.id,
-      { jiraUrl: 'https://jira.example.com/TASK-9' },
-      ROOM.linksVersion,
     );
   });
 });
