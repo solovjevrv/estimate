@@ -32,6 +32,7 @@ import {
   isValidUuid,
   toggleItemReaction,
   isBoardContainer,
+  isBoardItemContentType,
   PERSONAL_STICKER_FORMATS,
   type BoardEdgeDash,
   type BoardEdge,
@@ -308,8 +309,8 @@ function validateEdgeLabel(label: unknown): string | null {
 /**
  * Начертание фрагмента текста (12.13) — каждое поле независимый белый список:
  * булевы тумблеры как есть, маркер — членство в фиксированной палитре (не
- * regex-цвет, UI сознательно сужен до нескольких пресетов), ссылка — тот же
- * `http(s)://`-regex, что и у ссылок Jira/Confluence комнаты (`rooms.service.ts`).
+ * regex-цвет, UI сознательно сужен до нескольких пресетов), ссылка — только
+ * `http(s)://`.
  */
 function validateTextMark(mark: unknown): BoardTextMark | undefined {
   if (mark === undefined || mark === null) return undefined;
@@ -410,6 +411,14 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
     title?: unknown;
     format?: unknown;
   };
+
+  // Тип — первым: иначе неизвестный тип без text отклонялся бы как «слишком
+  // длинный текст». В cause — что пришло, для лога отказа (12.27)
+  if (!isBoardItemContentType(c.type)) {
+    throw new ValidationError('Неизвестный тип элемента', {
+      cause: { contentType: c.type, keys: Object.keys(c) },
+    });
+  }
 
   // Для emoji — валидный Unicode-эмодзи из каталога (21.4)
   if (c.type === 'emoji') {
@@ -529,10 +538,7 @@ function validateContent(content: unknown, boardId: string): BoardItemContent {
       ...(runs ? { runs } : {}),
     };
   }
-  if (c.type === 'text') {
-    return { type: 'text', text: c.text, ...(runs ? { runs } : {}) };
-  }
-  throw new ValidationError('Неизвестный тип элемента');
+  return { type: 'text', text: c.text, ...(runs ? { runs } : {}) };
 }
 
 /** Геометрия общая для всех элементов — валидируется одинаково независимо от типа содержимого */

@@ -6,6 +6,10 @@ import {
   useBoardClipboard,
   type BoardClipboardNode,
 } from '../src/features/boards/composables/use-board-clipboard';
+import type {
+  BoardClipboardEdge,
+  BoardClipboardItem,
+} from '../src/features/boards/domain/board-clipboard';
 
 function item(id: string, overrides: Partial<BoardItem> = {}): BoardItem {
   return {
@@ -172,5 +176,52 @@ describe('useBoardClipboard pasteBoardItems', () => {
     expect(created).toMatchObject({ type: 'item.create', item: { x: 100, y: 70 } });
     expect(clearSelection).toHaveBeenCalledOnce();
     expect(selectItems).toHaveBeenCalledWith([expect.any(String)]);
+  });
+
+  it('элемент неизвестного типа пропускает, остальное вставляет со связью (12.27)', async () => {
+    const { api, applyOps } = clipboard([], []);
+    const entry = (content: unknown) => ({
+      relX: 0,
+      relY: 0,
+      width: 100,
+      height: 80,
+      rotation: 0,
+      parentIndex: null,
+      content: content as BoardClipboardItem['content'],
+      style: { color: '#FCEB96' },
+    });
+
+    await api.pasteBoardItems(
+      [
+        entry({ type: 'sticky', text: 'a' }),
+        entry({ type: 'table', text: 'b' }),
+        entry({ type: 'text', text: 'c' }),
+      ],
+      [
+        {
+          sourceIndex: 0,
+          targetIndex: 2,
+          sourceHandle: null,
+          targetHandle: null,
+          label: null,
+          style: {},
+        },
+        {
+          sourceIndex: 0,
+          targetIndex: 1,
+          sourceHandle: null,
+          targetHandle: null,
+          label: null,
+          style: {},
+        },
+      ] as BoardClipboardEdge[],
+    );
+
+    const ops = applyOps.mock.calls[0]?.[0] ?? [];
+    expect(ops.map((op: { type: string }) => op.type)).toEqual([
+      'item.create',
+      'item.create',
+      'edge.create',
+    ]);
   });
 });

@@ -9,6 +9,7 @@ import sharp from 'sharp';
 
 import { ValidationError } from '../errors';
 import type { ObjectStorage } from '../platform/storage';
+import { BoardThumbnailsService } from './board-thumbnails.service';
 
 const BOARD_IMAGE_MAX_DIMENSION = 2048;
 const BOARD_IMAGE_WEBP_QUALITY = 82;
@@ -100,5 +101,14 @@ export class BoardImagesService {
     if (this.legacyDir) {
       await rm(join(this.legacyDir, filename), { force: true });
     }
+  }
+
+  /** Превью удалённой доски (20.19) — url вида `/api/boards/:id/thumbnail/:key` */
+  async deleteThumbnail(boardId: string, url: string | null): Promise<void> {
+    if (!url?.startsWith(`/api/boards/${boardId}/thumbnail/`)) return;
+    await new BoardThumbnailsService(this.storage).remove(
+      boardId,
+      url.slice(url.lastIndexOf('/') + 1),
+    );
   }
 }

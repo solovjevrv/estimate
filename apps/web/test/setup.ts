@@ -1,3 +1,17 @@
+import { vi } from 'vitest';
+
+/**
+ * `vi.waitFor` по умолчанию ждёт 1 с — на загруженной машине переход на ленивый
+ * маршрут (`() => import('../pages/…')`) не успевает, и страницы флейкали в
+ * полном прогоне (20.11). Явно заданный таймаут теста не трогаем.
+ */
+const waitFor = vi.waitFor.bind(vi);
+vi.waitFor = ((callback, options) =>
+  waitFor(
+    callback,
+    typeof options === 'number' ? options : { timeout: 4_000, ...options },
+  )) as typeof vi.waitFor;
+
 /** jsdom не реализует matchMedia — им пользуется тема (system/light/dark) */
 if (!window.matchMedia) {
   window.matchMedia = (query: string) =>

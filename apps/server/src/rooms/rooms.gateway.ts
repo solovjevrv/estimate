@@ -13,7 +13,6 @@ import {
   type SendReactionPayload,
   type StartRoundPayload,
   type SubmitVotePayload,
-  type UpdateLinksPayload,
   type WsAck,
 } from '@estimate/shared';
 import { isValidEmojiSequence } from '@estimate/shared/emoji/validate';
@@ -146,17 +145,6 @@ export class RoomsGateway {
           const state = this.timer.reset(roomId, payload?.durationSec);
           await this.broadcastState(io, roomId);
           return state;
-        });
-      });
-
-      socket.on(WS_EVENTS.UPDATE_LINKS, (...args: unknown[]) => {
-        const { payload, ack } = this.readArgs<UpdateLinksPayload>(args);
-        this.run(socket, log, ack, async () => {
-          const { roomId } = this.requireSeat(socket);
-          // Ссылки на задачу правит любой участник — так решено в Epic 5
-          await this.service.updateLinks(roomId, payload ?? {});
-          await this.broadcastState(io, roomId);
-          return null;
         });
       });
 

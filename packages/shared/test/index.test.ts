@@ -23,7 +23,6 @@ describe('контракты WS-событий', () => {
         'submit_vote',
         'reveal_cards',
         'start_new_round',
-        'update_links',
       ]),
     );
   });

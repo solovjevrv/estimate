@@ -45,6 +45,7 @@ test('после обрыва сети участник догоняет про�
   const boardA = boardLocators(pageA);
   const boardUrl = pageA.url();
   await expect(boardA.pane).toBeVisible();
+  await expect(boardA.joined).toBeVisible();
 
   const contextB = await newContext(browser);
   await loginAs(contextB, owner);
@@ -52,6 +53,7 @@ test('после обрыва сети участник догоняет про�
   await pageB.goto(boardUrl);
   const boardB = boardLocators(pageB);
   await expect(boardB.pane).toBeVisible();
+  await expect(boardB.joined).toBeVisible();
 
   // Стикер до обрыва — доказывает, что realtime вообще работает, до перехода к офлайну
   await boardA.pane.dblclick({ position: { x: 150, y: 150 } });

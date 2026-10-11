@@ -241,6 +241,26 @@ describe('applyBoardOp — item.create', () => {
     }
   });
 
+  it('неизвестный тип отклоняет первым и кладёт пришедшее в cause (12.27)', () => {
+    for (const content of [{ type: 'table', text: 'x' }, { type: 'table' }, { text: 'x' }]) {
+      const op = stickyCreateOp(randomUUID());
+      if (op.type !== 'item.create') throw new Error('unreachable');
+      op.item.content = content as never;
+      let error: unknown;
+      try {
+        applyBoardOp(emptyState(), op, BOARD_ID, ACTOR);
+      } catch (err) {
+        error = err;
+      }
+      expect(error).toBeInstanceOf(ValidationError);
+      expect((error as ValidationError).message).toBe('Неизвестный тип элемента');
+      expect((error as ValidationError).cause).toEqual({
+        contentType: content.type,
+        keys: Object.keys(content),
+      });
+    }
+  });
+
   it('отклоняет url картинки другой доски (защита от подмены между досками)', () => {
     const state = emptyState();
     const op = imageCreateOp(randomUUID(), `/api/boards/чужая-доска/assets/${'a'.repeat(32)}.webp`);

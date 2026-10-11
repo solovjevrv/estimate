@@ -55,6 +55,7 @@ test('два браузера на одной доске: создание, пе
   await pageA.waitForURL(/\/boards\/[0-9a-f-]{36}/);
   const boardUrl = pageA.url();
   await expect(boardA.pane).toBeVisible();
+  await expect(boardA.joined).toBeVisible();
 
   const contextB = await newContext(browser);
   await loginAs(contextB, owner);
@@ -62,6 +63,7 @@ test('два браузера на одной доске: создание, пе
   await pageB.goto(boardUrl);
   const boardB = boardLocators(pageB);
   await expect(boardB.pane).toBeVisible();
+  await expect(boardB.joined).toBeVisible();
 
   // --- Создание стикера видно у второго участника ---
   await boardA.pane.dblclick({ position: { x: 300, y: 300 } });

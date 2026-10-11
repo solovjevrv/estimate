@@ -108,3 +108,50 @@ describe('BoardsService: очистка картинок', () => {
     );
   });
 });
+
+describe('BoardsService.remove: превью доски (20.19)', () => {
+  const THUMBNAIL = `/api/boards/${BOARD.id}/thumbnail/3-${'a'.repeat(32)}.webp`;
+
+  function archivedBoardWithThumbnail(): void {
+    vi.spyOn(BoardsRepository.prototype, 'lockBoard').mockResolvedValue({
+      ...BOARD,
+      teamId: null,
+      status: 'archived',
+      thumbnailUrl: THUMBNAIL,
+    });
+    vi.spyOn(BoardsRepository.prototype, 'listItems').mockResolvedValue([]);
+    vi.spyOn(BoardsRepository.prototype, 'deleteBoard').mockResolvedValue(undefined);
+  }
+
+  it('после удаления доски удаляет её превью из хранилища', async () => {
+    archivedBoardWithThumbnail();
+    const deleteThumbnail = vi.fn(async () => {});
+    const { service } = serviceWith({
+      images: { deleteIfOwn: vi.fn(), deleteThumbnail } as unknown as BoardImagesService,
+    });
+
+    await service.remove(BOARD.ownerId!, BOARD.id);
+
+    expect(deleteThumbnail).toHaveBeenCalledWith(BOARD.id, THUMBNAIL);
+  });
+
+  it('сбой хранилища логирует и не роняет удаление', async () => {
+    archivedBoardWithThumbnail();
+    const warn = vi.fn();
+    const { service } = serviceWith({
+      images: {
+        deleteIfOwn: vi.fn(),
+        deleteThumbnail: vi.fn(async () => {
+          throw new Error('S3 недоступен');
+        }),
+      } as unknown as BoardImagesService,
+      log: { warn },
+    });
+
+    await expect(service.remove(BOARD.ownerId!, BOARD.id)).resolves.toBeUndefined();
+    expect(warn).toHaveBeenCalledWith(
+      expect.objectContaining({ boardId: BOARD.id, err: expect.any(Error) }),
+      'Не удалось удалить превью доски',
+    );
+  });
+});

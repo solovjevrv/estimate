@@ -171,9 +171,6 @@ describe('API команд', () => {
       revision: 0,
       createdAt: '2026-07-25T00:00:00.000Z',
       archivedAt: null,
-      jiraUrl: null,
-      confluenceUrl: null,
-      linksVersion: 1,
     };
     fetchMock.mockResolvedValue(json(200, { rooms: [r] }));
     const res = await listTeamRooms('a/b');

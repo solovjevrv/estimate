@@ -48,6 +48,7 @@ test('IME-композиция на границе лимита длины не 
 
   await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
   await expect(board.pane).toBeVisible();
+  await expect(board.joined).toBeVisible();
 
   await board.pane.dblclick({ position: { x: 300, y: 300 } });
   await expect(board.stickyNodes).toHaveCount(1);

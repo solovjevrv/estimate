@@ -32,7 +32,6 @@ import type {
   StartBoardVotingPayload,
   StartRoundPayload,
   SubmitVotePayload,
-  UpdateLinksPayload,
   WsAck,
 } from '@estimate/shared';
 import {
@@ -88,7 +87,6 @@ interface ClientToServerEvents {
   [WS_EVENTS.SUBMIT_VOTE]: (p: SubmitVotePayload, ack: (r: WsAck<null>) => void) => void;
   [WS_EVENTS.REVEAL_CARDS]: (p: RevealCardsPayload, ack: (r: WsAck<RoundResult>) => void) => void;
   [WS_EVENTS.START_NEW_ROUND]: (p: StartRoundPayload, ack: (r: WsAck<Round>) => void) => void;
-  [WS_EVENTS.UPDATE_LINKS]: (p: UpdateLinksPayload, ack: (r: WsAck<null>) => void) => void;
   [WS_EVENTS.START_TIMER]: (
     p: Record<string, never>,
     ack: (r: WsAck<RoomTimerState>) => void,

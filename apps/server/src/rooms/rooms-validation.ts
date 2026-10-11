@@ -1,10 +1,7 @@
 import {
   DECK_TYPES,
-  isHttpUrl,
   isTextLengthInRange,
   isValidUuid,
-  ROOM_LINK_MAX_LENGTH,
-  trimOptionalText,
   trimText,
   TSHIRT_DECK,
   type DeckType,
@@ -40,21 +37,6 @@ export function normalizeRoomText(raw: string, maxLength: number, field: string)
   const value = trimText(raw);
   if (!isTextLengthInRange(value, { min: 1, max: maxLength })) {
     throw new ValidationError(`${field}: от 1 до ${maxLength} символов`);
-  }
-  return value;
-}
-
-/** Пустая строка означает «ссылку убрали» */
-export function normalizeRoomLink(raw: string | null | undefined): string | null {
-  const value = trimOptionalText(raw);
-  if (!value) {
-    return null;
-  }
-  if (value.length > ROOM_LINK_MAX_LENGTH) {
-    throw new ValidationError('Ссылка слишком длинная');
-  }
-  if (!isHttpUrl(value)) {
-    throw new ValidationError('Ссылка должна начинаться с http:// или https://');
   }
   return value;
 }

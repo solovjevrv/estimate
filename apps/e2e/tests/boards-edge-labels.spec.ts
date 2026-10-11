@@ -46,6 +46,7 @@ test.describe('Доски: многострочные подписи связе�
     await pageA.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     const boardUrl = pageA.url();
     await expect(boardA.pane).toBeVisible();
+    await expect(boardA.joined).toBeVisible();
 
     // fit-view-on-init на пустой доске масштабирует до 200% (см. комментарий в
     // boards-realtime-sync.spec.ts); Ctrl+0 в headless Chromium не держит масштаб —
@@ -65,6 +66,7 @@ test.describe('Доски: многострочные подписи связе�
     await pageB.goto(boardUrl);
     const boardB = boardLocators(pageB);
     await expect(boardB.pane).toBeVisible();
+    await expect(boardB.joined).toBeVisible();
 
     // --- Стикер 1: создаём и раскладываем в левую часть холста ---
     await boardA.pane.dblclick({ position: { x: 300, y: 300 } });
@@ -186,6 +188,7 @@ test.describe('Доски: многострочные подписи связе�
     // --- Перезагрузка второго клиента: подпись приходит из снимка, а не из WS ---
     await pageB.reload();
     await expect(boardB.pane).toBeVisible();
+    await expect(boardB.joined).toBeVisible();
     await expect(boardB.edges).toHaveCount(1);
     await expect(boardB.edgeLabelText).toBeVisible();
     expect(await boardB.edgeLabelText.textContent()).toBe('Первая строка\nВторая строка');
