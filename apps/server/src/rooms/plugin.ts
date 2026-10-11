@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import fp from 'fastify-plugin';
 
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
+import { sharedRateLimitStore } from '../http/rate-limit';
 import { archivedQuerySchema, idParamsSchema, moveTeamBodySchema } from '../http/schemas';
 
 import type {
@@ -54,6 +55,7 @@ async function roomsPluginImpl(app: FastifyInstance, opts: RoomsPluginOptions): 
    */
   await app.register(async (rooms) => {
     await rooms.register(fastifyRateLimit, {
+      ...sharedRateLimitStore(rooms, 'rooms'),
       max: opts.rateLimit?.max ?? ROOMS_RATE_LIMIT_MAX,
       timeWindow: opts.rateLimit?.timeWindow ?? ROOMS_RATE_LIMIT_WINDOW,
       // Свой бюджет на каждый роут: иначе безобидный список комнат делил бы

@@ -15,6 +15,7 @@ import type { Db } from './db';
 import { ErrorHandler } from './http/error-handler';
 import { healthPlugin } from './http/health.plugin';
 import type { ObjectStorage } from './platform/storage';
+import type { Redis } from 'ioredis';
 import { roomsPlugin, type RoomsRateLimitOptions } from './rooms';
 import { teamsPlugin } from './teams';
 
@@ -23,6 +24,8 @@ declare module 'fastify' {
     db: Db;
     /** Не задан — объектное хранилище (Epic 21) ещё не подключено, см. `Config.objectStorage` */
     storage?: ObjectStorage;
+    /** Не задан — один экземпляр сервера, всё сиюминутное в памяти процесса (10.18) */
+    redis?: Redis;
   }
 }
 
@@ -51,6 +54,11 @@ export interface AppDeps {
   telegram?: TelegramConfig;
   /** Giphy API (21.9) — выключена без ключа */
   giphy?: GiphyConfig;
+  /**
+   * Redis (10.18) — общие лимиты запросов; `/health` его проверяет. Не задан —
+   * один экземпляр сервера
+   */
+  redis?: Redis;
 }
 
 export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): FastifyInstance {
@@ -71,6 +79,7 @@ export function buildApp(deps: AppDeps, opts: FastifyServerOptions = {}): Fastif
 
   app.decorate('db', deps.db);
   app.decorate('storage', deps.objectStorage);
+  app.decorate('redis', deps.redis);
   new ErrorHandler().register(app);
 
   // Базовая защита заголовками (clickjacking, MIME-sniffing и т.п.). CSP выключена:

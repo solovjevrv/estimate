@@ -2,6 +2,8 @@ import { countdownRemainingSec, type CountdownTimerState } from '@estimate/share
 
 import { ValidationError } from '../../errors';
 
+import { MemoryRealtimeStore, type RealtimeStore } from './realtime-store';
+
 export interface CountdownTimerOptions {
   defaultDurationSec: number;
   /** Какие длительности принимает `reset` — у комнаты пресеты, у доски диапазон */
@@ -11,29 +13,29 @@ export interface CountdownTimerOptions {
 }
 
 /**
- * Общий таймер обратного отсчёта на ключ (комнату или доску). Живёт в памяти
- * процесса — как присутствие участников (`PresenceRegistry`), а не в базе: это
- * сиюминутное состояние, а не история. При нескольких инстансах сюда тоже
- * понадобится общий адаптер (см. Epic 8/7.12, долг 10.18).
+ * Общий таймер обратного отсчёта на ключ (комнату или доску). Сиюминутное
+ * состояние, а не история — живёт в `RealtimeStore` (10.18): в памяти процесса
+ * или в Redis, общем для всех экземпляров сервера. Команды с разных
+ * экземпляров не сериализуются — при одновременных кликах побеждает последний.
  */
 export class CountdownTimer {
-  private readonly byKey = new Map<string, CountdownTimerState>();
+  constructor(
+    private readonly options: CountdownTimerOptions,
+    private readonly store: RealtimeStore = new MemoryRealtimeStore(),
+    /** Пространство ключей: таймеры комнат и досок не должны пересекаться */
+    private readonly namespace = 'timer',
+  ) {}
 
-  constructor(private readonly options: CountdownTimerOptions) {}
-
-  /** Снимок таймера; заводит дефолтный, если по ключу его ещё не было */
-  get(key: string): CountdownTimerState {
-    const existing = this.byKey.get(key);
-    if (existing) {
-      return existing;
-    }
-    const initial = this.idle(this.options.defaultDurationSec);
-    this.byKey.set(key, initial);
-    return initial;
+  /** Снимок таймера; дефолтный, если по ключу его ещё не было */
+  async get(key: string): Promise<CountdownTimerState> {
+    return (
+      (await this.store.getJson<CountdownTimerState>(this.storeKey(key))) ??
+      this.idle(this.options.defaultDurationSec)
+    );
   }
 
-  start(key: string): CountdownTimerState {
-    const current = this.get(key);
+  async start(key: string): Promise<CountdownTimerState> {
+    const current = await this.get(key);
     if (current.running) {
       return current;
     }
@@ -47,8 +49,8 @@ export class CountdownTimer {
     });
   }
 
-  pause(key: string): CountdownTimerState {
-    const current = this.get(key);
+  async pause(key: string): Promise<CountdownTimerState> {
+    const current = await this.get(key);
     if (!current.running || !current.endsAt) {
       return current;
     }
@@ -60,8 +62,8 @@ export class CountdownTimer {
     });
   }
 
-  reset(key: string, durationSec?: number): CountdownTimerState {
-    const current = this.get(key);
+  async reset(key: string, durationSec?: number): Promise<CountdownTimerState> {
+    const current = await this.get(key);
     const duration = durationSec ?? current.durationSec;
     if (!this.options.isValidDuration(duration)) {
       throw new ValidationError('Недопустимая длительность таймера');
@@ -73,8 +75,8 @@ export class CountdownTimer {
    * Добавляет время к остатку, не меняя длительность (сброс вернёт исходную).
    * У истёкшего бегущего таймера отсчёт возобновляется от текущего момента.
    */
-  extend(key: string, addSec: number): CountdownTimerState {
-    const current = this.get(key);
+  async extend(key: string, addSec: number): Promise<CountdownTimerState> {
+    const current = await this.get(key);
     const now = Date.now();
     const cap = this.options.maxRemainingSec ?? Number.POSITIVE_INFINITY;
     const remaining = Math.min(cap, countdownRemainingSec(current, now) + addSec);
@@ -89,13 +91,17 @@ export class CountdownTimer {
   }
 
   /** Комната/доска опустела — сиюминутное состояние ей больше не нужно */
-  clear(key: string): void {
-    this.byKey.delete(key);
+  async clear(key: string): Promise<void> {
+    await this.store.delete(this.storeKey(key));
   }
 
-  private set(key: string, state: CountdownTimerState): CountdownTimerState {
-    this.byKey.set(key, state);
+  private async set(key: string, state: CountdownTimerState): Promise<CountdownTimerState> {
+    await this.store.setJson(this.storeKey(key), state);
     return state;
+  }
+
+  private storeKey(key: string): string {
+    return `${this.namespace}:${key}`;
   }
 
   private idle(durationSec: number): CountdownTimerState {

@@ -19,8 +19,8 @@ import { isValidEmojiSequence } from '@estimate/shared/emoji/validate';
 import type { FastifyBaseLogger } from 'fastify';
 
 import { AppError, ForbiddenError, ValidationError } from '../errors';
-import { PresenceRegistry } from '../platform/realtime';
-import type { PokerServer, PokerSocket } from '../socket';
+import { ClusterPresence, MemoryRealtimeStore, type RealtimeStore } from '../platform/realtime';
+import type { PokerServer, PokerSocket, SocketData } from '../socket';
 
 import type { ParticipantIdentity } from './presence';
 import { RoomReactions } from './room-reactions';
@@ -45,8 +45,6 @@ const NO_OP_ACK: Ack<unknown> = () => {};
 export type RoomResultListener = (io: PokerServer, roomId: string) => Promise<void>;
 
 export class RoomsGateway {
-  /** Незавершённые рассылки по комнатам: по одной очереди на комнату */
-  private readonly broadcasts = new Map<string, Promise<void>>();
   private resultListener: RoomResultListener | undefined;
 
   onRoundResult(listener: RoomResultListener | undefined): this {
@@ -61,12 +59,26 @@ export class RoomsGateway {
     });
   }
 
+  private readonly presence = new ClusterPresence<ParticipantIdentity, SocketData>({
+    read: (data) => data.room,
+    write: (data, seat) => {
+      data.room = seat;
+    },
+  });
+  private readonly timer: RoomTimer;
+  private readonly reactions: RoomReactions;
+
+  /**
+   * `store` — общее сиюминутное состояние (10.18): в памяти процесса для одного
+   * экземпляра или в Redis — для нескольких
+   */
   constructor(
     private readonly service: RoomsGameService,
-    private readonly presence = new PresenceRegistry<ParticipantIdentity>(),
-    private readonly timer = new RoomTimer(),
-    private readonly reactions = new RoomReactions(),
-  ) {}
+    private readonly store: RealtimeStore = new MemoryRealtimeStore(),
+  ) {
+    this.timer = new RoomTimer(store);
+    this.reactions = new RoomReactions(store);
+  }
 
   register(io: PokerServer, log: FastifyBaseLogger): void {
     io.on('connection', (socket) => {
@@ -108,8 +120,8 @@ export class RoomsGateway {
             payload as StartRoundPayload,
           );
           // Новая задача — таймер обсуждения и реакции на прошлой ей не нужны
-          this.timer.reset(roomId);
-          this.reactions.clear(roomId);
+          await this.timer.reset(roomId);
+          await this.reactions.clear(roomId);
           await this.broadcastState(io, roomId);
           return round;
         });
@@ -120,7 +132,7 @@ export class RoomsGateway {
         this.run<RoomTimerState>(socket, log, ack, async () => {
           const { roomId } = this.requireSeat(socket);
           await this.service.assertRoomOpen(roomId);
-          const state = this.timer.start(roomId);
+          const state = await this.timer.start(roomId);
           await this.broadcastState(io, roomId);
           return state;
         });
@@ -131,7 +143,7 @@ export class RoomsGateway {
         this.run<RoomTimerState>(socket, log, ack, async () => {
           const { roomId } = this.requireSeat(socket);
           await this.service.assertRoomOpen(roomId);
-          const state = this.timer.pause(roomId);
+          const state = await this.timer.pause(roomId);
           await this.broadcastState(io, roomId);
           return state;
         });
@@ -142,7 +154,7 @@ export class RoomsGateway {
         this.run<RoomTimerState>(socket, log, ack, async () => {
           const { roomId } = this.requireSeat(socket);
           await this.service.assertRoomOpen(roomId);
-          const state = this.timer.reset(roomId, payload?.durationSec);
+          const state = await this.timer.reset(roomId, payload?.durationSec);
           await this.broadcastState(io, roomId);
           return state;
         });
@@ -162,15 +174,20 @@ export class RoomsGateway {
           await this.service.assertCanKick(roomId, identity);
 
           // Кикнуть нужно все вкладки того же человека, а не одну — иначе
-          // призрак останется висеть под второй сессией
-          for (const targetSocketId of this.presence.socketIdsOf(roomId, targetId)) {
+          // призрак останется висеть под второй сессией. Вкладки могут сидеть
+          // на других экземплярах сервера (10.18) — ищем по всем
+          const targetSocketIds = (await this.presence.members(io, roomId))
+            .filter((member) => member.identity.participantId === targetId)
+            .map((member) => member.socketId);
+          if (targetSocketIds.length > 0) {
             // Адресное событие — прежде чем рвать соединение, иначе клиент не
             // отличит кик от разрыва по протухшему токену (7.7) и тихо
             // переподключится тем же обработчиком. У каждого сокета своя
             // приватная комната с именем-id (заводится Socket.IO сама) — так
-            // рассылка попадает ровно в него, без хранения самого объекта Socket.
-            io.to(targetSocketId).emit(WS_SERVER_EVENTS.KICKED, {});
-            io.sockets.sockets.get(targetSocketId)?.disconnect(true);
+            // рассылка попадает ровно в него. Обе команды идут через адаптер
+            // по одному каналу и доходят до чужого экземпляра в том же порядке
+            io.to(targetSocketIds).emit(WS_SERVER_EVENTS.KICKED, {});
+            io.in(targetSocketIds).disconnectSockets(true);
           }
           return null;
         });
@@ -189,26 +206,23 @@ export class RoomsGateway {
             throw new ValidationError('Недопустимый эмодзи');
           }
           // Адресат должен реально сидеть за столом — иначе реакции на случайные
-          // id копились бы в памяти комнаты без ограничения и без возможности очистки
-          const targetSeated = this.presence.list(roomId).some((p) => p.participantId === targetId);
-          if (!targetSeated) {
+          // id копились бы в состоянии комнаты без ограничения и без возможности очистки
+          const seated = await this.presence.list(io, roomId);
+          if (!seated.some((p) => p.participantId === targetId)) {
             throw new ValidationError('Участник не найден в комнате');
           }
-          this.reactions.toggle(roomId, identity.participantId, targetId, emoji);
+          await this.reactions.toggle(roomId, identity.participantId, targetId, emoji);
           await this.broadcastState(io, roomId);
           return null;
         });
       });
 
       socket.on('disconnect', () => {
-        const roomId = this.presence.leave(socket.id);
+        // Сокет к этому моменту уже вышел из каналов — в присутствии его нет
+        const roomId = this.presence.seatOf(socket)?.scopeId;
         if (roomId) {
-          // Стол опустел — сиюминутному состоянию таймера и реакций дальше жить незачем
-          if (this.presence.list(roomId).length === 0) {
-            this.timer.clear(roomId);
-            this.reactions.clear(roomId);
-          }
-          this.broadcastState(io, roomId).catch((err: unknown) => {
+          this.presence.stand(socket);
+          this.afterLeave(io, roomId).catch((err: unknown) => {
             log.warn({ err, roomId }, 'Не удалось разослать состояние после выхода участника');
           });
         }
@@ -233,22 +247,16 @@ export class RoomsGateway {
     });
 
     // Из прошлой комнаты выходим полностью, иначе сокет продолжит получать её рассылки
-    const previousRoom = this.presence.scopeOf(socket.id);
+    const previousRoom = this.presence.seatOf(socket)?.scopeId;
     if (previousRoom && previousRoom !== payload.roomId) {
       await socket.leave(previousRoom);
     }
 
     await socket.join(payload.roomId);
-    this.presence.join(payload.roomId, socket.id, identity);
+    this.presence.sit(socket, payload.roomId, identity);
 
     if (previousRoom && previousRoom !== payload.roomId) {
-      // Прошлая комната опустела — сиюминутному состоянию таймера и реакций дальше жить незачем
-      // (как и при disconnect ниже: без этого запись в RoomTimer осталась бы навсегда)
-      if (this.presence.list(previousRoom).length === 0) {
-        this.timer.clear(previousRoom);
-        this.reactions.clear(previousRoom);
-      }
-      await this.broadcastState(io, previousRoom);
+      await this.afterLeave(io, previousRoom);
     }
 
     // Нового участника показываем всем той же рассылкой, что и остальные события:
@@ -258,48 +266,43 @@ export class RoomsGateway {
     return { state, guestToken, participantId: identity.participantId };
   }
 
+  /**
+   * Участник ушёл из комнаты. Стол опустел на всех экземплярах — сиюминутному
+   * состоянию таймера и реакций дальше жить незачем
+   */
+  private async afterLeave(io: PokerServer, roomId: string): Promise<void> {
+    if ((await this.presence.members(io, roomId)).length === 0) {
+      await this.timer.clear(roomId);
+      await this.reactions.clear(roomId);
+    }
+    await this.broadcastState(io, roomId);
+  }
+
   /** Действовать может только тот, кто уже сидит за столом */
   private requireSeat(socket: PokerSocket): { roomId: string; identity: ParticipantIdentity } {
-    const roomId = this.presence.scopeOf(socket.id);
-    const identity = this.presence.identityOf(socket.id);
-    if (!roomId || !identity) {
+    const seat = this.presence.seatOf(socket);
+    if (!seat) {
       throw new ForbiddenError('Сначала войдите в комнату');
     }
-    return { roomId, identity };
+    return { roomId: seat.scopeId, identity: seat.identity };
   }
 
   /**
-   * Рассылки одной комнаты идут строго друг за другом. Иначе два снимка,
-   * собранные одновременно, могут уйти в обратном порядке — и ушедший участник
-   * останется на экране до следующего действия за столом.
+   * Снимок комнаты всем за столом. Рассылки с разных экземпляров (и даже с
+   * одного) могут обогнать друг друга — порядок держит номер снимка (10.18):
+   * он берётся ДО чтения состояния, поэтому больший номер всегда у снимка,
+   * собранного не раньше, а клиент отбрасывает снимок с меньшим номером.
    */
   private async broadcastState(io: PokerServer, roomId: string): Promise<RoomState> {
-    const previous = this.broadcasts.get(roomId) ?? Promise.resolve();
-    const send = previous.then(async () => {
-      const state = await this.service.getState(
-        roomId,
-        this.presence.list(roomId),
-        this.timer.get(roomId),
-        this.reactions.list(roomId),
-      );
-      io.to(roomId).emit(WS_SERVER_EVENTS.ROOM_STATE, state);
-      return state;
-    });
-    // В очереди ждёт завершение рассылки: сбой одной не должен обрывать следующие
-    const tail = send.then(
-      () => {},
-      () => {},
-    );
-    this.broadcasts.set(roomId, tail);
-
-    try {
-      return await send;
-    } finally {
-      // Очередь опустела — убираем за собой, чтобы карта не росла с числом комнат
-      if (this.broadcasts.get(roomId) === tail) {
-        this.broadcasts.delete(roomId);
-      }
-    }
+    const seq = await this.store.nextSeq(`room-seq:${roomId}`);
+    const [participants, timer, reactions] = await Promise.all([
+      this.presence.list(io, roomId),
+      this.timer.get(roomId),
+      this.reactions.list(roomId),
+    ]);
+    const state = await this.service.getState(roomId, participants, timer, reactions, seq);
+    io.to(roomId).emit(WS_SERVER_EVENTS.ROOM_STATE, state);
+    return state;
   }
 
   /** Подтверждение и полезная нагрузка могут прийти в любом сочетании — разбираем аккуратно */

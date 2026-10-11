@@ -50,6 +50,7 @@ function roomState(overrides: Partial<RoomState> = {}): RoomState {
       remainingSec: TIMER_DEFAULT_DURATION_SEC,
     },
     reactions: [],
+    seq: 1,
     ...overrides,
   };
 }

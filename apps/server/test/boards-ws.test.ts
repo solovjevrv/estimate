@@ -13,7 +13,7 @@ import type {
   BoardEstimateUpdate,
   BoardItem,
   BoardOpsBatch,
-  BoardPresenceEntry,
+  BoardPresenceUpdate,
   BoardTimerState,
   BoardVotingState,
   BoardVotingSummary,
@@ -532,24 +532,26 @@ describeDb('WS-канал досок', () => {
       const firstClient = connect(owner);
       await joinBoard(firstClient, boardId);
 
-      const presencePromise = waitFor<BoardPresenceEntry[]>(
+      const presencePromise = waitFor<BoardPresenceUpdate>(
         firstClient,
         BOARD_WS_SERVER_EVENTS.PRESENCE,
       );
       const secondClient = connect(second);
       await joinBoard(secondClient, boardId);
-      const entries = await presencePromise;
+      const joined = await presencePromise;
 
-      expect(entries.map((e) => e.userId).sort()).toEqual([owner.id, second.id].sort());
+      expect(joined.entries.map((e) => e.userId).sort()).toEqual([owner.id, second.id].sort());
 
-      const leavePromise = waitFor<BoardPresenceEntry[]>(
+      const leavePromise = waitFor<BoardPresenceUpdate>(
         firstClient,
         BOARD_WS_SERVER_EVENTS.PRESENCE,
       );
       secondClient.close();
       const afterLeave = await leavePromise;
 
-      expect(afterLeave.map((e) => e.userId)).toEqual([owner.id]);
+      // Номер рассылки растёт (10.18) — по нему клиент отбрасывает запоздавшие
+      expect(afterLeave.seq).toBeGreaterThan(joined.seq);
+      expect(afterLeave.entries.map((e) => e.userId)).toEqual([owner.id]);
     });
   });
 

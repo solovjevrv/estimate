@@ -7,6 +7,7 @@ import fp from 'fastify-plugin';
 import type { GiphyConfig } from '../config';
 import { NotFoundError } from '../errors';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
+import { sharedRateLimitStore } from '../http/rate-limit';
 
 import { GiphyClient } from './giphy-client';
 import { GIPHY_MEDIA_VARIANTS, GIPHY_SEARCH_LIMIT_MAX, GiphyService } from './giphy.service';
@@ -53,6 +54,7 @@ async function giphyPluginImpl(app: FastifyInstance, opts: { giphy: GiphyConfig 
   // от исчерпания, а не честность между пользователями.
   void app.register(async (giphyRoutes) => {
     await giphyRoutes.register(fastifyRateLimit, {
+      ...sharedRateLimitStore(giphyRoutes, 'giphy'),
       max: 600,
       timeWindow: '1 minute',
       keyGenerator: () => 'giphy-shared-quota',

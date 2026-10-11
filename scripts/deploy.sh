@@ -16,17 +16,32 @@ echo "== Собираю образы (последовательно: серве
 # Короткий хэш коммита — для футера фронта (build arg APP_VERSION, см. docker-compose.prod.yml)
 export APP_VERSION
 APP_VERSION="$(git rev-parse --short HEAD)"
-$COMPOSE build server
+# server-2 берёт тот же образ estimate-server — собирается один раз
+$COMPOSE build server-1
 $COMPOSE build web
 
 echo "== Применяю миграции БД =="
 $COMPOSE up -d --wait postgres
 # Скрипт приходит по SSH через stdin, а docker compose run его читает и съедает
 # остаток файла: без /dev/null деплой молча обрывался сразу после миграций
-$COMPOSE run --rm --no-deps -T server node dist/db/migrate.cjs </dev/null
+$COMPOSE run --rm --no-deps -T server-1 node dist/db/migrate.cjs </dev/null
 
-echo "== Обновляю сервисы =="
-if ! $COMPOSE up -d --wait; then
+echo "== Обновляю экземпляры сервера по очереди (без простоя) =="
+# Пока один экземпляр перезапускается, nginx (ip_hash) отправляет его клиентов
+# на соседний — у того общее состояние в Redis, Socket.io переподключается сам
+$COMPOSE up -d --wait redis
+for svc in server-1 server-2; do
+  if ! $COMPOSE up -d --no-deps --wait "$svc"; then
+    echo "ОШИБКА: $svc не вышел в healthy"
+    $COMPOSE ps -a
+    $COMPOSE logs --tail 80 "$svc"
+    exit 1
+  fi
+done
+
+echo "== Обновляю остальные сервисы =="
+# --remove-orphans: убирает контейнер прежнего единственного сервиса server (до 10.18)
+if ! $COMPOSE up -d --wait --remove-orphans; then
   echo "ОШИБКА: сервисы не вышли в healthy"
   $COMPOSE ps -a
   $COMPOSE logs --tail 80
@@ -36,7 +51,7 @@ fi
 echo "== Проверяю состояние контейнеров =="
 $COMPOSE ps -a
 bad=0
-for svc in postgres server web certbot; do
+for svc in postgres redis server-1 server-2 web certbot; do
   cid=$($COMPOSE ps -aq "$svc" | head -1)
   status=$(docker inspect -f '{{.State.Status}}' "$cid")
   health=$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}' "$cid")
@@ -54,7 +69,7 @@ fi
 
 if ! curl -fsS http://localhost/health >/dev/null; then
   echo "ОШИБКА: healthcheck через nginx не прошёл"
-  $COMPOSE logs --tail 80 server web
+  $COMPOSE logs --tail 80 server-1 server-2 web
   exit 1
 fi
 
@@ -70,6 +85,6 @@ fi
 docker image prune -f >/dev/null
 
 echo "== Последние логи сервера =="
-$COMPOSE logs --tail 20 server
+$COMPOSE logs --tail 20 server-1 server-2
 
 echo "Деплой успешен: /health через nginx отвечает"

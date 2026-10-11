@@ -84,6 +84,20 @@ export interface Config {
   telegram?: TelegramConfig;
   /** Giphy API (21.9) — выключена без ключа */
   giphy?: GiphyConfig;
+  /**
+   * Redis (10.18): общее сиюминутное состояние realtime, адаптер рассылок
+   * Socket.io и общие лимиты запросов — для нескольких экземпляров сервера.
+   * Не задан — всё в памяти процесса, экземпляр ровно один
+   */
+  redisUrl?: string;
+  /**
+   * Сервер стоит за своим прокси (nginx): клиентский IP — из X-Forwarded-For.
+   * Без этого лимиты по IP считались по адресу nginx, то есть один на всех.
+   * Доверяем ровно одному прокси (число хопов, не `true`): берётся адрес,
+   * который дописал nginx, а присланное клиентом в заголовке игнорируется —
+   * иначе IP для лимита подделывался бы своим X-Forwarded-For
+   */
+  trustProxy: number | false;
 }
 
 /**
@@ -228,5 +242,7 @@ export function loadConfig(): Config {
     objectStorage: loadObjectStorageConfig(),
     telegram: loadTelegramConfig(),
     giphy: loadGiphyConfig(),
+    redisUrl: process.env.REDIS_URL || undefined,
+    trustProxy: process.env.TRUST_PROXY === 'true' ? 1 : false,
   };
 }

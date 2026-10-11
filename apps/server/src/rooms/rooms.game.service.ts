@@ -158,6 +158,8 @@ export class RoomsGameService {
       remainingSec: TIMER_DEFAULT_DURATION_SEC,
     },
     reactions: Reaction[] = [],
+    /** Номер снимка от рассылки (10.18); вне рассылки — 0 */
+    seq = 0,
   ): Promise<RoomState> {
     const { room, round, votes } = await this.transactions.readSnapshot(async (repo) => {
       const found = await repo.findRoom(roomId);
@@ -189,6 +191,7 @@ export class RoomsGameService {
         round?.status === 'revealed' ? summarizeRound(votes, round.deckType, round.average) : null,
       timer,
       reactions,
+      seq,
     };
   }
 

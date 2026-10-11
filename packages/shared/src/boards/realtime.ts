@@ -45,7 +45,7 @@ export const BOARD_WS_SERVER_EVENTS = {
   OPS: 'board:ops',
   /** Курсоры/перетаскивание — не персистится, ретранслируется всем, кроме отправителя */
   AWARENESS: 'board:awareness',
-  /** Кто сейчас смотрит доску — на вход/выход участника */
+  /** Кто сейчас смотрит доску (`BoardPresenceUpdate`) — на вход/выход участника */
   PRESENCE: 'board:presence',
   /** Новое состояние таймера доски — всем на доске, включая того, кто его поменял */
   TIMER: 'board:timer',
@@ -192,4 +192,15 @@ export interface BoardPresenceEntry {
   name: string;
   avatarUrl: string | null;
   isGuest: boolean;
+}
+
+/**
+ * Рассылка присутствия (10.18): `seq` растёт с каждой рассылкой доски по всем
+ * экземплярам сервера — клиент отбрасывает список с номером меньше уже
+ * показанного, иначе запоздавшая рассылка с другого экземпляра вернула бы
+ * ушедшего участника.
+ */
+export interface BoardPresenceUpdate {
+  seq: number;
+  entries: BoardPresenceEntry[];
 }

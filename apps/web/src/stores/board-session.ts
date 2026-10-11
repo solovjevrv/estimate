@@ -189,6 +189,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       // follow-mode так не работает (копится, а не перезаписывается целиком)
       awareness.cameraByParticipant.clear();
       awareness.followedParticipantId.value = null;
+      // ...но номер рассылки у новой доски свой (10.18)
+      awareness.resetPresenceOrder();
     }
     boardId = id;
     // Имя гостя нужно и на автоматическом входе после обрыва — сервер требует
@@ -213,6 +215,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     local.items.clear();
     local.edges.clear();
     optimistic.resetForNewSession();
+    awareness.resetPresenceOrder();
     awareness.reset();
   }
 

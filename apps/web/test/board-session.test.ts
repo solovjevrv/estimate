@@ -4,6 +4,7 @@ import type {
   BoardItem,
   BoardOpsBatch,
   BoardPresenceEntry,
+  BoardPresenceUpdate,
   JoinBoardResult,
 } from '@estimate/shared';
 import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, type Board } from '@estimate/shared';
@@ -120,6 +121,13 @@ function snapshotResult(
     voting: null,
     estimates: {},
   };
+}
+
+/** Рассылка присутствия (10.18): номер растёт с каждой — как у сервера */
+let presenceSeq = 0;
+function presenceUpdate(entries: BoardPresenceEntry[]): BoardPresenceUpdate {
+  presenceSeq += 1;
+  return { seq: presenceSeq, entries };
 }
 
 describe('стор сессии доски', () => {
@@ -707,9 +715,32 @@ describe('стор сессии доски', () => {
     const entries: BoardPresenceEntry[] = [
       { participantId: 'p1', userId: 'u1', name: 'Иван', avatarUrl: null, isGuest: false },
     ];
-    socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, entries);
+    socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, presenceUpdate(entries));
 
     expect(store.presence).toEqual(entries);
+  });
+
+  it('запоздавшая рассылка присутствия (меньший номер) отбрасывается (10.18)', async () => {
+    const store = useBoardSessionStore();
+    socket.next = snapshotResult(1);
+    await store.join('board1');
+    const ivan = {
+      participantId: 'p1',
+      userId: 'u1',
+      name: 'Иван',
+      avatarUrl: null,
+      isGuest: false,
+    };
+
+    socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, { seq: 20, entries: [] });
+    socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, { seq: 10, entries: [ivan] });
+    expect(store.presence).toEqual([]);
+
+    // Другая доска — свой счёт: её первая рассылка принимается и с малым номером
+    socket.next = snapshotResult(1);
+    await store.join('board2');
+    socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, { seq: 5, entries: [ivan] });
+    expect(store.presence).toEqual([ivan]);
   });
 
   it('имена авторов (15.4): из снимка и все, кто сейчас на доске; гости без userId — нет', async () => {
@@ -719,11 +750,14 @@ describe('стор сессии доски', () => {
     socket.next = result;
     await store.join('board1');
 
-    socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, [
-      { participantId: 'p2', userId: 'u2', name: 'Иван Петров', avatarUrl: null, isGuest: false },
-      { participantId: 'p3', userId: 'u3', name: 'Мария', avatarUrl: null, isGuest: false },
-      { participantId: 'g1', userId: null, name: 'Гость', avatarUrl: null, isGuest: true },
-    ]);
+    socket.emitLocal(
+      BOARD_WS_SERVER_EVENTS.PRESENCE,
+      presenceUpdate([
+        { participantId: 'p2', userId: 'u2', name: 'Иван Петров', avatarUrl: null, isGuest: false },
+        { participantId: 'p3', userId: 'u3', name: 'Мария', avatarUrl: null, isGuest: false },
+        { participantId: 'g1', userId: null, name: 'Гость', avatarUrl: null, isGuest: true },
+      ]),
+    );
 
     expect([...store.authorNames]).toEqual([
       ['u1', 'Анна (давно ушла)'],
@@ -908,7 +942,7 @@ describe('стор сессии доски', () => {
       });
 
       // P1 и P2 оба вышли с доски — presence стал пустым списком
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, []);
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, presenceUpdate([]));
 
       expect(store.editingByItem.get('item-1')).toBeUndefined();
       expect(store.awareness).toHaveLength(0);
@@ -1097,7 +1131,7 @@ describe('стор сессии доски', () => {
       store.followParticipant('p1');
 
       // P1 ушёл — presence без него
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, []);
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, presenceUpdate([]));
       expect(store.followedParticipantId).toBe(null);
       expect(store.cameraOfFollowed).toBe(null);
     });
@@ -1141,7 +1175,7 @@ describe('стор сессии доски', () => {
         { participantId: 'guest-a', userId: null, name: 'Гость А', avatarUrl: null, isGuest: true },
         { participantId: 'guest-b', userId: null, name: 'Гость Б', avatarUrl: null, isGuest: true },
       ];
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, entries);
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, presenceUpdate(entries));
       expect(store.presence).toHaveLength(2);
       const byPid = new Map(store.presence.map((p) => [p.participantId, p]));
       expect(byPid.get('guest-a')?.name).toBe('Гость А');

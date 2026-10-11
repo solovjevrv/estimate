@@ -8,6 +8,7 @@ import fp from 'fastify-plugin';
 
 import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
+import { sharedRateLimitStore } from '../http/rate-limit';
 
 import { AuthController, type ProfileBody } from './auth.controller';
 import { AuthService } from './auth.service';
@@ -160,6 +161,7 @@ async function authPluginImpl(app: FastifyInstance, opts: AuthPluginOptions): Pr
    */
   await app.register(async (auth) => {
     await auth.register(fastifyRateLimit, {
+      ...sharedRateLimitStore(auth, 'auth'),
       max: AUTH_RATE_LIMIT_MAX,
       timeWindow: AUTH_RATE_LIMIT_WINDOW,
       // Свой бюджет на каждый маршрут, а не один общий на весь /api/auth/*:

@@ -1,5 +1,4 @@
 import {
-  BOARD_RING_BUFFER_SIZE,
   BOARD_TIMER_DEFAULT_DURATION_SEC,
   BOARD_TIMER_EXTEND_SEC,
   BOARD_TIMER_MAX_DURATION_SEC,
@@ -26,9 +25,15 @@ import {
 import type { FastifyBaseLogger } from 'fastify';
 
 import { AppError, ConflictError, ForbiddenError, ValidationError } from '../errors';
-import { CountdownTimer, PresenceRegistry } from '../platform/realtime';
-import type { PokerServer, PokerSocket } from '../socket';
+import {
+  ClusterPresence,
+  CountdownTimer,
+  MemoryRealtimeStore,
+  type RealtimeStore,
+} from '../platform/realtime';
+import type { PokerServer, PokerSocket, SocketData } from '../socket';
 
+import { BoardOpsLog } from './board-ops-log';
 import { votingStateFor } from './board-voting-state';
 import type { BoardEstimatesService } from './board-estimates.service';
 import type { BoardVotingService } from './board-voting.service';
@@ -54,21 +59,38 @@ const NO_OP_ACK: Ack<unknown> = () => {};
  * в БД на каждое движение мыши.
  */
 export class BoardsGateway {
-  /** Последние батчи операций на доску — используются для догона по `sinceRevision` */
-  private readonly ringBuffers = new Map<string, BoardOpsBatch[]>();
+  private readonly presence = new ClusterPresence<BoardParticipantIdentity, SocketData>({
+    read: (data) => data.board,
+    write: (data, seat) => {
+      data.board = seat;
+    },
+  });
+  /** Последние батчи операций на доску — для догона по `sinceRevision` */
+  private readonly opsLog: BoardOpsLog;
+  /** Таймер доски (15.3) — сиюминутное состояние, как присутствие */
+  private readonly timer: CountdownTimer;
 
+  /**
+   * `store` — общее сиюминутное состояние (10.18): в памяти процесса для одного
+   * экземпляра или в Redis — для нескольких
+   */
   constructor(
     private readonly service: BoardsService,
     /** Голосование точками (15.2); не задано — события голосования отклоняются */
     private readonly voting?: BoardVotingService,
-    private readonly presence = new PresenceRegistry<BoardParticipantIdentity>(),
-    /** Таймер доски (15.3) — сиюминутное состояние, как присутствие */
-    private readonly timer = new CountdownTimer({
-      defaultDurationSec: BOARD_TIMER_DEFAULT_DURATION_SEC,
-      isValidDuration: isValidBoardTimerDuration,
-      maxRemainingSec: BOARD_TIMER_MAX_DURATION_SEC,
-    }),
-  ) {}
+    private readonly store: RealtimeStore = new MemoryRealtimeStore(),
+  ) {
+    this.opsLog = new BoardOpsLog(store);
+    this.timer = new CountdownTimer(
+      {
+        defaultDurationSec: BOARD_TIMER_DEFAULT_DURATION_SEC,
+        isValidDuration: isValidBoardTimerDuration,
+        maxRemainingSec: BOARD_TIMER_MAX_DURATION_SEC,
+      },
+      store,
+      'board-timer',
+    );
+  }
 
   private estimates: BoardEstimatesService | undefined;
 
@@ -95,7 +117,12 @@ export class BoardsGateway {
           }
           const { revision, ops: committed } = await this.service.applyOps(identity, boardId, ops);
           const batch: BoardOpsBatch = { revision, ops: committed };
-          this.pushToBuffer(boardId, batch);
+          // Операция уже в БД — сбой буфера не должен превращаться в отказ клиенту
+          // (тот откатил бы закоммиченную правку). Догон без этого батча увидит
+          // дыру в ревизиях и отдаст полный снимок
+          await this.opsLog.push(boardId, batch).catch((err: unknown) => {
+            log.warn({ err, boardId }, 'Не удалось записать батч в буфер догона');
+          });
           // Рассылаем всем, включая отправителя — своя же операция отбрасывается
           // на клиенте по `clientOpId`, а не особым обхождением на сервере
           io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.OPS, batch);
@@ -121,11 +148,11 @@ export class BoardsGateway {
         const { payload } = this.readArgs<BoardAwarenessPayload>(args);
         // Эфемерное событие без подтверждения: не авторизован — просто игнорируем,
         // отвечать клиенту нечем и незачем
-        const boardId = this.presence.scopeOf(socket.id);
-        const identity = this.presence.identityOf(socket.id);
-        if (!boardId || !identity || !payload) {
+        const seat = this.presence.seatOf(socket);
+        if (!seat || !payload) {
           return;
         }
+        const { scopeId: boardId, identity } = seat;
         // Клиент сам не шлёт курсор без canEdit (BoardCanvas.vue), но модифицированный
         // клиент технически мог бы — доступ, посчитанный на JOIN, здесь тоже
         // обязателен (14.7). Не полный live-recheck на каждое событие (как у APPLY):
@@ -182,8 +209,8 @@ export class BoardsGateway {
           await voting.start(identity, boardId, payload);
           // Таймер вместе с голосованием — всегда заново, в т.ч. после истёкшего
           if (payload?.startTimer === true) {
-            this.timer.reset(boardId);
-            this.emitTimer(io, boardId, this.timer.start(boardId));
+            await this.timer.reset(boardId);
+            this.emitTimer(io, boardId, await this.timer.start(boardId));
           }
         });
       });
@@ -199,7 +226,7 @@ export class BoardsGateway {
         const { payload, ack } = this.readArgs<BoardVotingRefPayload>(args);
         this.runVoting(io, socket, log, ack, async (voting, identity, boardId) => {
           const { withTimer } = await voting.close(identity, boardId, payload?.votingId);
-          if (withTimer) this.emitTimer(io, boardId, this.timer.reset(boardId));
+          if (withTimer) this.emitTimer(io, boardId, await this.timer.reset(boardId));
         });
       });
 
@@ -207,7 +234,7 @@ export class BoardsGateway {
         const { payload, ack } = this.readArgs<BoardVotingRefPayload>(args);
         this.runVoting(io, socket, log, ack, async (voting, identity, boardId) => {
           const { withTimer } = await voting.cancel(identity, boardId, payload?.votingId);
-          if (withTimer) this.emitTimer(io, boardId, this.timer.reset(boardId));
+          if (withTimer) this.emitTimer(io, boardId, await this.timer.reset(boardId));
         });
       });
 
@@ -235,12 +262,13 @@ export class BoardsGateway {
       });
 
       socket.on('disconnect', () => {
-        const boardId = this.presence.leave(socket.id);
+        // Сокет к этому моменту уже вышел из каналов — в присутствии его нет
+        const boardId = this.presence.seatOf(socket)?.scopeId;
         if (boardId) {
-          if (this.presence.list(boardId).length === 0) {
-            this.forgetEmptyBoard(boardId);
-          }
-          this.broadcastPresence(io, boardId);
+          this.presence.stand(socket);
+          this.afterLeave(io, boardId).catch((err: unknown) => {
+            log.warn({ err, boardId }, 'Не удалось разослать присутствие после выхода участника');
+          });
         }
       });
     });
@@ -263,41 +291,43 @@ export class BoardsGateway {
     });
 
     // Из прошлой доски выходим полностью, иначе сокет продолжит получать её рассылки
-    const previousBoard = this.presence.scopeOf(socket.id);
+    const previousBoard = this.presence.seatOf(socket)?.scopeId;
     if (previousBoard && previousBoard !== payload.boardId) {
       await socket.leave(previousBoard);
     }
 
     await socket.join(payload.boardId);
-    this.presence.join(payload.boardId, socket.id, identity);
+    this.presence.sit(socket, payload.boardId, identity);
 
     if (previousBoard && previousBoard !== payload.boardId) {
-      if (this.presence.list(previousBoard).length === 0) {
-        this.forgetEmptyBoard(previousBoard);
-      }
-      this.broadcastPresence(io, previousBoard);
+      await this.afterLeave(io, previousBoard);
     }
-    this.broadcastPresence(io, payload.boardId);
+    await this.broadcastPresence(io, payload.boardId);
 
     const votingSnapshot = await this.voting?.loadSnapshot(payload.boardId);
     const voting = votingSnapshot ? votingStateFor(votingSnapshot, identity.participantId) : null;
     const estimates = (await this.estimates?.listForBoard(payload.boardId)) ?? {};
+    const timer = await this.timer.get(payload.boardId);
 
     const sinceRevision = payload.sinceRevision;
-    const buffered =
-      sinceRevision != null ? this.catchupSince(payload.boardId, sinceRevision) : null;
-    if (buffered) {
-      return {
-        revision: buffered.revision,
-        snapshot: null,
-        catchup: buffered.ops,
-        access,
-        participantId: identity.participantId,
-        guestToken,
-        timer: this.timer.get(payload.boardId),
-        voting,
-        estimates,
-      };
+    if (sinceRevision != null) {
+      // Ревизия из БД — уже после входа в канал: всё, что закоммитят позже,
+      // сокет получит рассылкой, а всё до неё обязано найтись в буфере
+      const revision = await this.service.currentRevision(payload.boardId);
+      const catchup = await this.opsLog.catchup(payload.boardId, sinceRevision, revision);
+      if (catchup) {
+        return {
+          revision,
+          snapshot: null,
+          catchup,
+          access,
+          participantId: identity.participantId,
+          guestToken,
+          timer,
+          voting,
+          estimates,
+        };
+      }
     }
 
     const snapshot = await this.service.getSnapshot(socket.data.userId, payload.boardId);
@@ -308,7 +338,7 @@ export class BoardsGateway {
       access,
       participantId: identity.participantId,
       guestToken,
-      timer: this.timer.get(payload.boardId),
+      timer,
       voting,
       estimates,
     };
@@ -347,15 +377,22 @@ export class BoardsGateway {
     io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.TIMER, state);
   }
 
-  /** Каждому участнику доски — его собственный снимок голосования */
+  /** Каждому участнику доски — его собственный снимок голосования, на любом экземпляре */
   private async broadcastVoting(io: PokerServer, boardId: string): Promise<void> {
     if (!this.voting) return;
-    const snapshot = await this.voting.loadSnapshot(boardId);
-    for (const { participantId } of this.presence.list(boardId)) {
+    const [snapshot, members] = await Promise.all([
+      this.voting.loadSnapshot(boardId),
+      this.presence.members(io, boardId),
+    ]);
+    const socketsByParticipant = new Map<string, string[]>();
+    for (const { socketId, identity } of members) {
+      const sockets = socketsByParticipant.get(identity.participantId) ?? [];
+      sockets.push(socketId);
+      socketsByParticipant.set(identity.participantId, sockets);
+    }
+    for (const [participantId, socketIds] of socketsByParticipant) {
       const state = snapshot ? votingStateFor(snapshot, participantId) : null;
-      for (const socketId of this.presence.socketIdsOf(boardId, participantId)) {
-        io.to(socketId).emit(BOARD_WS_SERVER_EVENTS.VOTING, state);
-      }
+      io.to(socketIds).emit(BOARD_WS_SERVER_EVENTS.VOTING, state);
     }
   }
 
@@ -369,21 +406,27 @@ export class BoardsGateway {
     socket: PokerSocket,
     log: FastifyBaseLogger,
     ack: Ack<unknown>,
-    command: (boardId: string) => BoardTimerState,
+    command: (boardId: string) => Promise<BoardTimerState>,
   ): void {
     this.run<BoardTimerState>(socket, log, ack, async () => {
       const { boardId, identity } = this.requireSeat(socket);
       await this.service.assertActiveEditAccess(identity.userId, boardId);
-      const state = command(boardId);
+      const state = await command(boardId);
       this.emitTimer(io, boardId, state);
       return state;
     });
   }
 
-  /** Доска опустела — кольцевому буферу и таймеру дальше жить незачем */
-  private forgetEmptyBoard(boardId: string): void {
-    this.ringBuffers.delete(boardId);
-    this.timer.clear(boardId);
+  /**
+   * Участник ушёл с доски. Доска опустела на всех экземплярах — буферу догона
+   * и таймеру дальше жить незачем
+   */
+  private async afterLeave(io: PokerServer, boardId: string): Promise<void> {
+    if ((await this.presence.members(io, boardId)).length === 0) {
+      await this.opsLog.clear(boardId);
+      await this.timer.clear(boardId);
+    }
+    await this.broadcastPresence(io, boardId);
   }
 
   /** Действовать может только тот, кто уже вошёл на доску */
@@ -391,59 +434,29 @@ export class BoardsGateway {
     boardId: string;
     identity: BoardParticipantIdentity;
   } {
-    const boardId = this.presence.scopeOf(socket.id);
-    const identity = this.presence.identityOf(socket.id);
-    if (!boardId || !identity) {
+    const seat = this.presence.seatOf(socket);
+    if (!seat) {
       throw new ForbiddenError('Сначала войдите на доску');
     }
-    return { boardId, identity };
-  }
-
-  private pushToBuffer(boardId: string, batch: BoardOpsBatch): void {
-    const buffer = this.ringBuffers.get(boardId) ?? [];
-    buffer.push(batch);
-    if (buffer.length > BOARD_RING_BUFFER_SIZE) {
-      buffer.shift();
-    }
-    this.ringBuffers.set(boardId, buffer);
+    return { boardId: seat.scopeId, identity: seat.identity };
   }
 
   /**
-   * Батчи строго после `sinceRevision` — либо `null`, если буфер не может
-   * закрыть разрыв (пуст, доска не имела операций с момента входа этого
-   * процесса, или клиент отстал дальше, чем буфер помнит). В этом случае
-   * вызывающий код откатывается на полный снимок.
+   * Кто на доске — всем на доске. Номер берётся ДО сбора списка (10.18): у
+   * рассылки с большим номером список не старее, клиент отбрасывает меньший
    */
-  private catchupSince(
-    boardId: string,
-    sinceRevision: number,
-  ): { ops: BoardOpsBatch[]; revision: number } | null {
-    const buffer = this.ringBuffers.get(boardId);
-    if (!buffer || buffer.length === 0) {
-      return null;
-    }
-    const earliest = buffer[0]!.revision;
-    // Буфер хранит батчи с ревизиями earliest..latest. Чтобы закрыть разрыв без
-    // потерь, клиент не должен был пропустить ничего раньше самого старого батча
-    if (sinceRevision < earliest - 1) {
-      return null;
-    }
-    const tail = buffer.filter((batch) => batch.revision > sinceRevision);
-    const revision = buffer[buffer.length - 1]!.revision;
-    return { ops: tail, revision };
-  }
-
-  private broadcastPresence(io: PokerServer, boardId: string): void {
-    const entries: BoardPresenceEntry[] = this.presence
-      .list(boardId)
-      .map(({ participantId, userId, name, avatarUrl, isGuest }) => ({
+  private async broadcastPresence(io: PokerServer, boardId: string): Promise<void> {
+    const seq = await this.store.nextSeq(`board-presence-seq:${boardId}`);
+    const entries: BoardPresenceEntry[] = (await this.presence.list(io, boardId)).map(
+      ({ participantId, userId, name, avatarUrl, isGuest }) => ({
         participantId,
         userId,
         name,
         avatarUrl,
         isGuest,
-      }));
-    io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.PRESENCE, entries);
+      }),
+    );
+    io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.PRESENCE, { seq, entries });
   }
 
   /** Подтверждение и полезная нагрузка могут прийти в любом сочетании — разбираем аккуратно */

@@ -9,7 +9,7 @@ import type {
   BoardAwarenessBroadcast,
   BoardAwarenessPayload,
   BoardOpsBatch,
-  BoardPresenceEntry,
+  BoardPresenceUpdate,
   BoardTimerState,
   BoardVotePayload,
   BoardVotingRefPayload,
@@ -65,7 +65,7 @@ interface ServerToClientEvents {
   /** Курсоры/перетаскивание — не персистится, приходит от всех, кроме себя самого */
   [BOARD_WS_SERVER_EVENTS.AWARENESS]: (payload: BoardAwarenessBroadcast) => void;
   /** Кто сейчас смотрит доску */
-  [BOARD_WS_SERVER_EVENTS.PRESENCE]: (entries: BoardPresenceEntry[]) => void;
+  [BOARD_WS_SERVER_EVENTS.PRESENCE]: (update: BoardPresenceUpdate) => void;
   /** Новое состояние таймера доски (15.3) — включая собственные команды */
   [BOARD_WS_SERVER_EVENTS.TIMER]: (state: BoardTimerState) => void;
   /** Голосование глазами этого участника (15.2); null — голосования нет */
