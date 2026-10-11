@@ -2,6 +2,7 @@ export { GuestSessions, type GuestScope, type GuestSession } from './guest-sessi
 export {
   ClusterPresence,
   type PresenceIdentity,
+  type PresenceMembers,
   type PresenceSeat,
   type PresenceSeatAccess,
   type PresenceServer,

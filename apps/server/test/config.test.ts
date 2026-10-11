@@ -151,3 +151,35 @@ describe('loadConfig: объектное хранилище (21.1)', () => {
     expect(() => loadConfig()).toThrow(/MINIO_PORT/);
   });
 });
+
+describe('loadConfig: несколько экземпляров (10.18)', () => {
+  it('по умолчанию: пул 50, без Redis, прокси не доверяем', () => {
+    stubBaseEnv();
+    vi.stubEnv('DATABASE_POOL_MAX', undefined);
+    vi.stubEnv('REDIS_URL', undefined);
+    vi.stubEnv('TRUST_PROXY', undefined);
+
+    expect(loadConfig()).toMatchObject({ databasePoolMax: 50, trustProxy: false });
+    expect(loadConfig().redisUrl).toBeUndefined();
+  });
+
+  it('пул, Redis и доверие ровно одному прокси — из окружения', () => {
+    stubBaseEnv();
+    vi.stubEnv('DATABASE_POOL_MAX', '40');
+    vi.stubEnv('REDIS_URL', 'redis://redis:6379');
+    vi.stubEnv('TRUST_PROXY', 'true');
+
+    expect(loadConfig()).toMatchObject({
+      databasePoolMax: 40,
+      redisUrl: 'redis://redis:6379',
+      trustProxy: 1,
+    });
+  });
+
+  it('некорректный размер пула — ошибка при старте', () => {
+    stubBaseEnv();
+    vi.stubEnv('DATABASE_POOL_MAX', '0');
+
+    expect(() => loadConfig()).toThrow(/DATABASE_POOL_MAX/);
+  });
+});

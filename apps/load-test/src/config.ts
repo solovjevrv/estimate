@@ -1,5 +1,11 @@
 export interface LoadTestConfig {
+  /** Первый из `serverOrigins` — для REST */
   serverOrigin: string;
+  /**
+   * Экземпляры сервера (10.18): участники одной комнаты/доски раскладываются по
+   * ним по кругу — так проверяется рассылка между экземплярами
+   */
+  serverOrigins: string[];
   databaseUrl: string;
   jwtSecret: string;
   containerName: string;
@@ -12,6 +18,7 @@ export interface LoadTestConfig {
 
 export interface BoardLoadTestConfig {
   serverOrigin: string;
+  serverOrigins: string[];
   databaseUrl: string;
   jwtSecret: string;
   containerName: string;
@@ -50,6 +57,14 @@ function envNonNegativeInt(name: string, fallback: number): number {
   return value;
 }
 
+/** `LOADTEST_SERVER_ORIGIN` — один адрес или несколько через запятую */
+function serverOrigins(): string[] {
+  return (process.env.LOADTEST_SERVER_ORIGIN ?? 'http://localhost:3001')
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
 function requireEnv(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -60,7 +75,8 @@ function requireEnv(name: string): string {
 
 export function loadConfig(): LoadTestConfig {
   return {
-    serverOrigin: process.env.LOADTEST_SERVER_ORIGIN ?? 'http://localhost:3001',
+    serverOrigin: serverOrigins()[0]!,
+    serverOrigins: serverOrigins(),
     databaseUrl: requireEnv('DATABASE_URL'),
     jwtSecret: requireEnv('JWT_SECRET'),
     containerName: process.env.LOADTEST_SERVER_CONTAINER ?? 'estimate-server-loadtest',
@@ -74,7 +90,8 @@ export function loadConfig(): LoadTestConfig {
 
 export function loadBoardConfig(): BoardLoadTestConfig {
   return {
-    serverOrigin: process.env.LOADTEST_SERVER_ORIGIN ?? 'http://localhost:3001',
+    serverOrigin: serverOrigins()[0]!,
+    serverOrigins: serverOrigins(),
     databaseUrl: requireEnv('DATABASE_URL'),
     jwtSecret: requireEnv('JWT_SECRET'),
     containerName: process.env.LOADTEST_SERVER_CONTAINER ?? 'estimate-server-loadtest',

@@ -21,18 +21,25 @@ function setup() {
       data.room = seat;
     },
   });
-  const sockets: Array<{ id: string; data: Data; rooms: Set<string> }> = [];
+  const sockets: Array<{ id: string; data: Data; rooms: Set<string>; remote: boolean }> = [];
+  const state = { neighbourHangs: false };
+  const inRoom = (room: string, localOnly: boolean) =>
+    sockets.filter((socket) => socket.rooms.has(room) && (!localOnly || !socket.remote));
   const server = {
     in: (room: string) => ({
-      fetchSockets: async () => sockets.filter((socket) => socket.rooms.has(room)),
+      fetchSockets: async () => {
+        if (state.neighbourHangs) throw new Error('timeout reached while waiting for fetchSockets');
+        return inRoom(room, false);
+      },
     }),
+    local: { in: (room: string) => ({ fetchSockets: async () => inRoom(room, true) }) },
   };
-  function connect(id: string, room: string) {
-    const socket = { id, data: {} as Data, rooms: new Set([room]) };
+  function connect(id: string, room: string, remote = false) {
+    const socket = { id, data: {} as Data, rooms: new Set([room]), remote };
     sockets.push(socket);
     return socket;
   }
-  return { presence, server, connect };
+  return { presence, server, connect, state };
 }
 
 describe('ClusterPresence', () => {
@@ -79,5 +86,21 @@ describe('ClusterPresence', () => {
     socket.rooms.delete('r1');
 
     expect(await presence.list(server, 'r1')).toEqual([]);
+  });
+
+  it('сосед завис — список со своего экземпляра, помеченный неполным, и об этом сообщают', async () => {
+    const { presence, server, connect, state } = setup();
+    presence.sit(connect('s1', 'r1'), 'r1', { participantId: 'p1', name: 'Анна' });
+    presence.sit(connect('s2', 'r1', true), 'r1', { participantId: 'p2', name: 'Борис' });
+    const partial: unknown[] = [];
+    presence.onPartial = (err) => partial.push(err);
+
+    expect((await presence.query(server, 'r1')).complete).toBe(true);
+
+    state.neighbourHangs = true;
+    const degraded = await presence.query(server, 'r1');
+    expect(degraded.complete).toBe(false);
+    expect(degraded.members.map((m) => m.socketId)).toEqual(['s1']);
+    expect(partial).toHaveLength(1);
   });
 });

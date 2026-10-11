@@ -101,6 +101,9 @@ export class BoardsGateway {
   }
 
   register(io: PokerServer, log: FastifyBaseLogger): void {
+    this.presence.onPartial = (err) => {
+      log.warn({ err }, 'Доска: соседний экземпляр не ответил — присутствие только со своего');
+    };
     io.on('connection', (socket) => {
       socket.on(BOARD_WS_EVENTS.JOIN, (...args: unknown[]) => {
         const { payload, ack } = this.readArgs<JoinBoardPayload>(args);
@@ -422,7 +425,9 @@ export class BoardsGateway {
    * и таймеру дальше жить незачем
    */
   private async afterLeave(io: PokerServer, boardId: string): Promise<void> {
-    if ((await this.presence.members(io, boardId)).length === 0) {
+    const { members, complete } = await this.presence.query(io, boardId);
+    // Неполный список (сосед не ответил) не повод считать сущность пустой
+    if (complete && members.length === 0) {
       await this.opsLog.clear(boardId);
       await this.timer.clear(boardId);
     }

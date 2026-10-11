@@ -17,7 +17,7 @@ import { seedStickers } from './scripts/seed-stickers';
 async function main(): Promise<void> {
   const config = loadConfig();
   const sentryEnabled = initSentry(config.sentryDsn);
-  const { db, pool } = createDb(config.databaseUrl);
+  const { db, pool } = createDb(config.databaseUrl, config.databasePoolMax);
   const objectStorage = config.objectStorage
     ? new MinioObjectStorage(config.objectStorage)
     : undefined;

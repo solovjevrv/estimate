@@ -44,7 +44,13 @@ export function connectRedisCluster(
   return {
     client,
     store: new RedisRealtimeStore(client),
-    adapter: createAdapter(pub, sub, { key: `${keyPrefix}socket.io` }),
+    adapter: createAdapter(pub, sub, {
+      key: `${keyPrefix}socket.io`,
+      // Опрос соседей (fetchSockets) в норме — миллисекунды. Завис сосед — ждём
+      // не 5 с по умолчанию, а 2: потом присутствие собирается со своего
+      // экземпляра (ClusterPresence.query), и комнаты живых экземпляров не стоят
+      requestsTimeout: 2_000,
+    }),
     async close() {
       await Promise.allSettled([client.quit(), pub.quit(), sub.quit()]);
     },

@@ -29,7 +29,9 @@ $COMPOSE run --rm --no-deps -T server-1 node dist/db/migrate.cjs </dev/null
 echo "== Обновляю экземпляры сервера по очереди (без простоя) =="
 # Пока один экземпляр перезапускается, nginx (ip_hash) отправляет его клиентов
 # на соседний — у того общее состояние в Redis, Socket.io переподключается сам
-$COMPOSE up -d --wait redis
+# --no-deps ниже не поднимает зависимости — всё, что проверяет /health
+# экземпляра (Redis, MinIO), должно уже работать
+$COMPOSE up -d --wait redis minio
 for svc in server-1 server-2; do
   if ! $COMPOSE up -d --no-deps --wait "$svc"; then
     echo "ОШИБКА: $svc не вышел в healthy"

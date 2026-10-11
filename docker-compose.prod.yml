@@ -33,6 +33,10 @@ x-server: &server
     # Несколько экземпляров (10.18): общее сиюминутное состояние, рассылки
     # Socket.io и лимиты запросов — через Redis
     REDIS_URL: redis://redis:6379
+    # Пул БД на экземпляр: два экземпляра по 40 = 80 из 100 max_connections
+    # Postgres — остаётся запас на бэкапы, миграции и psql. По 50 (дефолт) двое
+    # под нагрузкой выбирали все 100, и запросы падали «too many clients»
+    DATABASE_POOL_MAX: 40
     # Сервер доступен только через nginx — клиентский IP берётся из X-Forwarded-For
     TRUST_PROXY: 'true'
   volumes:

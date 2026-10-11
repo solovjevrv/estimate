@@ -171,7 +171,7 @@ async function main(): Promise<void> {
     await seedBoardItems(db, boardId, config.boardItemCount, config.boardAnimatedStickerCount);
 
     const result = await runBoardScenario({
-      serverOrigin: config.serverOrigin,
+      serverOrigins: config.serverOrigins,
       boardId,
       ownerCookie: cookie,
       guestCount: config.boardParticipants - 1,

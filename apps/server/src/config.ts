@@ -60,6 +60,8 @@ export interface Config {
   port: number;
   host: string;
   databaseUrl: string;
+  /** Размер пула БД экземпляра; у нескольких экземпляров сумма — в пределах max_connections */
+  databasePoolMax: number;
   /** Origin дев-фронта для CORS Socket.io; в проде фронт same-origin через nginx */
   webOrigin: string;
   /** Документация API: на проде карта эндпоинтов наружу не отдаётся */
@@ -210,6 +212,16 @@ export function loadGiphyConfig(): GiphyConfig | undefined {
   return { apiKey };
 }
 
+function loadPoolMax(): number {
+  const raw = process.env.DATABASE_POOL_MAX;
+  if (!raw) return 50;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`Некорректное значение DATABASE_POOL_MAX: "${raw}"`);
+  }
+  return value;
+}
+
 export function loadConfig(): Config {
   loadDotenv();
 
@@ -230,6 +242,7 @@ export function loadConfig(): Config {
     port,
     host: process.env.HOST ?? '0.0.0.0',
     databaseUrl,
+    databasePoolMax: loadPoolMax(),
     webOrigin,
     // По умолчанию документация есть везде, кроме продакшена; флагом можно переопределить
     docsEnabled: process.env.DOCS_ENABLED ? process.env.DOCS_ENABLED === 'true' : !isProduction,

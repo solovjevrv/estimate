@@ -22,9 +22,22 @@ interface SocketLike<TData> {
   data: TData;
 }
 
-/** `io` с адаптером: `fetchSockets` опрашивает все экземпляры сервера */
-export interface PresenceServer<TData> {
+interface SocketQuery<TData> {
   in(room: string): { fetchSockets(): Promise<SocketLike<TData>[]> };
+}
+
+/**
+ * `io` с адаптером: `fetchSockets` опрашивает все экземпляры сервера, `local` —
+ * только свой (запасной путь, когда соседи не ответили)
+ */
+export interface PresenceServer<TData> extends SocketQuery<TData> {
+  local: SocketQuery<TData>;
+}
+
+/** Список участников и полный ли он: false — соседний экземпляр не ответил */
+export interface PresenceMembers<TIdentity> {
+  members: Array<{ socketId: string; identity: TIdentity }>;
+  complete: boolean;
 }
 
 /**
@@ -40,6 +53,9 @@ export interface PresenceServer<TData> {
  * пропадает из присутствия.
  */
 export class ClusterPresence<TIdentity extends PresenceIdentity, TData> {
+  /** Соседний экземпляр не ответил на опрос — для лога; задаёт шлюз */
+  onPartial: (err: unknown) => void = () => {};
+
   constructor(private readonly access: PresenceSeatAccess<TData, TIdentity>) {}
 
   seatOf(socket: { data: TData }): PresenceSeat<TIdentity> | null {
@@ -59,14 +75,33 @@ export class ClusterPresence<TIdentity extends PresenceIdentity, TData> {
     server: PresenceServer<TData>,
     scopeId: string,
   ): Promise<Array<{ socketId: string; identity: TIdentity }>> {
-    const sockets = await server.in(scopeId).fetchSockets();
+    return (await this.query(server, scopeId)).members;
+  }
+
+  /**
+   * То же, но с признаком полноты. Опрос ждёт ответа от каждого экземпляра:
+   * завис один (не упал — тогда его просто нет в Redis) — опрос падает по
+   * таймауту. Чтобы зависший сосед не останавливал комнаты на живых, берём
+   * свой экземпляр: участники соседа на время пропадут из списка, но стол
+   * работает. Решения «комната опустела» по неполному списку не принимаются
+   */
+  async query(server: PresenceServer<TData>, scopeId: string): Promise<PresenceMembers<TIdentity>> {
+    let sockets: SocketLike<TData>[];
+    let complete = true;
+    try {
+      sockets = await server.in(scopeId).fetchSockets();
+    } catch (err) {
+      this.onPartial(err);
+      sockets = await server.local.in(scopeId).fetchSockets();
+      complete = false;
+    }
     const members: Array<{ socketId: string; identity: TIdentity }> = [];
     for (const socket of sockets) {
       const seat = this.access.read(socket.data);
       // В канале сущности, но место уже другое — сокет как раз пересаживается
       if (seat?.scopeId === scopeId) members.push({ socketId: socket.id, identity: seat.identity });
     }
-    return members;
+    return { members, complete };
   }
 
   /**

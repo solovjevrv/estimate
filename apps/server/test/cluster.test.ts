@@ -26,6 +26,7 @@ import {
   WS_SERVER_EVENTS,
 } from '@estimate/shared';
 import { inArray } from 'drizzle-orm';
+import { Redis } from 'ioredis';
 import type { FastifyInstance } from 'fastify';
 import { type Socket, io as createClient } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -398,6 +399,30 @@ describe.runIf(databaseUrl && redisUrl)('Два экземпляра серве�
       expect(res.statusCode).toBe(200);
       await accessChanged;
     });
+  });
+
+  it('зависший экземпляр не останавливает комнаты на живых', async () => {
+    // Подписчик на канал запросов адаптера, который никогда не отвечает: для
+    // адаптера это ещё один экземпляр, и опрос (fetchSockets) ждёт его до таймаута
+    const hung = new Redis(redisUrl!);
+    await hung.subscribe(`${keyPrefix}socket.io-request#/#`);
+    try {
+      const owner = await newUser('cluster-hung-owner');
+      const roomId = await newRoom(owner);
+      const master = connect(nodes[0]!, owner);
+
+      const startedAt = Date.now();
+      const joined = await ok<JoinRoomResult>(master, WS_EVENTS.JOIN_ROOM, { roomId });
+      const timer = await ok<{ running: boolean }>(master, WS_EVENTS.START_TIMER);
+
+      // Свой стол виден (со своего экземпляра), команды проходят — с задержкой
+      // на таймаут опроса, но не отказом
+      expect(joined.state.participants).toHaveLength(1);
+      expect(timer.running).toBe(true);
+      expect(Date.now() - startedAt).toBeLessThan(ANSWER_TIMEOUT_MS * 2);
+    } finally {
+      await hung.quit();
+    }
   });
 
   it('лимит запросов общий для экземпляров', async () => {

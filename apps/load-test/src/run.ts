@@ -63,7 +63,7 @@ async function main(): Promise<void> {
     const results = await Promise.all(
       rooms.map((room) =>
         runRoomScenario({
-          serverOrigin: config.serverOrigin,
+          serverOrigins: config.serverOrigins,
           roomId: room.roomId,
           ownerCookie: room.cookie,
           guestCount: config.participantsPerRoom - 1,

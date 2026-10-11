@@ -11,7 +11,8 @@ const ACK_TIMEOUT_MS = 15_000;
 const BROADCAST_TIMEOUT_MS = 15_000;
 
 export interface BoardScenarioOptions {
-  serverOrigin: string;
+  /** Владелец — на первом, гости — по кругу по всем экземплярам (10.18) */
+  serverOrigins: string[];
   boardId: string;
   ownerCookie: string;
   guestCount: number;
@@ -215,8 +216,11 @@ async function runVotingRound(
  */
 export async function runBoardScenario(opts: BoardScenarioOptions): Promise<BoardScenarioResult> {
   const errors: string[] = [];
-  const owner = connect(opts.serverOrigin, opts.ownerCookie);
-  const guests = Array.from({ length: opts.guestCount }, () => connect(opts.serverOrigin));
+  const origins = opts.serverOrigins;
+  const owner = connect(origins[0]!, opts.ownerCookie);
+  const guests = Array.from({ length: opts.guestCount }, (_, i) =>
+    connect(origins[(i + 1) % origins.length]!),
+  );
   const all = [owner, ...guests];
 
   try {

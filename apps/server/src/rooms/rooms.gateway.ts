@@ -81,6 +81,9 @@ export class RoomsGateway {
   }
 
   register(io: PokerServer, log: FastifyBaseLogger): void {
+    this.presence.onPartial = (err) => {
+      log.warn({ err }, 'Комната: соседний экземпляр не ответил — присутствие только со своего');
+    };
     io.on('connection', (socket) => {
       socket.on(WS_EVENTS.JOIN_ROOM, (...args: unknown[]) => {
         const { payload, ack } = this.readArgs<JoinRoomPayload>(args);
@@ -271,7 +274,9 @@ export class RoomsGateway {
    * состоянию таймера и реакций дальше жить незачем
    */
   private async afterLeave(io: PokerServer, roomId: string): Promise<void> {
-    if ((await this.presence.members(io, roomId)).length === 0) {
+    const { members, complete } = await this.presence.query(io, roomId);
+    // Неполный список (сосед не ответил) не повод считать сущность пустой
+    if (complete && members.length === 0) {
       await this.timer.clear(roomId);
       await this.reactions.clear(roomId);
     }
