@@ -166,6 +166,37 @@ export class BoardsRepository {
   }
 
   /** Архивация — доска пропадает из основных списков, но не удаляется */
+  /**
+   * Перенос доски (10.24) вместе с её комнатами оценки (15.6): они переезжают
+   * туда же — командная доска ↔ командные комнаты, как при создании.
+   */
+  async updateBoardTeam(
+    boardId: string,
+    teamId: string | null,
+  ): Promise<{ board: Board; movedRooms: number } | null> {
+    const [row] = await this.db
+      .update(schema.boards)
+      .set({ teamId, updatedAt: new Date() })
+      .where(eq(schema.boards.id, boardId))
+      .returning();
+    if (!row) return null;
+    const rooms = await this.db
+      .update(schema.rooms)
+      .set({ teamId, revision: sql`${schema.rooms.revision} + 1` })
+      .where(eq(schema.rooms.boardId, boardId))
+      .returning({ id: schema.rooms.id });
+    return { board: this.toBoard(row), movedRooms: rooms.length };
+  }
+
+  /** Сколько комнат оценки заведено со стикеров доски — уедут вместе с ней при переносе */
+  async countEstimateRooms(boardId: string): Promise<number> {
+    const [row] = await this.db
+      .select({ count: sql<number>`count(*)::int` })
+      .from(schema.rooms)
+      .where(eq(schema.rooms.boardId, boardId));
+    return row?.count ?? 0;
+  }
+
   async archiveBoard(boardId: string): Promise<Board | null> {
     const [row] = await this.db
       .update(schema.boards)

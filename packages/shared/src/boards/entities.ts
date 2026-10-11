@@ -570,3 +570,9 @@ export interface EstimateRoomLink {
 export interface CreateEstimateRoomsResult {
   rooms: EstimateRoomLink[];
 }
+
+/** PATCH /api/boards/:id/team (10.24): доска на новом месте и сколько комнат оценки уехало с ней */
+export interface MoveBoardResult {
+  board: Board;
+  movedRooms: number;
+}

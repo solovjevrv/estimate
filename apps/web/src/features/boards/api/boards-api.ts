@@ -7,6 +7,7 @@ import type {
   CreateEstimateRoomsPayload,
   CreateEstimateRoomsResult,
   EstimateRoomLink,
+  MoveBoardResult,
 } from '@estimate/shared';
 import { BOARD_IMAGE_ALLOWED_MIME_TYPES, BOARD_IMAGE_MAX_BYTES } from '@estimate/shared';
 import { ApiError, api } from '../../../lib/api';
@@ -137,4 +138,16 @@ export function createEstimateRooms(
       itemIds,
     } satisfies CreateEstimateRoomsPayload)
     .then((res) => res.rooms);
+}
+
+/** Перенести доску (10.24) вместе с её комнатами оценки; null — сделать личной у владельца */
+export function moveBoard(boardId: string, teamId: string | null): Promise<MoveBoardResult> {
+  return api.patch<MoveBoardResult>(`/api/boards/${encodeURIComponent(boardId)}/team`, { teamId });
+}
+
+/** Сколько комнат оценки уедет вместе с доской при переносе (10.24) */
+export function countEstimateRooms(boardId: string): Promise<number> {
+  return api
+    .get<{ count: number }>(`/api/boards/${encodeURIComponent(boardId)}/estimate-rooms`)
+    .then((res) => res.count);
 }

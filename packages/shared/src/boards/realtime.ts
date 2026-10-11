@@ -53,6 +53,12 @@ export const BOARD_WS_SERVER_EVENTS = {
   VOTING: 'board:voting',
   /** Оценка элемента из покер-комнаты изменилась (15.6) — `BoardEstimateUpdate` всем на доске */
   ESTIMATE: 'board:estimate',
+  /**
+   * Доступ к доске изменился (перенос 10.24): сервер уже вывел все сокеты из
+   * канала доски — клиент заново грузит доску и входит, у кого доступа нет,
+   * получает «не найдена». Без данных.
+   */
+  ACCESS: 'board:access',
 } as const;
 
 export type BoardWsServerEvent =

@@ -147,6 +147,8 @@ const props = defineProps<{
   /** Название команды — только для командной доски, для подписи "Командная доска · Team" */
   teamName?: string | null;
   canManage: boolean;
+  /** Есть куда перенести доску (10.24) — иначе пункта «Перенести…» нет */
+  canMove?: boolean;
   /** Может редактировать содержимое (уровень доступа `edit` из 12.4) — участник/админ команды, не гость */
   canEdit: boolean;
   items: BoardItem[];
@@ -155,6 +157,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   rename: [];
+  move: [];
   archive: [];
   unarchive: [];
   delete: [];
@@ -260,7 +263,18 @@ const menuItems = computed<DropdownMenuItem[][]>(() =>
         ],
       ]
     : [
-        [{ label: t('board.rename'), icon: 'i-lucide-pencil', onSelect: () => emit('rename') }],
+        [
+          { label: t('board.rename'), icon: 'i-lucide-pencil', onSelect: () => emit('rename') },
+          ...(props.canMove
+            ? [
+                {
+                  label: t('move.menu'),
+                  icon: 'i-lucide-folder-input',
+                  onSelect: () => emit('move'),
+                },
+              ]
+            : []),
+        ],
         [
           {
             label: t('board.share'),

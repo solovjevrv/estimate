@@ -47,6 +47,7 @@ describe('контракт realtime-доски', () => {
       'board:timer',
       'board:voting',
       'board:estimate',
+      'board:access',
     ]);
   });
 

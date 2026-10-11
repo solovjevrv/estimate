@@ -4,7 +4,7 @@ import fp from 'fastify-plugin';
 
 import type { AuthConfig } from '../config';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
-import { archivedQuerySchema, idParamsSchema } from '../http/schemas';
+import { archivedQuerySchema, idParamsSchema, moveTeamBodySchema } from '../http/schemas';
 import type { ObjectStorage } from '../platform/storage';
 
 import { BoardEstimatesService } from './board-estimates.service';
@@ -22,6 +22,7 @@ import type {
   BoardIdParams,
   CreateBoardBody,
   EstimateRoomsBody,
+  MoveBody,
   ShareBody,
   TeamIdParams,
   TitleBody,
@@ -56,6 +57,71 @@ async function boardsPluginImpl(app: FastifyInstance, opts: BoardsPluginOptions)
       for (const update of updates)
         app.io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.ESTIMATE, update);
     },
+    (boardId) => {
+      if (!app.hasDecorator('io')) return;
+      // Все выходят из канала доски — дальше рассылки получат только те, кто
+      // заново прошёл JOIN с проверкой доступа (клиент перезаходит по событию)
+      app.io.to(boardId).emit(BOARD_WS_SERVER_EVENTS.ACCESS, {});
+      app.io.in(boardId).socketsLeave(boardId);
+    },
+  );
+
+  app.patch<{ Params: BoardIdParams; Body: MoveBody }>(
+    '/api/boards/:id/team',
+    {
+      preHandler: authenticate,
+      schema: {
+        tags: [DOCS_TAGS.boards],
+        summary: 'Перенести доску',
+        description:
+          'Личная ↔ командная или в другую команду (10.24). Переносит владелец или админ ' +
+          'команды; в команду — её участник (как при создании). `teamId: null` — личная у ' +
+          'владельца. Комнаты оценки доски (15.6) переезжают вместе с ней — `movedRooms`.',
+        security: [{ session: [] }],
+        params: idParamsSchema,
+        body: moveTeamBodySchema,
+        response: {
+          200: {
+            description: 'Доска перенесена',
+            type: 'object',
+            properties: { board: boardResponse, movedRooms: { type: 'integer' } },
+          },
+          400: { description: 'Некорректная команда', ...errorResponse },
+          401: { description: 'Требуется вход', ...errorResponse },
+          403: { description: 'Нет прав на перенос', ...errorResponse },
+          404: { description: 'Доска или команда не найдена', ...errorResponse },
+          409: { description: 'Уже там или некому отдать', ...errorResponse },
+        },
+      },
+    },
+    controller.move,
+  );
+
+  app.get<{ Params: BoardIdParams }>(
+    '/api/boards/:id/estimate-rooms',
+    {
+      preHandler: authenticate,
+      schema: {
+        tags: [DOCS_TAGS.boards],
+        summary: 'Число комнат оценки доски',
+        description:
+          'Сколько комнат оценки заведено со стикеров доски (15.6) — для окна переноса ' +
+          '(10.24): они переедут вместе с доской. Видит тот, кто управляет доской.',
+        security: [{ session: [] }],
+        params: idParamsSchema,
+        response: {
+          200: {
+            description: 'Число комнат',
+            type: 'object',
+            properties: { count: { type: 'integer' } },
+          },
+          401: { description: 'Требуется вход', ...errorResponse },
+          403: { description: 'Недостаточно прав', ...errorResponse },
+          404: { description: 'Доска не найдена', ...errorResponse },
+        },
+      },
+    },
+    controller.estimateRoomCount,
   );
 
   app.post<{ Params: BoardIdParams; Body: EstimateRoomsBody }>(

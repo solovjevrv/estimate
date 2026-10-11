@@ -1,12 +1,15 @@
 <script setup lang="ts">
 import type { DropdownMenuItem } from '@nuxt/ui';
 import type { Room } from '@estimate/shared';
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import type { ArchiveTab } from '../../composables/use-archive-tab';
 import type { PagedList } from '../../composables/use-paged-list';
 import ListPagination from '../ListPagination.vue';
+import MoveEntityModal from '../MoveEntityModal.vue';
+import { useMoveAvailability } from '../../composables/use-move-availability';
+import { roomMoveRequest, type MoveRequest } from '../../lib/move-entity';
 
 const props = defineProps<{
   roomsFailed: boolean;
@@ -32,12 +35,17 @@ const props = defineProps<{
 const emit = defineEmits<{
   selectTab: [tab: 'active' | 'archive'];
   rename: [room: Room];
+  /** Перенесена (10.24) — список нужно перечитать */
+  moved: [];
   archive: [room: Room];
   delete: [room: Room];
   retry: [];
 }>();
 
 const { t } = useI18n();
+/** Перенос из меню строки (10.24) — окно открыто, пока запрос не null */
+const moveRequest = ref<MoveRequest | null>(null);
+const { canMove } = useMoveAvailability();
 
 const roomTabs = computed(() => [
   { key: 'active' as const, label: t('team.roomsActive') },
@@ -45,8 +53,19 @@ const roomTabs = computed(() => [
 ]);
 
 function activeMenuItems(room: Room): DropdownMenuItem[][] {
+  const first: DropdownMenuItem[] = [
+    { label: t('room.rename'), icon: 'i-lucide-pencil', onSelect: () => emit('rename', room) },
+  ];
+  // «Перенести…» (10.24) — только если есть куда
+  if (canMove('room', room.teamId, room.creatorId)) {
+    first.push({
+      label: t('move.menu'),
+      icon: 'i-lucide-folder-input',
+      onSelect: () => (moveRequest.value = roomMoveRequest(room)),
+    });
+  }
   return [
-    [{ label: t('room.rename'), icon: 'i-lucide-pencil', onSelect: () => emit('rename', room) }],
+    first,
     [
       {
         label: t('room.archive'),
@@ -222,5 +241,6 @@ function archivedMenuItems(room: Room): DropdownMenuItem[][] {
         <ListPagination :paging="archiveTabPaging" />
       </template>
     </template>
+    <MoveEntityModal v-model:request="moveRequest" @moved="emit('moved')" />
   </div>
 </template>

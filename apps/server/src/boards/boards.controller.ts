@@ -26,6 +26,11 @@ export interface ShareBody {
   role: BoardShareRole | null;
 }
 
+/** Куда перенести (10.24): id команды или null — сделать личной */
+export interface MoveBody {
+  teamId: string | null;
+}
+
 export interface EstimateRoomsBody {
   itemIds: string[];
 }
@@ -43,7 +48,23 @@ export class BoardsController {
     private readonly service: BoardsService,
     private readonly estimates?: BoardEstimatesService,
     private readonly notifyEstimates: BoardEstimatesNotifier = () => undefined,
+    /** Доска переехала (10.24) — у сидящих на ней мог пропасть доступ */
+    private readonly notifyAccessChanged: (boardId: string) => void = () => undefined,
   ) {}
+
+  readonly move = async (
+    req: FastifyRequest<{ Params: BoardIdParams; Body: MoveBody }>,
+  ): Promise<unknown> => {
+    const result = await this.service.moveBoard(req.user.sub, req.params.id, req.body.teamId);
+    this.notifyAccessChanged(req.params.id);
+    return result;
+  };
+
+  readonly estimateRoomCount = async (
+    req: FastifyRequest<{ Params: BoardIdParams }>,
+  ): Promise<unknown> => ({
+    count: await this.service.estimateRoomCount(req.user.sub, req.params.id),
+  });
 
   /** Отправить элементы в покер (15.6): по комнате на элемент, существующие — как есть */
   readonly estimateRooms = async (

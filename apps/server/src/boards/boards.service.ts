@@ -16,7 +16,7 @@ import {
 } from '@estimate/shared';
 import type { FastifyBaseLogger } from 'fastify';
 
-import { TeamAccess } from '../access';
+import { parseTargetTeamId, TeamAccess } from '../access';
 import { UsersRepository } from '../auth';
 import type { DbExecutor } from '../common/db-executor';
 import type { Db } from '../db';
@@ -371,6 +371,53 @@ export class BoardsService {
       }
       return updated;
     });
+  }
+
+  /**
+   * Перенос (10.24): личная ↔ командная, между командами. Переносит тот, кто
+   * управляет доской (владелец или админ команды); в команду — по правилу
+   * создания: командную доску заводит участник команды (не гость). Личной
+   * доска становится у владельца. Комнаты оценки (15.6) едут вместе с ней.
+   */
+  async moveBoard(
+    actorId: string,
+    boardId: string,
+    rawTeamId: unknown,
+  ): Promise<{ board: Board; movedRooms: number }> {
+    const teamId = parseTargetTeamId(rawTeamId);
+    return this.db.transaction(async (tx) => {
+      const repo = this.createBoardsRepository(tx);
+      const board = await repo.lockBoard(boardId);
+      if (!board) {
+        throw new NotFoundError('Доска не найдена');
+      }
+      const teams = this.createTeamAccess(tx);
+      await this.assertAccess(board, actorId, 'manage', teams);
+      if (board.teamId === teamId) {
+        throw new ConflictError(teamId ? 'Доска уже в этой команде' : 'Доска уже личная');
+      }
+      if (teamId) {
+        await teams.require(
+          teamId,
+          actorId,
+          'member',
+          'Перенести доску в команду может её участник',
+        );
+      } else if (!board.ownerId) {
+        throw new ConflictError('Аккаунт владельца удалён — сделать доску личной нельзя');
+      }
+      const moved = await repo.updateBoardTeam(boardId, teamId);
+      if (!moved) throw new NotFoundError('Доска не найдена');
+      return moved;
+    });
+  }
+
+  /** Число комнат оценки доски — для окна переноса; видит тот, кто доской управляет */
+  async estimateRoomCount(actorId: string, boardId: string): Promise<number> {
+    const board = await this.repository.findBoard(boardId);
+    if (!board) throw new NotFoundError('Доска не найдена');
+    await this.assertAccess(board, actorId, 'manage');
+    return this.repository.countEstimateRooms(boardId);
   }
 
   /** Архивация: доска пропадает из основных списков, но остаётся доступна по прямой ссылке */

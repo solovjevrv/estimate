@@ -51,3 +51,10 @@ export function renameRoom(roomId: string, name: string): Promise<Room> {
 export function getMyRoomStats(): Promise<RoomStats> {
   return api.get<{ stats: RoomStats }>('/api/rooms/stats').then((res) => res.stats);
 }
+
+/** Перенести комнату (10.24): в команду по id или null — сделать личной у создателя */
+export function moveRoom(roomId: string, teamId: string | null): Promise<Room> {
+  return api
+    .patch<{ room: Room }>(`/api/rooms/${encodeURIComponent(roomId)}/team`, { teamId })
+    .then((res) => res.room);
+}

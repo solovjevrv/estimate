@@ -19,6 +19,11 @@ export interface NameBody {
   name: string;
 }
 
+/** Куда перенести (10.24): id команды или null — сделать личной */
+export interface MoveBody {
+  teamId: string | null;
+}
+
 export interface ArchivedQuery {
   archived?: 'true' | 'false';
 }
@@ -72,6 +77,12 @@ export class RoomsController {
     req: FastifyRequest<{ Params: RoomIdParams; Body: NameBody }>,
   ): Promise<unknown> => ({
     room: await this.service.renameRoom(req.user.sub, req.params.id, req.body.name),
+  });
+
+  readonly move = async (
+    req: FastifyRequest<{ Params: RoomIdParams; Body: MoveBody }>,
+  ): Promise<unknown> => ({
+    room: await this.service.moveRoom(req.user.sub, req.params.id, req.body.teamId),
   });
 
   readonly remove = async (

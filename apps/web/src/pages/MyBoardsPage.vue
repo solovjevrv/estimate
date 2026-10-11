@@ -321,6 +321,7 @@ async function confirmDelete(): Promise<void> {
         :empty-archive-message="t('boards.archiveEmpty')"
         @select-tab="selectBoardsTab"
         @rename="askRenameBoard"
+        @moved="reloadBoardsAfterMutation"
         @archive="askArchiveBoard"
         @unarchive="unarchiveBoard"
         @delete="askDelete"

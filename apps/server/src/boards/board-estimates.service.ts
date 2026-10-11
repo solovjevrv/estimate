@@ -70,6 +70,14 @@ export class BoardEstimatesService {
     const board = await this.access.assertActiveEditAccess(actorId, boardId);
 
     return this.db.transaction(async (tx) => {
+      // Команда доски — под блокировкой: параллельный перенос (10.24) не должен
+      // оставить новую комнату в старой команде
+      const [locked] = await tx
+        .select({ teamId: schema.boards.teamId })
+        .from(schema.boards)
+        .where(eq(schema.boards.id, boardId))
+        .for('share');
+      const teamId = locked ? locked.teamId : board.teamId;
       const items = await tx
         .select({ id: schema.boardItems.id, content: schema.boardItems.content })
         .from(schema.boardItems)
@@ -94,7 +102,7 @@ export class BoardEstimatesService {
                   'text' in item.content ? item.content.text : '',
                   FALLBACK_ROOM_NAME,
                 ),
-                teamId: board.teamId,
+                teamId,
                 creatorId: actorId,
                 boardId,
                 boardItemId: item.id,

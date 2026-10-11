@@ -15,9 +15,11 @@ const props = defineProps<{
   connected: boolean;
   canArchive: boolean;
   canRename: boolean;
+  /** Есть куда перенести (10.24) — иначе пункта «Перенести…» нет */
+  canMove?: boolean;
 }>();
 
-const emit = defineEmits<{ archive: []; rename: [] }>();
+const emit = defineEmits<{ archive: []; rename: []; move: [] }>();
 
 const { t } = useI18n();
 const toast = useToast();
@@ -43,9 +45,17 @@ async function copyLink(): Promise<void> {
 const menuItems = computed<DropdownMenuItem[][]>(() => {
   const groups: DropdownMenuItem[][] = [];
   if (props.canRename) {
-    groups.push([
+    const group: DropdownMenuItem[] = [
       { label: t('room.rename'), icon: 'i-lucide-pencil', onSelect: () => emit('rename') },
-    ]);
+    ];
+    // Перенос (10.24) — тому же скрам-мастеру, что архивирует; архивную не переносим
+    if (props.canArchive && props.canMove)
+      group.push({
+        label: t('move.menu'),
+        icon: 'i-lucide-folder-input',
+        onSelect: () => emit('move'),
+      });
+    groups.push(group);
   }
   groups.push([
     { label: t('room.copyLink'), icon: 'i-lucide-link', onSelect: () => void copyLink() },

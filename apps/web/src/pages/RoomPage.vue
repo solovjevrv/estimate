@@ -14,6 +14,9 @@ import { useI18n } from 'vue-i18n';
 
 import ConfirmModal from '../components/ConfirmModal.vue';
 import EntityTextModal from '../components/EntityTextModal.vue';
+import MoveEntityModal from '../components/MoveEntityModal.vue';
+import { roomMoveRequest, type MoveRequest } from '../lib/move-entity';
+import { useMoveAvailability } from '../composables/use-move-availability';
 import DeckBar from '../components/room/DeckBar.vue';
 import ParticipantCard from '../components/room/ParticipantCard.vue';
 import RoomTimerCard from '../components/room/RoomTimerCard.vue';
@@ -133,6 +136,19 @@ type Phase =
 
 const phase = ref<Phase>('loading');
 const roomInfo = ref<Room | null>(null);
+/** Перенос комнаты (10.24): личная ↔ командная */
+const moveRequest = ref<MoveRequest | null>(null);
+const { canMove } = useMoveAvailability();
+/** Подзаголовок «Команда «…»» — с новым названием команды из ответа комнаты */
+async function onRoomMoved(): Promise<void> {
+  try {
+    const details = await getRoom(props.id);
+    roomInfo.value = details.room;
+    roomTeamName.value = details.teamName;
+  } catch {
+    // шапка обновится при следующем заходе
+  }
+}
 /** Название команды для шапки — приходит вместе с комнатой, переименование его не меняет */
 const roomTeamName = ref<string | null>(null);
 /** Доска, с которой комнату завели для оценки (15.6) — ссылка в шапке */
@@ -395,8 +411,10 @@ function retry(): void {
           :connected="room.connected"
           :can-archive="room.isScrumMaster && !isArchived"
           :can-rename="room.isScrumMaster"
+          :can-move="canMove('room', roomInfo.teamId, roomInfo.creatorId)"
           @archive="archiveOpen = true"
           @rename="renameModal.show"
+          @move="moveRequest = roomInfo && roomMoveRequest(roomInfo)"
         />
 
         <UAlert
@@ -608,6 +626,8 @@ function retry(): void {
         </div>
       </template>
     </template>
+
+    <MoveEntityModal v-model:request="moveRequest" @moved="onRoomMoved" />
 
     <ConfirmModal
       v-model:open="archiveOpen"
