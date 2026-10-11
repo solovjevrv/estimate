@@ -11,6 +11,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 import { BoardOpsLog } from '../src/boards/board-ops-log';
 import {
+  CountdownTimer,
   MemoryRealtimeStore,
   REALTIME_TTL_SEC,
   RedisRealtimeStore,
@@ -82,6 +83,52 @@ describe.each(implementations)('RealtimeStore: %s', (_name, create, enabled) => 
         { score: 4, member: 'v4-заново' },
       ]);
       expect(await store.sortedAbove('z', 3)).toEqual([{ score: 4, member: 'v4-заново' }]);
+    });
+
+    it('updateJson: одновременные правки не теряются — каждая поверх свежего значения', async () => {
+      const store = create();
+      await Promise.all(
+        Array.from({ length: 5 }, () =>
+          store.updateJson<number>('counter', (current) => (current ?? 0) + 1),
+        ),
+      );
+      expect(await store.getJson('counter')).toBe(5);
+    });
+
+    it('updateJson: ошибка в правке пробрасывается, значение не меняется', async () => {
+      const store = create();
+      await store.setJson('v', 1);
+      await expect(
+        store.updateJson('v', () => {
+          throw new Error('нельзя');
+        }),
+      ).rejects.toThrow('нельзя');
+      expect(await store.getJson('v')).toBe(1);
+    });
+
+    it('hashToggle: то же значение снимает поле, другое — заменяет', async () => {
+      const store = create();
+      await store.hashToggle('h', 'f', 'a');
+      expect(await store.hashGet('h', 'f')).toBe('a');
+      await store.hashToggle('h', 'f', 'b');
+      expect(await store.hashGet('h', 'f')).toBe('b');
+      await store.hashToggle('h', 'f', 'b');
+      expect(await store.hashGet('h', 'f')).toBeNull();
+    });
+
+    it('deleteIfSeq: удаляет, только пока номер не сдвинулся', async () => {
+      const store = create();
+      await store.setJson('state', 1);
+      expect(await store.peekSeq('seq')).toBeNull();
+      expect(await store.deleteIfSeq('seq', null, ['state'])).toBe(true);
+      expect(await store.getJson('state')).toBeNull();
+
+      await store.setJson('state', 2);
+      const seen = await store.nextSeq('seq');
+      expect(await store.peekSeq('seq')).toBe(seen);
+      await store.nextSeq('seq'); // кто-то вошёл между проверкой и удалением
+      expect(await store.deleteIfSeq('seq', seen, ['state'])).toBe(false);
+      expect(await store.getJson('state')).toBe(2);
     });
 
     it('ping не бросает на живом хранилище', async () => {
@@ -172,5 +219,35 @@ describe('BoardOpsLog: догон без дыр (10.18)', () => {
   it('ревизия клиента впереди БД — null', async () => {
     const log = new BoardOpsLog(new MemoryRealtimeStore(), 10);
     expect(await log.catchup('b', 7, 3)).toBeNull();
+  });
+});
+
+describe.runIf(redis !== null)('Таймер на двух экземплярах (10.18)', () => {
+  it('пауза и «+минута» одновременно — действуют обе, в любом порядке записи', async () => {
+    const prefix = `estimate:test:${randomUUID()}:`;
+    const options = {
+      defaultDurationSec: 300,
+      isValidDuration: () => true,
+      maxRemainingSec: 7200,
+    };
+    // Два экземпляра — два объекта таймера над одним Redis
+    const first = new CountdownTimer(
+      options,
+      new RedisRealtimeStore(redis!, prefix),
+      'board-timer',
+    );
+    const second = new CountdownTimer(
+      options,
+      new RedisRealtimeStore(redis!, prefix),
+      'board-timer',
+    );
+    await first.start('b');
+
+    await Promise.all([first.pause('b'), second.extend('b', 60)]);
+
+    const state = await first.get('b');
+    expect(state.running).toBe(false);
+    expect(state.remainingSec).toBeGreaterThanOrEqual(358);
+    expect(state.remainingSec).toBeLessThanOrEqual(360);
   });
 });

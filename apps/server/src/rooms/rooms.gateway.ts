@@ -274,13 +274,24 @@ export class RoomsGateway {
    * состоянию таймера и реакций дальше жить незачем
    */
   private async afterLeave(io: PokerServer, roomId: string): Promise<void> {
+    const seqKey = this.seqKey(roomId);
+    const seen = await this.store.peekSeq(seqKey);
     const { members, complete } = await this.presence.query(io, roomId);
-    // Неполный список (сосед не ответил) не повод считать сущность пустой
+    // Неполный список (сосед не ответил) не повод считать сущность пустой.
+    // Пустая — чистим, только если с момента проверки номер снимка не
+    // сдвинулся: вход или действие на другом экземпляре рассылают снимок, и
+    // тогда стирать уже нельзя (иначе пропал бы только что запущенный таймер)
     if (complete && members.length === 0) {
-      await this.timer.clear(roomId);
-      await this.reactions.clear(roomId);
+      await this.store.deleteIfSeq(seqKey, seen, [
+        this.timer.storeKey(roomId),
+        this.reactions.key(roomId),
+      ]);
     }
     await this.broadcastState(io, roomId);
+  }
+
+  private seqKey(roomId: string): string {
+    return `room-seq:${roomId}`;
   }
 
   /** Действовать может только тот, кто уже сидит за столом */
@@ -299,7 +310,7 @@ export class RoomsGateway {
    * собранного не раньше, а клиент отбрасывает снимок с меньшим номером.
    */
   private async broadcastState(io: PokerServer, roomId: string): Promise<RoomState> {
-    const seq = await this.store.nextSeq(`room-seq:${roomId}`);
+    const seq = await this.store.nextSeq(this.seqKey(roomId));
     const [participants, timer, reactions] = await Promise.all([
       this.presence.list(io, roomId),
       this.timer.get(roomId),

@@ -54,7 +54,8 @@ export class BoardOpsLog {
     await this.store.delete(this.key(boardId));
   }
 
-  private key(boardId: string): string {
+  /** Ключ в хранилище — для атомарной очистки опустевшей доски */
+  key(boardId: string): string {
     return `board-ops:${boardId}`;
   }
 }

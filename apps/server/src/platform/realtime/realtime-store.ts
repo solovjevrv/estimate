@@ -10,6 +10,12 @@
 export interface RealtimeStore {
   getJson<T>(key: string): Promise<T | null>;
   setJson(key: string, value: unknown): Promise<void>;
+  /**
+   * Атомарное чтение-изменение-запись: `update` получает текущее значение и
+   * возвращает новое. Значение сменилось между чтением и записью (команда с
+   * другого экземпляра) — `update` вызывается заново поверх свежего
+   */
+  updateJson<T>(key: string, update: (current: T | null) => T): Promise<T>;
   delete(...keys: string[]): Promise<void>;
 
   /** Поля хэша в порядке добавления (у Redis — для небольших хэшей) */
@@ -17,6 +23,8 @@ export interface RealtimeStore {
   hashGet(key: string, field: string): Promise<string | null>;
   hashSet(key: string, field: string, value: string): Promise<void>;
   hashDelete(key: string, field: string): Promise<void>;
+  /** Атомарно: поле уже равно `value` — удаляет, иначе записывает */
+  hashToggle(key: string, field: string, value: string): Promise<void>;
 
   /**
    * Монотонный номер на ключ: max(прошлый + 1, текущее время в мс). Время —
@@ -24,6 +32,14 @@ export interface RealtimeStore {
    * счётчик (перезапуск Redis, истёк срок жизни).
    */
   nextSeq(key: string): Promise<number>;
+  /** Текущий номер без сдвига; null — номера ещё нет */
+  peekSeq(key: string): Promise<number | null>;
+  /**
+   * Атомарно удаляет `keys`, только если номер `seqKey` всё ещё `expected`:
+   * иначе с момента проверки что-то случилось (вход, действие) и удалять
+   * нельзя. Возвращает, удалило ли
+   */
+  deleteIfSeq(seqKey: string, expected: number | null, keys: string[]): Promise<boolean>;
 
   /** Добавляет в упорядоченный по `score` набор и оставляет только `cap` последних */
   sortedAdd(key: string, score: number, member: string, cap: number): Promise<void>;
@@ -59,6 +75,15 @@ export class MemoryRealtimeStore implements RealtimeStore {
     this.write(key, { kind: 'json', value: JSON.stringify(value) });
   }
 
+  async updateJson<T>(key: string, update: (current: T | null) => T): Promise<T> {
+    // Чтение и запись без await между ними — иначе одновременные правки
+    // вклинивались бы друг между другом и терялись
+    const entry = this.read(key, 'json');
+    const next = update(entry ? (JSON.parse(entry.value) as T) : null);
+    this.write(key, { kind: 'json', value: JSON.stringify(next) });
+    return next;
+  }
+
   async delete(...keys: string[]): Promise<void> {
     for (const key of keys) this.entries.delete(key);
   }
@@ -82,6 +107,25 @@ export class MemoryRealtimeStore implements RealtimeStore {
     if (!hash) return;
     hash.delete(field);
     if (hash.size === 0) this.entries.delete(key);
+  }
+
+  async hashToggle(key: string, field: string, value: string): Promise<void> {
+    // Синхронно, по той же причине, что и updateJson
+    const hash = this.read(key, 'hash')?.value ?? new Map<string, string>();
+    if (hash.get(field) === value) hash.delete(field);
+    else hash.set(field, value);
+    if (hash.size === 0) this.entries.delete(key);
+    else this.write(key, { kind: 'hash', value: hash });
+  }
+
+  async peekSeq(key: string): Promise<number | null> {
+    return this.read(key, 'seq')?.value ?? null;
+  }
+
+  async deleteIfSeq(seqKey: string, expected: number | null, keys: string[]): Promise<boolean> {
+    if ((this.read(seqKey, 'seq')?.value ?? null) !== expected) return false;
+    for (const key of keys) this.entries.delete(key);
+    return true;
   }
 
   async nextSeq(key: string): Promise<number> {

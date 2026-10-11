@@ -32,6 +32,7 @@ import { computed, reactive, ref } from 'vue';
 import { setBoardShare } from '../features/boards/api/boards-api';
 import type { BoardLocalState } from '../features/boards/domain/apply-local-op';
 import { useBoardAwareness } from '../features/boards/composables/use-board-awareness';
+import { useBoardBatchIntake } from '../features/boards/composables/use-board-batch-intake';
 import { useBoardOptimisticApply } from '../features/boards/composables/use-board-optimistic-apply';
 import { createRealtimeConnection, GuestTokenStore, type JoinContext } from '../lib/realtime';
 import { emitWithAck, type PokerSocket } from '../lib/socket';
@@ -109,6 +110,17 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   async function performJoin(active: PokerSocket, ctx: JoinContext): Promise<void> {
     const id = boardId;
     if (!id) return;
+    // Батчи, пришедшие до ответа, — после снимка/догона (10.18)
+    intake.joinStarted();
+    let applied = false;
+    try {
+      applied = await joinAndApply(active, ctx, id);
+    } finally {
+      intake.joinFinished(applied);
+    }
+  }
+
+  async function joinAndApply(active: PokerSocket, ctx: JoinContext, id: string): Promise<boolean> {
     // Гостю сервер требует имя на каждый join, включая реконнект — то же имя,
     // что и при первом входе
     const guestName = ownGuestName ?? undefined;
@@ -123,7 +135,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     });
 
     // Пока ждали ответ, вызвали leave() или новый join() — это уже не наш вход
-    if (!ctx.isCurrent()) return;
+    if (!ctx.isCurrent()) return false;
 
     guestTokens.write(id, result.guestToken);
     participantId.value = result.participantId;
@@ -140,11 +152,12 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       optimistic.revision.value = result.revision;
     }
     joined.value = true;
+    return true;
   }
 
   /** Доменные события доски — вешаются один раз на каждый созданный сокет */
   function attachBoardListeners(active: PokerSocket): void {
-    active.on(BOARD_WS_SERVER_EVENTS.OPS, optimistic.applyBatch);
+    active.on(BOARD_WS_SERVER_EVENTS.OPS, intake.receive);
     active.on(BOARD_WS_SERVER_EVENTS.PRESENCE, awareness.handlePresence);
     active.on(BOARD_WS_SERVER_EVENTS.AWARENESS, awareness.handleAwareness);
     active.on(BOARD_WS_SERVER_EVENTS.TIMER, (state) => {
@@ -164,6 +177,12 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const connection = createRealtimeConnection({
     attach: attachBoardListeners,
     join: performJoin,
+  });
+
+  // Пропустили ревизию — перезаход с текущей: догон из буфера или снимок
+  const intake = useBoardBatchIntake({
+    apply: optimistic.applyBatch,
+    resync: () => connection.rejoin(),
   });
 
   async function join(
@@ -216,6 +235,7 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     local.edges.clear();
     optimistic.resetForNewSession();
     awareness.resetPresenceOrder();
+    intake.reset();
     awareness.reset();
   }
 

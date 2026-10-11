@@ -425,13 +425,23 @@ export class BoardsGateway {
    * и таймеру дальше жить незачем
    */
   private async afterLeave(io: PokerServer, boardId: string): Promise<void> {
+    const seqKey = this.presenceSeqKey(boardId);
+    const seen = await this.store.peekSeq(seqKey);
     const { members, complete } = await this.presence.query(io, boardId);
-    // Неполный список (сосед не ответил) не повод считать сущность пустой
+    // Неполный список (сосед не ответил) не повод считать сущность пустой.
+    // Пустая — чистим, только если с момента проверки никто не вошёл: вход
+    // рассылает присутствие и сдвигает номер (см. RoomsGateway.afterLeave)
     if (complete && members.length === 0) {
-      await this.opsLog.clear(boardId);
-      await this.timer.clear(boardId);
+      await this.store.deleteIfSeq(seqKey, seen, [
+        this.opsLog.key(boardId),
+        this.timer.storeKey(boardId),
+      ]);
     }
     await this.broadcastPresence(io, boardId);
+  }
+
+  private presenceSeqKey(boardId: string): string {
+    return `board-presence-seq:${boardId}`;
   }
 
   /** Действовать может только тот, кто уже вошёл на доску */
@@ -451,7 +461,7 @@ export class BoardsGateway {
    * рассылки с большим номером список не старее, клиент отбрасывает меньший
    */
   private async broadcastPresence(io: PokerServer, boardId: string): Promise<void> {
-    const seq = await this.store.nextSeq(`board-presence-seq:${boardId}`);
+    const seq = await this.store.nextSeq(this.presenceSeqKey(boardId));
     const entries: BoardPresenceEntry[] = (await this.presence.list(io, boardId)).map(
       ({ participantId, userId, name, avatarUrl, isGuest }) => ({
         participantId,

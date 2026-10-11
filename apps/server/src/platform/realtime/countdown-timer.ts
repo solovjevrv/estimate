@@ -16,7 +16,7 @@ export interface CountdownTimerOptions {
  * Общий таймер обратного отсчёта на ключ (комнату или доску). Сиюминутное
  * состояние, а не история — живёт в `RealtimeStore` (10.18): в памяти процесса
  * или в Redis, общем для всех экземпляров сервера. Команды с разных
- * экземпляров не сериализуются — при одновременных кликах побеждает последний.
+ * экземпляров применяются атомарно, одна поверх другой (см. `update`).
  */
 export class CountdownTimer {
   constructor(
@@ -35,40 +35,43 @@ export class CountdownTimer {
   }
 
   async start(key: string): Promise<CountdownTimerState> {
-    const current = await this.get(key);
-    if (current.running) {
-      return current;
-    }
-    // С нуля отсчитывать нечего — старт без предварительного сброса не двигает время назад
-    const remaining = current.remainingSec > 0 ? current.remainingSec : current.durationSec;
-    return this.set(key, {
-      durationSec: current.durationSec,
-      running: true,
-      endsAt: new Date(Date.now() + remaining * 1000).toISOString(),
-      remainingSec: remaining,
+    return this.update(key, (current) => {
+      if (current.running) {
+        return current;
+      }
+      // С нуля отсчитывать нечего — старт без предварительного сброса не двигает время назад
+      const remaining = current.remainingSec > 0 ? current.remainingSec : current.durationSec;
+      return {
+        durationSec: current.durationSec,
+        running: true,
+        endsAt: new Date(Date.now() + remaining * 1000).toISOString(),
+        remainingSec: remaining,
+      };
     });
   }
 
   async pause(key: string): Promise<CountdownTimerState> {
-    const current = await this.get(key);
-    if (!current.running || !current.endsAt) {
-      return current;
-    }
-    return this.set(key, {
-      durationSec: current.durationSec,
-      running: false,
-      endsAt: null,
-      remainingSec: countdownRemainingSec(current, Date.now()),
+    return this.update(key, (current) => {
+      if (!current.running || !current.endsAt) {
+        return current;
+      }
+      return {
+        durationSec: current.durationSec,
+        running: false,
+        endsAt: null,
+        remainingSec: countdownRemainingSec(current, Date.now()),
+      };
     });
   }
 
   async reset(key: string, durationSec?: number): Promise<CountdownTimerState> {
-    const current = await this.get(key);
-    const duration = durationSec ?? current.durationSec;
-    if (!this.options.isValidDuration(duration)) {
-      throw new ValidationError('Недопустимая длительность таймера');
-    }
-    return this.set(key, this.idle(duration));
+    return this.update(key, (current) => {
+      const duration = durationSec ?? current.durationSec;
+      if (!this.options.isValidDuration(duration)) {
+        throw new ValidationError('Недопустимая длительность таймера');
+      }
+      return this.idle(duration);
+    });
   }
 
   /**
@@ -76,18 +79,19 @@ export class CountdownTimer {
    * У истёкшего бегущего таймера отсчёт возобновляется от текущего момента.
    */
   async extend(key: string, addSec: number): Promise<CountdownTimerState> {
-    const current = await this.get(key);
-    const now = Date.now();
-    const cap = this.options.maxRemainingSec ?? Number.POSITIVE_INFINITY;
-    const remaining = Math.min(cap, countdownRemainingSec(current, now) + addSec);
-    if (current.running) {
-      return this.set(key, {
-        ...current,
-        endsAt: new Date(now + remaining * 1000).toISOString(),
-        remainingSec: remaining,
-      });
-    }
-    return this.set(key, { ...current, remainingSec: remaining });
+    return this.update(key, (current) => {
+      const now = Date.now();
+      const cap = this.options.maxRemainingSec ?? Number.POSITIVE_INFINITY;
+      const remaining = Math.min(cap, countdownRemainingSec(current, now) + addSec);
+      if (current.running) {
+        return {
+          ...current,
+          endsAt: new Date(now + remaining * 1000).toISOString(),
+          remainingSec: remaining,
+        };
+      }
+      return { ...current, remainingSec: remaining };
+    });
   }
 
   /** Комната/доска опустела — сиюминутное состояние ей больше не нужно */
@@ -95,12 +99,22 @@ export class CountdownTimer {
     await this.store.delete(this.storeKey(key));
   }
 
-  private async set(key: string, state: CountdownTimerState): Promise<CountdownTimerState> {
-    await this.store.setJson(this.storeKey(key), state);
-    return state;
+  /**
+   * Команды с разных экземпляров не затирают друг друга (10.18): изменение
+   * атомарно, при одновременной правке команда перечитывает и применяется
+   * поверх свежего состояния — в итоге действуют обе, в порядке записи
+   */
+  private update(
+    key: string,
+    command: (current: CountdownTimerState) => CountdownTimerState,
+  ): Promise<CountdownTimerState> {
+    return this.store.updateJson<CountdownTimerState>(this.storeKey(key), (stored) =>
+      command(stored ?? this.idle(this.options.defaultDurationSec)),
+    );
   }
 
-  private storeKey(key: string): string {
+  /** Ключ в хранилище — для атомарной очистки опустевшей комнаты/доски */
+  storeKey(key: string): string {
     return `${this.namespace}:${key}`;
   }
 

@@ -40,6 +40,12 @@ export interface RealtimeConnection {
   /** Полный выход: сокет закрывается, висящие входы обесцениваются */
   close(): void;
   /**
+   * Повторный вход на живом соединении — тем же путём, что после обрыва
+   * (`reconnect: true`). Нужен, когда домен заметил, что отстал от сервера
+   * (доска пропустила ревизию, 10.18). Без установленного входа — ничего
+   */
+  rejoin(): Promise<void>;
+  /**
    * Разрывает сокет, не обесценивая состояние домена: нужен новый хендшейк
    * (сервер узнаёт личность по куке заново), а не выход. Следом обязателен
    * `open()` — иначе соединения не останется.
@@ -154,6 +160,11 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions): Re
     connected.value = false;
   }
 
+  async function rejoin(): Promise<void> {
+    if (!socket || !established || !socket.connected) return;
+    await options.join(socket, contextFor(true));
+  }
+
   function require(errorMessage: string): PokerSocket {
     if (!socket) {
       throw new Error(errorMessage);
@@ -161,5 +172,5 @@ export function createRealtimeConnection(options: RealtimeConnectionOptions): Re
     return socket;
   }
 
-  return { connected, open, close, reset, require, current: () => socket };
+  return { connected, open, close, reset, rejoin, require, current: () => socket };
 }

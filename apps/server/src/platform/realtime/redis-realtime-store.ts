@@ -15,6 +15,39 @@ redis.call('SET', KEYS[1], next, 'EX', ARGV[1])
 return next
 `;
 
+/** Запись, только если значение не сменилось с чтения (ARGV[2] = '1' — ключа не было) */
+const COMPARE_AND_SET_SCRIPT = `
+local current = redis.call('GET', KEYS[1])
+if ARGV[2] == '1' then
+  if current then return 0 end
+elseif current ~= ARGV[1] then
+  return 0
+end
+redis.call('SET', KEYS[1], ARGV[3], 'EX', ARGV[4])
+return 1
+`;
+
+const HASH_TOGGLE_SCRIPT = `
+if redis.call('HGET', KEYS[1], ARGV[1]) == ARGV[2] then
+  redis.call('HDEL', KEYS[1], ARGV[1])
+else
+  redis.call('HSET', KEYS[1], ARGV[1], ARGV[2])
+  redis.call('EXPIRE', KEYS[1], ARGV[3])
+end
+return 1
+`;
+
+/** Удаление, только если номер не сдвинулся (ARGV[1] = '' — номера не было) */
+const DELETE_IF_SEQ_SCRIPT = `
+local current = redis.call('GET', KEYS[1])
+if (current or '') ~= ARGV[1] then return 0 end
+for i = 2, #KEYS do redis.call('DEL', KEYS[i]) end
+return 1
+`;
+
+/** Сколько раз перечитывать при одновременной правке, прежде чем сдаться */
+const UPDATE_ATTEMPTS = 10;
+
 /** Несколько экземпляров сервера: общее состояние в Redis */
 export class RedisRealtimeStore implements RealtimeStore {
   constructor(
@@ -33,6 +66,25 @@ export class RedisRealtimeStore implements RealtimeStore {
 
   async setJson(key: string, value: unknown): Promise<void> {
     await this.redis.set(this.key(key), JSON.stringify(value), 'EX', REALTIME_TTL_SEC);
+  }
+
+  async updateJson<T>(key: string, update: (current: T | null) => T): Promise<T> {
+    const full = this.key(key);
+    for (let attempt = 0; attempt < UPDATE_ATTEMPTS; attempt++) {
+      const raw = await this.redis.get(full);
+      const next = update(raw === null ? null : (JSON.parse(raw) as T));
+      const written = await this.redis.eval(
+        COMPARE_AND_SET_SCRIPT,
+        1,
+        full,
+        raw ?? '',
+        raw === null ? '1' : '0',
+        JSON.stringify(next),
+        REALTIME_TTL_SEC,
+      );
+      if (Number(written) === 1) return next;
+    }
+    throw new Error(`Не удалось обновить ${key}: значение всё время меняется`);
   }
 
   async delete(...keys: string[]): Promise<void> {
@@ -55,6 +107,26 @@ export class RedisRealtimeStore implements RealtimeStore {
 
   async hashDelete(key: string, field: string): Promise<void> {
     await this.redis.hdel(this.key(key), field);
+  }
+
+  async hashToggle(key: string, field: string, value: string): Promise<void> {
+    await this.redis.eval(HASH_TOGGLE_SCRIPT, 1, this.key(key), field, value, REALTIME_TTL_SEC);
+  }
+
+  async peekSeq(key: string): Promise<number | null> {
+    const raw = await this.redis.get(this.key(key));
+    return raw === null ? null : Number(raw);
+  }
+
+  async deleteIfSeq(seqKey: string, expected: number | null, keys: string[]): Promise<boolean> {
+    const result = await this.redis.eval(
+      DELETE_IF_SEQ_SCRIPT,
+      1 + keys.length,
+      this.key(seqKey),
+      ...keys.map((key) => this.key(key)),
+      expected === null ? '' : String(expected),
+    );
+    return Number(result) === 1;
   }
 
   async nextSeq(key: string): Promise<number> {

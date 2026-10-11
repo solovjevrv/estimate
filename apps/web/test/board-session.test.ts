@@ -21,6 +21,8 @@ class FakeSocket {
   private readonly listeners = new Map<string, Array<(payload: never) => void>>();
   next: unknown = null;
   nextError: { error: string; message: string } | null = null;
+  /** Срабатывает до ответа на событие — рассылка, обогнавшая ответ (10.18) */
+  beforeAck: ((event: string) => void) | null = null;
 
   connect(): void {
     this.connected = true;
@@ -44,6 +46,7 @@ class FakeSocket {
 
   emit(event: string, payload: unknown, ack?: (result: unknown) => void): void {
     this.sent.push({ event, payload });
+    this.beforeAck?.(event);
     ack?.(
       this.nextError === null ? { ok: true, data: this.next } : { ok: false, ...this.nextError },
     );
@@ -156,11 +159,11 @@ describe('стор сессии доски', () => {
   it('вход применяет догон операциями вместо снимка, если сервер его прислал', async () => {
     const store = useBoardSessionStore();
     const batch: BoardOpsBatch = {
-      revision: 5,
+      revision: 1,
       ops: [{ type: 'item.create', clientOpId: 'c1', item: item() }],
     };
     socket.next = {
-      revision: 5,
+      revision: 1,
       snapshot: null,
       catchup: [batch],
       access: 'manage',
@@ -173,7 +176,7 @@ describe('стор сессии доски', () => {
 
     await store.join('board1');
 
-    expect(store.revision).toBe(5);
+    expect(store.revision).toBe(1);
     expect(store.items.map((i) => i.id)).toEqual(['i1']);
   });
 
@@ -496,7 +499,12 @@ describe('стор сессии доски', () => {
       await store.applyOps([{ type: 'item.patch', clientOpId: 'a', id: 'i1', patch: { x: 50 } }]);
       expect(store.canUndo).toBe(true);
 
-      // Другой участник удалил тот же элемент между правкой и попыткой её отменить
+      // Эхо своей правки, затем другой участник удалил тот же элемент между
+      // правкой и попыткой её отменить
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
+        revision: 2,
+        ops: [{ type: 'item.patch', clientOpId: 'a', item: item({ x: 50 }) }],
+      } satisfies BoardOpsBatch);
       socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
         revision: 3,
         ops: [{ type: 'item.delete', clientOpId: 'someone-else', id: 'i1' }],
@@ -528,6 +536,46 @@ describe('стор сессии доски', () => {
   });
 
   describe('приём рассылок board:ops', () => {
+    it('батч, обогнавший ответ на вход, применяется поверх снимка, а не стирается им (10.18)', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      socket.beforeAck = (event) => {
+        if (event !== BOARD_WS_EVENTS.JOIN) return;
+        socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
+          revision: 2,
+          ops: [{ type: 'item.create', clientOpId: 'other', item: item({ id: 'early' }) }],
+        } satisfies BoardOpsBatch);
+      };
+
+      await store.join('board1');
+
+      expect(store.revision).toBe(2);
+      expect(store.items.map((i) => i.id)).toEqual(['early']);
+    });
+
+    it('дыра в ревизиях — перезаход с текущей ревизии и догон пропущенного (10.18)', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+      const batch = (revision: number, id: string): BoardOpsBatch => ({
+        revision,
+        ops: [{ type: 'item.create', clientOpId: `op-${id}`, item: item({ id }) }],
+      });
+      socket.next = {
+        ...snapshotResult(3),
+        snapshot: null,
+        catchup: [batch(2, 'lost'), batch(3, 'late')],
+      } satisfies JoinBoardResult;
+
+      // Рассылка ревизии 2 потерялась — сразу пришла 3
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, batch(3, 'late'));
+      await vi.waitFor(() => expect(store.revision).toBe(3));
+
+      const rejoin = socket.sent.filter((s) => s.event === BOARD_WS_EVENTS.JOIN).at(-1);
+      expect(rejoin?.payload).toMatchObject({ boardId: 'board1', sinceRevision: 1 });
+      expect(store.items.map((i) => i.id).sort()).toEqual(['late', 'lost']);
+    });
+
     it('применяет батч со следующей ревизией', async () => {
       const store = useBoardSessionStore();
       socket.next = snapshotResult(1);

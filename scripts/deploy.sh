@@ -26,23 +26,50 @@ $COMPOSE up -d --wait postgres
 # остаток файла: без /dev/null деплой молча обрывался сразу после миграций
 $COMPOSE run --rm --no-deps -T server-1 node dist/db/migrate.cjs </dev/null
 
-echo "== Обновляю экземпляры сервера по очереди (без простоя) =="
-# Пока один экземпляр перезапускается, nginx (ip_hash) отправляет его клиентов
-# на соседний — у того общее состояние в Redis, Socket.io переподключается сам
 # --no-deps ниже не поднимает зависимости — всё, что проверяет /health
 # экземпляра (Redis, MinIO), должно уже работать
 $COMPOSE up -d --wait redis minio
-for svc in server-1 server-2; do
-  if ! $COMPOSE up -d --no-deps --wait "$svc"; then
-    echo "ОШИБКА: $svc не вышел в healthy"
+
+start_instance() {
+  if ! $COMPOSE up -d --no-deps --wait "$1"; then
+    echo "ОШИБКА: $1 не вышел в healthy"
     $COMPOSE ps -a
-    $COMPOSE logs --tail 80 "$svc"
+    $COMPOSE logs --tail 80 "$1"
     exit 1
   fi
-done
+}
+
+# Единственный сервис server до 10.18 — на первом деплое с двумя экземплярами.
+# Ищем по меткам Compose: в файле этого сервиса уже нет
+project=$(docker inspect -f '{{ index .Config.Labels "com.docker.compose.project" }}' \
+  "$($COMPOSE ps -q postgres)")
+legacy=$(docker ps -aq --filter "label=com.docker.compose.project=$project" \
+  --filter "label=com.docker.compose.service=server")
+
+if [ -n "$legacy" ]; then
+  echo "== Переход с одного сервера на два экземпляра =="
+  # По одному шагу: старый nginx смотрит на старый server, пока не поднят
+  # новый nginx; и пулы БД старого (50) и двух новых (по 40) вместе не влезли
+  # бы в 100 подключений Postgres — поэтому server-2 только после ухода старого
+  start_instance server-1
+  if ! $COMPOSE up -d --no-deps --wait web; then
+    echo "ОШИБКА: web не вышел в healthy"
+    $COMPOSE logs --tail 80 web
+    exit 1
+  fi
+  docker stop $legacy >/dev/null
+  docker rm $legacy >/dev/null
+  start_instance server-2
+else
+  echo "== Обновляю экземпляры сервера по очереди (без простоя) =="
+  # Пока один экземпляр перезапускается, nginx (ip_hash) отправляет его клиентов
+  # на соседний — у того общее состояние в Redis, Socket.io переподключается сам
+  start_instance server-1
+  start_instance server-2
+fi
 
 echo "== Обновляю остальные сервисы =="
-# --remove-orphans: убирает контейнер прежнего единственного сервиса server (до 10.18)
+# --remove-orphans — на случай, если прежний server (до 10.18) не был убран выше
 if ! $COMPOSE up -d --wait --remove-orphans; then
   echo "ОШИБКА: сервисы не вышли в healthy"
   $COMPOSE ps -a

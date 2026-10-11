@@ -27,15 +27,10 @@ export class RoomReactions {
    * снимает её — как реакции на сообщение в Telegram.
    */
   async toggle(roomId: string, from: string, to: string, emoji: EmojiSequence): Promise<void> {
-    const key = this.key(roomId);
-    const field = `${from}\n${to}`;
-    const existing = await this.store.hashGet(key, field);
-    if (existing && (JSON.parse(existing) as Reaction).emoji === emoji) {
-      await this.store.hashDelete(key, field);
-      return;
-    }
+    // Атомарно (два клика из двух вкладок одновременно не должны поставить её дважды):
+    // та же реакция — то же значение поля, его повтор снимает
     const reaction: Reaction = { fromParticipantId: from, toParticipantId: to, emoji };
-    await this.store.hashSet(key, field, JSON.stringify(reaction));
+    await this.store.hashToggle(this.key(roomId), `${from}\n${to}`, JSON.stringify(reaction));
   }
 
   /** Комната опустела или начался новый раунд — сиюминутное состояние ей больше не нужно */
@@ -43,7 +38,8 @@ export class RoomReactions {
     await this.store.delete(this.key(roomId));
   }
 
-  private key(roomId: string): string {
+  /** Ключ в хранилище — для атомарной очистки опустевшей комнаты */
+  key(roomId: string): string {
     return `room-reactions:${roomId}`;
   }
 }
