@@ -16,3 +16,4 @@ export {
 export { MemoryRealtimeStore, REALTIME_TTL_SEC, type RealtimeStore } from './realtime-store';
 export { RedisRealtimeStore } from './redis-realtime-store';
 export { connectRedisCluster, type RedisCluster } from './redis-cluster';
+export { PerSocketQueue } from './per-socket-queue';

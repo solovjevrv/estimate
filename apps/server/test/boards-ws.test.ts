@@ -13,6 +13,7 @@ import type {
   BoardEstimateUpdate,
   BoardItem,
   BoardOpsBatch,
+  BoardOpsBroadcast,
   BoardPresenceUpdate,
   BoardTimerState,
   BoardTimerUpdate,
@@ -225,6 +226,46 @@ describeDb('WS-канал досок', () => {
   });
 
   describe('вход на доску', () => {
+    it('два входа одного сокета подряд: поздний ответ первого не пересаживает сокет обратно', async () => {
+      const owner = await newUser('join-order-owner');
+      const boardA = await newBoard(owner);
+      const boardB = await newBoard(owner);
+      const client = connect(owner);
+      const observerB = connect(owner);
+      await joinBoard(observerB, boardB);
+
+      // Проверка доступа ко входу на A задерживается, пока не отпустим
+      let releaseA: () => void = () => {};
+      const gateA = new Promise<void>((resolve) => (releaseA = resolve));
+      const original = BoardsService.prototype.prepareBoardJoin;
+      const spy = vi
+        .spyOn(BoardsService.prototype, 'prepareBoardJoin')
+        .mockImplementation(async function (this: BoardsService, request) {
+          if (request.boardId === boardA) await gateA;
+          return original.call(this, request);
+        });
+      try {
+        const joinA = emit<JoinBoardResult>(client, BOARD_WS_EVENTS.JOIN, { boardId: boardA });
+        const joinB = emit<JoinBoardResult>(client, BOARD_WS_EVENTS.JOIN, { boardId: boardB });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        releaseA();
+        expect((await joinA).ok).toBe(true);
+        expect((await joinB).ok).toBe(true);
+      } finally {
+        spy.mockRestore();
+      }
+
+      // Сокет там, куда вошёл последним: операция идёт на B
+      const onB = waitFor<BoardOpsBroadcast>(observerB, BOARD_WS_SERVER_EVENTS.OPS);
+      const applied = await emit<ApplyBoardOpsResult>(client, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: randomUUID(), item: stickyItem() }],
+      });
+      expect(applied.ok).toBe(true);
+      expect((await onB).boardId).toBe(boardB);
+      const snapshotA = await joinBoard(connect(owner), boardA);
+      expect(snapshotA.snapshot?.items).toEqual([]);
+    });
+
     it('владелец входит на личную доску и получает снимок', async () => {
       const owner = await newUser('board-owner');
       const boardId = await newBoard(owner);

@@ -22,6 +22,7 @@ import { AppError, ForbiddenError, ValidationError } from '../errors';
 import {
   ClusterPresence,
   MemoryRealtimeStore,
+  PerSocketQueue,
   withoutVersion,
   type RealtimeStore,
 } from '../platform/realtime';
@@ -50,6 +51,7 @@ const NO_OP_ACK: Ack<unknown> = () => {};
 export type RoomResultListener = (io: PokerServer, roomId: string) => Promise<void>;
 
 export class RoomsGateway {
+  private readonly joins = new PerSocketQueue();
   private resultListener: RoomResultListener | undefined;
 
   onRoundResult(listener: RoomResultListener | undefined): this {
@@ -92,7 +94,10 @@ export class RoomsGateway {
     io.on('connection', (socket) => {
       socket.on(WS_EVENTS.JOIN_ROOM, (...args: unknown[]) => {
         const { payload, ack } = this.readArgs<JoinRoomPayload>(args);
-        this.run(socket, log, ack, () => this.join(io, socket, payload));
+        // Входы одного сокета — строго по очереди (см. PerSocketQueue)
+        this.run(socket, log, ack, () =>
+          this.joins.run(socket, () => this.join(io, socket, payload)),
+        );
       });
 
       socket.on(WS_EVENTS.SUBMIT_VOTE, (...args: unknown[]) => {

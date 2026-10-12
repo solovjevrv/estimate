@@ -29,6 +29,7 @@ import {
   ClusterPresence,
   CountdownTimer,
   MemoryRealtimeStore,
+  PerSocketQueue,
   withoutVersion,
   type RealtimeStore,
   type VersionedTimerState,
@@ -67,6 +68,7 @@ export class BoardsGateway {
       data.board = seat;
     },
   });
+  private readonly joins = new PerSocketQueue();
   /** Последние батчи операций на доску — для догона по `sinceRevision` */
   private readonly opsLog: BoardOpsLog;
   /** Таймер доски (15.3) — сиюминутное состояние, как присутствие */
@@ -109,7 +111,10 @@ export class BoardsGateway {
     io.on('connection', (socket) => {
       socket.on(BOARD_WS_EVENTS.JOIN, (...args: unknown[]) => {
         const { payload, ack } = this.readArgs<JoinBoardPayload>(args);
-        this.run(socket, log, ack, () => this.join(io, socket, payload));
+        // Входы одного сокета — строго по очереди (см. PerSocketQueue)
+        this.run(socket, log, ack, () =>
+          this.joins.run(socket, () => this.join(io, socket, payload)),
+        );
       });
 
       socket.on(BOARD_WS_EVENTS.APPLY, (...args: unknown[]) => {

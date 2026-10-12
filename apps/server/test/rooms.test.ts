@@ -679,6 +679,47 @@ describeDb('комнаты', () => {
   });
 
   describe('игровой цикл по WebSocket', () => {
+    it('два входа одного сокета подряд: поздний ответ первого не пересаживает сокет обратно', async () => {
+      const owner = await newUser('join-order-room-owner');
+      const roomA = await newRoom(owner);
+      const roomB = await newRoom(owner);
+      const client = connect(owner);
+      const observerB = connect();
+      await joinRoom(observerB, roomB, 'Наблюдатель');
+
+      let releaseA: () => void = () => {};
+      const gateA = new Promise<void>((resolve) => (releaseA = resolve));
+      const original = RoomsGameService.prototype.prepareJoin;
+      const spy = vi
+        .spyOn(RoomsGameService.prototype, 'prepareJoin')
+        .mockImplementation(async function (this: RoomsGameService, request) {
+          if (request.roomId === roomA) await gateA;
+          return original.call(this, request);
+        });
+      try {
+        const joinA = emit(client, WS_EVENTS.JOIN_ROOM, { roomId: roomA });
+        const joinB = emit(client, WS_EVENTS.JOIN_ROOM, { roomId: roomB });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        releaseA();
+        expect((await joinA).ok).toBe(true);
+        expect((await joinB).ok).toBe(true);
+      } finally {
+        spy.mockRestore();
+      }
+
+      // Таймер, запущенный сокетом, — в комнате B, куда он вошёл последним
+      const observerSeesTimer = new Promise<RoomState>((resolve) => {
+        const onState = (state: RoomState): void => {
+          if (!state.timer.running) return;
+          observerB.off(WS_SERVER_EVENTS.ROOM_STATE, onState);
+          resolve(state);
+        };
+        observerB.on(WS_SERVER_EVENTS.ROOM_STATE, onState);
+      });
+      expect((await emit(client, WS_EVENTS.START_TIMER)).ok).toBe(true);
+      expect((await observerSeesTimer).room.id).toBe(roomB);
+    });
+
     it('двое голосуют, скрам-мастер вскрывает карты и начинает новый раунд', async () => {
       const owner = await newUser('game-owner');
       const roomId = await newRoom(owner);
