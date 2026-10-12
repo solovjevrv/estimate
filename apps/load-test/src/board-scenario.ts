@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import type { BoardOpsBatch, BoardVotingState, JoinBoardResult, WsAck } from '@estimate/shared';
+import type {
+  BoardOpsBroadcast,
+  BoardVotingState,
+  BoardVotingUpdate,
+  JoinBoardResult,
+  WsAck,
+} from '@estimate/shared';
 import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, isVotableContent } from '@estimate/shared';
 import { type Socket, io } from 'socket.io-client';
 
@@ -90,7 +96,7 @@ function waitForOpsBatch(socket: Socket, clientOpId: string): Promise<void> {
       socket.off(BOARD_WS_SERVER_EVENTS.OPS, handler);
       reject(new Error('рассылка операции не дошла вовремя'));
     }, BROADCAST_TIMEOUT_MS);
-    function handler(batch: BoardOpsBatch): void {
+    function handler(batch: BoardOpsBroadcast): void {
       if (batch.ops.some((op) => op.clientOpId === clientOpId)) {
         clearTimeout(timer);
         socket.off(BOARD_WS_SERVER_EVENTS.OPS, handler);
@@ -101,7 +107,7 @@ function waitForOpsBatch(socket: Socket, clientOpId: string): Promise<void> {
   });
 }
 
-/** Ждёт на ЭТОМ сокете снимок голосования, удовлетворяющий условию */
+/** Ждёт на ЭТОМ сокете снимок голосования, удовлетворяющий условию (рассылка — конверт `{ boardId, seq, voting }`, 10.18) */
 function waitForVoting(
   socket: Socket,
   match: (state: BoardVotingState | null) => boolean,
@@ -111,11 +117,11 @@ function waitForVoting(
       socket.off(BOARD_WS_SERVER_EVENTS.VOTING, handler);
       reject(new Error('снимок голосования не дошёл вовремя'));
     }, BROADCAST_TIMEOUT_MS);
-    function handler(state: BoardVotingState | null): void {
-      if (match(state)) {
+    function handler(update: BoardVotingUpdate): void {
+      if (match(update.voting)) {
         clearTimeout(timer);
         socket.off(BOARD_WS_SERVER_EVENTS.VOTING, handler);
-        resolve(state);
+        resolve(update.voting);
       }
     }
     socket.on(BOARD_WS_SERVER_EVENTS.VOTING, handler);
