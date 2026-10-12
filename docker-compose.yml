@@ -1,3 +1,8 @@
+# Имя проекта закреплено: иначе Compose берёт его из имени папки, и после
+# переименования репозитория (poker-planing → estimate) контейнеры и тома
+# остались под старым именем отдельным проектом
+name: estimate
+
 services:
   postgres:
     image: postgres:18-alpine
