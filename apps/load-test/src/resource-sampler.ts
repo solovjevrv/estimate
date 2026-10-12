@@ -34,7 +34,7 @@ export class ResourceSampler {
   private readonly intervalMs: number;
 
   constructor(opts: { databaseUrl: string; containerName: string; intervalMs?: number }) {
-    const created = createDb(opts.databaseUrl);
+    const created = createDb(opts.databaseUrl, 1);
     this.db = created.db;
     this.pool = created.pool;
     this.containerName = opts.containerName;

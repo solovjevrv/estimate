@@ -1,3 +1,10 @@
+/**
+ * Пул подключений самого прогона к БД (10.18): он делит `max_connections` с
+ * серверами — с двумя экземплярами по 40 запас всего 20, и пул прогона по
+ * умолчанию (50) на старте отнимал подключения у сервера
+ */
+export const LOADTEST_DB_POOL_MAX = 5;
+
 export interface LoadTestConfig {
   /** Первый из `serverOrigins` — для REST */
   serverOrigin: string;

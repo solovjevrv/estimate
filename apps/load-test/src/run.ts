@@ -5,18 +5,23 @@ import { createDb, schema } from '@estimate/server/db';
 import { like } from 'drizzle-orm';
 
 import { createAuthMinter } from './auth';
-import { loadConfig } from './config';
+import { LOADTEST_DB_POOL_MAX, loadConfig } from './config';
 import { LatencyRecorder } from './metrics';
 import { ResourceSampler } from './resource-sampler';
 import { runRoomScenario } from './scenario';
 
 /** Метка в имени комнаты и почте — по ней прогон чистит за собой данные */
-const ROOM_PREFIX = 'LOADTEST ';
-const EMAIL_DOMAIN = 'loadtest.local';
+/**
+ * Метка прогона: очистка в `finally` удаляет только своё — параллельные прогоны
+ * (например, несколько досок одновременно) не сносят друг другу данные посреди сценария
+ */
+const RUN_TAG = randomUUID().slice(0, 8);
+const ROOM_PREFIX = `LOADTEST ${RUN_TAG} `;
+const EMAIL_DOMAIN = `${RUN_TAG}.loadtest.local`;
 
 async function main(): Promise<void> {
   const config = loadConfig();
-  const { db, pool } = createDb(config.databaseUrl);
+  const { db, pool } = createDb(config.databaseUrl, LOADTEST_DB_POOL_MAX);
   const users = new UsersRepository(db);
   const minter = await createAuthMinter(config.jwtSecret);
   const sampler = new ResourceSampler({

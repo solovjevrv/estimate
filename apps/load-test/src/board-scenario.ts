@@ -107,6 +107,21 @@ function waitForOpsBatch(socket: Socket, clientOpId: string): Promise<void> {
   });
 }
 
+/** Старший номер снимка голосования, виденный сокетом (10.18) */
+const votingSeqs = new WeakMap<Socket, number>();
+
+/**
+ * Как веб-клиент: снимки голосования могут прийти не по порядку (два снимка
+ * читаются из БД параллельно), меньший номер — устаревший. Ставится до любых
+ * ожиданий, чтобы номер обновлялся раньше их проверки.
+ */
+function trackVotingSeq(socket: Socket, joinSeq: number): void {
+  votingSeqs.set(socket, joinSeq);
+  socket.on(BOARD_WS_SERVER_EVENTS.VOTING, (update: BoardVotingUpdate) => {
+    votingSeqs.set(socket, Math.max(votingSeqs.get(socket) ?? 0, update.seq));
+  });
+}
+
 /** Ждёт на ЭТОМ сокете снимок голосования, удовлетворяющий условию (рассылка — конверт `{ boardId, seq, voting }`, 10.18) */
 function waitForVoting(
   socket: Socket,
@@ -118,6 +133,7 @@ function waitForVoting(
       reject(new Error('снимок голосования не дошёл вовремя'));
     }, BROADCAST_TIMEOUT_MS);
     function handler(update: BoardVotingUpdate): void {
+      if (update.seq < (votingSeqs.get(socket) ?? 0)) return;
       if (match(update.voting)) {
         clearTimeout(timer);
         socket.off(BOARD_WS_SERVER_EVENTS.VOTING, handler);
@@ -246,6 +262,7 @@ export async function runBoardScenario(opts: BoardScenarioOptions): Promise<Boar
           errors.push(`вход участника ${i}: ${ack.message}`);
           return;
         }
+        trackVotingSeq(socket, ack.data.votingSeq);
         if (ack.data.snapshot && itemIds.length === 0) {
           itemIds = ack.data.snapshot.items.map((item) => item.id);
           votableItemIds = ack.data.snapshot.items
