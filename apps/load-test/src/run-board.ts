@@ -6,14 +6,19 @@ import type { BoardItemContent, BoardItemStyle } from '@estimate/shared';
 import { like } from 'drizzle-orm';
 
 import { createAuthMinter } from './auth';
-import { loadBoardConfig } from './config';
+import { LOADTEST_DB_POOL_MAX, loadBoardConfig } from './config';
 import { LatencyRecorder } from './metrics';
 import { ResourceSampler } from './resource-sampler';
 import { runBoardScenario, type VotingLatencies } from './board-scenario';
 
 /** Метка в названии доски и почте — по ней прогон чистит за собой данные (как в run.ts) */
-const BOARD_PREFIX = 'LOADTEST ';
-const EMAIL_DOMAIN = 'loadtest.local';
+/**
+ * Метка прогона: очистка в `finally` удаляет только своё — параллельные прогоны
+ * (например, несколько досок одновременно) не сносят друг другу данные посреди сценария
+ */
+const RUN_TAG = randomUUID().slice(0, 8);
+const BOARD_PREFIX = `LOADTEST ${RUN_TAG} `;
+const EMAIL_DOMAIN = `${RUN_TAG}.loadtest.local`;
 const DEFAULT_STYLE: BoardItemStyle = { color: '#fef08a' };
 
 /**
@@ -105,7 +110,7 @@ async function seedBoardItems(
 
 async function main(): Promise<void> {
   const config = loadBoardConfig();
-  const { db, pool } = createDb(config.databaseUrl);
+  const { db, pool } = createDb(config.databaseUrl, LOADTEST_DB_POOL_MAX);
   const users = new UsersRepository(db);
   const minter = await createAuthMinter(config.jwtSecret);
   const sampler = new ResourceSampler({
@@ -171,7 +176,7 @@ async function main(): Promise<void> {
     await seedBoardItems(db, boardId, config.boardItemCount, config.boardAnimatedStickerCount);
 
     const result = await runBoardScenario({
-      serverOrigin: config.serverOrigin,
+      serverOrigins: config.serverOrigins,
       boardId,
       ownerCookie: cookie,
       guestCount: config.boardParticipants - 1,

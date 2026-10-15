@@ -8,6 +8,7 @@ import {
 import { loadConfig } from './config';
 import { createDb } from './db';
 import { attachSentryErrorHandler, initSentry } from './monitoring';
+import { connectRedisCluster } from './platform/realtime';
 import { MinioObjectStorage } from './platform/storage';
 import { RoomsGameService } from './rooms';
 import { SocketGateway } from './socket';
@@ -16,9 +17,14 @@ import { seedStickers } from './scripts/seed-stickers';
 async function main(): Promise<void> {
   const config = loadConfig();
   const sentryEnabled = initSentry(config.sentryDsn);
-  const { db, pool } = createDb(config.databaseUrl);
+  const { db, pool } = createDb(config.databaseUrl, config.databasePoolMax);
   const objectStorage = config.objectStorage
     ? new MinioObjectStorage(config.objectStorage)
+    : undefined;
+  // Несколько экземпляров сервера (10.18) — общее состояние и рассылки через Redis
+  let logRedisError: (err: Error, role: string) => void = () => {};
+  const cluster = config.redisUrl
+    ? connectRedisCluster(config.redisUrl, (err, role) => logRedisError(err, role))
     : undefined;
 
   const app = buildApp(
@@ -34,9 +40,17 @@ async function main(): Promise<void> {
       objectStorage,
       telegram: config.telegram,
       giphy: config.giphy,
+      redis: cluster?.client,
     },
-    { logger: true },
+    { logger: true, trustProxy: config.trustProxy },
   );
+  logRedisError = (err, role) => app.log.warn({ err, role }, 'Redis: ошибка соединения');
+  if (cluster) {
+    // После preClose Socket.io (socket.ts): сначала закрываются сокеты, потом Redis
+    app.addHook('onClose', async () => {
+      await cluster.close();
+    });
+  }
   if (sentryEnabled) {
     attachSentryErrorHandler(app);
   }
@@ -55,6 +69,7 @@ async function main(): Promise<void> {
     corsOrigin: config.webOrigin,
     boardVoting: new BoardVotingService(db, boardsService),
     boardEstimates: new BoardEstimatesService(db, boardsService),
+    cluster: cluster && { store: cluster.store, adapter: cluster.adapter },
   }).attach(app);
 
   // Одна неудачная операция не должна уносить процесс вместе со всеми комнатами

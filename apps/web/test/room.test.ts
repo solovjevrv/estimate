@@ -100,6 +100,7 @@ function state(revision: number, overrides: Partial<RoomState> = {}): RoomState 
     result: null,
     timer: timer(),
     reactions: [],
+    seq: revision,
     ...overrides,
   };
 }
@@ -132,6 +133,15 @@ describe('стор комнаты', () => {
       store.applyState(state(3));
 
       expect(store.room?.revision).toBe(7);
+    });
+
+    it('та же ревизия, но меньший номер снимка — запоздавшая рассылка, отбрасывается (10.18)', () => {
+      const store = useRoomStore();
+      store.applyState({ ...state(4), seq: 9, participants: [] });
+
+      store.applyState({ ...state(4), seq: 8, timer: { ...state(4).timer, running: true } });
+
+      expect(store.state?.seq).toBe(9);
     });
 
     it('принимает снимок с тем же номером: он мог прийти в ответе на действие', () => {

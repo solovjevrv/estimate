@@ -1,4 +1,63 @@
 # Продакшен-стек. Секреты берутся из .env рядом с файлом (создаётся на сервере, в git не попадает).
+# Общий шаблон экземпляра сервера (10.18): server-1 и server-2 — одинаковые
+# экземпляры за nginx (ip_hash), общее состояние — в Redis. Деплой обновляет их
+# по очереди (scripts/deploy.sh), поэтому приложение не уходит в простой
+x-server: &server
+  restart: unless-stopped
+  environment:
+    NODE_ENV: production
+    PORT: 3000
+    DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    WEB_ORIGIN: ${WEB_ORIGIN:-https://estimate.solovyovdev.ru}
+    PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://estimate.solovyovdev.ru}
+    JWT_SECRET: ${JWT_SECRET:?}
+    GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+    YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-}
+    YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-}
+    SENTRY_DSN: ${SENTRY_DSN:-}
+    # Аватарки (21.2) и картинки досок (21.5) пишутся в MinIO, а не на диск.
+    # env-переменные совпадают с теми, что создаёт minio-init (учётка приложения):
+    # MINIO_ENDPOINT=minio — внутренний hostname Docker-сети. avatars_data и
+    # board_assets_data volume остаются смонтированными для переходного чтения
+    # legacy-файлов и для запуска migrate:avatars / migrate:board-images — планово
+    # убрать отдельной задачей после подтверждённой миграции.
+    MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
+    MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
+    MINIO_ENDPOINT: minio
+    MINIO_BUCKET: ${MINIO_BUCKET:-estimate-assets}
+    # Необязательные интеграции: без ключа сервер не регистрирует их роуты
+    # (поиск GIF — 21.9, импорт стикер-паков из Telegram — 21.6)
+    GIPHY_API_KEY: ${GIPHY_API_KEY:-}
+    TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+    # Несколько экземпляров (10.18): общее сиюминутное состояние, рассылки
+    # Socket.io и лимиты запросов — через Redis
+    REDIS_URL: redis://redis:6379
+    # Пул БД на экземпляр: два экземпляра по 40 = 80 из 100 max_connections
+    # Postgres — остаётся запас на бэкапы, миграции и psql. По 50 (дефолт) двое
+    # под нагрузкой выбирали все 100, и запросы падали «too many clients»
+    DATABASE_POOL_MAX: 40
+    # Сервер доступен только через nginx — клиентский IP берётся из X-Forwarded-For
+    TRUST_PROXY: 'true'
+  volumes:
+    - avatars_data:/app/apps/server/avatars
+    - board_assets_data:/app/apps/server/board-assets
+  depends_on:
+    postgres:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+    # На старте сервер наполняет бакет встроенными стикерами — бакет и учётка
+    # приложения к этому моменту должны уже существовать
+    minio-init:
+      condition: service_completed_successfully
+  healthcheck:
+    test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/health >/dev/null || exit 1']
+    interval: 10s
+    timeout: 3s
+    retries: 6
+    start_period: 5s
+
 services:
   postgres:
     image: postgres:18-alpine
@@ -17,54 +76,41 @@ services:
       retries: 12
       start_period: 5s
 
-  server:
+  # Сиюминутное состояние realtime (таймеры, реакции, буфер догона досок, номера
+  # снимков), адаптер рассылок Socket.io и лимиты запросов (10.18). Не история —
+  # без персистентности: после перезапуска всё это заводится заново. У всех
+  # ключей есть срок жизни, поэтому при нехватке памяти вытесняются они же
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    command:
+      - redis-server
+      - --save
+      - ''
+      - --appendonly
+      - 'no'
+      - --maxmemory
+      - 256mb
+      - --maxmemory-policy
+      - volatile-lru
+    # Порт наружу не публикуется — Redis доступен только контейнерам стека
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  # Образ собирает только server-1, server-2 берёт его же
+  server-1:
+    <<: *server
     build:
       context: .
       dockerfile: apps/server/Dockerfile
     image: estimate-server
-    restart: unless-stopped
-    environment:
-      NODE_ENV: production
-      PORT: 3000
-      DATABASE_URL: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      WEB_ORIGIN: ${WEB_ORIGIN:-https://estimate.solovyovdev.ru}
-      PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-https://estimate.solovyovdev.ru}
-      JWT_SECRET: ${JWT_SECRET:?}
-      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
-      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
-      YANDEX_CLIENT_ID: ${YANDEX_CLIENT_ID:-}
-      YANDEX_CLIENT_SECRET: ${YANDEX_CLIENT_SECRET:-}
-      SENTRY_DSN: ${SENTRY_DSN:-}
-      # Аватарки (21.2) и картинки досок (21.5) пишутся в MinIO, а не на диск.
-      # env-переменные совпадают с теми, что создаёт minio-init (учётка приложения):
-      # MINIO_ENDPOINT=minio — внутренний hostname Docker-сети. avatars_data и
-      # board_assets_data volume остаются смонтированными для переходного чтения
-      # legacy-файлов и для запуска migrate:avatars / migrate:board-images — планово
-      # убрать отдельной задачей после подтверждённой миграции.
-      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:?}
-      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:?}
-      MINIO_ENDPOINT: minio
-      MINIO_BUCKET: ${MINIO_BUCKET:-estimate-assets}
-      # Необязательные интеграции: без ключа сервер не регистрирует их роуты
-      # (поиск GIF — 21.9, импорт стикер-паков из Telegram — 21.6)
-      GIPHY_API_KEY: ${GIPHY_API_KEY:-}
-      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-    volumes:
-      - avatars_data:/app/apps/server/avatars
-      - board_assets_data:/app/apps/server/board-assets
-    depends_on:
-      postgres:
-        condition: service_healthy
-      # На старте сервер наполняет бакет встроенными стикерами — бакет и учётка
-      # приложения к этому моменту должны уже существовать
-      minio-init:
-        condition: service_completed_successfully
-    healthcheck:
-      test: ['CMD-SHELL', 'wget -qO- http://127.0.0.1:3000/health >/dev/null || exit 1']
-      interval: 10s
-      timeout: 3s
-      retries: 6
-      start_period: 5s
+
+  server-2:
+    <<: *server
+    image: estimate-server
 
   # Объектное хранилище (Epic 21) — MinIO. Аватарки (21.2) и картинки досок
   # (21.5) пишутся сюда. API/консоль не публикуются — доступ только по внутренней
@@ -127,7 +173,9 @@ services:
       - letsencrypt:/etc/letsencrypt:ro
       - certbot_www:/var/www/certbot:ro
     depends_on:
-      server:
+      server-1:
+        condition: service_healthy
+      server-2:
         condition: service_healthy
     # Периодический reload, чтобы nginx подхватывал продлённые сертификаты
     command: /bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g "daemon off;"'

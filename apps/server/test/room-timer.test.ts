@@ -18,10 +18,10 @@ describe('RoomTimer', () => {
     vi.useRealTimers();
   });
 
-  it('до первого действия отдаёт дефолт: 5 минут, не запущен', () => {
+  it('до первого действия отдаёт дефолт: 5 минут, не запущен', async () => {
     const timer = new RoomTimer();
 
-    expect(timer.get(ROOM)).toMatchObject({
+    expect(await timer.get(ROOM)).toMatchObject({
       durationSec: 300,
       running: false,
       endsAt: null,
@@ -29,60 +29,60 @@ describe('RoomTimer', () => {
     });
   });
 
-  it('старт считает endsAt от текущего момента и остатка', () => {
+  it('старт считает endsAt от текущего момента и остатка', async () => {
     const timer = new RoomTimer();
 
-    const started = timer.start(ROOM);
+    const started = await timer.start(ROOM);
 
     expect(started.running).toBe(true);
     expect(started.endsAt).toBe(new Date('2026-07-27T10:05:00.000Z').toISOString());
   });
 
-  it('повторный старт уже запущенного таймера не двигает endsAt вперёд', () => {
+  it('повторный старт уже запущенного таймера не двигает endsAt вперёд', async () => {
     const timer = new RoomTimer();
-    const started = timer.start(ROOM);
+    const started = await timer.start(ROOM);
 
     vi.advanceTimersByTime(10_000);
-    const again = timer.start(ROOM);
+    const again = await timer.start(ROOM);
 
     expect(again).toEqual(started);
   });
 
-  it('пауза фиксирует остаток и снимает endsAt', () => {
+  it('пауза фиксирует остаток и снимает endsAt', async () => {
     const timer = new RoomTimer();
-    timer.start(ROOM);
+    await timer.start(ROOM);
 
     vi.advanceTimersByTime(60_000); // прошла минута из пяти
 
-    const paused = timer.pause(ROOM);
+    const paused = await timer.pause(ROOM);
 
     expect(paused).toMatchObject({ running: false, endsAt: null, remainingSec: 240 });
   });
 
-  it('старт после паузы продолжает с зафиксированного остатка, а не с полной длительности', () => {
+  it('старт после паузы продолжает с зафиксированного остатка, а не с полной длительности', async () => {
     const timer = new RoomTimer();
-    timer.start(ROOM);
+    await timer.start(ROOM);
     vi.advanceTimersByTime(60_000);
-    timer.pause(ROOM);
+    await timer.pause(ROOM);
 
-    const resumed = timer.start(ROOM);
+    const resumed = await timer.start(ROOM);
 
     expect(resumed.endsAt).toBe(new Date('2026-07-27T10:05:00.000Z').toISOString());
   });
 
-  it('пауза на уже остановленном таймере — не операция', () => {
+  it('пауза на уже остановленном таймере — не операция', async () => {
     const timer = new RoomTimer();
 
-    const paused = timer.pause(ROOM);
+    const paused = await timer.pause(ROOM);
 
     expect(paused).toMatchObject({ running: false, endsAt: null, remainingSec: 300 });
   });
 
-  it('сброс останавливает и возвращает к длительности; можно сменить длительность', () => {
+  it('сброс останавливает и возвращает к длительности; можно сменить длительность', async () => {
     const timer = new RoomTimer();
-    timer.start(ROOM);
+    await timer.start(ROOM);
 
-    const reset = timer.reset(ROOM, 900);
+    const reset = await timer.reset(ROOM, 900);
 
     expect(reset).toMatchObject({
       durationSec: 900,
@@ -92,34 +92,34 @@ describe('RoomTimer', () => {
     });
   });
 
-  it('сброс без длительности сохраняет текущую', () => {
+  it('сброс без длительности сохраняет текущую', async () => {
     const timer = new RoomTimer();
-    timer.reset(ROOM, 600);
+    await timer.reset(ROOM, 600);
 
-    const reset = timer.reset(ROOM);
+    const reset = await timer.reset(ROOM);
 
     expect(reset).toMatchObject({ durationSec: 600, remainingSec: 600 });
   });
 
-  it('длительность не из пресетов отклоняется', () => {
+  it('длительность не из пресетов отклоняется', async () => {
     const timer = new RoomTimer();
 
-    expect(() => timer.reset(ROOM, 42)).toThrow(ValidationError);
+    await expect(timer.reset(ROOM, 42)).rejects.toThrow(ValidationError);
   });
 
-  it('clear убирает состояние — следующий get заводит его заново с дефолтом', () => {
+  it('clear убирает состояние — следующий get заводит его заново с дефолтом', async () => {
     const timer = new RoomTimer();
-    timer.start(ROOM);
+    await timer.start(ROOM);
 
-    timer.clear(ROOM);
+    await timer.clear(ROOM);
 
-    expect(timer.get(ROOM)).toMatchObject({ running: false, remainingSec: 300 });
+    expect(await timer.get(ROOM)).toMatchObject({ running: false, remainingSec: 300 });
   });
 
-  it('состояния разных комнат не пересекаются', () => {
+  it('состояния разных комнат не пересекаются', async () => {
     const timer = new RoomTimer();
-    timer.start(ROOM);
+    await timer.start(ROOM);
 
-    expect(timer.get('другая-комната')).toMatchObject({ running: false, remainingSec: 300 });
+    expect(await timer.get('другая-комната')).toMatchObject({ running: false, remainingSec: 300 });
   });
 });

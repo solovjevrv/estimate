@@ -5,6 +5,7 @@ import fp from 'fastify-plugin';
 import type { TelegramConfig } from '../config';
 import { NotFoundError } from '../errors';
 import { DOCS_TAGS, errorResponse } from '../http/openapi';
+import { sharedRateLimitStore } from '../http/rate-limit';
 import { uuidSchema } from '../http/schemas';
 import type { ObjectStorage } from '../platform/storage';
 
@@ -98,6 +99,7 @@ async function personalStickersPluginImpl(
     // сперва req.user заполняется, потом лимитер читает req.user.sub.
     authedRoutes.addHook('preHandler', authenticate);
     await authedRoutes.register(fastifyRateLimit, {
+      ...sharedRateLimitStore(authedRoutes, 'telegram-stickers'),
       max: IMPORT_RATE_LIMIT_MAX,
       timeWindow: IMPORT_RATE_LIMIT_WINDOW,
       hook: 'preHandler',

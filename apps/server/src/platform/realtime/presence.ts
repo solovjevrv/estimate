@@ -4,56 +4,104 @@ export interface PresenceIdentity {
   participantId: string;
 }
 
+/** Где сидит сокет и кто он — хранится на самом сокете (`socket.data`) */
+export interface PresenceSeat<TIdentity> {
+  scopeId: string;
+  identity: TIdentity;
+}
+
+/** Как прочитать и записать место в `socket.data`: у комнат и досок свои поля */
+export interface PresenceSeatAccess<TData, TIdentity> {
+  read(data: TData): PresenceSeat<TIdentity> | undefined;
+  write(data: TData, seat: PresenceSeat<TIdentity> | undefined): void;
+}
+
+/** Ровно то, что нужно от сокета Socket.io — локального или удалённого */
+interface SocketLike<TData> {
+  id: string;
+  data: TData;
+}
+
+interface SocketQuery<TData> {
+  in(room: string): { fetchSockets(): Promise<SocketLike<TData>[]> };
+}
+
 /**
- * Кто сейчас подключён к сущности (`scopeId` — комната или доска).
- *
- * Живёт в памяти процесса: список подключённых сиюминутен, в базе хранятся
- * только раунды, голоса и элементы досок. При нескольких инстансах сюда
- * понадобится общий адаптер (записано в Epic 8, находка `S-11`).
- *
- * Индекс `scopeBySocket` обратный к основному: без него уход сокета требовал бы
- * обхода всех сущностей, а `disconnect` приходит без контекста.
+ * `io` с адаптером: `fetchSockets` опрашивает все экземпляры сервера, `local` —
+ * только свой (запасной путь, когда соседи не ответили)
  */
-export class PresenceRegistry<TIdentity extends PresenceIdentity> {
-  private readonly identitiesByScope = new Map<string, Map<string, TIdentity>>();
-  private readonly scopeBySocket = new Map<string, string>();
+export interface PresenceServer<TData> extends SocketQuery<TData> {
+  local: SocketQuery<TData>;
+}
 
-  /** Сокет живёт ровно в одной сущности: вход в новую сначала выводит из прежней */
-  join(scopeId: string, socketId: string, identity: TIdentity): void {
-    this.leave(socketId);
-    const scope = this.identitiesByScope.get(scopeId) ?? new Map<string, TIdentity>();
-    scope.set(socketId, identity);
-    this.identitiesByScope.set(scopeId, scope);
-    this.scopeBySocket.set(socketId, scopeId);
+/** Список участников и полный ли он: false — соседний экземпляр не ответил */
+export interface PresenceMembers<TIdentity> {
+  members: Array<{ socketId: string; identity: TIdentity }>;
+  complete: boolean;
+}
+
+/**
+ * Кто сейчас подключён к сущности (`scopeId` — комната или доска), по всем
+ * экземплярам сервера (10.18).
+ *
+ * Своё место сокет носит в `socket.data` — сокет живёт на одном экземпляре,
+ * поэтому «где я и кто я» отвечается локально и без запросов. Список
+ * участников собирается через `fetchSockets()` по каналу сущности: с
+ * Redis-адаптером это опрос всех экземпляров, без него — локальный список.
+ * Отдельного реестра нет: упавший экземпляр уносит свои сокеты из списка сам,
+ * а сокет, выведенный из канала (`socketsLeave` при потере доступа), сразу
+ * пропадает из присутствия.
+ */
+export class ClusterPresence<TIdentity extends PresenceIdentity, TData> {
+  /** Соседний экземпляр не ответил на опрос — для лога; задаёт шлюз */
+  onPartial: (err: unknown) => void = () => {};
+
+  constructor(private readonly access: PresenceSeatAccess<TData, TIdentity>) {}
+
+  seatOf(socket: { data: TData }): PresenceSeat<TIdentity> | null {
+    return this.access.read(socket.data) ?? null;
   }
 
-  /** Возвращает сущность, из которой ушёл сокет, или null — если он никуда не входил */
-  leave(socketId: string): string | null {
-    const scopeId = this.scopeBySocket.get(socketId);
-    if (!scopeId) {
-      return null;
-    }
-    this.scopeBySocket.delete(socketId);
-    const scope = this.identitiesByScope.get(scopeId);
-    scope?.delete(socketId);
-    if (scope && scope.size === 0) {
-      // Опустевшая сущность выкидывается целиком: иначе процесс копил бы по
-      // пустой Map на каждую когда-либо открытую комнату или доску
-      this.identitiesByScope.delete(scopeId);
-    }
-    return scopeId;
+  sit(socket: { data: TData }, scopeId: string, identity: TIdentity): void {
+    this.access.write(socket.data, { scopeId, identity });
   }
 
-  scopeOf(socketId: string): string | null {
-    return this.scopeBySocket.get(socketId) ?? null;
+  stand(socket: { data: TData }): void {
+    this.access.write(socket.data, undefined);
   }
 
-  identityOf(socketId: string): TIdentity | null {
-    const scopeId = this.scopeBySocket.get(socketId);
-    if (!scopeId) {
-      return null;
+  /** Все сокеты сущности со своими личностями — по всем экземплярам */
+  async members(
+    server: PresenceServer<TData>,
+    scopeId: string,
+  ): Promise<Array<{ socketId: string; identity: TIdentity }>> {
+    return (await this.query(server, scopeId)).members;
+  }
+
+  /**
+   * То же, но с признаком полноты. Опрос ждёт ответа от каждого экземпляра:
+   * завис один (не упал — тогда его просто нет в Redis) — опрос падает по
+   * таймауту. Чтобы зависший сосед не останавливал комнаты на живых, берём
+   * свой экземпляр: участники соседа на время пропадут из списка, но стол
+   * работает. Решения «комната опустела» по неполному списку не принимаются
+   */
+  async query(server: PresenceServer<TData>, scopeId: string): Promise<PresenceMembers<TIdentity>> {
+    let sockets: SocketLike<TData>[];
+    let complete = true;
+    try {
+      sockets = await server.in(scopeId).fetchSockets();
+    } catch (err) {
+      this.onPartial(err);
+      sockets = await server.local.in(scopeId).fetchSockets();
+      complete = false;
     }
-    return this.identitiesByScope.get(scopeId)?.get(socketId) ?? null;
+    const members: Array<{ socketId: string; identity: TIdentity }> = [];
+    for (const socket of sockets) {
+      const seat = this.access.read(socket.data);
+      // В канале сущности, но место уже другое — сокет как раз пересаживается
+      if (seat?.scopeId === scopeId) members.push({ socketId: socket.id, identity: seat.identity });
+    }
+    return { members, complete };
   }
 
   /**
@@ -61,42 +109,11 @@ export class PresenceRegistry<TIdentity extends PresenceIdentity> {
    * идёт по `participantId`, а не по `userId`, — у гостей `userId === null`, и
    * по нему все гости слиплись бы в одну запись.
    */
-  list(scopeId: string): TIdentity[] {
-    const scope = this.identitiesByScope.get(scopeId);
-    if (!scope) {
-      return [];
-    }
+  async list(server: PresenceServer<TData>, scopeId: string): Promise<TIdentity[]> {
     const unique = new Map<string, TIdentity>();
-    for (const identity of scope.values()) {
+    for (const { identity } of await this.members(server, scopeId)) {
       unique.set(identity.participantId, identity);
     }
     return [...unique.values()];
-  }
-
-  /**
-   * Все сокеты участника: один человек мог открыть несколько вкладок, и кик
-   * должен убрать его целиком, а не только одну из них.
-   */
-  socketIdsOf(scopeId: string, participantId: string): string[] {
-    const scope = this.identitiesByScope.get(scopeId);
-    if (!scope) {
-      return [];
-    }
-    const ids: string[] = [];
-    for (const [socketId, identity] of scope) {
-      if (identity.participantId === participantId) {
-        ids.push(socketId);
-      }
-    }
-    return ids;
-  }
-
-  /**
-   * Сколько сущностей сейчас держат хотя бы один сокет. Нужно, чтобы
-   * освобождение памяти в `leave` было наблюдаемым: без этого утечка пустых
-   * записей никак не проявляется снаружи и тихо переживает любой рефакторинг.
-   */
-  get activeScopes(): number {
-    return this.identitiesByScope.size;
   }
 }

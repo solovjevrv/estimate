@@ -208,6 +208,12 @@ export interface RoomState {
   result: RoundResult | null;
   timer: RoomTimerState;
   reactions: Reaction[];
+  /**
+   * Номер снимка (10.18): растёт с каждой рассылкой комнаты, по всем
+   * экземплярам сервера. Снимки с разных экземпляров могут прийти не по
+   * порядку — клиент отбрасывает тот, чей номер меньше уже показанного.
+   */
+  seq: number;
 }
 
 export interface JoinRoomPayload {

@@ -4,6 +4,12 @@ import type {
   BoardItem,
   BoardOpsBatch,
   BoardPresenceEntry,
+  BoardPresenceUpdate,
+  BoardOpsBroadcast,
+  BoardTimerState,
+  BoardTimerUpdate,
+  BoardVotingState,
+  BoardVotingUpdate,
   JoinBoardResult,
 } from '@estimate/shared';
 import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, type Board } from '@estimate/shared';
@@ -20,6 +26,8 @@ class FakeSocket {
   private readonly listeners = new Map<string, Array<(payload: never) => void>>();
   next: unknown = null;
   nextError: { error: string; message: string } | null = null;
+  /** Срабатывает до ответа на событие — рассылка, обогнавшая ответ (10.18) */
+  beforeAck: ((event: string) => void) | null = null;
 
   connect(): void {
     this.connected = true;
@@ -43,6 +51,7 @@ class FakeSocket {
 
   emit(event: string, payload: unknown, ack?: (result: unknown) => void): void {
     this.sent.push({ event, payload });
+    this.beforeAck?.(event);
     ack?.(
       this.nextError === null ? { ok: true, data: this.next } : { ok: false, ...this.nextError },
     );
@@ -118,8 +127,31 @@ function snapshotResult(
     guestToken: null,
     timer: { durationSec: 300, running: false, endsAt: null, remainingSec: 300 },
     voting: null,
+    votingSeq: 0,
+    timerSeq: 0,
     estimates: {},
   };
+}
+
+/** Рассылки доски board1 (10.18): с boardId и растущим номером — как у сервера */
+let broadcastSeq = 0;
+function opsOnBoard(batch: BoardOpsBatch): BoardOpsBroadcast {
+  return { ...batch, boardId: 'board1' };
+}
+function timerUpdate(timer: BoardTimerState): BoardTimerUpdate {
+  broadcastSeq += 1;
+  return { boardId: 'board1', seq: broadcastSeq, timer };
+}
+function votingUpdate(voting: BoardVotingState | null): BoardVotingUpdate {
+  broadcastSeq += 1;
+  return { boardId: 'board1', seq: broadcastSeq, voting };
+}
+
+/** Рассылка присутствия (10.18): номер растёт с каждой — как у сервера */
+let presenceSeq = 0;
+function presenceUpdate(entries: BoardPresenceEntry[]): BoardPresenceUpdate {
+  presenceSeq += 1;
+  return { boardId: 'board1', seq: presenceSeq, entries };
 }
 
 describe('стор сессии доски', () => {
@@ -148,24 +180,26 @@ describe('стор сессии доски', () => {
   it('вход применяет догон операциями вместо снимка, если сервер его прислал', async () => {
     const store = useBoardSessionStore();
     const batch: BoardOpsBatch = {
-      revision: 5,
+      revision: 1,
       ops: [{ type: 'item.create', clientOpId: 'c1', item: item() }],
     };
     socket.next = {
-      revision: 5,
+      revision: 1,
       snapshot: null,
       catchup: [batch],
       access: 'manage',
       participantId: 'actor1',
       guestToken: null,
       timer: { durationSec: 300, running: false, endsAt: null, remainingSec: 300 },
+      timerSeq: 0,
       voting: null,
+      votingSeq: 0,
       estimates: {},
     } satisfies JoinBoardResult;
 
     await store.join('board1');
 
-    expect(store.revision).toBe(5);
+    expect(store.revision).toBe(1);
     expect(store.items.map((i) => i.id)).toEqual(['i1']);
   });
 
@@ -250,18 +284,24 @@ describe('стор сессии доски', () => {
 
       // Эхо более старой операции 'a' долетает первым (типичный порядок для последовательной
       // отправки) — не должно откатить уже показанные 20 обратно к 10
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
-        revision: 2,
-        ops: [{ type: 'item.patch', clientOpId: 'a', item: item({ x: 10 }) }],
-      } satisfies BoardOpsBatch);
+      socket.emitLocal(
+        BOARD_WS_SERVER_EVENTS.OPS,
+        opsOnBoard({
+          revision: 2,
+          ops: [{ type: 'item.patch', clientOpId: 'a', item: item({ x: 10 }) }],
+        } satisfies BoardOpsBatch),
+      );
       expect(store.items[0]?.x).toBe(20);
       expect(store.revision).toBe(2);
 
       // Эхо последней операции 'b' — применяется и снимает пометку "своя в полёте"
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
-        revision: 3,
-        ops: [{ type: 'item.patch', clientOpId: 'b', item: item({ x: 20 }) }],
-      } satisfies BoardOpsBatch);
+      socket.emitLocal(
+        BOARD_WS_SERVER_EVENTS.OPS,
+        opsOnBoard({
+          revision: 3,
+          ops: [{ type: 'item.patch', clientOpId: 'b', item: item({ x: 20 }) }],
+        } satisfies BoardOpsBatch),
+      );
       expect(store.items[0]?.x).toBe(20);
       expect(store.revision).toBe(3);
     });
@@ -276,10 +316,13 @@ describe('стор сессии доски', () => {
 
       // Чужая операция (clientOpId, который мы не отправляли) — не участвует в
       // проверке "своя в полёте", применяется как обычное эхо
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
-        revision: 2,
-        ops: [{ type: 'item.patch', clientOpId: 'someone-else', item: item({ x: 99 }) }],
-      } satisfies BoardOpsBatch);
+      socket.emitLocal(
+        BOARD_WS_SERVER_EVENTS.OPS,
+        opsOnBoard({
+          revision: 2,
+          ops: [{ type: 'item.patch', clientOpId: 'someone-else', item: item({ x: 99 }) }],
+        } satisfies BoardOpsBatch),
+      );
 
       expect(store.items[0]?.x).toBe(99);
     });
@@ -488,11 +531,22 @@ describe('стор сессии доски', () => {
       await store.applyOps([{ type: 'item.patch', clientOpId: 'a', id: 'i1', patch: { x: 50 } }]);
       expect(store.canUndo).toBe(true);
 
-      // Другой участник удалил тот же элемент между правкой и попыткой её отменить
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
-        revision: 3,
-        ops: [{ type: 'item.delete', clientOpId: 'someone-else', id: 'i1' }],
-      } satisfies BoardOpsBatch);
+      // Эхо своей правки, затем другой участник удалил тот же элемент между
+      // правкой и попыткой её отменить
+      socket.emitLocal(
+        BOARD_WS_SERVER_EVENTS.OPS,
+        opsOnBoard({
+          revision: 2,
+          ops: [{ type: 'item.patch', clientOpId: 'a', item: item({ x: 50 }) }],
+        } satisfies BoardOpsBatch),
+      );
+      socket.emitLocal(
+        BOARD_WS_SERVER_EVENTS.OPS,
+        opsOnBoard({
+          revision: 3,
+          ops: [{ type: 'item.delete', clientOpId: 'someone-else', id: 'i1' }],
+        } satisfies BoardOpsBatch),
+      );
       expect(store.items).toHaveLength(0);
 
       await store.undo();
@@ -520,15 +574,165 @@ describe('стор сессии доски', () => {
   });
 
   describe('приём рассылок board:ops', () => {
+    it('батч, обогнавший ответ на вход, применяется поверх снимка, а не стирается им (10.18)', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      socket.beforeAck = (event) => {
+        if (event !== BOARD_WS_EVENTS.JOIN) return;
+        socket.emitLocal(
+          BOARD_WS_SERVER_EVENTS.OPS,
+          opsOnBoard({
+            revision: 2,
+            ops: [{ type: 'item.create', clientOpId: 'other', item: item({ id: 'early' }) }],
+          } satisfies BoardOpsBatch),
+        );
+      };
+
+      await store.join('board1');
+
+      expect(store.revision).toBe(2);
+      expect(store.items.map((i) => i.id)).toEqual(['early']);
+    });
+
+    it('дыра в ревизиях — перезаход с текущей ревизии и догон пропущенного (10.18)', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+      const batch = (revision: number, id: string): BoardOpsBatch => ({
+        revision,
+        ops: [{ type: 'item.create', clientOpId: `op-${id}`, item: item({ id }) }],
+      });
+      socket.next = {
+        ...snapshotResult(3),
+        snapshot: null,
+        catchup: [batch(2, 'lost'), batch(3, 'late')],
+      } satisfies JoinBoardResult;
+
+      // Рассылка ревизии 2 потерялась — сразу пришла 3
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, opsOnBoard(batch(3, 'late')));
+      await vi.waitFor(() => expect(store.revision).toBe(3));
+
+      const rejoin = socket.sent.filter((s) => s.event === BOARD_WS_EVENTS.JOIN).at(-1);
+      expect(rejoin?.payload).toMatchObject({ boardId: 'board1', sinceRevision: 1 });
+      expect(store.items.map((i) => i.id).sort()).toEqual(['late', 'lost']);
+    });
+
+    it('рассылка прежней доски во время входа на новую на неё не попадает (10.18)', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(0);
+      await store.join('boardA');
+
+      // Сервер ещё не вывел сокет из канала A, пока обрабатывает вход на B
+      socket.next = snapshotResult(0);
+      socket.beforeAck = (event) => {
+        if (event !== BOARD_WS_EVENTS.JOIN) return;
+        socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
+          boardId: 'boardA',
+          revision: 1,
+          ops: [{ type: 'item.create', clientOpId: 'a', item: item({ id: 'from-a' }) }],
+        } satisfies BoardOpsBroadcast);
+      };
+      await store.join('board1');
+
+      expect(store.revision).toBe(0);
+      expect(store.items).toHaveLength(0);
+    });
+
+    it('вход на прежнюю доску, завершившийся во время входа на новую, не ломает её отложенное (10.18)', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(0);
+      await store.join('boardA');
+
+      // Перезаход на A (из-за дыры) висит без ответа
+      const pendingA: { release?: () => void } = {};
+      const originalEmit = socket.emit.bind(socket);
+      socket.emit = (event: string, payload: unknown, ack?: (result: unknown) => void) => {
+        if (
+          event === BOARD_WS_EVENTS.JOIN &&
+          (payload as { boardId: string }).boardId === 'boardA'
+        ) {
+          socket.sent.push({ event, payload });
+          pendingA.release = () => ack?.({ ok: true, data: snapshotResult(0) });
+          return;
+        }
+        originalEmit(event, payload, ack);
+      };
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
+        boardId: 'boardA',
+        revision: 2,
+        ops: [],
+      } satisfies BoardOpsBroadcast);
+
+      // Вход на B: пока он в полёте, отвечает запоздавший вход на A и приходит батч B
+      socket.next = snapshotResult(0);
+      socket.beforeAck = (event) => {
+        if (event !== BOARD_WS_EVENTS.JOIN) return;
+        pendingA.release?.();
+        socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
+          boardId: 'board1',
+          revision: 1,
+          ops: [{ type: 'item.create', clientOpId: 'b', item: item({ id: 'on-b' }) }],
+        } satisfies BoardOpsBroadcast);
+      };
+      await store.join('board1');
+
+      // Батч B применён поверх снимка B, а не до него (снимок бы его затёр)
+      expect(store.revision).toBe(1);
+      expect(store.items.map((i) => i.id)).toEqual(['on-b']);
+    });
+
+    it('таймер: запоздавшая рассылка с меньшим номером не перетирает новую (10.18)', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+      const running = {
+        durationSec: 300,
+        running: true,
+        endsAt: '2026-10-11T10:05:00.000Z',
+        remainingSec: 300,
+      };
+      const paused = { durationSec: 300, running: false, endsAt: null, remainingSec: 280 };
+
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.TIMER, { boardId: 'board1', seq: 20, timer: paused });
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.TIMER, {
+        boardId: 'board1',
+        seq: 10,
+        timer: running,
+      });
+      expect(store.timer).toEqual(paused);
+
+      // Ответ на перезаход со старым номером тоже не перетирает
+      socket.next = { ...snapshotResult(1), timer: running, timerSeq: 10 };
+      await store.join('board1');
+      expect(store.timer).toEqual(paused);
+    });
+
+    it('голосование: запоздавший снимок «идёт» после завершения отбрасывается (10.18)', async () => {
+      const store = useBoardSessionStore();
+      socket.next = snapshotResult(1);
+      await store.join('board1');
+
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.VOTING, { boardId: 'board1', seq: 20, voting: null });
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.VOTING, {
+        boardId: 'board1',
+        seq: 10,
+        voting: { id: 'v1' } as BoardVotingState,
+      });
+      expect(store.voting).toBeNull();
+    });
+
     it('применяет батч со следующей ревизией', async () => {
       const store = useBoardSessionStore();
       socket.next = snapshotResult(1);
       await store.join('board1');
 
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
-        revision: 2,
-        ops: [{ type: 'item.create', clientOpId: 'c1', item: item() }],
-      } satisfies BoardOpsBatch);
+      socket.emitLocal(
+        BOARD_WS_SERVER_EVENTS.OPS,
+        opsOnBoard({
+          revision: 2,
+          ops: [{ type: 'item.create', clientOpId: 'c1', item: item() }],
+        } satisfies BoardOpsBatch),
+      );
 
       expect(store.revision).toBe(2);
       expect(store.items.map((i) => i.id)).toEqual(['i1']);
@@ -539,10 +743,13 @@ describe('стор сессии доски', () => {
       socket.next = snapshotResult(5);
       await store.join('board1');
 
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.OPS, {
-        revision: 5,
-        ops: [{ type: 'item.create', clientOpId: 'c1', item: item() }],
-      } satisfies BoardOpsBatch);
+      socket.emitLocal(
+        BOARD_WS_SERVER_EVENTS.OPS,
+        opsOnBoard({
+          revision: 5,
+          ops: [{ type: 'item.create', clientOpId: 'c1', item: item() }],
+        } satisfies BoardOpsBatch),
+      );
 
       expect(store.revision).toBe(5);
       expect(store.items).toHaveLength(0);
@@ -572,7 +779,7 @@ describe('стор сессии доски', () => {
       await store.join('board1');
       expect(store.voting?.id).toBe('v1');
 
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.VOTING, null);
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.VOTING, votingUpdate(null));
       expect(store.voting).toBeNull();
     });
 
@@ -585,7 +792,7 @@ describe('стор сессии доски', () => {
       await store.closeVoting();
       expect(socket.sent.filter((e) => e.event.startsWith('board:voting'))).toEqual([]);
 
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.VOTING, active);
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.VOTING, votingUpdate(active));
       socket.next = null;
       await store.startVoting({ votesPerParticipant: 2, maxPerItem: 1, itemIds: null });
       await store.vote('i1', -1);
@@ -661,7 +868,7 @@ describe('стор сессии доски', () => {
       expect(store.timer).toEqual(running);
 
       const paused = { ...running, running: false, endsAt: null, remainingSec: 420 };
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.TIMER, paused);
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.TIMER, timerUpdate(paused));
 
       expect(store.timer).toEqual(paused);
     });
@@ -670,7 +877,7 @@ describe('стор сессии доски', () => {
       const store = useBoardSessionStore();
       socket.next = snapshotResult(1);
       await store.join('board1');
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.TIMER, running);
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.TIMER, timerUpdate(running));
 
       // Ответ сервера несёт более старый снимок — состояние остаётся из рассылки
       socket.next = { durationSec: 300, running: false, endsAt: null, remainingSec: 300 };
@@ -707,9 +914,40 @@ describe('стор сессии доски', () => {
     const entries: BoardPresenceEntry[] = [
       { participantId: 'p1', userId: 'u1', name: 'Иван', avatarUrl: null, isGuest: false },
     ];
-    socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, entries);
+    socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, presenceUpdate(entries));
 
     expect(store.presence).toEqual(entries);
+  });
+
+  it('запоздавшая рассылка присутствия (меньший номер) отбрасывается (10.18)', async () => {
+    const store = useBoardSessionStore();
+    socket.next = snapshotResult(1);
+    await store.join('board1');
+    const ivan = {
+      participantId: 'p1',
+      userId: 'u1',
+      name: 'Иван',
+      avatarUrl: null,
+      isGuest: false,
+    };
+
+    socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, { boardId: 'board1', seq: 20, entries: [] });
+    socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, {
+      boardId: 'board1',
+      seq: 10,
+      entries: [ivan],
+    });
+    expect(store.presence).toEqual([]);
+
+    // Другая доска — свой счёт: её первая рассылка принимается и с малым номером
+    socket.next = snapshotResult(1);
+    await store.join('board2');
+    socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, {
+      boardId: 'board2',
+      seq: 5,
+      entries: [ivan],
+    });
+    expect(store.presence).toEqual([ivan]);
   });
 
   it('имена авторов (15.4): из снимка и все, кто сейчас на доске; гости без userId — нет', async () => {
@@ -719,11 +957,14 @@ describe('стор сессии доски', () => {
     socket.next = result;
     await store.join('board1');
 
-    socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, [
-      { participantId: 'p2', userId: 'u2', name: 'Иван Петров', avatarUrl: null, isGuest: false },
-      { participantId: 'p3', userId: 'u3', name: 'Мария', avatarUrl: null, isGuest: false },
-      { participantId: 'g1', userId: null, name: 'Гость', avatarUrl: null, isGuest: true },
-    ]);
+    socket.emitLocal(
+      BOARD_WS_SERVER_EVENTS.PRESENCE,
+      presenceUpdate([
+        { participantId: 'p2', userId: 'u2', name: 'Иван Петров', avatarUrl: null, isGuest: false },
+        { participantId: 'p3', userId: 'u3', name: 'Мария', avatarUrl: null, isGuest: false },
+        { participantId: 'g1', userId: null, name: 'Гость', avatarUrl: null, isGuest: true },
+      ]),
+    );
 
     expect([...store.authorNames]).toEqual([
       ['u1', 'Анна (давно ушла)'],
@@ -908,7 +1149,7 @@ describe('стор сессии доски', () => {
       });
 
       // P1 и P2 оба вышли с доски — presence стал пустым списком
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, []);
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, presenceUpdate([]));
 
       expect(store.editingByItem.get('item-1')).toBeUndefined();
       expect(store.awareness).toHaveLength(0);
@@ -1097,7 +1338,7 @@ describe('стор сессии доски', () => {
       store.followParticipant('p1');
 
       // P1 ушёл — presence без него
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, []);
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, presenceUpdate([]));
       expect(store.followedParticipantId).toBe(null);
       expect(store.cameraOfFollowed).toBe(null);
     });
@@ -1141,7 +1382,7 @@ describe('стор сессии доски', () => {
         { participantId: 'guest-a', userId: null, name: 'Гость А', avatarUrl: null, isGuest: true },
         { participantId: 'guest-b', userId: null, name: 'Гость Б', avatarUrl: null, isGuest: true },
       ];
-      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, entries);
+      socket.emitLocal(BOARD_WS_SERVER_EVENTS.PRESENCE, presenceUpdate(entries));
       expect(store.presence).toHaveLength(2);
       const byPid = new Map(store.presence.map((p) => [p.participantId, p]));
       expect(byPid.get('guest-a')?.name).toBe('Гость А');

@@ -225,6 +225,14 @@ export class BoardsService {
    * выписывает/проверяет гостевой токен. Возвращает полную личность
    * участника, включая уровень доступа `access`.
    */
+  /**
+   * Текущая ревизия доски — для проверки догона по буферу операций (10.18).
+   * Без проверки доступа: вызывается после `prepareBoardJoin`, который её уже сделал
+   */
+  async currentRevision(boardId: string): Promise<number> {
+    return (await this.requireBoard(boardId)).revision;
+  }
+
   async prepareBoardJoin(request: BoardJoinRequest): Promise<BoardJoinResult> {
     const board = await this.requireBoard(this.requireUuid(request.boardId, 'доски'));
 

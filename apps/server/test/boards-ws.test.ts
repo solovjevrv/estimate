@@ -13,9 +13,12 @@ import type {
   BoardEstimateUpdate,
   BoardItem,
   BoardOpsBatch,
-  BoardPresenceEntry,
+  BoardOpsBroadcast,
+  BoardPresenceUpdate,
   BoardTimerState,
+  BoardTimerUpdate,
   BoardVotingState,
+  BoardVotingUpdate,
   BoardVotingSummary,
   EstimateRoomLink,
   JoinBoardResult,
@@ -223,6 +226,46 @@ describeDb('WS-канал досок', () => {
   });
 
   describe('вход на доску', () => {
+    it('два входа одного сокета подряд: поздний ответ первого не пересаживает сокет обратно', async () => {
+      const owner = await newUser('join-order-owner');
+      const boardA = await newBoard(owner);
+      const boardB = await newBoard(owner);
+      const client = connect(owner);
+      const observerB = connect(owner);
+      await joinBoard(observerB, boardB);
+
+      // Проверка доступа ко входу на A задерживается, пока не отпустим
+      let releaseA: () => void = () => {};
+      const gateA = new Promise<void>((resolve) => (releaseA = resolve));
+      const original = BoardsService.prototype.prepareBoardJoin;
+      const spy = vi
+        .spyOn(BoardsService.prototype, 'prepareBoardJoin')
+        .mockImplementation(async function (this: BoardsService, request) {
+          if (request.boardId === boardA) await gateA;
+          return original.call(this, request);
+        });
+      try {
+        const joinA = emit<JoinBoardResult>(client, BOARD_WS_EVENTS.JOIN, { boardId: boardA });
+        const joinB = emit<JoinBoardResult>(client, BOARD_WS_EVENTS.JOIN, { boardId: boardB });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        releaseA();
+        expect((await joinA).ok).toBe(true);
+        expect((await joinB).ok).toBe(true);
+      } finally {
+        spy.mockRestore();
+      }
+
+      // Сокет там, куда вошёл последним: операция идёт на B
+      const onB = waitFor<BoardOpsBroadcast>(observerB, BOARD_WS_SERVER_EVENTS.OPS);
+      const applied = await emit<ApplyBoardOpsResult>(client, BOARD_WS_EVENTS.APPLY, {
+        ops: [{ type: 'item.create', clientOpId: randomUUID(), item: stickyItem() }],
+      });
+      expect(applied.ok).toBe(true);
+      expect((await onB).boardId).toBe(boardB);
+      const snapshotA = await joinBoard(connect(owner), boardA);
+      expect(snapshotA.snapshot?.items).toEqual([]);
+    });
+
     it('владелец входит на личную доску и получает снимок', async () => {
       const owner = await newUser('board-owner');
       const boardId = await newBoard(owner);
@@ -532,24 +575,26 @@ describeDb('WS-канал досок', () => {
       const firstClient = connect(owner);
       await joinBoard(firstClient, boardId);
 
-      const presencePromise = waitFor<BoardPresenceEntry[]>(
+      const presencePromise = waitFor<BoardPresenceUpdate>(
         firstClient,
         BOARD_WS_SERVER_EVENTS.PRESENCE,
       );
       const secondClient = connect(second);
       await joinBoard(secondClient, boardId);
-      const entries = await presencePromise;
+      const joined = await presencePromise;
 
-      expect(entries.map((e) => e.userId).sort()).toEqual([owner.id, second.id].sort());
+      expect(joined.entries.map((e) => e.userId).sort()).toEqual([owner.id, second.id].sort());
 
-      const leavePromise = waitFor<BoardPresenceEntry[]>(
+      const leavePromise = waitFor<BoardPresenceUpdate>(
         firstClient,
         BOARD_WS_SERVER_EVENTS.PRESENCE,
       );
       secondClient.close();
       const afterLeave = await leavePromise;
 
-      expect(afterLeave.map((e) => e.userId)).toEqual([owner.id]);
+      // Номер рассылки растёт (10.18) — по нему клиент отбрасывает запоздавшие
+      expect(afterLeave.seq).toBeGreaterThan(joined.seq);
+      expect(afterLeave.entries.map((e) => e.userId)).toEqual([owner.id]);
     });
   });
 
@@ -691,14 +736,19 @@ describeDb('WS-канал досок', () => {
       await joinBoard(ownerClient, boardId);
       await joinBoard(memberClient, boardId);
 
-      const broadcast = waitFor<BoardTimerState>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER);
+      const broadcast = waitFor<BoardTimerUpdate>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER).then(
+        (u) => u.timer,
+      );
       const reset = await emit<BoardTimerState>(memberClient, BOARD_WS_EVENTS.TIMER_RESET, {
         durationSec: 1800,
       });
       expect(reset.ok && reset.data.durationSec).toBe(1800);
       expect((await broadcast).durationSec).toBe(1800);
 
-      const startedBroadcast = waitFor<BoardTimerState>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER);
+      const startedBroadcast = waitFor<BoardTimerUpdate>(
+        ownerClient,
+        BOARD_WS_SERVER_EVENTS.TIMER,
+      ).then((u) => u.timer);
       const started = await emit<BoardTimerState>(memberClient, BOARD_WS_EVENTS.TIMER_START);
       expect(started.ok && started.data.running).toBe(true);
       expect((await startedBroadcast).endsAt).not.toBeNull();
@@ -819,8 +869,8 @@ describeDb('WS-канал досок', () => {
     ): Promise<{ ack: WsAck<null>; state: BoardVotingState | null }> {
       const received: Array<BoardVotingState | null> = [];
       let notify: (() => void) | null = null;
-      const onState = (state: BoardVotingState | null): void => {
-        received.push(state);
+      const onState = (update: BoardVotingUpdate): void => {
+        received.push(update.voting);
         notify?.();
       };
       listener.on(BOARD_WS_SERVER_EVENTS.VOTING, onState);
@@ -1044,7 +1094,9 @@ describeDb('WS-канал досок', () => {
       const { ownerClient } = await teamBoard('vote-timer');
       await emit<BoardTimerState>(ownerClient, BOARD_WS_EVENTS.TIMER_RESET, { durationSec: 60 });
 
-      const started = waitFor<BoardTimerState>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER);
+      const started = waitFor<BoardTimerUpdate>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER).then(
+        (u) => u.timer,
+      );
       const { state } = await act(ownerClient, BOARD_WS_EVENTS.VOTING_START, {
         votesPerParticipant: 3,
         maxPerItem: 3,
@@ -1052,7 +1104,9 @@ describeDb('WS-канал досок', () => {
       });
       expect((await started).running).toBe(true);
 
-      const reset = waitFor<BoardTimerState>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER);
+      const reset = waitFor<BoardTimerUpdate>(ownerClient, BOARD_WS_SERVER_EVENTS.TIMER).then(
+        (u) => u.timer,
+      );
       await act(ownerClient, BOARD_WS_EVENTS.VOTING_CLOSE, { votingId: state!.id });
       expect(await reset).toMatchObject({ running: false, remainingSec: 60 });
     });
@@ -1122,7 +1176,9 @@ describeDb('WS-канал досок', () => {
         delta: 1,
       });
 
-      const next = waitFor<BoardVotingState | null>(ownerClient, BOARD_WS_SERVER_EVENTS.VOTING);
+      const next = waitFor<BoardVotingUpdate>(ownerClient, BOARD_WS_SERVER_EVENTS.VOTING).then(
+        (u) => u.voting,
+      );
       await emit<ApplyBoardOpsResult>(ownerClient, BOARD_WS_EVENTS.APPLY, {
         ops: [{ type: 'item.delete', clientOpId: 'del', id: a.id }],
       });
@@ -1132,7 +1188,9 @@ describeDb('WS-канал досок', () => {
       expect(after?.myRemaining).toBe(3);
 
       // Ctrl+Z восстанавливает элемент с тем же id — голоса возвращаются
-      const restored = waitFor<BoardVotingState | null>(ownerClient, BOARD_WS_SERVER_EVENTS.VOTING);
+      const restored = waitFor<BoardVotingUpdate>(ownerClient, BOARD_WS_SERVER_EVENTS.VOTING).then(
+        (u) => u.voting,
+      );
       await emit<ApplyBoardOpsResult>(ownerClient, BOARD_WS_EVENTS.APPLY, {
         ops: [{ type: 'item.create', clientOpId: 'undo', item: a }],
       });

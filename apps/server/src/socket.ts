@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { Server, type Socket } from 'socket.io';
+import { Server, type ServerOptions, type Socket } from 'socket.io';
 
 import { BOARD_WS_SERVER_EVENTS } from '@estimate/shared';
 
@@ -9,12 +9,20 @@ import {
   type BoardEstimatesService,
   type BoardVotingService,
 } from './boards';
-import { RoomsGameService, RoomsGateway } from './rooms';
+import type { BoardParticipantIdentity } from './boards/presence';
+import { MemoryRealtimeStore, type PresenceSeat, type RealtimeStore } from './platform/realtime';
+import { RoomsGameService, RoomsGateway, type ParticipantIdentity } from './rooms';
 
 /** Данные, которые сервер держит на каждом подключении */
 export interface SocketData {
   /** id авторизованного пользователя или null — тогда это гость */
   userId: string | null;
+  /**
+   * Где сидит сокет (10.18): присутствие собирается по этим полям через
+   * `fetchSockets` со всех экземпляров сервера, а не из реестра в памяти
+   */
+  room?: PresenceSeat<ParticipantIdentity>;
+  board?: PresenceSeat<BoardParticipantIdentity>;
 }
 
 export type PokerServer = Server<
@@ -49,6 +57,14 @@ export interface SocketGatewayOptions {
   boardVoting?: BoardVotingService;
   /** Оценки элементов доски из покер-комнат (15.6); не задано — оценок нет */
   boardEstimates?: BoardEstimatesService;
+  /**
+   * Несколько экземпляров сервера (10.18): общее сиюминутное состояние и
+   * адаптер рассылок (Redis). Не задано — всё в памяти процесса, один экземпляр
+   */
+  cluster?: {
+    store: RealtimeStore;
+    adapter: ServerOptions['adapter'];
+  };
 }
 
 /**
@@ -64,10 +80,13 @@ export class SocketGateway {
   ) {}
 
   attach(app: FastifyInstance): PokerServer {
+    const cluster = this.options.cluster;
     const io: PokerServer = new Server(app.server, {
       // credentials нужен, чтобы браузер слал cookie сессии на дев-фронт (другой origin)
       cors: { origin: this.options.corsOrigin, credentials: true },
+      ...(cluster ? { adapter: cluster.adapter } : {}),
     });
+    const store = cluster?.store ?? new MemoryRealtimeStore();
 
     io.use((socket, next) => {
       const session = this.identify(app, socket.handshake.headers.cookie);
@@ -90,7 +109,7 @@ export class SocketGateway {
     });
 
     const estimates = this.options.boardEstimates;
-    new RoomsGateway(this.roomsService)
+    new RoomsGateway(this.roomsService, store)
       .onRoundResult(
         estimates &&
           (async (server, roomId) => {
@@ -100,7 +119,7 @@ export class SocketGateway {
           }),
       )
       .register(io, app.log);
-    new BoardsGateway(this.boardsService, this.options.boardVoting)
+    new BoardsGateway(this.boardsService, this.options.boardVoting, store)
       .withEstimates(estimates)
       .register(io, app.log);
 

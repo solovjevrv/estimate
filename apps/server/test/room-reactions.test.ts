@@ -9,53 +9,58 @@ import { RoomReactions } from '../src/rooms/room-reactions';
 const ROOM = 'room-1';
 
 describe('RoomReactions', () => {
-  it('до первой реакции список пуст', () => {
+  it('до первой реакции список пуст', async () => {
     const reactions = new RoomReactions();
 
-    expect(reactions.list(ROOM)).toEqual([]);
+    expect(await reactions.list(ROOM)).toEqual([]);
   });
 
-  it('реакция добавляется и видна в списке', () => {
+  it('реакция добавляется и видна в списке', async () => {
     const reactions = new RoomReactions();
 
-    const result = reactions.toggle(ROOM, 'u1', 'u2', '👍');
+    await reactions.toggle(ROOM, 'u1', 'u2', '👍');
+    const result = await reactions.list(ROOM);
 
     expect(result).toEqual([{ fromParticipantId: 'u1', toParticipantId: 'u2', emoji: '👍' }]);
   });
 
-  it('реакция другим эмодзи от того же автора тому же адресату заменяет предыдущую', () => {
+  it('реакция другим эмодзи от того же автора тому же адресату заменяет предыдущую', async () => {
     const reactions = new RoomReactions();
-    reactions.toggle(ROOM, 'u1', 'u2', '👍');
+    await reactions.toggle(ROOM, 'u1', 'u2', '👍');
 
-    const result = reactions.toggle(ROOM, 'u1', 'u2', '😂');
+    await reactions.toggle(ROOM, 'u1', 'u2', '😂');
+    const result = await reactions.list(ROOM);
 
     expect(result).toEqual([{ fromParticipantId: 'u1', toParticipantId: 'u2', emoji: '😂' }]);
   });
 
-  it('повторная присылка уже стоящей реакции снимает её (клик по своему бейджу)', () => {
+  it('повторная присылка уже стоящей реакции снимает её (клик по своему бейджу)', async () => {
     const reactions = new RoomReactions();
-    reactions.toggle(ROOM, 'u1', 'u2', '👍');
+    await reactions.toggle(ROOM, 'u1', 'u2', '👍');
 
-    const result = reactions.toggle(ROOM, 'u1', 'u2', '👍');
+    await reactions.toggle(ROOM, 'u1', 'u2', '👍');
+    const result = await reactions.list(ROOM);
 
     expect(result).toEqual([]);
   });
 
-  it('снятая реакция не мешает поставить её заново', () => {
+  it('снятая реакция не мешает поставить её заново', async () => {
     const reactions = new RoomReactions();
-    reactions.toggle(ROOM, 'u1', 'u2', '👍');
-    reactions.toggle(ROOM, 'u1', 'u2', '👍'); // сняли
+    await reactions.toggle(ROOM, 'u1', 'u2', '👍');
+    await reactions.toggle(ROOM, 'u1', 'u2', '👍'); // сняли
 
-    const result = reactions.toggle(ROOM, 'u1', 'u2', '👍');
+    await reactions.toggle(ROOM, 'u1', 'u2', '👍');
+    const result = await reactions.list(ROOM);
 
     expect(result).toEqual([{ fromParticipantId: 'u1', toParticipantId: 'u2', emoji: '👍' }]);
   });
 
-  it('реакции разных авторов одному адресату сосуществуют', () => {
+  it('реакции разных авторов одному адресату сосуществуют', async () => {
     const reactions = new RoomReactions();
-    reactions.toggle(ROOM, 'u1', 'u3', '👍');
+    await reactions.toggle(ROOM, 'u1', 'u3', '👍');
 
-    const result = reactions.toggle(ROOM, 'u2', 'u3', '😢');
+    await reactions.toggle(ROOM, 'u2', 'u3', '😢');
+    const result = await reactions.list(ROOM);
 
     expect(result).toEqual([
       { fromParticipantId: 'u1', toParticipantId: 'u3', emoji: '👍' },
@@ -63,11 +68,12 @@ describe('RoomReactions', () => {
     ]);
   });
 
-  it('реакции одного автора разным адресатам сосуществуют', () => {
+  it('реакции одного автора разным адресатам сосуществуют', async () => {
     const reactions = new RoomReactions();
-    reactions.toggle(ROOM, 'u1', 'u2', '👍');
+    await reactions.toggle(ROOM, 'u1', 'u2', '👍');
 
-    const result = reactions.toggle(ROOM, 'u1', 'u3', '😢');
+    await reactions.toggle(ROOM, 'u1', 'u3', '😢');
+    const result = await reactions.list(ROOM);
 
     expect(result).toEqual([
       { fromParticipantId: 'u1', toParticipantId: 'u2', emoji: '👍' },
@@ -75,19 +81,19 @@ describe('RoomReactions', () => {
     ]);
   });
 
-  it('clear убирает все реакции комнаты', () => {
+  it('clear убирает все реакции комнаты', async () => {
     const reactions = new RoomReactions();
-    reactions.toggle(ROOM, 'u1', 'u2', '👍');
+    await reactions.toggle(ROOM, 'u1', 'u2', '👍');
 
-    reactions.clear(ROOM);
+    await reactions.clear(ROOM);
 
-    expect(reactions.list(ROOM)).toEqual([]);
+    expect(await reactions.list(ROOM)).toEqual([]);
   });
 
-  it('реакции разных комнат не пересекаются', () => {
+  it('реакции разных комнат не пересекаются', async () => {
     const reactions = new RoomReactions();
-    reactions.toggle(ROOM, 'u1', 'u2', '👍');
+    await reactions.toggle(ROOM, 'u1', 'u2', '👍');
 
-    expect(reactions.list('другая-комната')).toEqual([]);
+    expect(await reactions.list('другая-комната')).toEqual([]);
   });
 });

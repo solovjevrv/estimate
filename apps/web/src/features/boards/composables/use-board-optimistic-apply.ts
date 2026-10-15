@@ -157,9 +157,16 @@ export function useBoardOptimisticApply({
     redoStack.value = [];
   }
 
-  function applyBatch(batch: BoardOpsBatch): void {
-    // Батч мог обогнать ответ на join (или прийти повторно) — отбрасываем отставшее
-    if (batch.revision <= revision.value) return;
+  /**
+   * Применяет батч рассылки. `gap` — между текущей ревизией и батчем дыра
+   * (рассылка потерялась, например, при сбое Redis, 10.18): батч не применён,
+   * вызывающий код должен перезайти на доску за догоном или снимком — иначе
+   * пропущенная операция не вернётся никогда
+   */
+  function applyBatch(batch: BoardOpsBatch): 'applied' | 'stale' | 'gap' {
+    // Батч пришёл повторно или уже покрыт снимком/догоном
+    if (batch.revision <= revision.value) return 'stale';
+    if (batch.revision !== revision.value + 1) return 'gap';
     for (const op of batch.ops) {
       // Эхо своей же операции — уже применено оптимистично при отправке.
       // Перетираем им локальное состояние, только если это подтверждение
@@ -177,6 +184,7 @@ export function useBoardOptimisticApply({
       applyLocalBoardOp(local, op);
     }
     revision.value = batch.revision;
+    return 'applied';
   }
 
   function applySnapshot(snapshot: { items: BoardItem[]; edges: BoardEdge[] }, rev: number): void {

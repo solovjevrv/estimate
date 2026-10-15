@@ -32,6 +32,7 @@ import { computed, reactive, ref } from 'vue';
 import { setBoardShare } from '../features/boards/api/boards-api';
 import type { BoardLocalState } from '../features/boards/domain/apply-local-op';
 import { useBoardAwareness } from '../features/boards/composables/use-board-awareness';
+import { useBoardBatchIntake } from '../features/boards/composables/use-board-batch-intake';
 import { useBoardOptimisticApply } from '../features/boards/composables/use-board-optimistic-apply';
 import { createRealtimeConnection, GuestTokenStore, type JoinContext } from '../lib/realtime';
 import { emitWithAck, type PokerSocket } from '../lib/socket';
@@ -49,6 +50,9 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const joined = ref(false);
   /** Таймер доски (15.3): снимок из входа, дальше — рассылка `board:timer` */
   const timer = ref<BoardTimerState>(idleTimer());
+  /** Номера последних применённых таймера и голосования (10.18); у каждой доски свои */
+  let timerSeq = 0;
+  let votingSeq = 0;
   /** Голосование точками (15.2) глазами этого участника; null — голосования нет */
   const voting = ref<BoardVotingState | null>(null);
   /** Оценки элементов из покер-комнат (15.6): itemId → комната и подпись карты */
@@ -109,6 +113,17 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   async function performJoin(active: PokerSocket, ctx: JoinContext): Promise<void> {
     const id = boardId;
     if (!id) return;
+    // Батчи, пришедшие до ответа, — после снимка/догона (10.18)
+    const startedIn = intake.joinStarted();
+    let applied = false;
+    try {
+      applied = await joinAndApply(active, ctx, id);
+    } finally {
+      intake.joinFinished(startedIn, applied);
+    }
+  }
+
+  async function joinAndApply(active: PokerSocket, ctx: JoinContext, id: string): Promise<boolean> {
     // Гостю сервер требует имя на каждый join, включая реконнект — то же имя,
     // что и при первом входе
     const guestName = ownGuestName ?? undefined;
@@ -123,13 +138,20 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     });
 
     // Пока ждали ответ, вызвали leave() или новый join() — это уже не наш вход
-    if (!ctx.isCurrent()) return;
+    if (!ctx.isCurrent()) return false;
 
     guestTokens.write(id, result.guestToken);
     participantId.value = result.participantId;
     access.value = result.access;
-    timer.value = result.timer;
-    voting.value = result.voting;
+    // Рассылка, обогнавшая ответ на вход, могла уже принести состояние новее
+    if (result.timerSeq >= timerSeq) {
+      timerSeq = result.timerSeq;
+      timer.value = result.timer;
+    }
+    if (result.votingSeq >= votingSeq) {
+      votingSeq = result.votingSeq;
+      voting.value = result.voting;
+    }
     estimates.value = result.estimates;
 
     if (result.snapshot) {
@@ -140,18 +162,31 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       optimistic.revision.value = result.revision;
     }
     joined.value = true;
+    return true;
   }
 
   /** Доменные события доски — вешаются один раз на каждый созданный сокет */
   function attachBoardListeners(active: PokerSocket): void {
-    active.on(BOARD_WS_SERVER_EVENTS.OPS, optimistic.applyBatch);
-    active.on(BOARD_WS_SERVER_EVENTS.PRESENCE, awareness.handlePresence);
-    active.on(BOARD_WS_SERVER_EVENTS.AWARENESS, awareness.handleAwareness);
-    active.on(BOARD_WS_SERVER_EVENTS.TIMER, (state) => {
-      timer.value = state;
+    // Рассылки прежней доски, пока сервер обрабатывает вход на новую (сокет
+    // ещё в её канале), отсекаются по boardId (10.18)
+    active.on(BOARD_WS_SERVER_EVENTS.OPS, (batch) => {
+      if (batch.boardId === boardId) intake.receive(batch);
     });
-    active.on(BOARD_WS_SERVER_EVENTS.VOTING, (state) => {
-      voting.value = state;
+    active.on(BOARD_WS_SERVER_EVENTS.PRESENCE, (update) => {
+      if (update.boardId === boardId) awareness.handlePresence(update);
+    });
+    active.on(BOARD_WS_SERVER_EVENTS.AWARENESS, awareness.handleAwareness);
+    // Таймер и голосование — ещё и по номеру: рассылки с разных экземпляров
+    // сервера могут прийти не по порядку
+    active.on(BOARD_WS_SERVER_EVENTS.TIMER, (update) => {
+      if (update.boardId !== boardId || update.seq < timerSeq) return;
+      timerSeq = update.seq;
+      timer.value = update.timer;
+    });
+    active.on(BOARD_WS_SERVER_EVENTS.VOTING, (update) => {
+      if (update.boardId !== boardId || update.seq < votingSeq) return;
+      votingSeq = update.seq;
+      voting.value = update.voting;
     });
     active.on(BOARD_WS_SERVER_EVENTS.ACCESS, () => {
       accessChanges.value += 1;
@@ -164,6 +199,12 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
   const connection = createRealtimeConnection({
     attach: attachBoardListeners,
     join: performJoin,
+  });
+
+  // Пропустили ревизию — перезаход с текущей: догон из буфера или снимок
+  const intake = useBoardBatchIntake({
+    apply: optimistic.applyBatch,
+    resync: () => connection.rejoin(),
   });
 
   async function join(
@@ -180,6 +221,8 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       access.value = 'view';
       timer.value = idleTimer();
       voting.value = null;
+      timerSeq = 0;
+      votingSeq = 0;
       estimates.value = {};
       snapshotAuthors.value = {};
       ownGuestName = null;
@@ -189,6 +232,9 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
       // follow-mode так не работает (копится, а не перезаписывается целиком)
       awareness.cameraByParticipant.clear();
       awareness.followedParticipantId.value = null;
+      // ...но номер рассылки у новой доски свой (10.18)
+      awareness.resetPresenceOrder();
+      intake.reset();
     }
     boardId = id;
     // Имя гостя нужно и на автоматическом входе после обрыва — сервер требует
@@ -208,11 +254,15 @@ export const useBoardSessionStore = defineStore('boardSession', () => {
     access.value = 'view';
     timer.value = idleTimer();
     voting.value = null;
+    timerSeq = 0;
+    votingSeq = 0;
     estimates.value = {};
     snapshotAuthors.value = {};
     local.items.clear();
     local.edges.clear();
     optimistic.resetForNewSession();
+    awareness.resetPresenceOrder();
+    intake.reset();
     awareness.reset();
   }
 

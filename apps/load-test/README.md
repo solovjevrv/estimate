@@ -45,15 +45,15 @@ docker compose -f docker-compose.loadtest.yml down -v
 
 Параметры прогона — переменные окружения (`src/config.ts`):
 
-| Переменная                       | По умолчанию               | Смысл                                        |
-| -------------------------------- | -------------------------- | -------------------------------------------- |
-| `LOADTEST_SERVER_ORIGIN`         | `http://localhost:3001`    | Куда бить REST/WS                            |
-| `LOADTEST_ROOMS`                 | `10`                       | Комнат одновременно                          |
-| `LOADTEST_PARTICIPANTS_PER_ROOM` | `15`                       | Участников на комнату (1 владелец + гости)   |
-| `LOADTEST_ROUNDS_PER_ROOM`       | `5`                        | Раундов голосования на комнату               |
-| `LOADTEST_VOTE_JITTER_MS`        | `300`                      | Разброс перед голосом — имитация живых людей |
-| `LOADTEST_SERVER_CONTAINER`      | `estimate-server-loadtest` | Контейнер для `docker stats`                 |
-| `LOADTEST_SAMPLE_INTERVAL_MS`    | `500`                      | Как часто снимать ресурсы (мс)               |
+| Переменная                       | По умолчанию               | Смысл                                                                                         |
+| -------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------- |
+| `LOADTEST_SERVER_ORIGIN`         | `http://localhost:3001`    | Куда бить REST/WS; несколько через запятую — участники по кругу на разных экземплярах (10.18) |
+| `LOADTEST_ROOMS`                 | `10`                       | Комнат одновременно                                                                           |
+| `LOADTEST_PARTICIPANTS_PER_ROOM` | `15`                       | Участников на комнату (1 владелец + гости)                                                    |
+| `LOADTEST_ROUNDS_PER_ROOM`       | `5`                        | Раундов голосования на комнату                                                                |
+| `LOADTEST_VOTE_JITTER_MS`        | `300`                      | Разброс перед голосом — имитация живых людей                                                  |
+| `LOADTEST_SERVER_CONTAINER`      | `estimate-server-loadtest` | Контейнер для `docker stats`                                                                  |
+| `LOADTEST_SAMPLE_INTERVAL_MS`    | `500`                      | Как часто снимать ресурсы (мс)                                                                |
 
 ## Что измеряется
 
