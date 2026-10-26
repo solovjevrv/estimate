@@ -9,7 +9,6 @@ import { fileURLToPath } from 'node:url';
 import type {
   AuthUser,
   JoinRoomResult,
-  Room,
   Round,
   RoomState,
   RoundResult,
@@ -33,7 +32,7 @@ import type { AuthConfig } from '../src/config';
 import { createDb, schema } from '../src/db';
 import { ConflictError } from '../src/errors';
 import type { ParticipantIdentity } from '../src/rooms';
-import { RoomsGameService, RoomsRepository, RoomsService } from '../src/rooms';
+import { RoomsGameService, RoomsRepository } from '../src/rooms';
 import { SocketGateway } from '../src/socket';
 import { TeamsRepository, TeamsService } from '../src/teams';
 
@@ -680,6 +679,47 @@ describeDb('комнаты', () => {
   });
 
   describe('игровой цикл по WebSocket', () => {
+    it('два входа одного сокета подряд: поздний ответ первого не пересаживает сокет обратно', async () => {
+      const owner = await newUser('join-order-room-owner');
+      const roomA = await newRoom(owner);
+      const roomB = await newRoom(owner);
+      const client = connect(owner);
+      const observerB = connect();
+      await joinRoom(observerB, roomB, 'Наблюдатель');
+
+      let releaseA: () => void = () => {};
+      const gateA = new Promise<void>((resolve) => (releaseA = resolve));
+      const original = RoomsGameService.prototype.prepareJoin;
+      const spy = vi
+        .spyOn(RoomsGameService.prototype, 'prepareJoin')
+        .mockImplementation(async function (this: RoomsGameService, request) {
+          if (request.roomId === roomA) await gateA;
+          return original.call(this, request);
+        });
+      try {
+        const joinA = emit(client, WS_EVENTS.JOIN_ROOM, { roomId: roomA });
+        const joinB = emit(client, WS_EVENTS.JOIN_ROOM, { roomId: roomB });
+        await new Promise((resolve) => setTimeout(resolve, 50));
+        releaseA();
+        expect((await joinA).ok).toBe(true);
+        expect((await joinB).ok).toBe(true);
+      } finally {
+        spy.mockRestore();
+      }
+
+      // Таймер, запущенный сокетом, — в комнате B, куда он вошёл последним
+      const observerSeesTimer = new Promise<RoomState>((resolve) => {
+        const onState = (state: RoomState): void => {
+          if (!state.timer.running) return;
+          observerB.off(WS_SERVER_EVENTS.ROOM_STATE, onState);
+          resolve(state);
+        };
+        observerB.on(WS_SERVER_EVENTS.ROOM_STATE, onState);
+      });
+      expect((await emit(client, WS_EVENTS.START_TIMER)).ok).toBe(true);
+      expect((await observerSeesTimer).room.id).toBe(roomB);
+    });
+
     it('двое голосуют, скрам-мастер вскрывает карты и начинает новый раунд', async () => {
       const owner = await newUser('game-owner');
       const roomId = await newRoom(owner);
@@ -775,29 +815,6 @@ describeDb('комнаты', () => {
 
       const ack = await emit<RoundResult>(master, WS_EVENTS.REVEAL_CARDS);
       expect(ack.ok && ack.data).toMatchObject({ average: null, min: 3, max: 3, agreement: 100 });
-    });
-
-    it('ссылки на задачу правит любой участник и видят все, даже без активного раунда', async () => {
-      const owner = await newUser('links-owner');
-      const roomId = await newRoom(owner);
-      const master = connect(owner);
-      const guest = connect();
-
-      const masterState = await joinRoom(master, roomId);
-      await joinRoom(guest, roomId, 'Гость');
-      expect(masterState.round).toBeNull();
-
-      const masterSeesLinks = nextState(master);
-      const updated = await emit(guest, WS_EVENTS.UPDATE_LINKS, {
-        jiraUrl: 'https://jira.example.com/TASK-7',
-        confluenceUrl: 'https://confluence.example.com/page',
-      });
-
-      expect(updated.ok).toBe(true);
-      expect((await masterSeesLinks).room).toMatchObject({
-        jiraUrl: 'https://jira.example.com/TASK-7',
-        confluenceUrl: 'https://confluence.example.com/page',
-      });
     });
 
     it('участник может передумать, пока карты не вскрыты', async () => {
@@ -945,30 +962,6 @@ describeDb('комнаты', () => {
 
       const alive = await emit(connect(owner), WS_EVENTS.JOIN_ROOM, { roomId });
       expect(alive.ok).toBe(true);
-    });
-
-    it('правка ссылок поверх чужой отклоняется по версии', async () => {
-      const owner = await newUser('links-version-owner');
-      const roomId = await newRoom(owner);
-      const master = connect(owner);
-      const guest = connect();
-      const masterState = await joinRoom(master, roomId);
-      await joinRoom(guest, roomId, 'Гость');
-
-      const version = masterState.room.linksVersion;
-
-      // Оба видели одну и ту же версию ссылок, но правит их первый
-      const first = await emit(guest, WS_EVENTS.UPDATE_LINKS, {
-        jiraUrl: 'https://jira.example.com/GUEST',
-        version,
-      });
-      const stale = await emit(master, WS_EVENTS.UPDATE_LINKS, {
-        jiraUrl: 'https://jira.example.com/MASTER',
-        version,
-      });
-
-      expect(first.ok).toBe(true);
-      expect(stale).toMatchObject({ ok: false, error: 'conflict' });
     });
 
     it('оценка за прошлую задачу отбивается с конфликтом', async () => {
@@ -1472,34 +1465,6 @@ describeDb('комнаты', () => {
       expect(rounds).toHaveLength(2);
     });
 
-    it('одновременная правка ссылок: побеждает один, второй узнаёт о конфликте', async () => {
-      const owner = await newUser('race-links-owner');
-      const roomId = await newRoom(owner);
-      // Не через REST: linksVersion — внутреннее поле оптимистичной блокировки,
-      // в публичной схеме ответа его нет (сериализатор Fastify его срежет)
-      const room = await RoomsService.forDatabase(db).getRoom(roomId);
-
-      const attempts = await Promise.allSettled([
-        service.updateLinks(roomId, {
-          jiraUrl: 'https://jira.example.com/LEFT',
-          version: room.linksVersion,
-        }),
-        service.updateLinks(roomId, {
-          jiraUrl: 'https://jira.example.com/RIGHT',
-          version: room.linksVersion,
-        }),
-      ]);
-
-      const saved = attempts.filter((attempt) => attempt.status === 'fulfilled');
-      const rejected = attempts.filter((attempt) => attempt.status === 'rejected');
-      expect(saved).toHaveLength(1);
-      expect(rejected[0]?.reason).toBeInstanceOf(ConflictError);
-      // Версия выросла ровно на одну правку — чужой текст не затёрт вторым разом
-      expect((saved[0] as PromiseFulfilledResult<Room>).value.linksVersion).toBe(
-        room.linksVersion + 1,
-      );
-    });
-
     it('опоздавший голос не попадает в следующую задачу', async () => {
       const owner = await newUser('race-late-vote-owner');
       const roomId = await newRoom(owner);
@@ -1544,7 +1509,6 @@ describeDb('комнаты', () => {
       const started = await service.startNewRound(roomId, master, { deckType: 'fibonacci' });
 
       const before = (await service.getState(roomId, [])).room.revision;
-      await service.updateLinks(roomId, {});
       await service.startNewRound(roomId, master, {
         deckType: 'fibonacci',
         fromRoundId: randomUUID(),
@@ -1554,17 +1518,6 @@ describeDb('комнаты', () => {
       expect(after).toBe(before);
       // Повторный старт вернул текущий раунд, а не создал новый
       expect((await service.getState(roomId, [])).round?.id).toBe(started.id);
-    });
-
-    it('правка без версии остаётся прежней: побеждает последний', async () => {
-      const owner = await newUser('race-links-legacy-owner');
-      const roomId = await newRoom(owner);
-
-      const updated = await service.updateLinks(roomId, {
-        jiraUrl: 'https://jira.example.com/LEGACY',
-      });
-
-      expect(updated.jiraUrl).toBe('https://jira.example.com/LEGACY');
     });
 
     it('снимок getState не рвётся, даже если чужой голос коммитится между внутренними запросами — 7.14', async () => {

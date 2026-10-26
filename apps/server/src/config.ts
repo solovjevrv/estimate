@@ -60,6 +60,8 @@ export interface Config {
   port: number;
   host: string;
   databaseUrl: string;
+  /** Размер пула БД экземпляра; у нескольких экземпляров сумма — в пределах max_connections */
+  databasePoolMax: number;
   /** Origin дев-фронта для CORS Socket.io; в проде фронт same-origin через nginx */
   webOrigin: string;
   /** Документация API: на проде карта эндпоинтов наружу не отдаётся */
@@ -84,6 +86,20 @@ export interface Config {
   telegram?: TelegramConfig;
   /** Giphy API (21.9) — выключена без ключа */
   giphy?: GiphyConfig;
+  /**
+   * Redis (10.18): общее сиюминутное состояние realtime, адаптер рассылок
+   * Socket.io и общие лимиты запросов — для нескольких экземпляров сервера.
+   * Не задан — всё в памяти процесса, экземпляр ровно один
+   */
+  redisUrl?: string;
+  /**
+   * Сервер стоит за своим прокси (nginx): клиентский IP — из X-Forwarded-For.
+   * Без этого лимиты по IP считались по адресу nginx, то есть один на всех.
+   * Доверяем ровно одному прокси (число хопов, не `true`): берётся адрес,
+   * который дописал nginx, а присланное клиентом в заголовке игнорируется —
+   * иначе IP для лимита подделывался бы своим X-Forwarded-For
+   */
+  trustProxy: number | false;
 }
 
 /**
@@ -196,6 +212,16 @@ export function loadGiphyConfig(): GiphyConfig | undefined {
   return { apiKey };
 }
 
+function loadPoolMax(): number {
+  const raw = process.env.DATABASE_POOL_MAX;
+  if (!raw) return 50;
+  const value = Number(raw);
+  if (!Number.isInteger(value) || value < 1) {
+    throw new Error(`Некорректное значение DATABASE_POOL_MAX: "${raw}"`);
+  }
+  return value;
+}
+
 export function loadConfig(): Config {
   loadDotenv();
 
@@ -216,6 +242,7 @@ export function loadConfig(): Config {
     port,
     host: process.env.HOST ?? '0.0.0.0',
     databaseUrl,
+    databasePoolMax: loadPoolMax(),
     webOrigin,
     // По умолчанию документация есть везде, кроме продакшена; флагом можно переопределить
     docsEnabled: process.env.DOCS_ENABLED ? process.env.DOCS_ENABLED === 'true' : !isProduction,
@@ -228,5 +255,7 @@ export function loadConfig(): Config {
     objectStorage: loadObjectStorageConfig(),
     telegram: loadTelegramConfig(),
     giphy: loadGiphyConfig(),
+    redisUrl: process.env.REDIS_URL || undefined,
+    trustProxy: process.env.TRUST_PROXY === 'true' ? 1 : false,
   };
 }

@@ -10,6 +10,7 @@ const healthResponse = {
     status: { type: 'string' },
     db: { type: 'string' },
     storage: { type: 'string' },
+    redis: { type: 'string' },
     uptime: { type: 'number', description: 'Время работы процесса в секундах' },
   },
 } as const;
@@ -29,10 +30,11 @@ async function healthPluginImpl(app: FastifyInstance): Promise<void> {
       schema: {
         tags: [DOCS_TAGS.service],
         summary: 'Состояние сервиса',
-        description: 'Проверяет доступность базы данных и объектного хранилища (если подключено).',
+        description:
+          'Проверяет доступность базы данных, объектного хранилища и Redis (если подключены).',
         response: {
           200: { description: 'Сервис и зависимости отвечают', ...healthResponse },
-          503: { description: 'База или хранилище недоступны', ...healthResponse },
+          503: { description: 'База, хранилище или Redis недоступны', ...healthResponse },
         },
       },
     },
@@ -40,6 +42,7 @@ async function healthPluginImpl(app: FastifyInstance): Promise<void> {
       let degraded = false;
       let db: 'ok' | 'down' = 'ok';
       let storage: 'ok' | 'down' | undefined;
+      let redis: 'ok' | 'down' | undefined;
 
       try {
         await app.db.execute(sql`select 1`);
@@ -60,7 +63,25 @@ async function healthPluginImpl(app: FastifyInstance): Promise<void> {
         }
       }
 
-      const body = { status: degraded ? 'degraded' : 'ok', db, storage, uptime: process.uptime() };
+      // Без Redis экземпляр не видит соседей: участники и рассылки разъедутся (10.18)
+      if (app.redis) {
+        try {
+          await app.redis.ping();
+          redis = 'ok';
+        } catch (err) {
+          app.log.error(err, 'Redis недоступен');
+          redis = 'down';
+          degraded = true;
+        }
+      }
+
+      const body = {
+        status: degraded ? 'degraded' : 'ok',
+        db,
+        storage,
+        redis,
+        uptime: process.uptime(),
+      };
       return degraded ? reply.code(503).send(body) : body;
     },
   );

@@ -58,7 +58,7 @@ export const useRoomStore = defineStore('room', () => {
    */
   function applyState(next: RoomState): void {
     const current = state.value;
-    if (current && current.room.id === next.room.id && next.room.revision < current.room.revision) {
+    if (current && current.room.id === next.room.id && next.seq < current.seq) {
       return;
     }
     state.value = next;
@@ -116,7 +116,7 @@ export const useRoomStore = defineStore('room', () => {
     onReconnectFailure?: () => void,
   ): Promise<void> {
     // Смена комнаты на живом сокете: сбрасываем прошлый стол, иначе отставшая
-    // рассылка старой комнаты (id другой — проверку revision не проходит) осталась бы на экране
+    // рассылка старой комнаты (id другой — проверку seq не проходит) осталась бы на экране
     if (state.value && state.value.room.id !== roomId) {
       state.value = null;
       participantId.value = null;

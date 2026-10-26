@@ -39,6 +39,7 @@ test.describe('Доски: фреймы и группы', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     // Инструмент «Фрейм» — клик по холсту создаёт фрейм
     await board.toolbarButton('Фрейм').click();
@@ -74,6 +75,7 @@ test.describe('Доски: фреймы и группы', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     // Создаём два стикера — y подальше от верхней панели с названием доски
     // (иначе клик по пейну перехватывает панель, а не создаёт элемент)
@@ -122,6 +124,7 @@ test.describe('Доски: фреймы и группы', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     // Фрейм + стикер, созданный кликом ВНУТРИ его границ — приклеивается сразу (14.3)
     await board.toolbarButton('Фрейм').click();
@@ -194,6 +197,7 @@ test.describe('Доски: фреймы и группы', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     await board.toolbarButton('Фрейм').click();
     await board.pane.click({ position: { x: 300, y: 200 } });
@@ -226,6 +230,7 @@ test.describe('Доски: фреймы и группы', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     // Создаём фрейм
     await board.toolbarButton('Фрейм').click();
@@ -273,6 +278,7 @@ test.describe('Доски: фреймы и группы', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     await board.toolbarButton('Стикер').click();
     await board.pane.click({ position: { x: 100, y: 300 } });
@@ -341,6 +347,7 @@ test.describe('Доски: фреймы и группы', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     // Первый стикер — дальше всё относительно его положения после автофита
     await board.toolbarButton('Стикер').click();
@@ -450,6 +457,7 @@ test.describe('Доски: фреймы и группы', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     await board.toolbarButton('Стикер').click();
     await board.pane.click({ position: { x: 300, y: 300 } });
@@ -512,6 +520,7 @@ test.describe('Доски: фреймы и группы', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     await board.toolbarButton('Стикер').click();
     await board.pane.click({ position: { x: 100, y: 300 } });
@@ -559,6 +568,7 @@ test.describe('Доски: фреймы и группы', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     // Группа — ДАЛЕКО от места, где появится фрейм, чтобы группировка не
     // задела его геометрию (фрейм создаём уже после группировки)
@@ -703,6 +713,7 @@ test.describe('Доски: фреймы и группы', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     await board.toolbarButton('Стикер').click();
     await board.pane.click({ position: { x: 100, y: 300 } });
@@ -752,6 +763,7 @@ test.describe('Доски: фреймы и группы', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
     await board.pane.click();
 
     // Фрейм + стикер внутри него (приклеивается сразу, 14.3). Автофит на
@@ -811,6 +823,7 @@ test.describe('Доски: фреймы и группы', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
     await board.pane.click();
 
     await board.toolbarButton('Стикер').click();

@@ -22,6 +22,7 @@ test('раскладка по цвету во фрейм и отмена из т
   await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
   const board = boardLocators(page);
   await expect(board.pane).toBeVisible();
+  await expect(board.joined).toBeVisible();
 
   // Два стикера (см. addTwoStickies в boards-voting.spec.ts)
   await board.pane.dblclick({ position: { x: 300, y: 300 } });

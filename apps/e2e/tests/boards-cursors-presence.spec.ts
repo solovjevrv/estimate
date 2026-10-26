@@ -42,6 +42,7 @@ test('курсоры участников и список «кто на доск
   const boardA = boardLocators(pageA);
   const boardUrl = pageA.url();
   await expect(boardA.pane).toBeVisible();
+  await expect(boardA.joined).toBeVisible();
 
   // --- Владелец открывает ту же доску во второй независимой вкладке ---
   const contextB = await newContext(browser);
@@ -64,6 +65,7 @@ test('курсоры участников и список «кто на доск
   await pageC.waitForURL(/\/teams\/[0-9a-f-]{36}/);
   await pageC.goto(boardUrl);
   await expect(boardC.pane).toBeVisible();
+  await expect(boardC.joined).toBeVisible();
 
   // Панель «кто на доске» появляется, когда >1 уникального участника
   await expect(boardA.presence).toBeVisible();

@@ -225,6 +225,14 @@ export class BoardsService {
    * выписывает/проверяет гостевой токен. Возвращает полную личность
    * участника, включая уровень доступа `access`.
    */
+  /**
+   * Текущая ревизия доски — для проверки догона по буферу операций (10.18).
+   * Без проверки доступа: вызывается после `prepareBoardJoin`, который её уже сделал
+   */
+  async currentRevision(boardId: string): Promise<number> {
+    return (await this.requireBoard(boardId)).revision;
+  }
+
   async prepareBoardJoin(request: BoardJoinRequest): Promise<BoardJoinResult> {
     const board = await this.requireBoard(this.requireUuid(request.boardId, 'доски'));
 
@@ -455,7 +463,7 @@ export class BoardsService {
 
   /** Настоящее удаление — необратимо, доступно только для уже заархивированной доски */
   async remove(actorId: string, boardId: string): Promise<void> {
-    const orphanedImageUrls = await this.db.transaction(async (tx) => {
+    const orphaned = await this.db.transaction(async (tx) => {
       const repo = this.createBoardsRepository(tx);
       const board = await repo.lockBoard(boardId);
       if (!board) {
@@ -475,9 +483,13 @@ export class BoardsService {
         }
       }
       await repo.deleteBoard(boardId);
-      return imageUrls;
+      return { imageUrls, thumbnailUrl: board.thumbnailUrl };
     });
-    await this.cleanupImages(boardId, orphanedImageUrls);
+    await this.cleanupImages(boardId, orphaned.imageUrls);
+    // Превью — тоже объект в storage, каскад БД его не трогает (20.19)
+    await this.images?.deleteThumbnail(boardId, orphaned.thumbnailUrl).catch((err: unknown) => {
+      this.log.warn({ err, boardId }, 'Не удалось удалить превью доски');
+    });
   }
 
   private async requireBoard(boardId: string): Promise<Board> {

@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { setTimeout as sleep } from 'node:timers/promises';
 
-import type { BoardOpsBatch, BoardVotingState, JoinBoardResult, WsAck } from '@estimate/shared';
+import type {
+  BoardOpsBroadcast,
+  BoardVotingState,
+  BoardVotingUpdate,
+  JoinBoardResult,
+  WsAck,
+} from '@estimate/shared';
 import { BOARD_WS_EVENTS, BOARD_WS_SERVER_EVENTS, isVotableContent } from '@estimate/shared';
 import { type Socket, io } from 'socket.io-client';
 
@@ -11,7 +17,8 @@ const ACK_TIMEOUT_MS = 15_000;
 const BROADCAST_TIMEOUT_MS = 15_000;
 
 export interface BoardScenarioOptions {
-  serverOrigin: string;
+  /** Владелец — на первом, гости — по кругу по всем экземплярам (10.18) */
+  serverOrigins: string[];
   boardId: string;
   ownerCookie: string;
   guestCount: number;
@@ -89,7 +96,7 @@ function waitForOpsBatch(socket: Socket, clientOpId: string): Promise<void> {
       socket.off(BOARD_WS_SERVER_EVENTS.OPS, handler);
       reject(new Error('рассылка операции не дошла вовремя'));
     }, BROADCAST_TIMEOUT_MS);
-    function handler(batch: BoardOpsBatch): void {
+    function handler(batch: BoardOpsBroadcast): void {
       if (batch.ops.some((op) => op.clientOpId === clientOpId)) {
         clearTimeout(timer);
         socket.off(BOARD_WS_SERVER_EVENTS.OPS, handler);
@@ -100,7 +107,22 @@ function waitForOpsBatch(socket: Socket, clientOpId: string): Promise<void> {
   });
 }
 
-/** Ждёт на ЭТОМ сокете снимок голосования, удовлетворяющий условию */
+/** Старший номер снимка голосования, виденный сокетом (10.18) */
+const votingSeqs = new WeakMap<Socket, number>();
+
+/**
+ * Как веб-клиент: снимки голосования могут прийти не по порядку (два снимка
+ * читаются из БД параллельно), меньший номер — устаревший. Ставится до любых
+ * ожиданий, чтобы номер обновлялся раньше их проверки.
+ */
+function trackVotingSeq(socket: Socket, joinSeq: number): void {
+  votingSeqs.set(socket, joinSeq);
+  socket.on(BOARD_WS_SERVER_EVENTS.VOTING, (update: BoardVotingUpdate) => {
+    votingSeqs.set(socket, Math.max(votingSeqs.get(socket) ?? 0, update.seq));
+  });
+}
+
+/** Ждёт на ЭТОМ сокете снимок голосования, удовлетворяющий условию (рассылка — конверт `{ boardId, seq, voting }`, 10.18) */
 function waitForVoting(
   socket: Socket,
   match: (state: BoardVotingState | null) => boolean,
@@ -110,11 +132,12 @@ function waitForVoting(
       socket.off(BOARD_WS_SERVER_EVENTS.VOTING, handler);
       reject(new Error('снимок голосования не дошёл вовремя'));
     }, BROADCAST_TIMEOUT_MS);
-    function handler(state: BoardVotingState | null): void {
-      if (match(state)) {
+    function handler(update: BoardVotingUpdate): void {
+      if (update.seq < (votingSeqs.get(socket) ?? 0)) return;
+      if (match(update.voting)) {
         clearTimeout(timer);
         socket.off(BOARD_WS_SERVER_EVENTS.VOTING, handler);
-        resolve(state);
+        resolve(update.voting);
       }
     }
     socket.on(BOARD_WS_SERVER_EVENTS.VOTING, handler);
@@ -215,8 +238,11 @@ async function runVotingRound(
  */
 export async function runBoardScenario(opts: BoardScenarioOptions): Promise<BoardScenarioResult> {
   const errors: string[] = [];
-  const owner = connect(opts.serverOrigin, opts.ownerCookie);
-  const guests = Array.from({ length: opts.guestCount }, () => connect(opts.serverOrigin));
+  const origins = opts.serverOrigins;
+  const owner = connect(origins[0]!, opts.ownerCookie);
+  const guests = Array.from({ length: opts.guestCount }, (_, i) =>
+    connect(origins[(i + 1) % origins.length]!),
+  );
   const all = [owner, ...guests];
 
   try {
@@ -236,6 +262,7 @@ export async function runBoardScenario(opts: BoardScenarioOptions): Promise<Boar
           errors.push(`вход участника ${i}: ${ack.message}`);
           return;
         }
+        trackVotingSeq(socket, ack.data.votingSeq);
         if (ack.data.snapshot && itemIds.length === 0) {
           itemIds = ack.data.snapshot.items.map((item) => item.id);
           votableItemIds = ack.data.snapshot.items

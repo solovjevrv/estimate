@@ -2,6 +2,7 @@ import type {
   BoardAwarenessBroadcast,
   BoardCameraAwarenessData,
   BoardPresenceEntry,
+  BoardPresenceUpdate,
 } from '@estimate/shared';
 import { computed, reactive, ref } from 'vue';
 
@@ -36,7 +37,19 @@ export function useBoardAwareness() {
     followedParticipantId.value = null;
   }
 
-  function handlePresence(entries: BoardPresenceEntry[]): void {
+  /** Номер последней применённой рассылки присутствия (10.18) */
+  let presenceSeq = 0;
+
+  /** Новая доска — нумерация рассылок своя, прошлый номер ни при чём */
+  function resetPresenceOrder(): void {
+    presenceSeq = 0;
+  }
+
+  function handlePresence({ seq, entries }: BoardPresenceUpdate): void {
+    // Рассылки с разных экземпляров сервера могут прийти не по порядку —
+    // запоздавшая вернула бы на экран уже ушедшего участника
+    if (seq < presenceSeq) return;
+    presenceSeq = seq;
     presence.value = entries;
     // Awareness (курсоры, 14.1) не приходит событием "участник ушёл" — без
     // этой сверки курсор отключившегося застывал бы на экране навсегда
@@ -114,6 +127,7 @@ export function useBoardAwareness() {
     followParticipant,
     stopFollowing,
     handlePresence,
+    resetPresenceOrder,
     handleAwareness,
     reset,
   };

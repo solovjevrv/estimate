@@ -8,7 +8,6 @@ export const WS_EVENTS = {
   SUBMIT_VOTE: 'submit_vote',
   REVEAL_CARDS: 'reveal_cards',
   START_NEW_ROUND: 'start_new_round',
-  UPDATE_LINKS: 'update_links',
   START_TIMER: 'start_timer',
   PAUSE_TIMER: 'pause_timer',
   RESET_TIMER: 'reset_timer',
@@ -86,11 +85,6 @@ export interface Room {
   createdAt: string;
   /** Заполнено — комната в архиве: доступна только для чтения, не в основных списках */
   archivedAt: string | null;
-  /** Комната заводится под одну задачу — ссылки принадлежат ей, не отдельному раунду (7.25) */
-  jiraUrl: string | null;
-  confluenceUrl: string | null;
-  /** Версия ссылок: растёт с каждой правкой, по ней ловятся одновременные правки */
-  linksVersion: number;
 }
 
 /**
@@ -214,6 +208,12 @@ export interface RoomState {
   result: RoundResult | null;
   timer: RoomTimerState;
   reactions: Reaction[];
+  /**
+   * Номер снимка (10.18): растёт с каждой рассылкой комнаты, по всем
+   * экземплярам сервера. Снимки с разных экземпляров могут прийти не по
+   * порядку — клиент отбрасывает тот, чей номер меньше уже показанного.
+   */
+  seq: number;
 }
 
 export interface JoinRoomPayload {
@@ -266,22 +266,9 @@ export interface KickParticipantPayload {
   participantId: string;
 }
 
-export interface UpdateLinksPayload {
-  jiraUrl?: string | null;
-  confluenceUrl?: string | null;
-  /**
-   * Версия ссылок, которую видел клиент. Если за это время их поменял кто-то
-   * другой, правка отклоняется — иначе чужой текст молча затрётся.
-   * Без поля (или с null) версия не проверяется: побеждает последний.
-   */
-  version?: number | null;
-}
-
 /** Ответ на событие: либо данные, либо ошибка с тем же кодом, что и в REST */
 export type WsAck<T> = { ok: true; data: T } | { ok: false; error: string; message: string };
 
 /** Максимальная длина имени гостя и названия комнаты */
 export const ROOM_NAME_MAX_LENGTH = 120;
 export const GUEST_NAME_MAX_LENGTH = 60;
-/** Верхняя граница Jira/Confluence-ссылки после нормализации. */
-export const ROOM_LINK_MAX_LENGTH = 2000;

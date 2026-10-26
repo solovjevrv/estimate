@@ -84,6 +84,7 @@ test('@perf 100 анимированных Lottie-стикеров: CPU/FPS/па
   await page.goto(`/boards/${board!.id}`);
   const boardEl = boardLocators(page);
   await expect(boardEl.pane).toBeVisible();
+  await expect(boardEl.joined).toBeVisible();
   await expect(boardEl.stickerNodes).toHaveCount(STICKER_COUNT, { timeout: 30000 });
   // renderer: 'canvas' (21.8) — каждый узел должен быть <canvas>, не <svg>
   await expect(boardEl.stickerNodes.first().locator('canvas')).toBeVisible({ timeout: 10000 });

@@ -28,63 +28,84 @@ describe('CountdownTimer', () => {
     vi.useRealTimers();
   });
 
-  it('reset принимает свою длительность и отклоняет чужую', () => {
+  it('reset принимает свою длительность и отклоняет чужую', async () => {
     const timer = boardLikeTimer();
 
-    expect(timer.reset(KEY, 1800).remainingSec).toBe(1800);
-    expect(() => timer.reset(KEY, 90)).toThrow(ValidationError);
-    expect(() => timer.reset(KEY, 7260)).toThrow(ValidationError);
+    expect((await timer.reset(KEY, 1800)).remainingSec).toBe(1800);
+    await expect(timer.reset(KEY, 90)).rejects.toThrow(ValidationError);
+    await expect(timer.reset(KEY, 7260)).rejects.toThrow(ValidationError);
   });
 
-  it('extend на бегущем таймере сдвигает endsAt, длительность не меняет', () => {
+  it('extend на бегущем таймере сдвигает endsAt, длительность не меняет', async () => {
     const timer = boardLikeTimer();
-    timer.start(KEY);
+    await timer.start(KEY);
     vi.advanceTimersByTime(100_000);
 
-    const extended = timer.extend(KEY, 60);
+    const extended = await timer.extend(KEY, 60);
 
     expect(extended.running).toBe(true);
     expect(extended.durationSec).toBe(300);
     expect(extended.endsAt).toBe(new Date('2026-10-02T10:06:00.000Z').toISOString());
   });
 
-  it('extend на паузе добавляет к сохранённому остатку', () => {
+  it('extend на паузе добавляет к сохранённому остатку', async () => {
     const timer = boardLikeTimer();
-    timer.start(KEY);
+    await timer.start(KEY);
     vi.advanceTimersByTime(60_000);
-    timer.pause(KEY);
+    await timer.pause(KEY);
 
-    expect(timer.extend(KEY, 60)).toMatchObject({ running: false, remainingSec: 300 });
+    expect(await timer.extend(KEY, 60)).toMatchObject({ running: false, remainingSec: 300 });
   });
 
-  it('extend истёкшего таймера возобновляет отсчёт от текущего момента', () => {
+  it('extend истёкшего таймера возобновляет отсчёт от текущего момента', async () => {
     const timer = boardLikeTimer();
-    timer.reset(KEY, 60);
-    timer.start(KEY);
+    await timer.reset(KEY, 60);
+    await timer.start(KEY);
     vi.advanceTimersByTime(90_000);
 
-    const extended = timer.extend(KEY, 60);
+    const extended = await timer.extend(KEY, 60);
 
     expect(extended.endsAt).toBe(new Date('2026-10-02T10:02:30.000Z').toISOString());
   });
 
-  it('extend не поднимает остаток выше потолка', () => {
+  it('extend не поднимает остаток выше потолка', async () => {
     const timer = boardLikeTimer();
-    timer.reset(KEY, 7200);
+    await timer.reset(KEY, 7200);
 
-    expect(timer.extend(KEY, 60).remainingSec).toBe(7200);
+    expect((await timer.extend(KEY, 60)).remainingSec).toBe(7200);
   });
 
-  it('сброс возвращает исходную длительность после extend', () => {
+  it('сброс возвращает исходную длительность после extend', async () => {
     const timer = boardLikeTimer();
-    timer.start(KEY);
-    timer.extend(KEY, 60);
+    await timer.start(KEY);
+    await timer.extend(KEY, 60);
 
-    expect(timer.reset(KEY)).toEqual({
+    expect(await timer.reset(KEY)).toMatchObject({
       durationSec: 300,
       running: false,
       endsAt: null,
       remainingSec: 300,
     });
+  });
+
+  it('версия растёт с каждым изменением, команда без изменений её не двигает (10.18)', async () => {
+    const timer = boardLikeTimer();
+    expect((await timer.get(KEY)).version).toBe(0);
+
+    const started = await timer.start(KEY);
+    const again = await timer.start(KEY);
+    const paused = await timer.pause(KEY);
+
+    expect(started.version).toBeGreaterThan(0);
+    expect(again.version).toBe(started.version);
+    expect(paused.version).toBeGreaterThan(started.version);
+  });
+
+  it('после очистки версия не откатывается назад — клиенты не отбросят новое состояние', async () => {
+    const timer = boardLikeTimer();
+    const before = await timer.start(KEY);
+    await timer.clear(KEY);
+
+    expect((await timer.reset(KEY, 600)).version).toBeGreaterThanOrEqual(before.version);
   });
 });

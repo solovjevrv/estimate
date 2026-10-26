@@ -35,9 +35,6 @@ const room1: Room = {
   revision: 1,
   createdAt: '2026-07-24T00:00:00.000Z',
   archivedAt: null,
-  jiraUrl: null,
-  confluenceUrl: null,
-  linksVersion: 1,
 };
 
 function roomState(overrides: Partial<RoomState> = {}): RoomState {
@@ -53,6 +50,7 @@ function roomState(overrides: Partial<RoomState> = {}): RoomState {
       remainingSec: TIMER_DEFAULT_DURATION_SEC,
     },
     reactions: [],
+    seq: 1,
     ...overrides,
   };
 }

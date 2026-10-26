@@ -33,6 +33,7 @@ test('доска с одним маленьким стикером: автофи
 
   const board = boardLocators(page);
   await expect(board.pane).toBeVisible();
+  await expect(board.joined).toBeVisible();
 
   await board.pane.dblclick({ position: { x: 350, y: 250 } });
   await expect(board.stickyNodes).toHaveCount(1);

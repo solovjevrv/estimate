@@ -35,6 +35,7 @@ test.describe('Доски: эмодзи', () => {
     const board = boardLocators(page);
     await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
     await expect(board.pane).toBeVisible();
+    await expect(board.joined).toBeVisible();
 
     // Клик по инструменту сразу открывает список — без клика по холсту
     await board.toolbarButton('Эмодзи').click();

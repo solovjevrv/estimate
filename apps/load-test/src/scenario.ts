@@ -10,7 +10,8 @@ const ACK_TIMEOUT_MS = 10_000;
 const STATE_TIMEOUT_MS = 15_000;
 
 export interface RoomScenarioOptions {
-  serverOrigin: string;
+  /** Владелец — на первом, гости — по кругу по всем экземплярам (10.18) */
+  serverOrigins: string[];
   roomId: string;
   ownerCookie: string;
   guestCount: number;
@@ -86,8 +87,11 @@ function nextRevealedState(socket: Socket): Promise<RoomState> {
 /** Полный цикл жизни одной комнаты: вход владельца и гостей, N раундов голосования и вскрытия */
 export async function runRoomScenario(opts: RoomScenarioOptions): Promise<RoomScenarioResult> {
   const errors: string[] = [];
-  const owner = connect(opts.serverOrigin, opts.ownerCookie);
-  const guests = Array.from({ length: opts.guestCount }, () => connect(opts.serverOrigin));
+  const origins = opts.serverOrigins;
+  const owner = connect(origins[0]!, opts.ownerCookie);
+  const guests = Array.from({ length: opts.guestCount }, (_, i) =>
+    connect(origins[(i + 1) % origins.length]!),
+  );
 
   try {
     await Promise.all([onceConnected(owner), ...guests.map(onceConnected)]);
@@ -127,8 +131,16 @@ export async function runRoomScenario(opts: RoomScenarioOptions): Promise<RoomSc
       const revealStartedAt = performance.now();
       const revealAck = await emit(owner, WS_EVENTS.REVEAL_CARDS);
       if (!revealAck.ok) errors.push(`вскрытие раунда ${round}: ${revealAck.message}`);
-      await Promise.all(revealWaiters);
+      const revealed = await Promise.all(revealWaiters);
       opts.revealLatency.record(performance.now() - revealStartedAt);
+      // Каждый видит весь стол, где бы ни сидели остальные (10.18)
+      for (const [i, state] of revealed.entries()) {
+        if (state.participants.length !== opts.guestCount + 1) {
+          errors.push(
+            `раунд ${round}, гость ${i}: за столом ${state.participants.length} из ${opts.guestCount + 1}`,
+          );
+        }
+      }
     }
   } catch (err) {
     errors.push(err instanceof Error ? err.message : String(err));

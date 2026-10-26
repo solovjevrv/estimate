@@ -21,9 +21,6 @@ const ROOM: Room = {
   revision: 0,
   createdAt: new Date().toISOString(),
   archivedAt: null,
-  jiraUrl: null,
-  confluenceUrl: null,
-  linksVersion: 1,
 };
 
 function transactionsWith(teams: Partial<TeamsRepository> = {}): RoomsTransactions {

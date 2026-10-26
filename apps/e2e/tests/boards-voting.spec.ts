@@ -53,6 +53,7 @@ test('голосование точками: старт, точки, сняти�
   const boardUrl = pageA.url();
   const boardA = boardLocators(pageA);
   await expect(boardA.pane).toBeVisible();
+  await expect(boardA.joined).toBeVisible();
 
   await addTwoStickies(pageA);
 
@@ -139,6 +140,12 @@ test('голосование точками: старт, точки, сняти�
   await pageA.getByTestId('board-voting-new-from-results').click();
   await expect(pageA.getByTestId('board-voting-setup')).toBeVisible();
   await pageA.keyboard.press('Escape');
+  await expect(pageA.getByTestId('board-voting-setup')).toHaveCount(0);
+  // Меню открывается с первого клика сразу после Escape
+  await pageA.getByTestId('board-voting-button').click();
+  await expect(pageA.getByTestId('board-voting-history-item')).toHaveCount(1);
+  await pageA.keyboard.press('Escape');
+  await expect(pageA.getByTestId('board-voting-history-item')).toHaveCount(0);
 
   // Удаление голосования из итогов (панель осталась открытой) — с подтверждением,
   // у всех пропадает
@@ -172,6 +179,7 @@ test('«Выделенные элементы»: выделить можно п�
   await page.waitForURL(/\/boards\/[0-9a-f-]{36}/);
   const board = boardLocators(page);
   await expect(board.pane).toBeVisible();
+  await expect(board.joined).toBeVisible();
   await addTwoStickies(page);
 
   // Клик по холсту настройку не закрывает, а Escape — закрывает

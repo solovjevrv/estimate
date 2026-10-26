@@ -45,6 +45,7 @@ test('мягкая блокировка текстового редактиро�
   await pageC.goto(boardUrl);
   const boardC = boardLocators(pageC);
   await expect(boardC.pane).toBeVisible();
+  await expect(boardC.joined).toBeVisible();
   // C должен быть в комнате доски до того, как A начнёт редактировать: блокировка
   // рассылается один раз, при входе в редактирование
   await expect(boardC.joined).toBeVisible();
