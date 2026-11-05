@@ -1,4 +1,4 @@
-import Fastify, { type FastifyInstance } from 'fastify';
+import Fastify, { type FastifyBaseLogger, type FastifyInstance } from 'fastify';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { ConflictError, ForbiddenError, NotFoundError, UnauthorizedError } from '../src/errors';
@@ -97,5 +97,65 @@ describe('ErrorHandler', () => {
 
     expect(res.statusCode).toBeGreaterThanOrEqual(400);
     expect((res.json() as { error: string }).error).not.toMatch(/^FST_/);
+  });
+});
+
+interface LogRecord {
+  level: string;
+  message: string;
+}
+
+/** Пишем в лог не текстом, а в структуру — так в тесте видно уровень каждой записи */
+function fakeLogger(records: LogRecord[]): FastifyBaseLogger {
+  const write = (level: string) => (meta: unknown, message?: unknown) => {
+    records.push({ level, message: typeof message === 'string' ? message : String(meta) });
+  };
+  const logger = {
+    level: 'info',
+    fatal: write('fatal'),
+    error: write('error'),
+    warn: write('warn'),
+    info: write('info'),
+    debug: write('debug'),
+    trace: write('trace'),
+    silent: () => {},
+    child: () => logger,
+  };
+  return logger as unknown as FastifyBaseLogger;
+}
+
+describe('ErrorHandler: уровни логов', () => {
+  it('протокольный мусор от сканеров пишет на info, а не на warn', async () => {
+    const records: LogRecord[] = [];
+    app = Fastify({ loggerInstance: fakeLogger(records) });
+    new ErrorHandler().register(app);
+    app.post('/echo', async () => ({ ok: true }));
+    await app.ready();
+
+    const res = await app.inject({
+      method: 'POST',
+      url: '/echo',
+      headers: { 'content-type': 'application/vnd.bot' },
+      payload: 'привет',
+    });
+
+    expect(res.statusCode).toBe(415);
+    expect(records.filter((r) => r.level === 'warn')).toHaveLength(0);
+    expect(records.some((r) => r.level === 'info' && r.message === 'Запрос отклонён')).toBe(true);
+  });
+
+  it('прочие клиентские отказы остаются на warn', async () => {
+    const records: LogRecord[] = [];
+    app = Fastify({ loggerInstance: fakeLogger(records) });
+    new ErrorHandler().register(app);
+    app.get('/limited', async () => {
+      throw Object.assign(new Error('Слишком много запросов'), { statusCode: 429 });
+    });
+    await app.ready();
+
+    const res = await app.inject({ method: 'GET', url: '/limited' });
+
+    expect(res.statusCode).toBe(429);
+    expect(records.some((r) => r.level === 'warn' && r.message === 'Запрос отклонён')).toBe(true);
   });
 });
