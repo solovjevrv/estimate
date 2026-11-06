@@ -21,6 +21,13 @@ const CODE_BY_STATUS: Record<number, string> = {
 };
 
 /**
+ * Мусор на уровне протокола: кривой метод, посторонний content-type, запрос
+ * несуществующего пути. Такое постоянно шлют сканеры и краулеры — на warn это
+ * заметная доля логов (и квоты Sentry Logs), полезной информации в ней нет.
+ */
+const PROTOCOL_NOISE_STATUSES = new Set([404, 405, 415]);
+
+/**
  * Единая точка превращения исключений в HTTP-ответы.
  * Наружу уходят только осмысленные сообщения: текст SQL, параметры запроса
  * и прочие внутренности остаются в логах.
@@ -47,7 +54,8 @@ export class ErrorHandler {
 
     const status = fastifyError.statusCode ?? 500;
     if (status < 500) {
-      req.log.warn({ err }, 'Запрос отклонён');
+      if (PROTOCOL_NOISE_STATUSES.has(status)) req.log.info({ err }, 'Запрос отклонён');
+      else req.log.warn({ err }, 'Запрос отклонён');
       return this.send(reply, status, {
         error: CODE_BY_STATUS[status] ?? 'bad_request',
         message: fastifyError.message,
